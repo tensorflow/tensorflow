@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/Region.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
@@ -772,7 +771,7 @@ class IfrtVerifyDonationPass
 void IfrtVerifyDonationPass::runOnOperation() {
   mlir::func::FuncOp func_op = getOperation();
   // We only need to run this pass on IFRT functions.
-  if (!IsIfrtFunction(func_op) || func_op.getBody().empty()) {
+  if (!IsIfrtFunction(func_op)) {
     return;
   }
 

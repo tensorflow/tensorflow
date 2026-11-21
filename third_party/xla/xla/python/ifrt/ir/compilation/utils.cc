@@ -201,7 +201,7 @@ xla::CompileOptions GetDefaultCompileOptions(CallOp call_op,
   llvm::ArrayRef<int> logical_device_ids = call_op.getDevices();
   mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
   CHECK(callee != nullptr) << "Callee function not found for CallOp";
-  if (call_op->hasAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName)) {
+  if (call_op->hasAttr(kIfrtLocalViewAttrName)) {
     exec_build_options.set_num_replicas(logical_device_ids.size());
     exec_build_options.set_num_partitions(1);
     xla::DeviceAssignment device_assignment(logical_device_ids.size(), 1);

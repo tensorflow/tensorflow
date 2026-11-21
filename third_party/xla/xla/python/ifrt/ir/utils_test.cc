@@ -226,17 +226,18 @@ TEST(UtilsTest, GetIfrtFunctionsSnapshotsOnlyIfrtFunctions) {
   mlir::MLIRContext context;
   support::RegisterMlirDialects(context);
   const char* kModuleStr = R"mlir(
+!arr = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module {
   func.func private @atom_helper(%x: tensor<2xi32>) -> tensor<2xi32> {
     return %x : tensor<2xi32>
   }
-  func.func @main(%x: tensor<2xi32>) -> tensor<2xi32>
+  func.func @main(%x: !arr) -> !arr
       attributes {ifrt.function} {
-    return %x : tensor<2xi32>
+    return %x : !arr
   }
-  func.func private @reshard_fn(%x: tensor<2xi32>) -> tensor<2xi32>
+  func.func private @reshard_fn(%x: !arr) -> !arr
       attributes {ifrt.reshard_function} {
-    return %x : tensor<2xi32>
+    return %x : !arr
   }
 }
 )mlir";

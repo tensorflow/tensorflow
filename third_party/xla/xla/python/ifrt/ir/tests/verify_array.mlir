@@ -78,6 +78,16 @@ func.func @good_array_with_multiple_unreduced_axes() {
 
 // -----
 
+func.func @array_with_empty_memory_kind() {
+  // expected-error@+4 {{Memory kind cannot be empty}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], memory_kind = "">
+  return
+}
+
+// -----
+
 func.func @array_with_bad_layout() {
   // expected-error@+4 {{Invalid layout mode}}
   %0 = builtin.unrealized_conversion_cast to

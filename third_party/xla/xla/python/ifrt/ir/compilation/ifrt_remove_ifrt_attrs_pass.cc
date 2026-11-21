@@ -42,12 +42,6 @@ void IfrtRemoveIfrtAttrsPass::runOnOperation() {
   module_op->removeAttr(kIfrtLocalViewAttrName);
   module_op->removeAttr(kIfrtCompileOptionsKey);
   module_op.walk([&](mlir::func::FuncOp func_op) {
-    // Remove from function attributes.
-    for (auto attribute_name : {kIfrtDevicesAttrName, kIfrtMemoryKindAttrName,
-                                kIfrtShardingAttrName}) {
-      func_op->removeAttr(attribute_name);
-    }
-
     // Remove from argument attributes.
     for (int i = 0; i < func_op.getNumArguments(); ++i) {
       mlir::NamedAttrList arg_attrs = func_op.getArgAttrDict(i);

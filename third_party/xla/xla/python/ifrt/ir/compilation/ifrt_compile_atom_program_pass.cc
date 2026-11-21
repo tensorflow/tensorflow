@@ -396,11 +396,8 @@ IfrtCompileAtomProgramPass::CompileModule(
   if (module_type == kIfrtModuleTypeXla) {
     return CompileXla(call_op, module_op, cloned_modules, symbol_users);
   }
-  if (module_type == kIfrtModuleTypeMpmdReshard) {
-    return CompileMpmdReshard(module_op);
-  }
-  return absl::InvalidArgumentError(
-      absl::StrCat("No compiler for module type: ", module_type.str()));
+  CHECK(module_type == kIfrtModuleTypeMpmdReshard);
+  return CompileMpmdReshard(module_op);
 }
 
 void IfrtCompileAtomProgramPass::runOnOperation() {

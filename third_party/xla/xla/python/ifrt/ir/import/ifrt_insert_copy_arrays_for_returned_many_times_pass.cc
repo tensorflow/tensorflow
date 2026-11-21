@@ -32,8 +32,6 @@ namespace ifrt {
 
 namespace {
 
-using mlir::func::FuncOp;
-
 class IfrtInsertCopyArraysForReturnedManyTimesPass
     : public impl::IfrtInsertCopyArraysForReturnedManyTimesPassBase<
           IfrtInsertCopyArraysForReturnedManyTimesPass> {
@@ -52,48 +50,48 @@ void IfrtInsertCopyArraysForReturnedManyTimesPass::runOnOperation() {
   // necessary to ensure that: 1) donated arrays are deleted, but output arrays
   // remain valid, and 2) calling `Delete()` on input arrays does not delete the
   // returned arrays.
-  func_op.walk([&](mlir::func::ReturnOp return_op) {
-    mlir::OpBuilder builder(return_op);
+  auto return_op = mlir::cast<mlir::func::ReturnOp>(
+      func_op.getBody().front().getTerminator());
+  mlir::OpBuilder builder(return_op);
 
-    // Mapping from value to the number of times it is returned.
-    llvm::DenseMap<mlir::Value, int> val_to_num_returns;
-    for (mlir::Value val : return_op.getOperands()) {
-      if (llvm::isa<IfrtArrayType>(val.getType())) {
-        val_to_num_returns[val]++;
-      }
+  // Mapping from value to the number of times it is returned.
+  llvm::DenseMap<mlir::Value, int> val_to_num_returns;
+  for (mlir::Value val : return_op.getOperands()) {
+    if (llvm::isa<IfrtArrayType>(val.getType())) {
+      val_to_num_returns[val]++;
+    }
+  }
+
+  for (int i = 0; i < return_op.getNumOperands(); ++i) {
+    mlir::Value val = return_op.getOperand(i);
+    if (!llvm::isa<IfrtArrayType>(val.getType())) {
+      continue;
     }
 
-    for (int i = 0; i < return_op.getNumOperands(); ++i) {
-      mlir::Value val = return_op.getOperand(i);
-      if (!llvm::isa<IfrtArrayType>(val.getType())) {
-        continue;
-      }
+    mlir::BlockArgument block_arg = mlir::dyn_cast<mlir::BlockArgument>(val);
+    bool is_block_arg = block_arg != nullptr;
 
-      mlir::BlockArgument block_arg = mlir::dyn_cast<mlir::BlockArgument>(val);
-      bool is_block_arg = block_arg && block_arg.getOwner() == &func_op.front();
-
-      bool is_last_return = --val_to_num_returns[val] == 0;
-      if (!is_block_arg && is_last_return) {
-        // Do not insert a copy for the last return of a non-block argument.
-        continue;
-      }
-
-      bool is_donatable =
-          is_last_return &&
-          (!is_block_arg ||
-           func_op.getArgAttr(block_arg.getArgNumber(),
-                              kIfrtDonatedArgAttrName) != nullptr);
-      CopyArraysOp copy_op = CopyArraysOp::create(
-          builder, return_op.getLoc(),
-          /*outputs=*/{val.getType()},
-          /*control_output=*/IfrtControlType::get(builder.getContext()),
-          /*inputs=*/{val},
-          /*donated=*/is_donatable,
-          /*reuse=*/false,
-          /*control_inputs=*/{});
-      return_op.setOperand(i, copy_op.getOutputs().front());
+    bool is_last_return = --val_to_num_returns[val] == 0;
+    if (!is_block_arg && is_last_return) {
+      // Do not insert a copy for the last return of a non-block argument.
+      continue;
     }
-  });
+
+    bool is_donatable =
+        is_last_return &&
+        (!is_block_arg ||
+         func_op.getArgAttr(block_arg.getArgNumber(),
+                            kIfrtDonatedArgAttrName) != nullptr);
+    CopyArraysOp copy_op = CopyArraysOp::create(
+        builder, return_op.getLoc(),
+        /*outputs=*/{val.getType()},
+        /*control_output=*/IfrtControlType::get(builder.getContext()),
+        /*inputs=*/{val},
+        /*donated=*/is_donatable,
+        /*reuse=*/false,
+        /*control_inputs=*/{});
+    return_op.setOperand(i, copy_op.getOutputs().front());
+  }
 }
 
 }  // namespace

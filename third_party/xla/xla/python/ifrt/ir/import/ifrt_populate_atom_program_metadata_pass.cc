@@ -81,7 +81,7 @@ void PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
                        call_op->getAttr(kIfrtCompileOptionsKey));
   }
   // Copy `ifrt.local_view` attribute if it exists.
-  if (call_op->hasAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName)) {
+  if (call_op->hasAttr(kIfrtLocalViewAttrName)) {
     module_op->setAttr(kIfrtLocalViewAttrName,
                        call_op->getAttr(kIfrtLocalViewAttrName));
   }

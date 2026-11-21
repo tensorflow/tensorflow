@@ -40,7 +40,7 @@ module @call_twice {
   // CHECK-MHLO: mhlo.sharding = "{devices=[2,1]<=[2]}"}
   // CHECK-NOT: ifrt
   module @add_one <sym_visibility = "private"> attributes {
-        ifrt.num_devices = 2,
+        ifrt.num_devices = 2 : i32,
         ifrt.compile_options_key = "test_override"} {
     func.func @main(%arg0: tensor<2x2xi32> {
         ifrt.sharding = #sharding, ifrt.devices = #ifrt<devices[0, 1]>

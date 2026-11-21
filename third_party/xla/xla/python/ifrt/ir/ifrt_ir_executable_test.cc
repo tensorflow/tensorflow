@@ -1314,32 +1314,6 @@ module @missing_main_module {
                   .Await(),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("must be a public IFRT function")));
-
-  constexpr absl::string_view kMultiBlockMainSource = R"mlir(
-!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
-                     [0,1]>
-module @multi_block_main_module {
-  func.func @main(%arg0: !array) -> (!array) attributes {ifrt.function} {
-    return %arg0 : !array
-  ^bb1(%arg1: !array):
-    return %arg1 : !array
-  }
-}
-  )mlir";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> multi_block_module,
-                       LoadFromSource(kMultiBlockMainSource));
-  EXPECT_THAT(IfrtIrExecutable::Create(
-                  std::make_unique<IfrtIRProgram>(*multi_block_module),
-                  make_options(), &client_, atom_compiler)
-                  .Await(),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("must have a single block")));
-  EXPECT_THAT(CompiledIfrtIrProgram::Create(
-                  std::make_unique<IfrtIRProgram>(*multi_block_module),
-                  make_options(), &client_, atom_compiler)
-                  .Await(),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("must have a single block")));
 }
 
 TEST_F(IfrtIrExecutableTest, CreateRejectsUnsupportedOpInMainAtCompileTime) {

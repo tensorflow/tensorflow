@@ -672,8 +672,7 @@ mlir::LogicalResult CallOp::verifySymbolUses(
     mlir::SymbolTableCollection& symbolTable) {
   mlir::func::FuncOp callee = getCalleeOp(symbolTable);
   mlir::FunctionType callee_type = callee.getFunctionType();
-  auto local_view_attr =
-      (*this)->getAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName);
+  const bool is_local_view = (*this)->hasAttr(kIfrtLocalViewAttrName);
   // Verify inputs.
   if (callee_type.getNumInputs() != getInputs().size()) {
     return emitOpError() << "requires the same input size. Input "
@@ -681,7 +680,7 @@ mlir::LogicalResult CallOp::verifySymbolUses(
                          << callee_type.getNumInputs();
   }
   for (int i = 0; i < callee_type.getNumInputs(); ++i) {
-    if (local_view_attr == nullptr) {
+    if (!is_local_view) {
       if (mlir::failed(VerifySameGlobalShape(
               *this, llvm::Twine("Input #").concat(llvm::Twine(i)).str(),
               getInputs()[i], "Callee", callee_type.getInput(i)))) {
@@ -703,7 +702,7 @@ mlir::LogicalResult CallOp::verifySymbolUses(
                          << callee_type.getNumResults();
   }
   for (int i = 0; i < callee_type.getNumResults(); ++i) {
-    if (local_view_attr == nullptr) {
+    if (!is_local_view) {
       if (mlir::failed(VerifySameGlobalShape(
               *this, llvm::Twine("Output #").concat(llvm::Twine(i)).str(),
               getOutputs()[i], "Callee", callee_type.getResult(i)))) {

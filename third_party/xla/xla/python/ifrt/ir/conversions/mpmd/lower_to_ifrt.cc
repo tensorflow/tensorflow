@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Func/IR/FuncDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -182,7 +183,7 @@ class FragmentCallOpPattern final
         rewriter.getDenseI32ArrayAttr(donated_input_indices));
     // Set the mesh name in an attribute. The mesh name is used to get optional
     // per-mesh compile options users might have provided.
-    ifrt_call_op->setAttr(kIfrtMeshNameAttrName,
+    ifrt_call_op->setAttr(xla::ifrt::kIfrtMeshNameAttrName,
                           rewriter.getStringAttr(mesh_name));
     rewriter.replaceOp(op, ifrt_call_op.getOutputs());
     return mlir::success();
@@ -407,11 +408,12 @@ class BuildCompileOptionsPass
                             reserved_hbm_bytes.getInt());
       };
 
-      auto mesh_name_attr =
-          call_op->getAttrOfType<mlir::StringAttr>(kIfrtMeshNameAttrName);
+      auto mesh_name_attr = call_op->getAttrOfType<mlir::StringAttr>(
+          xla::ifrt::kIfrtMeshNameAttrName);
       if (mesh_name_attr == nullptr) {
         call_op.emitError()
-            << " is missing " << kIfrtMeshNameAttrName.str() << " attribute";
+            << " is missing " << xla::ifrt::kIfrtMeshNameAttrName.str()
+            << " attribute";
         return mlir::WalkResult::interrupt();
       }
       // While the users provide per-mesh compilation options, we need to

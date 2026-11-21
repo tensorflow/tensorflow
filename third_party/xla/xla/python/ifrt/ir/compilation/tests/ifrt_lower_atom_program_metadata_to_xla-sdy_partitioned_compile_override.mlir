@@ -15,7 +15,7 @@
 // RUN: ifrt-opt %s -ifrt-lower-atom-program-metadata-to-xla='compile_options={{"compile_option_overrides": {"test_override": {"executable_build_options": {"use_shardy_partitioner": true}}}}}' -split-input-file -verify-diagnostics 2>&1 | FileCheck %s
 
 // CHECK-LABEL: @arg_metadata_sdy_partitioned
-module @arg_metadata_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @arg_metadata_sdy_partitioned attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: %arg0: tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-NOT:    mhlo.sharding
@@ -41,7 +41,7 @@ module @arg_metadata_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.comp
 // -----
 
 // CHECK-LABEL: @arg_unspecified_sharding_sdy_partitioned
-module @arg_unspecified_sharding_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @arg_unspecified_sharding_sdy_partitioned attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: %arg0: tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-NOT:    mhlo.sharding
@@ -60,7 +60,7 @@ module @arg_unspecified_sharding_sdy_partitioned attributes {ifrt.num_devices = 
 
 // CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @result_metadata_sdy_partitioned
-module @result_metadata_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @result_metadata_sdy_partitioned attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: -> (tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-NOT:    mhlo.sharding
@@ -81,7 +81,7 @@ module @result_metadata_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.c
 
 // CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @result_unspecified_sharding_sdy_partitioned
-module @result_unspecified_sharding_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @result_unspecified_sharding_sdy_partitioned attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: -> (tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-NOT:    mhlo.sharding
@@ -100,7 +100,7 @@ module @result_unspecified_sharding_sdy_partitioned attributes {ifrt.num_devices
 // -----
 
 // CHECK-LABEL: @arg_missing_sharding_sdy_partitioned
-module @arg_missing_sharding_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @arg_missing_sharding_sdy_partitioned attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: %arg0: tensor<2x2xi32>
   // CHECK-NOT: mhlo.sharding
   func.func @main(%arg0: tensor<2x2xi32>) {
@@ -111,7 +111,7 @@ module @arg_missing_sharding_sdy_partitioned attributes {ifrt.num_devices = 2, i
 // -----
 
 // CHECK-LABEL: @result_missing_sharding_sdy_partitioned
-module @result_missing_sharding_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @result_missing_sharding_sdy_partitioned attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: -> tensor<2x2xi32>
   // CHECK-NOT: mhlo.sharding
   func.func @main() -> (tensor<2x2xi32>) {

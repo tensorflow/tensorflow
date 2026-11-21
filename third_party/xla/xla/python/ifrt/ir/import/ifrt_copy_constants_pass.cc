@@ -102,13 +102,10 @@ class IfrtCopyConstantsPass
     }
     mlir::IRRewriter rewriter(&getContext());
 
-    // Visit single-block IFRT functions and process consumer `ifrt.Call` ops in
-    // reverse program order so consumers inspect producer callees before any
-    // producer is mutated or cloned as a consumer itself.
+    // Visit IFRT functions and process consumer `ifrt.Call` ops in reverse
+    // program order so consumers inspect producer callees before any producer
+    // is mutated or cloned as a consumer itself.
     for (mlir::func::FuncOp func_op : GetIfrtFunctions(module_op)) {
-      if (!llvm::hasSingleElement(func_op.getBody())) {
-        continue;
-      }
       mlir::Block& block = func_op.getBody().front();
       for (CallOp call_op : llvm::reverse(block.getOps<CallOp>())) {
         // Skip `ifrt.local_view` calls: the callee runs with

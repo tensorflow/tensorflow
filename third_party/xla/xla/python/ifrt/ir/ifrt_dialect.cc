@@ -27,19 +27,24 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinDialect.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -104,18 +109,231 @@ IfrtAsmDialectInterface::AliasResult IfrtAsmDialectInterface::getAlias(
   return AliasResult::NoAlias;
 }
 
+namespace {
+
+enum class RegionAttrKind { kArg, kResult };
+
+// Verifies the common invariants shared by `ifrt.function` and
+// `ifrt.reshard_function` attributes and returns the `func::FuncOp` on success.
+mlir::FailureOr<mlir::func::FuncOp> VerifyIfrtFunctionCommon(
+    mlir::Operation* op, mlir::NamedAttribute attr) {
+  mlir::func::FuncOp func_op = llvm::dyn_cast<mlir::func::FuncOp>(op);
+  if (func_op == nullptr) {
+    return op->emitOpError() << "has `" << attr.getName().getValue()
+                             << "` attr but is not a function";
+  }
+  if (!mlir::isa<mlir::UnitAttr>(attr.getValue())) {
+    return op->emitOpError() << "has `" << attr.getName().getValue()
+                             << "` attr that is not a UnitAttr";
+  }
+  if (op->hasAttr(kIfrtFunctionAttrName) &&
+      op->hasAttr(kIfrtReshardFunctionAttrName)) {
+    return op->emitOpError()
+           << "cannot have both `" << kIfrtFunctionAttrName << "` and `"
+           << kIfrtReshardFunctionAttrName << "` attrs";
+  }
+  if (!llvm::isa_and_nonnull<mlir::ModuleOp>(op->getParentOp())) {
+    return op->emitOpError()
+           << "with `" << attr.getName().getValue()
+           << "` attr must be nested directly in a `builtin.module` op";
+  }
+  if (op->getNumRegions() != 1 || !func_op.getBody().hasOneBlock()) {
+    return op->emitOpError() << "with `" << attr.getName().getValue()
+                             << "` attr must have a single-block body";
+  }
+  mlir::TypeAttr func_type_attr = func_op.getFunctionTypeAttr();
+  if (func_type_attr == nullptr || func_type_attr.getValue() == nullptr ||
+      !mlir::isa<mlir::FunctionType>(func_type_attr.getValue())) {
+    return op->emitOpError() << "with `" << attr.getName().getValue()
+                             << "` attr must have a valid `FunctionType`";
+  }
+  mlir::Block& block = func_op.getBody().front();
+  if (block.empty() || !llvm::isa<mlir::func::ReturnOp>(block.back())) {
+    return op->emitOpError() << "with `" << attr.getName().getValue()
+                             << "` attr must end with `func.return`";
+  }
+  return func_op;
+}
+
+// Verifies an `ifrt.function` operation attribute on `op`.
+mlir::LogicalResult VerifyIfrtFunctionAttr(mlir::Operation* op,
+                                           mlir::NamedAttribute attr) {
+  mlir::FailureOr<mlir::func::FuncOp> func_op =
+      VerifyIfrtFunctionCommon(op, attr);
+  if (mlir::failed(func_op)) {
+    return mlir::failure();
+  }
+  mlir::FunctionType func_type = func_op->getFunctionType();
+  for (mlir::Type input_type : func_type.getInputs()) {
+    if (!llvm::isa<IfrtArrayType, IfrtControlType>(input_type)) {
+      return func_op->emitOpError()
+             << "with `" << kIfrtFunctionAttrName
+             << "` attr must have only `!ifrt.array` or `!ifrt.control` "
+                "argument types, got "
+             << input_type;
+    }
+  }
+  for (mlir::Type result_type : func_type.getResults()) {
+    if (!llvm::isa<IfrtArrayType, IfrtControlType>(result_type)) {
+      return func_op->emitOpError()
+             << "with `" << kIfrtFunctionAttrName
+             << "` attr must have only `!ifrt.array` or `!ifrt.control` "
+                "result types, got "
+             << result_type;
+    }
+  }
+  return mlir::success();
+}
+
+// Verifies an `ifrt.reshard_function` operation attribute on `op`.
+mlir::LogicalResult VerifyIfrtReshardFunctionAttr(mlir::Operation* op,
+                                                  mlir::NamedAttribute attr) {
+  mlir::FailureOr<mlir::func::FuncOp> func_op =
+      VerifyIfrtFunctionCommon(op, attr);
+  if (mlir::failed(func_op)) {
+    return mlir::failure();
+  }
+  mlir::FunctionType func_type = func_op->getFunctionType();
+  for (mlir::Type input_type : func_type.getInputs()) {
+    if (!llvm::isa<IfrtArrayType>(input_type)) {
+      return func_op->emitOpError()
+             << "with `" << kIfrtReshardFunctionAttrName
+             << "` attr must have only `!ifrt.array` argument types, got "
+             << input_type;
+    }
+  }
+  for (mlir::Type result_type : func_type.getResults()) {
+    if (!llvm::isa<IfrtArrayType>(result_type)) {
+      return func_op->emitOpError()
+             << "with `" << kIfrtReshardFunctionAttrName
+             << "` attr must have only `!ifrt.array` result types, got "
+             << result_type;
+    }
+  }
+  for (mlir::Operation& body_op : func_op->getBody().front()) {
+    if (!llvm::isa<ReshardOp, CopyArraysOp, RemapArraysOp, BitcastArraysOp,
+                   AssembleOp, DisassembleOp, mlir::func::ReturnOp>(&body_op)) {
+      return func_op->emitOpError()
+             << "with `" << kIfrtReshardFunctionAttrName
+             << "` attr may only contain resharding ops and `func.return`, "
+                "got `"
+             << body_op.getName() << "`";
+    }
+  }
+  return mlir::success();
+}
+
+// Verifies that `attr` holds a non-empty `mlir::StringAttr`.
+mlir::LogicalResult VerifyNonEmptyStringAttr(mlir::Operation* op,
+                                             mlir::NamedAttribute attr) {
+  mlir::StringAttr str_attr = llvm::dyn_cast<mlir::StringAttr>(attr.getValue());
+  if (str_attr == nullptr || str_attr.getValue().empty()) {
+    return op->emitOpError() << "has `" << attr.getName().getValue()
+                             << "` attr that is not a non-empty StringAttr";
+  }
+  return mlir::success();
+}
+
+// Verifies `ifrt.sharding`, `ifrt.devices`, and `ifrt.memory_kind` attributes
+// attached to `func.func` region arguments or results. Other `ifrt.*`
+// attributes are allowed, but not verified.
+mlir::LogicalResult VerifyIfrtArgOrResultAttr(mlir::Operation* op,
+                                              mlir::NamedAttribute attr,
+                                              RegionAttrKind kind) {
+  const llvm::StringRef attr_name = attr.getName().getValue();
+  if (attr_name != kIfrtShardingAttrName && attr_name != kIfrtDevicesAttrName &&
+      attr_name != kIfrtMemoryKindAttrName) {
+    return mlir::success();
+  }
+  const llvm::StringRef attr_kind =
+      kind == RegionAttrKind::kArg ? "arg" : "result";
+  if (!llvm::isa<mlir::func::FuncOp>(op)) {
+    return op->emitOpError() << "has `" << attr_name << "` " << attr_kind
+                             << " attr but is not a function";
+  }
+  if (attr_name == kIfrtShardingAttrName) {
+    if (!mlir::isa<IfrtShardingAttrInterface>(attr.getValue())) {
+      return op->emitOpError()
+             << "has `" << kIfrtShardingAttrName << "` " << attr_kind
+             << " attr that is not an `IfrtShardingAttrInterface`";
+    }
+    return mlir::success();
+  }
+  if (attr_name == kIfrtDevicesAttrName) {
+    if (!mlir::isa<IfrtDevicesAttr>(attr.getValue())) {
+      return op->emitOpError()
+             << "has `" << kIfrtDevicesAttrName << "` " << attr_kind
+             << " attr that is not an `IfrtDevicesAttr`";
+    }
+    return mlir::success();
+  }
+  mlir::StringAttr str_attr = llvm::dyn_cast<mlir::StringAttr>(attr.getValue());
+  if (str_attr == nullptr || str_attr.getValue().empty()) {
+    return op->emitOpError()
+           << "has `" << kIfrtMemoryKindAttrName << "` " << attr_kind
+           << " attr that is not a non-empty StringAttr";
+  }
+  return mlir::success();
+}
+
+}  // namespace
+
 mlir::LogicalResult IfrtDialect::verifyOperationAttribute(
     mlir::Operation* op, mlir::NamedAttribute attr) {
   if (attr.getName() == kIfrtFunctionAttrName) {
-    if (!llvm::isa<mlir::func::FuncOp>(op)) {
-      return op->emitOpError() << "has `" << kIfrtFunctionAttrName
-                               << "` attr but is not a function";
+    return VerifyIfrtFunctionAttr(op, attr);
+  }
+  if (attr.getName() == kIfrtReshardFunctionAttrName) {
+    return VerifyIfrtReshardFunctionAttr(op, attr);
+  }
+  if (attr.getName() == kIfrtLocalViewAttrName) {
+    if (!llvm::isa<CallOp, CallLoadedExecutableOp, mlir::ModuleOp>(op)) {
+      return op->emitOpError()
+             << "has `" << kIfrtLocalViewAttrName
+             << "` attr but is not a `ifrt.Call`, `ifrt.CallLoadedExecutable`, "
+                "or `builtin.module` op";
     }
     if (!mlir::isa<mlir::UnitAttr>(attr.getValue())) {
-      return op->emitOpError() << "has `" << kIfrtFunctionAttrName
+      return op->emitOpError() << "has `" << kIfrtLocalViewAttrName
                                << "` attr that is not a UnitAttr";
     }
+    return mlir::success();
   }
+  if (attr.getName() == kIfrtModuleTypeAttrName) {
+    if (!llvm::isa<CallOp, CallLoadedExecutableOp>(op)) {
+      return op->emitOpError() << "has `" << kIfrtModuleTypeAttrName
+                               << "` attr but is not a `ifrt.Call` or "
+                                  "`ifrt.CallLoadedExecutable` op";
+    }
+    mlir::StringAttr str_attr =
+        llvm::dyn_cast<mlir::StringAttr>(attr.getValue());
+    if (str_attr == nullptr ||
+        (str_attr.getValue() != kIfrtModuleTypeXla &&
+         str_attr.getValue() != kIfrtModuleTypeMpmdReshard)) {
+      return op->emitOpError()
+             << "has `" << kIfrtModuleTypeAttrName
+             << "` attr that must be a StringAttr with value `"
+             << kIfrtModuleTypeXla << "` or `" << kIfrtModuleTypeMpmdReshard
+             << "`";
+    }
+    return mlir::success();
+  }
+  if (attr.getName() == kIfrtCompileOptionsKey ||
+      attr.getName() == kIfrtMeshNameAttrName) {
+    return VerifyNonEmptyStringAttr(op, attr);
+  }
+  if (attr.getName() == kIfrtNumDevicesAttrName) {
+    mlir::IntegerAttr int_attr =
+        llvm::dyn_cast<mlir::IntegerAttr>(attr.getValue());
+    if (int_attr == nullptr || !int_attr.getType().isSignlessInteger(32) ||
+        int_attr.getInt() <= 0) {
+      return op->emitOpError()
+             << "has `" << kIfrtNumDevicesAttrName
+             << "` attr that is not a positive i32 IntegerAttr";
+    }
+    return mlir::success();
+  }
+  // Allow other `ifrt.*` attributes.
   return mlir::success();
 }
 
@@ -123,7 +341,8 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
     mlir::Operation* op, unsigned regionIndex, unsigned argIndex,
     mlir::NamedAttribute attr) {
   if (attr.getName() == kIfrtDonatedArgAttrName) {
-    if (!llvm::isa<mlir::func::FuncOp>(op)) {
+    mlir::func::FuncOp func_op = llvm::dyn_cast<mlir::func::FuncOp>(op);
+    if (func_op == nullptr) {
       return op->emitOpError() << "has `" << kIfrtDonatedArgAttrName
                                << "` arg attr but is not a function";
     }
@@ -136,8 +355,26 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
              << "has `" << kIfrtDonatedArgAttrName << "` arg attr but not has `"
              << kIfrtFunctionAttrName << "` attr";
     }
+    if (!mlir::isa<IfrtArrayType>(
+            func_op.getFunctionType().getInput(argIndex))) {
+      return op->emitOpError()
+             << "has `" << kIfrtDonatedArgAttrName << "` arg attr on argument #"
+             << argIndex << " that is not an `!ifrt.array`";
+    }
+    return mlir::success();
   }
-  return mlir::success();
+  return VerifyIfrtArgOrResultAttr(op, attr, RegionAttrKind::kArg);
+}
+
+mlir::LogicalResult IfrtDialect::verifyRegionResultAttribute(
+    mlir::Operation* op, unsigned regionIndex, unsigned resultIndex,
+    mlir::NamedAttribute attr) {
+  if (attr.getName() == kIfrtDonatedArgAttrName) {
+    return op->emitOpError()
+           << "has `" << kIfrtDonatedArgAttrName
+           << "` result attr, which is only valid on arguments";
+  }
+  return VerifyIfrtArgOrResultAttr(op, attr, RegionAttrKind::kResult);
 }
 
 //===----------------------------------------------------------------------===//
@@ -250,6 +487,9 @@ mlir::LogicalResult IfrtArrayType::verify(
     return emitError() << "Unsupported array element type: "
                        << shape.getElementType();
   }
+  if (memory_kind_attr != nullptr && memory_kind_attr.getValue().empty()) {
+    return emitError() << "Memory kind cannot be empty";
+  }
   if (layout_attr != nullptr) {
     absl::StatusOr<xla::LayoutMode> layout_mode =
         xla::LayoutMode::FromString(layout_attr.str());
@@ -321,9 +561,12 @@ void IfrtArrayType::print(mlir::AsmPrinter& odsPrinter) const {
 
 mlir::FailureOr<mlir::StringAttr> parseMemoryKindAttr(
     mlir::AsmParser& odsParser) {
-  if (mlir::failed(odsParser.parseOptionalKeyword("memory_kind")))
+  if (mlir::failed(odsParser.parseOptionalKeyword("memory_kind"))) {
     return mlir::failure();
-  if (mlir::failed(odsParser.parseEqual())) return mlir::failure();
+  }
+  if (mlir::failed(odsParser.parseEqual())) {
+    return mlir::failure();
+  }
   auto memory_kind_attr_or =
       mlir::FieldParser<mlir::StringAttr>::parse(odsParser);
   if (mlir::failed(memory_kind_attr_or)) {
@@ -337,9 +580,12 @@ mlir::FailureOr<mlir::StringAttr> parseMemoryKindAttr(
 }
 
 mlir::FailureOr<mlir::StringAttr> parseLayoutAttr(mlir::AsmParser& odsParser) {
-  if (mlir::failed(odsParser.parseOptionalKeyword("layout")))
+  if (mlir::failed(odsParser.parseOptionalKeyword("layout"))) {
     return mlir::failure();
-  if (mlir::failed(odsParser.parseEqual())) return mlir::failure();
+  }
+  if (mlir::failed(odsParser.parseEqual())) {
+    return mlir::failure();
+  }
   auto layout_attr_or = mlir::FieldParser<mlir::StringAttr>::parse(odsParser);
   if (mlir::failed(layout_attr_or)) {
     odsParser.emitError(
@@ -354,7 +600,9 @@ mlir::FailureOr<mlir::StringAttr> parseLayoutAttr(mlir::AsmParser& odsParser) {
 mlir::Type IfrtArrayType::parse(mlir::AsmParser& odsParser) {
   mlir::Builder odsBuilder(odsParser.getContext());
 
-  if (mlir::failed(odsParser.parseLess())) return {};
+  if (mlir::failed(odsParser.parseLess())) {
+    return {};
+  }
 
   auto shape_or = mlir::FieldParser<mlir::RankedTensorType>::parse(odsParser);
   if (mlir::failed(shape_or)) {
@@ -364,7 +612,9 @@ mlir::Type IfrtArrayType::parse(mlir::AsmParser& odsParser) {
     return {};
   }
 
-  if (mlir::failed(odsParser.parseComma())) return {};
+  if (mlir::failed(odsParser.parseComma())) {
+    return {};
+  }
 
   auto sharding_attr_or =
       mlir::FieldParser<IfrtShardingAttrInterface>::parse(odsParser);
@@ -376,7 +626,9 @@ mlir::Type IfrtArrayType::parse(mlir::AsmParser& odsParser) {
     return {};
   }
 
-  if (mlir::failed(odsParser.parseComma())) return {};
+  if (mlir::failed(odsParser.parseComma())) {
+    return {};
+  }
 
   auto devices_attr_or = mlir::FieldParser<IfrtDevicesAttr>::parse(odsParser);
   if (mlir::failed(devices_attr_or)) {
@@ -411,7 +663,9 @@ mlir::Type IfrtArrayType::parse(mlir::AsmParser& odsParser) {
     }
   }
 
-  if (mlir::failed(odsParser.parseGreater())) return {};
+  if (mlir::failed(odsParser.parseGreater())) {
+    return {};
+  }
 
   return odsParser.getChecked<IfrtArrayType>(
       odsParser.getCurrentLocation(), odsParser.getContext(), *shape_or,

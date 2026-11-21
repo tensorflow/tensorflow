@@ -246,11 +246,11 @@ module @bitcast_arrays_becomes_unused {
 module @partial_reshard_and_copy_arrays_dce {
   func.func @main(%arg0: !array0, %arg1: !array0) -> (!array1, !array2)
       attributes {ifrt.function} {
-    // CHECK: %[[R:.*]], %{{.*}} = ifrt.Reshard(%arg1) {ifrt.dst_mesh_name = "m2", ifrt.src_mesh_name = "m1"} : (!ifrt.array<{{.*}}>) -> !ifrt.array<{{.*}}>
+    // CHECK: %[[R:.*]], %{{.*}} = ifrt.Reshard(%arg1) {test.dst_mesh_name = "m2", test.src_mesh_name = "m1"} : (!ifrt.array<{{.*}}>) -> !ifrt.array<{{.*}}>
     // CHECK-NEXT: %[[C:.*]], %{{.*}} = ifrt.CopyArrays(%arg0) : (!ifrt.array<{{.*}}>) -> !ifrt.array<{{.*}}>
     // CHECK-NEXT: return %[[R]], %[[C]]
     %0:2, %ctrl_0 = ifrt.Reshard(%arg0, %arg1)
-        {ifrt.src_mesh_name = "m1", ifrt.dst_mesh_name = "m2"}
+        {test.src_mesh_name = "m1", test.dst_mesh_name = "m2"}
         : (!array0, !array0) -> (!array1, !array1)
     %1:2, %ctrl_1 = ifrt.CopyArrays(%arg0, %arg1)
         : (!array0, !array0) -> (!array2, !array2)
@@ -334,7 +334,7 @@ module @remap_io_aliases_donations_and_attrs {
     // CHECK-SAME:  res_attrs = [{test.res = "out1"}, {test.res = "out2"}],
     // CHECK-SAME:  io_aliases = [array<i32: 1, 1>],
     // CHECK-SAME:  donated_input_indices = [0]>
-    // CHECK-SAME: {ifrt.origin = ["stage0"]}
+    // CHECK-SAME: {test.origin = ["stage0"]}
     // CHECK-NEXT: return %[[OUT]]#0, %[[OUT]]#1
     %0:3, %ctrl_0 = ifrt.Call @f(%arg0, %arg1, %arg2, %arg3)
         on devices [0, 1, 2, 3]
@@ -344,7 +344,7 @@ module @remap_io_aliases_donations_and_attrs {
          io_aliases = [array<i32: 1, 0>, array<i32: 3, 2>],
          res_attrs = [{test.res = "out0"}, {test.res = "out1"},
                       {test.res = "out2"}]>
-        {ifrt.origin = ["stage0"]}
+        {test.origin = ["stage0"]}
         : (!array0, !array0, !array0, !array0) -> (!array0, !array0, !array0)
     return %0#1, %0#2 : !array0, !array0
   }

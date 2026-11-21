@@ -15,7 +15,7 @@
 // RUN: ifrt-opt %s -ifrt-lower-atom-program-metadata-to-xla='compile_options={{"compile_option_overrides": {"test_override": {"executable_build_options": {"use_shardy_partitioner": false}}}}}' -split-input-file -verify-diagnostics 2>&1 | FileCheck %s
 
 // CHECK-LABEL: @arg_metadata
-module @arg_metadata attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @arg_metadata attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: %arg0: tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-DAG:    mhlo.sharding = "{devices=[2,1]<=[2]}"
@@ -41,7 +41,7 @@ module @arg_metadata attributes {ifrt.num_devices = 2, ifrt.compile_options_key 
 // -----
 
 // CHECK-LABEL: @arg_unspecified_sharding
-module @arg_unspecified_sharding attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @arg_unspecified_sharding attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: %arg0: tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-DAG:    mhlo.sharding = "{devices=[2,1]<=[2]}"
@@ -60,7 +60,7 @@ module @arg_unspecified_sharding attributes {ifrt.num_devices = 2, ifrt.compile_
 
 // CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @result_metadata
-module @result_metadata attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @result_metadata attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: -> (tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-DAG:    mhlo.sharding = "{devices=[2,1]<=[2]}"
@@ -81,7 +81,7 @@ module @result_metadata attributes {ifrt.num_devices = 2, ifrt.compile_options_k
 
 // CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @result_unspecified_sharding
-module @result_unspecified_sharding attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @result_unspecified_sharding attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // CHECK: -> (tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-DAG:    mhlo.sharding = "{devices=[2,1]<=[2]}"
@@ -99,7 +99,7 @@ module @result_unspecified_sharding attributes {ifrt.num_devices = 2, ifrt.compi
 
 // -----
 
-module @arg_missing_sharding attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @arg_missing_sharding attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // expected-error @+1 {{'func.func' op can't find `ifrt.sharding` attribute of input #0 to set `mhlo.sharding` attribute}}
   func.func @main(%arg0: tensor<2x2xi32>) {
     return
@@ -108,7 +108,7 @@ module @arg_missing_sharding attributes {ifrt.num_devices = 2, ifrt.compile_opti
 
 // -----
 
-module @result_missing_sharding attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @result_missing_sharding attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   // expected-error @+1 {{'func.func' op can't find `ifrt.sharding` attribute of output #0 to set `mhlo.sharding` attribute}}
   func.func @main() -> (tensor<2x2xi32>) {
      %0 = mhlo.constant dense<1> : tensor<2x2xi32>
@@ -131,7 +131,7 @@ module @module_missing_devices attributes {ifrt.compile_options_key = "test_over
 // -----
 
 // expected-error @+2 {{'func.func' op can't lower sharding of input #0. Sharding: #ifrt.sharding_param<1x1 to [0] on 1> uses 1 devices while computation uses 2 devices}}
-module @arg_w_different_num_devices attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
+module @arg_w_different_num_devices attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   func.func @main(
       %arg0: tensor<2x2xi32> {
         ifrt.sharding=#ifrt.sharding_param<1x1 to [0] on 1>}) {
@@ -142,7 +142,7 @@ module @arg_w_different_num_devices attributes {ifrt.num_devices = 2, ifrt.compi
 // -----
 
 // expected-error @+2 {{'func.func' op can't lower sharding of output #0. Sharding: #ifrt.sharding_param<2x1 to [0] on 2> uses 2 devices while computation uses 4 devices}}
-module @res_w_different_num_devices attributes {ifrt.num_devices = 4, ifrt.compile_options_key = "test_override"} {
+module @res_w_different_num_devices attributes {ifrt.num_devices = 4 : i32, ifrt.compile_options_key = "test_override"} {
   func.func @main()
       -> (tensor<2x2xi32> {
         ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>}) {

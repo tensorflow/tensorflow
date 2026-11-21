@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
@@ -167,9 +168,8 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
     mlir::OpPassManager pm(mlir::ModuleOp::getOperationName());
     if (module_type_attr == kIfrtModuleTypeXla) {
       createIfrtCompileXlaPreprocessingPipeline(pm, compile_options);
-    } else if (module_type_attr != kIfrtModuleTypeMpmdReshard) {
-      return call_op.emitOpError()
-             << "module type " << module_type_attr << " is not supported";
+    } else {
+      CHECK(module_type_attr == kIfrtModuleTypeMpmdReshard);
     }
     if (mlir::failed(runPipeline(pm, *callee_module))) {
       return mlir::WalkResult::interrupt();

@@ -33,6 +33,7 @@ def Ifrt_Dialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
   let hasOperationAttrVerify = 1;
   let hasRegionArgAttrVerify = 1;
+  let hasRegionResultAttrVerify = 1;
 }
 
 //===---------------------------------------------------------------------------
