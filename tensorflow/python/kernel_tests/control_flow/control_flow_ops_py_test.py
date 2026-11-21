@@ -2363,6 +2363,89 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises((ValueError, TypeError)):
       while_loop_tf.while_loop(c, b, [i, x], ["foo", "bar"])
 
+  def _whileLoopWithTensorArray(self, ta_shape_invariant,
+                                omit_invariants=False, nested=False):
+    i = constant_op.constant(0)
+    ta = tensor_array_ops.TensorArray(dtypes.float32, size=3)
+    c = lambda i, _: i < 3
+    if nested:
+      loop_vars = [i, (ta,)]
+      b = lambda i, ta: (i + 1, (ta[0].write(i, 1.0),))
+      ta_shape_invariant = (ta_shape_invariant,)
+    else:
+      loop_vars = [i, ta]
+      b = lambda i, ta: (i + 1, ta.write(i, 1.0))
+    shape_invariants = (
+        None if omit_invariants else [i.get_shape(), ta_shape_invariant])
+    _, ta_out = while_loop_tf.while_loop(
+        c, b, loop_vars, shape_invariants=shape_invariants)
+    return ta_out[0] if nested else ta_out
+
+  def _checkTensorArrayShapeInvariants(self, valid, invalid):
+    ta_out = self._whileLoopWithTensorArray(None, omit_invariants=True)
+    self.assertIsInstance(ta_out, tensor_array_ops.TensorArray)
+    for shape in valid:
+      ta_out = self._whileLoopWithTensorArray(shape)
+      self.assertIsInstance(ta_out, tensor_array_ops.TensorArray)
+    for shape in invalid:
+      with self.assertRaisesRegex(
+          ValueError,
+          "Invalid shape invariant " + re.escape(repr(shape)) +
+          " for a TensorArray loop variable.*`element_shape`"):
+        self._whileLoopWithTensorArray(shape)
+    # The same checks apply to a TensorArray nested in a tuple.
+    ta_out = self._whileLoopWithTensorArray(
+        tensor_shape.TensorShape([]), nested=True)
+    self.assertIsInstance(ta_out, tensor_array_ops.TensorArray)
+    with self.assertRaisesRegex(ValueError, "for a TensorArray loop variable"):
+      self._whileLoopWithTensorArray(tensor_shape.TensorShape([1]), nested=True)
+
+  def _invalidTensorArrayShapeInvariants(self):
+    return [
+        tensor_shape.TensorShape([None, None, 32]),
+        tensor_shape.TensorShape([1]),
+        tensor_lib.TensorSpec([None, 32], dtypes.float32),
+        tensor_lib.TensorSpec([None, None, 32], dtypes.variant),
+        tensor_array_ops.TensorArraySpec([None, 32], dtypes.float32),
+        tensor_array_ops.TensorArraySpec(None, dtypes.float32),
+    ]
+
+  def testWhileTensorArrayShapeInvariantV2(self):
+
+    @eager_def_function.function
+    def build():
+      self.assertTrue(
+          control_flow_util.EnableControlFlowV2(ops.get_default_graph()))
+      self._checkTensorArrayShapeInvariants(
+          valid=[
+              tensor_shape.TensorShape([]),
+              tensor_shape.TensorShape(None),
+              None,
+              tensor_lib.TensorSpec([], dtypes.variant),
+          ],
+          invalid=self._invalidTensorArrayShapeInvariants())
+
+    with context.eager_mode():
+      build.get_concrete_function()
+
+  def testWhileTensorArrayShapeInvariantV1(self):
+    enable_control_flow_v2 = control_flow_util.ENABLE_CONTROL_FLOW_V2
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = False
+    try:
+      with ops.Graph().as_default():
+        self.assertFalse(
+            control_flow_util.EnableControlFlowV2(ops.get_default_graph()))
+        self._checkTensorArrayShapeInvariants(
+            valid=[
+                tensor_shape.TensorShape([]),
+                tensor_shape.TensorShape(None),
+                None,
+            ],
+            invalid=self._invalidTensorArrayShapeInvariants() +
+            [tensor_lib.TensorSpec([], dtypes.variant)])
+    finally:
+      control_flow_util.ENABLE_CONTROL_FLOW_V2 = enable_control_flow_v2
+
   def _testNestedWhile_1(self, use_gpu):
     with self.cached_session(use_gpu=use_gpu):
       n = constant_op.constant(0)
