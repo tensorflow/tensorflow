@@ -2326,6 +2326,711 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMultipleMulTransposeConv) {
   EXPECT_EQ(conv_node_1->input(1), weights_node_1->name());
 }
 
+namespace {
+
+NodeDef* AddFoldMultiplyIntoConvNode(GraphDef* graph, const std::string& name,
+                                     const std::string& op,
+                                     const std::vector<std::string>& inputs) {
+  NodeDef* node = graph->add_node();
+  node->set_name(name);
+  node->set_op(op);
+  for (const std::string& input : inputs) {
+    node->add_input(input);
+  }
+  return node;
+}
+
+void AddFoldMultiplyIntoConvFetch(GrapplerItem* item, const std::string& name) {
+  const std::string output = absl::StrCat(name, "_output");
+  AddFoldMultiplyIntoConvNode(&item->graph, output, "Identity", {name});
+  item->fetch.push_back(output);
+}
+
+void ExpectSameNodeDefs(const GraphDef& expected, GraphDef* actual) {
+  ASSERT_EQ(actual->node_size(), expected.node_size());
+  NodeMap node_map(actual);
+  for (const NodeDef& want : expected.node()) {
+    const NodeDef* got = node_map.GetNode(want.name());
+    ASSERT_NE(got, nullptr) << want.name();
+    EXPECT_EQ(got->op(), want.op()) << want.name();
+    EXPECT_EQ(got->device(), want.device()) << want.name();
+    EXPECT_EQ(got->attr_size(), want.attr_size()) << want.name();
+    ASSERT_EQ(got->input_size(), want.input_size()) << want.name();
+    for (int i = 0; i < want.input_size(); ++i) {
+      EXPECT_EQ(got->input(i), want.input(i)) << want.name();
+    }
+  }
+}
+
+}  // namespace
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldMultiplyIntoConvValidDirectAndTransposeControlIsFolded) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+  Output inputs_direct =
+      ops::Placeholder(s.WithOpName("inputs_direct"), DT_FLOAT,
+                       ops::Placeholder::Shape({8, 3, 28, 28}));
+  Output scale_direct = ops::Const(s.WithOpName("scale_direct"), 1.0f / 255.0f);
+  Output mul_direct =
+      ops::Mul(s.WithOpName("mul_direct"), inputs_direct, scale_direct);
+  Output weights_direct = ops::Const(s.WithOpName("weights_direct"),
+                                     Input::Initializer(127.0f, {5, 5, 3, 16}));
+  Output conv_direct =
+      ops::Conv2D(s.WithOpName("conv_direct"), mul_direct, weights_direct,
+                  {1, 1, 1, 1}, "VALID", ops::Conv2D::DataFormat("NCHW"));
+  Output out_direct = ops::Identity(s.WithOpName("out_direct"), conv_direct);
+
+  Output inputs_nhwc =
+      ops::Placeholder(s.WithOpName("inputs_nhwc"), DT_FLOAT,
+                       ops::Placeholder::Shape({8, 28, 28, 3}));
+  Output scale_chain = ops::Const(s.WithOpName("scale_chain"), 1.0f / 255.0f);
+  Output mul_chain =
+      ops::Mul(s.WithOpName("mul_chain"), inputs_nhwc, scale_chain);
+  Output perm = ops::Const(s.WithOpName("perm"), {0, 3, 1, 2});
+  Output transpose_chain =
+      ops::Transpose(s.WithOpName("transpose_chain"), mul_chain, perm);
+  Output weights_chain = ops::Const(s.WithOpName("weights_chain"),
+                                    Input::Initializer(127.0f, {5, 5, 3, 16}));
+  Output conv_chain =
+      ops::Conv2D(s.WithOpName("conv_chain"), transpose_chain, weights_chain,
+                  {1, 1, 1, 1}, "VALID", ops::Conv2D::DataFormat("NCHW"));
+  Output out_chain = ops::Identity(s.WithOpName("out_chain"), conv_chain);
+  (void)out_direct;
+  (void)out_chain;
+
+  GrapplerItem item;
+  item.fetch = {"out_direct", "out_chain"};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  const NodeDef* folded_direct = node_map.GetNode("conv_direct");
+  ASSERT_NE(folded_direct, nullptr);
+  ASSERT_EQ(folded_direct->input_size(), 2);
+  EXPECT_EQ(folded_direct->input(0), "inputs_direct");
+  const NodeDef* scaled_direct = node_map.GetNode(folded_direct->input(1));
+  ASSERT_NE(scaled_direct, nullptr);
+  EXPECT_EQ(scaled_direct->op(), "Mul");
+
+  const NodeDef* folded_transpose = node_map.GetNode("transpose_chain");
+  ASSERT_NE(folded_transpose, nullptr);
+  ASSERT_EQ(folded_transpose->input_size(), 2);
+  EXPECT_EQ(folded_transpose->input(0), "inputs_nhwc");
+  EXPECT_EQ(folded_transpose->input(1), "perm");
+  const NodeDef* folded_chain_conv = node_map.GetNode("conv_chain");
+  ASSERT_NE(folded_chain_conv, nullptr);
+  ASSERT_EQ(folded_chain_conv->input_size(), 2);
+  EXPECT_EQ(folded_chain_conv->input(0), "transpose_chain");
+  const NodeDef* scaled_chain = node_map.GetNode(folded_chain_conv->input(1));
+  ASSERT_NE(scaled_chain, nullptr);
+  EXPECT_EQ(scaled_chain->op(), "Mul");
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldMultiplyIntoConvValidSingleInputAddNIsFolded) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 3, 28, 28}));
+  Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f);
+  Output mul = ops::Mul(s.WithOpName("mul"), inputs, scale);
+  Output control = ops::Const(s.WithOpName("control"), 1.0f);
+  Output sum =
+      ops::AddN(s.WithOpName("sum").WithControlDependencies(control), {mul});
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 3, 16}));
+  Output conv = ops::Conv2D(s.WithOpName("conv"), sum, weights, {1, 1, 1, 1},
+                            "VALID", ops::Conv2D::DataFormat("NCHW"));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), conv);
+  (void)outputs;
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  const NodeDef* sum_node = node_map.GetNode("sum");
+  ASSERT_NE(sum_node, nullptr);
+  ASSERT_EQ(sum_node->input_size(), 2);
+  EXPECT_EQ(sum_node->input(0), "inputs");
+  EXPECT_EQ(sum_node->input(1), "^control");
+  const NodeDef* conv_node = node_map.GetNode("conv");
+  ASSERT_NE(conv_node, nullptr);
+  ASSERT_EQ(conv_node->input_size(), 2);
+  EXPECT_EQ(conv_node->input(0), "sum");
+  const NodeDef* scaled_weights = node_map.GetNode(conv_node->input(1));
+  ASSERT_NE(scaled_weights, nullptr);
+  EXPECT_EQ(scaled_weights->op(), "Mul");
+  ASSERT_EQ(scaled_weights->input_size(), 2);
+  EXPECT_EQ(scaled_weights->input(0), "weights");
+  EXPECT_EQ(scaled_weights->input(1), "scale");
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldMultiplyIntoConvRejectsUnderArityOrControlPaddedChainOps) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 3, 28, 28}));
+  Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f);
+  Output perm = ops::Const(s.WithOpName("perm"), {0, 1, 2, 3});
+  Output extra = ops::Const(s.WithOpName("extra"), 0);
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 3, 16}));
+  auto make_mul = [&](const std::string& tag) {
+    return ops::Mul(s.WithOpName(absl::StrCat("mul_", tag)), inputs, scale);
+  };
+  Output m1 = make_mul("tp_one_input");
+  Output m2 = make_mul("tp_ctrl_perm");
+  Output m3 = make_mul("tp_ctrl_first");
+  Output m4 = make_mul("tp_extra_data");
+  Output m5 = make_mul("tp_mid_chain");
+  Output m6 = make_mul("tp_head_chain");
+  Output m9 = make_mul("reshape_one");
+  Output m10 = make_mul("roll_two");
+  Output m11 = make_mul("print_short");
+  Output m12 = make_mul("add_single");
+  (void)perm;
+  (void)extra;
+  (void)weights;
+  (void)m1;
+  (void)m2;
+  (void)m3;
+  (void)m4;
+  (void)m5;
+  (void)m6;
+  (void)m9;
+  (void)m10;
+  (void)m11;
+  (void)m12;
+
+  GrapplerItem item;
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  // 1-input and control-padded Transpose as direct chain tail.
+  AddFoldMultiplyIntoConvNode(&item.graph, "tp_one_input", "Transpose",
+                              {"mul_tp_one_input"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "tp_ctrl_perm", "Transpose",
+                              {"mul_tp_ctrl_perm", "^perm"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "tp_ctrl_first", "Transpose",
+                              {"^mul_tp_ctrl_first", "perm"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "tp_extra_data", "Transpose",
+                              {"mul_tp_extra_data", "perm", "extra"});
+
+  // 1-input Transpose at both intermediate and head positions of a longer
+  // value-preserving chain (Mul -> Transpose -> Identity -> Conv2D and
+  // Mul -> Identity -> Transpose -> Conv2D).
+  AddFoldMultiplyIntoConvNode(&item.graph, "tp_mid", "Transpose",
+                              {"mul_tp_mid_chain"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "id_after_tp_mid", "Identity",
+                              {"tp_mid"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "id_before_tp_head", "Identity",
+                              {"mul_tp_head_chain"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "tp_head", "Transpose",
+                              {"id_before_tp_head"});
+
+  // Other multi-input value-preserving ops.
+  AddFoldMultiplyIntoConvNode(&item.graph, "reshape_one", "Reshape",
+                              {"mul_reshape_one"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "roll_two", "Roll",
+                              {"mul_roll_two", "extra"});
+
+  NodeDef* print_short = AddFoldMultiplyIntoConvNode(
+      &item.graph, "print_short", "Print", {"mul_print_short"});
+  (*print_short->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*print_short->mutable_attr())["U"].mutable_list()->add_type(DT_FLOAT);
+
+  NodeDef* add_single = AddFoldMultiplyIntoConvNode(&item.graph, "add_single",
+                                                    "Add", {"mul_add_single"});
+  (*add_single->mutable_attr())["T"].set_type(DT_FLOAT);
+
+  for (const std::string& chain_out :
+       {"tp_one_input", "tp_ctrl_perm", "tp_ctrl_first", "tp_extra_data",
+        "id_after_tp_mid", "tp_head", "reshape_one", "roll_two", "print_short",
+        "add_single"}) {
+    const std::string conv_name = absl::StrCat("conv_", chain_out);
+    AddFoldMultiplyIntoConvNode(&item.graph, conv_name, "Conv2D",
+                                {chain_out, "weights"});
+    AddFoldMultiplyIntoConvFetch(&item, conv_name);
+  }
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  ASSERT_EQ(output.node_size(), item.graph.node_size());
+  ExpectSameNodeDefs(item.graph, &output);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldMultiplyIntoConvRejectsInvalidVariableArityAttributes) {
+  struct AttributeCase {
+    const char* name;
+    const char* op;
+    std::vector<std::string> inputs;
+    std::function<void(NodeDef*)> mutate;
+  };
+  const std::vector<AttributeCase> cases = {
+      {"addn_missing_n",
+       "AddN",
+       {"mul"},
+       [](NodeDef* n) { (*n->mutable_attr())["T"].set_type(DT_FLOAT); }},
+      {"addn_wrong_type_n",
+       "AddN",
+       {"mul"},
+       [](NodeDef* n) {
+         (*n->mutable_attr())["T"].set_type(DT_FLOAT);
+         (*n->mutable_attr())["N"].set_type(DT_INT32);
+       }},
+      {"addn_negative_n",
+       "AddN",
+       {"mul"},
+       [](NodeDef* n) {
+         (*n->mutable_attr())["T"].set_type(DT_FLOAT);
+         (*n->mutable_attr())["N"].set_i(-1);
+       }},
+      {"addn_exceeds_inputs",
+       "AddN",
+       {"mul"},
+       [](NodeDef* n) {
+         (*n->mutable_attr())["T"].set_type(DT_FLOAT);
+         (*n->mutable_attr())["N"].set_i(2);
+       }},
+      {"addn_int64_max_n",
+       "AddN",
+       {"mul"},
+       [](NodeDef* n) {
+         (*n->mutable_attr())["T"].set_type(DT_FLOAT);
+         (*n->mutable_attr())["N"].set_i(std::numeric_limits<int64_t>::max());
+       }},
+      {"print_missing_u",
+       "Print",
+       {"mul"},
+       [](NodeDef* n) { (*n->mutable_attr())["T"].set_type(DT_FLOAT); }},
+      {"print_wrong_type_u",
+       "Print",
+       {"mul"},
+       [](NodeDef* n) {
+         (*n->mutable_attr())["T"].set_type(DT_FLOAT);
+         (*n->mutable_attr())["U"].set_type(DT_FLOAT);
+       }},
+      {"print_u_exceeds_inputs",
+       "Print",
+       {"mul"},
+       [](NodeDef* n) {
+         (*n->mutable_attr())["T"].set_type(DT_FLOAT);
+         AttrValue::ListValue* u = (*n->mutable_attr())["U"].mutable_list();
+         u->add_type(DT_FLOAT);
+         u->add_type(DT_FLOAT);
+       }},
+      {"print_accum_exceeds_inputs",
+       "Print",
+       {"mul", "^extra"},
+       [](NodeDef* n) {
+         (*n->mutable_attr())["T"].set_type(DT_FLOAT);
+         AttrValue::ListValue* u = (*n->mutable_attr())["U"].mutable_list();
+         u->add_type(DT_FLOAT);
+         u->add_type(DT_FLOAT);
+       }},
+      {"unregistered_chain",
+       "UnregisteredValuePreservingCandidate",
+       {"mul"},
+       [](NodeDef* /*n*/) {}},
+  };
+
+  for (const AttributeCase& tc : cases) {
+    SCOPED_TRACE(tc.name);
+    tensorflow::Scope s =
+        tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+    Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                     ops::Placeholder::Shape({8, 3, 28, 28}));
+    Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f);
+    Output mul = ops::Mul(s.WithOpName("mul"), inputs, scale);
+    Output extra = ops::Const(s.WithOpName("extra"), 0);
+    Output weights = ops::Const(s.WithOpName("weights"),
+                                Input::Initializer(127.0f, {5, 5, 3, 16}));
+    (void)mul;
+    (void)extra;
+    (void)weights;
+
+    GrapplerItem item;
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+    NodeDef* chain =
+        AddFoldMultiplyIntoConvNode(&item.graph, "chain", tc.op, tc.inputs);
+    tc.mutate(chain);
+    AddFoldMultiplyIntoConvNode(&item.graph, "conv", "Conv2D",
+                                {"chain", "weights"});
+    AddFoldMultiplyIntoConvFetch(&item, "conv");
+
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyFoldMultipleIntoConv(&optimizer);
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+    ExpectSameNodeDefs(item.graph, &output);
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldMultiplyIntoConvTerminatesOnMalformedValuePreservingCycle) {
+  auto run_with_timeout = [this](const GrapplerItem& item, GraphDef* output,
+                                 absl::Status* status) -> bool {
+    struct RunState {
+      GrapplerItem item;
+      GraphDef output;
+      absl::Status status;
+      ArithmeticOptimizer optimizer;
+    };
+    auto* state =
+        new RunState{item, GraphDef(), absl::OkStatus(), ArithmeticOptimizer()};
+    EnableOnlyFoldMultipleIntoConv(&state->optimizer);
+    auto* pool =
+        new thread::ThreadPool(Env::Default(), "FoldMultiplyIntoConvCycle", 1);
+    const bool completed = ExecuteWithTimeout(
+        [state]() {
+          state->status = state->optimizer.Optimize(
+              /*cluster=*/nullptr, state->item, &state->output);
+        },
+        /*timeout_in_ms=*/500, pool);
+    if (!completed) {
+      // Intentionally leak on timeout so a wedged worker never touches freed
+      // memory before test teardown.
+      return false;
+    }
+    *output = std::move(state->output);
+    *status = state->status;
+    delete pool;
+    delete state;
+    return true;
+  };
+
+  // 1-node value-preserving self-cycle feeding Conv2D terminates cleanly.
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output weights = ops::Const(s.WithOpName("weights"),
+                                Input::Initializer(1.0f, {1, 1, 1, 1}));
+    (void)weights;
+    GrapplerItem item;
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+    NodeDef* cycle_self = AddFoldMultiplyIntoConvNode(
+        &item.graph, "cycle_self", "Identity", {"cycle_self"});
+    (*cycle_self->mutable_attr())["T"].set_type(DT_FLOAT);
+    NodeDef* conv = AddFoldMultiplyIntoConvNode(&item.graph, "conv", "Conv2D",
+                                                {"cycle_self", "weights"});
+    (*conv->mutable_attr())["T"].set_type(DT_FLOAT);
+    AddFoldMultiplyIntoConvFetch(&item, "conv");
+
+    GraphDef output;
+    absl::Status status;
+    ASSERT_TRUE(run_with_timeout(item, &output, &status));
+    EXPECT_TRUE(absl::IsInvalidArgument(status));
+    EXPECT_EQ(output.node_size(), 0);
+  }
+
+  // 2-node value-preserving cycle feeding Conv2D terminates cleanly.
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output weights = ops::Const(s.WithOpName("weights"),
+                                Input::Initializer(1.0f, {1, 1, 1, 1}));
+    (void)weights;
+    GrapplerItem item;
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+    NodeDef* cycle_a = AddFoldMultiplyIntoConvNode(&item.graph, "cycle_a",
+                                                   "Identity", {"cycle_b"});
+    (*cycle_a->mutable_attr())["T"].set_type(DT_FLOAT);
+    NodeDef* cycle_b = AddFoldMultiplyIntoConvNode(&item.graph, "cycle_b",
+                                                   "StopGradient", {"cycle_a"});
+    (*cycle_b->mutable_attr())["T"].set_type(DT_FLOAT);
+    NodeDef* conv = AddFoldMultiplyIntoConvNode(&item.graph, "conv", "Conv2D",
+                                                {"cycle_a", "weights"});
+    (*conv->mutable_attr())["T"].set_type(DT_FLOAT);
+    AddFoldMultiplyIntoConvFetch(&item, "conv");
+
+    GraphDef output;
+    absl::Status status;
+    ASSERT_TRUE(run_with_timeout(item, &output, &status));
+    EXPECT_TRUE(absl::IsInvalidArgument(status));
+    EXPECT_EQ(output.node_size(), 0);
+  }
+
+  // Cyclic NextIteration -> Merge graph reaching FoldMultiplyIntoConv's
+  // bounded multi-hop chain walk rejects a malformed intermediate chain op.
+  {
+    tensorflow::Scope s =
+        tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+    Output loop_seed = ops::Const(s.WithOpName("loop_seed"), 1.0f);
+    Output loop_pred = ops::Const(s.WithOpName("loop_pred"), false);
+    Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                     ops::Placeholder::Shape({8, 3, 28, 28}));
+    Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f);
+    Output mul = ops::Mul(s.WithOpName("mul"), inputs, scale);
+    Output weights = ops::Const(s.WithOpName("weights"),
+                                Input::Initializer(127.0f, {5, 5, 3, 16}));
+    (void)loop_seed;
+    (void)loop_pred;
+    (void)mul;
+    (void)weights;
+
+    GrapplerItem item;
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+    NodeDef* loop_merge = AddFoldMultiplyIntoConvNode(
+        &item.graph, "loop_merge", "Merge", {"loop_seed", "loop_next"});
+    (*loop_merge->mutable_attr())["T"].set_type(DT_FLOAT);
+    (*loop_merge->mutable_attr())["N"].set_i(2);
+    NodeDef* loop_switch = AddFoldMultiplyIntoConvNode(
+        &item.graph, "loop_switch", "Switch", {"loop_merge", "loop_pred"});
+    (*loop_switch->mutable_attr())["T"].set_type(DT_FLOAT);
+    NodeDef* loop_body = AddFoldMultiplyIntoConvNode(
+        &item.graph, "loop_body", "Identity", {"loop_switch:1"});
+    (*loop_body->mutable_attr())["T"].set_type(DT_FLOAT);
+    NodeDef* loop_next = AddFoldMultiplyIntoConvNode(
+        &item.graph, "loop_next", "NextIteration", {"loop_body"});
+    (*loop_next->mutable_attr())["T"].set_type(DT_FLOAT);
+    NodeDef* loop_exit = AddFoldMultiplyIntoConvNode(
+        &item.graph, "loop_exit", "Identity", {"loop_switch"});
+    (*loop_exit->mutable_attr())["T"].set_type(DT_FLOAT);
+
+    NodeDef* chain_0 = AddFoldMultiplyIntoConvNode(
+        &item.graph, "chain_0", "Identity", {"mul", "^loop_exit"});
+    (*chain_0->mutable_attr())["T"].set_type(DT_FLOAT);
+    NodeDef* chain_bad_tp = AddFoldMultiplyIntoConvNode(
+        &item.graph, "chain_bad_tp", "Transpose", {"chain_0"});
+    (*chain_bad_tp->mutable_attr())["T"].set_type(DT_FLOAT);
+    (*chain_bad_tp->mutable_attr())["Tperm"].set_type(DT_INT32);
+    NodeDef* chain_1 = AddFoldMultiplyIntoConvNode(
+        &item.graph, "chain_1", "StopGradient", {"chain_bad_tp"});
+    (*chain_1->mutable_attr())["T"].set_type(DT_FLOAT);
+    NodeDef* conv = AddFoldMultiplyIntoConvNode(&item.graph, "conv", "Conv2D",
+                                                {"chain_1", "weights"});
+    (*conv->mutable_attr())["T"].set_type(DT_FLOAT);
+    item.fetch.push_back("loop_exit");
+    AddFoldMultiplyIntoConvFetch(&item, "conv");
+
+    GraphDef output;
+    absl::Status status;
+    ASSERT_TRUE(run_with_timeout(item, &output, &status));
+    TF_ASSERT_OK(status);
+    ExpectSameNodeDefs(item.graph, &output);
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldMultiplyIntoConvIgnoresConvMissingOrControlInputs) {
+  GrapplerItem item;
+  AddFoldMultiplyIntoConvNode(&item.graph, "x", "Placeholder", {});
+  AddFoldMultiplyIntoConvNode(&item.graph, "weights", "Const", {});
+  AddFoldMultiplyIntoConvNode(&item.graph, "extra", "Const", {});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv2d_no_input", "Conv2D", {});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv2d_one_input", "Conv2D", {"x"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv2d_ctrl_act", "Conv2D",
+                              {"^x", "weights"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv2d_ctrl_weights", "Conv2D",
+                              {"x", "^weights"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv2d_extra_data", "Conv2D",
+                              {"x", "weights", "extra"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv3d_no_input", "Conv3D", {});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv3d_one_input", "Conv3D", {"x"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv3d_ctrl_act", "Conv3D",
+                              {"^x", "weights"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv3d_ctrl_weights", "Conv3D",
+                              {"x", "^weights"});
+  for (const std::string& name :
+       {"conv2d_no_input", "conv2d_one_input", "conv2d_ctrl_act",
+        "conv2d_ctrl_weights", "conv2d_extra_data", "conv3d_no_input",
+        "conv3d_one_input", "conv3d_ctrl_act", "conv3d_ctrl_weights"}) {
+    AddFoldMultiplyIntoConvFetch(&item, name);
+  }
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  ASSERT_EQ(output.node_size(), item.graph.node_size());
+  ExpectSameNodeDefs(item.graph, &output);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldMultiplyIntoConvIgnoresChainTailMissingOrControlInputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 3, 28, 28}));
+  Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f);
+  Output mul_id = ops::Mul(s.WithOpName("mul_id"), inputs, scale);
+  Output mul_tp = ops::Mul(s.WithOpName("mul_tp"), inputs, scale);
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 3, 16}));
+  (void)mul_id;
+  (void)mul_tp;
+  (void)weights;
+
+  GrapplerItem item;
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  AddFoldMultiplyIntoConvNode(&item.graph, "identity_no_input", "Identity", {});
+  AddFoldMultiplyIntoConvNode(&item.graph, "identity_only_ctrl", "Identity",
+                              {"^mul_id"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "transpose_no_input", "Transpose",
+                              {});
+  AddFoldMultiplyIntoConvNode(&item.graph, "transpose_only_ctrl", "Transpose",
+                              {"^mul_tp"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv_no_tail_input", "Conv2D",
+                              {"identity_no_input", "weights"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv_ctrl_tail_input", "Conv2D",
+                              {"identity_only_ctrl", "weights"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv_tp_no_input", "Conv2D",
+                              {"transpose_no_input", "weights"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv_tp_only_ctrl", "Conv2D",
+                              {"transpose_only_ctrl", "weights"});
+  for (const std::string& conv_name :
+       {"conv_no_tail_input", "conv_ctrl_tail_input", "conv_tp_no_input",
+        "conv_tp_only_ctrl"}) {
+    AddFoldMultiplyIntoConvFetch(&item, conv_name);
+  }
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  ASSERT_EQ(output.node_size(), item.graph.node_size());
+  ExpectSameNodeDefs(item.graph, &output);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldMultiplyIntoConvIgnoresMulMissingOrControlInputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 3, 28, 28}));
+  Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f);
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 3, 16}));
+  (void)inputs;
+  (void)scale;
+  (void)weights;
+
+  GrapplerItem item;
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  AddFoldMultiplyIntoConvNode(&item.graph, "mul_no_input", "Mul", {});
+  AddFoldMultiplyIntoConvNode(&item.graph, "mul_one_input", "Mul", {"inputs"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "mul_ctrl_lhs", "Mul",
+                              {"^inputs", "scale"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "mul_ctrl_rhs", "Mul",
+                              {"inputs", "^scale"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "mul_extra_data", "Mul",
+                              {"inputs", "scale", "scale"});
+
+  for (const std::string& mul_name :
+       {"mul_no_input", "mul_one_input", "mul_ctrl_lhs", "mul_ctrl_rhs",
+        "mul_extra_data"}) {
+    const std::string conv_name = absl::StrCat("conv_of_", mul_name);
+    AddFoldMultiplyIntoConvNode(&item.graph, conv_name, "Conv2D",
+                                {mul_name, "weights"});
+    AddFoldMultiplyIntoConvFetch(&item, conv_name);
+  }
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  ASSERT_EQ(output.node_size(), item.graph.node_size());
+  ExpectSameNodeDefs(item.graph, &output);
+}
+
+TEST_F(ArithmeticOptimizerTest, FoldMultiplyIntoConvIgnoresScaleWithoutValue) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 3, 28, 28}));
+  Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f);
+  Output mul = ops::Mul(s.WithOpName("mul"), inputs, scale);
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 3, 16}));
+  Output conv = ops::Conv2D(s.WithOpName("conv"), mul, weights, {1, 1, 1, 1},
+                            "VALID", ops::Conv2D::DataFormat("NCHW"));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), conv);
+  (void)outputs;
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  // Shape inference reads the value attribute of every Const that is not fed,
+  // so feed the attr-less scale and let the stage be the first reader.
+  item.feed.emplace_back("scale", Tensor(1.0f / 255.0f));
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  NodeMap input_nodes(&item.graph);
+  NodeDef* scale_node = input_nodes.GetNode("scale");
+  ASSERT_NE(scale_node, nullptr);
+  ASSERT_EQ(scale_node->mutable_attr()->erase("value"), 1);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+  ExpectSameNodeDefs(item.graph, &output);
+  NodeMap output_nodes(&output);
+  const NodeDef* unchanged_scale = output_nodes.GetNode("scale");
+  ASSERT_NE(unchanged_scale, nullptr);
+  EXPECT_EQ(unchanged_scale->attr().count("value"), 0);
+}
+
+TEST_F(ArithmeticOptimizerTest, FoldMultiplyIntoConvControlPairIsStillFolded) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 3, 28, 28}));
+  Output mul = ops::Mul(s.WithOpName("mul"), inputs,
+                        ops::Const(s.WithOpName("scale"), 1.0f / 255.0f));
+  Output mul_bad = ops::Mul(s.WithOpName("mul_bad"), inputs,
+                            ops::Const(s.WithOpName("scale_bad"), 0.5f));
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 3, 16}));
+  Output conv = ops::Conv2D(s.WithOpName("conv"), mul, weights, {1, 1, 1, 1},
+                            "VALID", ops::Conv2D::DataFormat("NCHW"));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), conv);
+  (void)mul_bad;
+  (void)outputs;
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv_no_input", "Conv2D", {});
+  AddFoldMultiplyIntoConvFetch(&item, "conv_no_input");
+  AddFoldMultiplyIntoConvNode(&item.graph, "tp_missing_perm", "Transpose",
+                              {"mul_bad"});
+  AddFoldMultiplyIntoConvNode(&item.graph, "conv_bad_tp", "Conv2D",
+                              {"tp_missing_perm", "weights"});
+  AddFoldMultiplyIntoConvFetch(&item, "conv_bad_tp");
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  const NodeDef* conv_node = node_map.GetNode("conv");
+  ASSERT_NE(conv_node, nullptr);
+  ASSERT_EQ(conv_node->input_size(), 2);
+  EXPECT_EQ(conv_node->input(0), "inputs");
+  const NodeDef* scaled_weights = node_map.GetNode(conv_node->input(1));
+  ASSERT_NE(scaled_weights, nullptr);
+  EXPECT_EQ(scaled_weights->op(), "Mul");
+  ASSERT_EQ(scaled_weights->input_size(), 2);
+  EXPECT_EQ(scaled_weights->input(0), "weights");
+  EXPECT_EQ(scaled_weights->input(1), "scale");
+  const NodeDef* conv_no_input = node_map.GetNode("conv_no_input");
+  ASSERT_NE(conv_no_input, nullptr);
+  EXPECT_EQ(conv_no_input->input_size(), 0);
+  const NodeDef* bad_conv = node_map.GetNode("conv_bad_tp");
+  ASSERT_NE(bad_conv, nullptr);
+  ASSERT_EQ(bad_conv->input_size(), 2);
+  EXPECT_EQ(bad_conv->input(0), "tp_missing_perm");
+  EXPECT_EQ(bad_conv->input(1), "weights");
+}
+
 TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_UINT8,
