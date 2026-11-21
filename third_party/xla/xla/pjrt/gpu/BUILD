@@ -74,6 +74,41 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_dma_buf_cache",
+    srcs = ["gpu_dma_buf_cache.cc"],
+    hdrs = ["gpu_dma_buf_cache.h"],
+    deps = [
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor/gpu:dma_buf",
+        "//xla/tsl/framework:allocator",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_dma_buf_cache_test",
+    srcs = ["gpu_dma_buf_cache_test.cc"],
+    tags = ["no_windows"],
+    deps = [
+        ":gpu_dma_buf_cache",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor/gpu:dma_buf",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "gpu_helpers",
     srcs = ["gpu_helpers.cc"],
     hdrs = ["gpu_helpers.h"],
