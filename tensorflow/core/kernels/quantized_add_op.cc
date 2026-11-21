@@ -494,9 +494,6 @@ class QuantizedAddOp : public OpKernel {
                        " vs. ", y.shape().DebugString())));
       return;
     }
-    Tensor* z;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, BCast::ToShape(bcast.output_shape()), &z));
 
     // Make sure that we have valid quantization ranges for the input buffers.
     // If the difference between the min and max is negative or zero, it makes
@@ -505,6 +502,51 @@ class QuantizedAddOp : public OpKernel {
                 absl::InvalidArgumentError("max_x must be larger than min_x."));
     OP_REQUIRES(context, (max_y > min_y),
                 absl::InvalidArgumentError("max_y must be larger than min_y."));
+
+    // Reject unsupported broadcasts before allocating z. The broadcast output
+    // of e.g. [N, 1] + [1, M] can be far larger than either input.
+    const int ndims = bcast.x_reshape().size();
+    const bool x_is_vector = x.NumElements() < y.NumElements();
+    if (ndims == 2) {
+      const int64_t vector_num_elements =
+          x_is_vector ? x.NumElements() : y.NumElements();
+      OP_REQUIRES(context, vector_num_elements > 0,
+                  absl::InvalidArgumentError("Must have some elements to add"));
+      // VectorTensorAddition only writes tensor_num_elements outputs, tiling
+      // the vector along the last dimension. Reject other 2-D broadcasts
+      // (e.g. [N, 1] + [1, M]) instead of leaving part of z uninitialized.
+      const BCast::Vec& tensor_bcast =
+          x_is_vector ? bcast.y_bcast() : bcast.x_bcast();
+      const BCast::Vec& vector_reshape =
+          x_is_vector ? bcast.x_reshape() : bcast.y_reshape();
+      OP_REQUIRES(context,
+                  tensor_bcast[0] == 1 && tensor_bcast[1] == 1 &&
+                      vector_reshape[0] == 1,
+                  absl::UnimplementedError(absl::StrCat(
+                      "Broadcast between ", x.shape().DebugString(), " and ",
+                      y.shape().DebugString(), " is not supported yet.")));
+    } else if (ndims > 2) {
+      LOG(INFO) << "ndims=" << ndims;
+      LOG(INFO) << "bcast.x_reshape()="
+                << TensorShape(bcast.x_reshape()).DebugString();
+      LOG(INFO) << "bcast.y_reshape()="
+                << TensorShape(bcast.y_reshape()).DebugString();
+      LOG(INFO) << "bcast.x_bcast()="
+                << TensorShape(bcast.x_bcast()).DebugString();
+      LOG(INFO) << "bcast.y_bcast()="
+                << TensorShape(bcast.y_bcast()).DebugString();
+
+      context->SetStatus(absl::UnimplementedError(absl::StrCat(
+          "Broadcast between ", context->input(0).shape().DebugString(),
+          " and ", context->input(1).shape().DebugString(),
+          " is not supported yet.")));
+      return;
+    }
+
+    Tensor* z;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, BCast::ToShape(bcast.output_shape()), &z));
+
     const T* x_data = x.flat<T>().data();
     const T* y_data = y.flat<T>().data();
     Toutput* z_data = z->flat<Toutput>().data();
@@ -520,7 +562,6 @@ class QuantizedAddOp : public OpKernel {
     const float min_z_value = -output_range;
     const float max_z_value = output_range;
 
-    const int ndims = bcast.x_reshape().size();
     if (ndims <= 1) {
       if (x.NumElements() == 1) {
         ScalarAddition<T, Toutput>(context, y_data, min_y, max_y,
@@ -544,7 +585,7 @@ class QuantizedAddOp : public OpKernel {
       int64_t tensor_num_elements;
       float tensor_min;
       float tensor_max;
-      if (x.NumElements() < y.NumElements()) {
+      if (x_is_vector) {
         vector_data = x_data;
         vector_num_elements = x.NumElements();
         vector_min = min_x;
@@ -563,28 +604,10 @@ class QuantizedAddOp : public OpKernel {
         tensor_min = min_x;
         tensor_max = max_x;
       }
-      OP_REQUIRES(context, vector_num_elements > 0,
-                  absl::InvalidArgumentError("Must have some elements to add"));
       VectorTensorAddition<T, Toutput>(
           vector_data, vector_min, vector_max, vector_num_elements, tensor_data,
           tensor_min, tensor_max, tensor_num_elements, min_z_value, max_z_value,
           z_data);
-    } else {
-      LOG(INFO) << "ndims=" << ndims;
-      LOG(INFO) << "bcast.x_reshape()="
-                << TensorShape(bcast.x_reshape()).DebugString();
-      LOG(INFO) << "bcast.y_reshape()="
-                << TensorShape(bcast.y_reshape()).DebugString();
-      LOG(INFO) << "bcast.x_bcast()="
-                << TensorShape(bcast.x_bcast()).DebugString();
-      LOG(INFO) << "bcast.y_bcast()="
-                << TensorShape(bcast.y_bcast()).DebugString();
-
-      context->SetStatus(absl::UnimplementedError(absl::StrCat(
-          "Broadcast between ", context->input(0).shape().DebugString(),
-          " and ", context->input(1).shape().DebugString(),
-          " is not supported yet.")));
-      return;
     }
 
     Tensor* z_min = nullptr;
