@@ -420,14 +420,16 @@ cc_library(
     hdrs = ["//xla/tsl/platform:rocm_rocdl_path.h"],
     compatible_with = [],
     tags = [
+        "gpu",
         "manual",
         "no_oss",
         "nobuilder",
+        "rocm-only",
     ],
     deps = [
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
-        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocm_config",
         "@tsl//tsl/platform:path",
     ],
 )
