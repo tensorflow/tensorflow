@@ -45,7 +45,6 @@ py_binary(
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-        "@six_archive//:six",
     ],
 )
 
@@ -56,6 +55,5 @@ py_library(
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-        "@six_archive//:six",
     ],
 )

@@ -18,8 +18,6 @@ import functools
 import inspect
 from typing import Any, Dict, Tuple
 
-import six
-
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.framework import ops
@@ -481,7 +479,7 @@ def _validate_signature(signature):
     raise TypeError(
         "input_signature must be a possibly nested sequence of "
         f"TensorSpec objects, got invalid args {bad_args} with "
-        f"types {list(six.moves.map(type, bad_args))}."
+        f"types {list(map(type, bad_args))}."
     )
 
 

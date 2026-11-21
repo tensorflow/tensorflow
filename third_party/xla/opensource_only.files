@@ -149,7 +149,6 @@ xla/third_party/oneccl/LICENSE:
 xla/third_party/ortools/glpk.BUILD:
 xla/third_party/ortools/ortools.patch:
 xla/third_party/pybind11.BUILD:
-xla/third_party/six.BUILD:
 xla/third_party/snappy.BUILD:
 xla/third_party/spirv_llvm_translator/spirv_llvm_translator.BUILD:
 xla/third_party/sqlite/BUILD:
