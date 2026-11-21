@@ -72,7 +72,7 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
   // Copy the wrapper class for cpuinfo from Ruy.
   class CpuInfo final {
    public:
-    CpuInfo() {}
+    CpuInfo() = default;
     ~CpuInfo();
 
     // X86 features
