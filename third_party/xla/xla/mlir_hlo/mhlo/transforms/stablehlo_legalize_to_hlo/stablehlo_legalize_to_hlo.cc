@@ -126,6 +126,40 @@ Attribute convertAttr(Attribute stablehloAttr) {
         attr.getRhsBatchingDimensions(), attr.getLhsContractingDimensions(),
         attr.getRhsContractingDimensions());
   }
+  if (auto attr =
+          mlir::dyn_cast<stablehlo::BlockScalingConfigAttr>(stablehloAttr)) {
+    mhlo::TensorBlockScalingConfigAttr lhs, rhs;
+    if (auto side = attr.getLhs()) {
+      lhs = llvm::cast<mhlo::TensorBlockScalingConfigAttr>(convertAttr(side));
+    }
+    if (auto side = attr.getRhs()) {
+      rhs = llvm::cast<mhlo::TensorBlockScalingConfigAttr>(convertAttr(side));
+    }
+    return mhlo::BlockScalingConfigAttr::get(attr.getContext(), lhs, rhs);
+  }
+  if (auto attr = mlir::dyn_cast<stablehlo::TensorBlockScalingConfigAttr>(
+          stablehloAttr)) {
+    return mhlo::TensorBlockScalingConfigAttr::get(
+        attr.getContext(), attr.getScaleIdx(), attr.getZeroIdx(),
+        attr.getStrides(), attr.getSteps(), attr.getBlockSizes());
+  }
+  if (auto attr =
+          mlir::dyn_cast<stablehlo::SparsityConfigAttr>(stablehloAttr)) {
+    mhlo::TensorSparsityConfigAttr lhs, rhs;
+    if (auto side = attr.getLhs()) {
+      lhs = llvm::cast<mhlo::TensorSparsityConfigAttr>(convertAttr(side));
+    }
+    if (auto side = attr.getRhs()) {
+      rhs = llvm::cast<mhlo::TensorSparsityConfigAttr>(convertAttr(side));
+    }
+    return mhlo::SparsityConfigAttr::get(attr.getContext(), lhs, rhs);
+  }
+  if (auto attr =
+          mlir::dyn_cast<stablehlo::TensorSparsityConfigAttr>(stablehloAttr)) {
+    return mhlo::TensorSparsityConfigAttr::get(
+        attr.getContext(), attr.getNumNonZero(), attr.getBlockSize(),
+        attr.getDimension(), attr.getStride(), attr.getIdx());
+  }
   if (auto attr = mlir::dyn_cast<stablehlo::FftTypeAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(FftType);
   }

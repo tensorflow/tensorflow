@@ -911,7 +911,46 @@ LogicalResult DotOp::verify() {
 // DotGeneralOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+std::optional<hlo::DotSparsityDim> getDotSparsityDim(
+    TensorSparsityConfigAttr sp) {
+  if (!sp) return std::nullopt;
+  return hlo::DotSparsityDim{sp.getDimension(), sp.getNumNonZero(),
+                             sp.getBlockSize()};
+}
+
+std::optional<hlo::DotBlockScaling> getDotBlockScaling(
+    TensorBlockScalingConfigAttr scaling) {
+  if (!scaling) return std::nullopt;
+  return hlo::DotBlockScaling{scaling.getScaleIdx(), scaling.getZeroIdx(),
+                              scaling.getStrides(), scaling.getSteps(),
+                              scaling.getBlockSizes()};
+}
+
+std::optional<hlo::DotSparsity> getDotSparsity(TensorSparsityConfigAttr sp) {
+  if (!sp) return std::nullopt;
+  return hlo::DotSparsity{sp.getNumNonZero(), sp.getBlockSize(),
+                          sp.getDimension(), sp.getStride(), sp.getIdx()};
+}
+
+}  // namespace
+
 LogicalResult DotGeneralOp::verify() {
+  BlockScalingConfigAttr scaling = getBlockScalingConfigAttr();
+  SparsityConfigAttr sparsity = getSparsityConfigAttr();
+  DotDimensionNumbersAttr dims = getDotDimensionNumbersAttr();
+  if (failed(hlo::verifyDotGeneralExtensions(
+          getLoc(), getLhs(), getRhs(), getExtOperands(),
+          dims.getLhsContractingDimensions(),
+          dims.getRhsContractingDimensions(), static_cast<bool>(scaling),
+          scaling ? getDotBlockScaling(scaling.getLhs()) : std::nullopt,
+          scaling ? getDotBlockScaling(scaling.getRhs()) : std::nullopt,
+          static_cast<bool>(sparsity),
+          sparsity ? getDotSparsity(sparsity.getLhs()) : std::nullopt,
+          sparsity ? getDotSparsity(sparsity.getRhs()) : std::nullopt))) {
+    return failure();
+  }
   bool isDefaultPrecisionConfig =
       !getPrecisionConfig().has_value() ||
       llvm::all_of(getPrecisionConfig().value(), [](Attribute attr) {
@@ -930,13 +969,12 @@ LogicalResult DotGeneralOp::verify() {
   }
 
   return hlo::verifyDotGeneralOp(
-      getLoc(), getLhs(), getRhs(),
-      getDotDimensionNumbersAttr().getLhsBatchingDimensions(),
-      getDotDimensionNumbersAttr().getRhsBatchingDimensions(),
-      getDotDimensionNumbersAttr().getLhsContractingDimensions(),
-      getDotDimensionNumbersAttr().getRhsContractingDimensions(),
-      getPrecisionConfig(), isDefaultPrecisionConfig, hasAlgorithmSpecified,
-      getResult());
+      getLoc(), getLhs(), getRhs(), dims.getLhsBatchingDimensions(),
+      dims.getRhsBatchingDimensions(), dims.getLhsContractingDimensions(),
+      dims.getRhsContractingDimensions(), getPrecisionConfig(),
+      isDefaultPrecisionConfig, hasAlgorithmSpecified, getResult(),
+      sparsity ? getDotSparsityDim(sparsity.getLhs()) : std::nullopt,
+      sparsity ? getDotSparsityDim(sparsity.getRhs()) : std::nullopt);
 }
 
 LogicalResult DotGeneralOp::reifyReturnTypeShapes(

@@ -780,7 +780,10 @@ def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
           (MHLO_DotGeneralOp $lhs, $rhs,
                             (ToDotDimNumsAttr $dimension_numbers),
                             (ToPrecisionConfigsAttr $precision_config),
-                            (EmptyDotAlgorithmAttr)),
+                            (EmptyDotAlgorithmAttr),
+                            (NativeCodeCall<"mlir::ValueRange{}">),
+                            (NativeCodeCall<"mlir::Attribute{}">),
+                            (NativeCodeCall<"mlir::Attribute{}">)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
 
 //===----------------------------------------------------------------------===//
@@ -791,7 +794,10 @@ def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
           (MHLO_DotGeneralOp $lhs, $rhs,
                             (ToDotDimNumsAttr $dimension_numbers),
                             (ToPrecisionConfigsAttr $precision_config),
-                            (EmptyDotAlgorithmAttr)),
+                            (EmptyDotAlgorithmAttr),
+                            (NativeCodeCall<"mlir::ValueRange{}">),
+                            (NativeCodeCall<"mlir::Attribute{}">),
+                            (NativeCodeCall<"mlir::Attribute{}">)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
 
 //===----------------------------------------------------------------------===//

@@ -384,10 +384,13 @@ def : Pat<(MHLO_DotOp:$old_value StaticShapeTensorOf<[TF_ElementType]>:$lhs,
 
 def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
                                                "$0.getDefiningOp())">;
+// Block scaled and sparse dots have no TFLite lowering here.
 def : Pat<(MHLO_DotGeneralOp:$old_value
                RankedTensorOf<[TF_ElementType]>:$lhs,
                RankedTensorOf<[TF_ElementType]>:$rhs,
-               $dot_dimension_numbers, $precision_config, $algorithm),
+               $dot_dimension_numbers, $precision_config, $algorithm,
+               $_, IsNullAttr:$block_scaling_config,
+               IsNullAttr:$sparsity_config),
           (ConvertDotGeneralOp $old_value)>;
 
 
