@@ -19,6 +19,7 @@ from collections.abc import Callable, Iterator, Sequence
 import contextlib
 import copy
 import enum
+import functools
 import re
 import sys
 import threading
@@ -1074,6 +1075,7 @@ _VALID_SCOPE_NAME_REGEX: Pattern[str] = re.compile(
 _VALID_EAGER_SCOPE_NAME_REGEX: Pattern[str] = re.compile(
     r"^[A-Za-z0-9_.:\\/>-]*$"
 )
+_PREPEND_NAME_SCOPE_REGEX: Pattern[str] = re.compile(r"([\^]|loc:@|^)(.*)")
 
 
 @tf_export("__internal__.create_c_op", v1=[])
@@ -5941,6 +5943,11 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
     self._exit_fns = state[1]
 
 
+@functools.lru_cache(maxsize=128)
+def _strip_name_scope_regex(export_scope):
+  return re.compile(r"([\^]|loc:@|^)" + re.escape(export_scope) + r"[\/]+(.*)")
+
+
 def strip_name_scope(name: str, export_scope) -> str:
   """Removes name scope from a name.
 
@@ -5959,8 +5966,8 @@ def strip_name_scope(name: str, export_scope) -> str:
     try:
       # Strips export_scope/, export_scope///,
       # ^export_scope/, loc:@export_scope/.
-      str_to_replace = r"([\^]|loc:@|^)" + export_scope + r"[\/]+(.*)"
-      return re.sub(str_to_replace, r"\1\2", compat.as_str(name), count=1)
+      return _strip_name_scope_regex(export_scope).sub(
+          r"\1\2", compat.as_str(name), count=1)
     except TypeError as e:
       # If the name is not of a type we can process, simply return it.
       logging.warning(e)
@@ -5985,9 +5992,10 @@ def prepend_name_scope(name: str, import_scope) -> str:
       import_scope = import_scope[:-1]
 
     try:
-      str_to_replace = r"([\^]|loc:@|^)(.*)"
-      return re.sub(str_to_replace, r"\1" + import_scope + r"/\2",
-                    compat.as_str(name))
+      return _PREPEND_NAME_SCOPE_REGEX.sub(
+          lambda m: m.group(1) + import_scope + "/" + m.group(2),
+          compat.as_str(name),
+      )
     except TypeError as e:
       # If the name is not of a type we can process, simply return it.
       logging.warning(e)
