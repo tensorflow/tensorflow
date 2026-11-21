@@ -108,12 +108,12 @@ class GatherTest(xla_test.XLATestCase):
   def testHigherRank(self):
     """Check that scalar and empty indices shapes work as well."""
     shape = (2, 1, 3, 2)
-    for indices_shape in (), (0,), (2, 0), (2, 3):
-      for dtype in self.all_tf_types:
-        for axis in 0, 1, 2, 3, -1, -2:
-          params = self._buildParams(np.random.randn(*shape), dtype)
-          indices = np.random.randint(shape[axis], size=indices_shape)
-          with self.session() as sess, self.test_scope():
+    with self.session() as sess, self.device_scope():
+      for indices_shape in (), (0,), (2, 0), (2, 3):
+        for dtype in self.all_tf_types:
+          for axis in 0, 1, 2, 3, -1, -2:
+            params = self._buildParams(np.random.randn(*shape), dtype)
+            indices = np.random.randint(shape[axis], size=indices_shape)
             tf_params = array_ops.placeholder(dtype=dtype)
             tf_indices = constant_op.constant(indices, dtype=dtypes.int32)
             gather = array_ops.gather(tf_params, tf_indices, axis=axis)
