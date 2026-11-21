@@ -128,6 +128,24 @@ def check_table_dtypes(table, key_dtype, value_dtype):
                     f"{table.value_dtype} but got {value_dtype}.")
 
 
+def _convert_lookup_keys(keys, key_dtype):
+  """Converts Python and NumPy `keys` to a tensor of `key_dtype`.
+
+  Tensors, variables, `SparseTensor`s and `RaggedTensor`s are returned
+  unchanged so that their dtype is still checked against the table.
+
+  Args:
+    keys: The `keys` argument passed to `lookup`.
+    key_dtype: The key `DType` of the table.
+
+  Returns:
+    `keys`, or a dense `Tensor` made from it.
+  """
+  if isinstance(getattr(keys, "dtype", None), dtypes.DType):
+    return keys
+  return ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
+
+
 class LookupInterface(resource.TrackableResource):
   """Represent a lookup table that persists across different steps."""
 
@@ -233,6 +251,7 @@ class InitializableLookupTableBase(LookupInterface):
 
     Args:
       keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+        Python and NumPy values are converted to a dense `Tensor`.
       name: A name for the operation (optional).
 
     Returns:
@@ -243,19 +262,19 @@ class InitializableLookupTableBase(LookupInterface):
       TypeError: when `keys` or `default_value` doesn't match the table data
         types.
     """
-    key_tensor = keys
-    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
-    # dispatching.
-    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
-      key_tensor = keys.values
+    with ops.name_scope(name, "%s_Lookup" % self.name,
+                        (self.resource_handle, self._default_value)):
+      keys = _convert_lookup_keys(keys, self._key_dtype)
+      key_tensor = keys
+      # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+      # dispatching.
+      if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
+        key_tensor = keys.values
 
-    if keys.dtype.base_dtype != self._key_dtype:
-      raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
-                      f"received: {keys.dtype}")
+      if keys.dtype.base_dtype != self._key_dtype:
+        raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
+                        f"received: {keys.dtype}")
 
-    with ops.name_scope(
-        name, "%s_Lookup" % self.name,
-        (self.resource_handle, key_tensor, self._default_value)):
       values = gen_lookup_ops.lookup_table_find_v2(self.resource_handle,
                                                    key_tensor,
                                                    self._default_value)
@@ -713,7 +732,8 @@ class TextFileInitializer(TableInitializerBase):
       data types do not match the expected data types.
     """
     if not isinstance(filename, tensor_lib.Tensor) and not filename:
-      raise ValueError("`filename` argument required for tf.lookup.TextFileInitializer")
+      raise ValueError(
+          "`filename` argument required for tf.lookup.TextFileInitializer")
 
     self._filename_arg = filename
     key_dtype = dtypes.as_dtype(key_dtype)
@@ -1125,6 +1145,7 @@ class IdTableWithHashBuckets(LookupInterface):
 
     Args:
       keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+        Python and NumPy values are converted to a dense `Tensor`.
       name: Optional name for the op.
 
     Returns:
@@ -1134,6 +1155,7 @@ class IdTableWithHashBuckets(LookupInterface):
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
     """
+    keys = _convert_lookup_keys(keys, self._key_dtype)
     if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
                       f"received: {keys.dtype}")
@@ -1351,6 +1373,7 @@ class StaticVocabularyTable(LookupInterface):
 
     Args:
       keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+        Python and NumPy values are converted to a dense `Tensor`.
       name: Optional name for the op.
 
     Returns:
@@ -1360,19 +1383,20 @@ class StaticVocabularyTable(LookupInterface):
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
     """
-    if keys.dtype.base_dtype != self._key_dtype:
-      raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
-                      f"received: {keys.dtype}")
-    values = keys
-    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
-    # dispatching.
-    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
-      values = keys.values
-    if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
-      values = math_ops.cast(values, dtypes.int64)
-
     # TODO(yleon): Consider moving this functionality to its own kernel.
     with ops.name_scope(name, "%s_Lookup" % self.name):
+      keys = _convert_lookup_keys(keys, self._key_dtype)
+      if keys.dtype.base_dtype != self._key_dtype:
+        raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
+                        f"received: {keys.dtype}")
+      values = keys
+      # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+      # dispatching.
+      if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
+        values = keys.values
+      if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
+        values = math_ops.cast(values, dtypes.int64)
+
       buckets = string_ops.string_to_hash_bucket_fast(
           _as_string(values),
           num_buckets=self._num_oov_buckets,

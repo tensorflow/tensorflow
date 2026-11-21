@@ -116,6 +116,25 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     )
     self.assertCountEqual([0, 1, 2], self.evaluate(exported_values_tensor))
 
+  def testLookupPythonAndNumpyKeys(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
+    table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(
+            constant_op.constant(["brain", "salad", "surgery"]),
+            constant_op.constant([0, 1, 2], dtypes.int64)),
+        -1,
+        experimental_is_anonymous=is_anonymous)
+    self.initialize_table(table)
+
+    self.assertAllEqual([0, -1], self.evaluate(table.lookup(["brain", "tank"])))
+    self.assertAllEqual(
+        [1, 2], self.evaluate(table.lookup(np.array(["salad", "surgery"]))))
+    self.assertAllEqual(2, self.evaluate(table.lookup("surgery")))
+    self.assertAllEqual(1, self.evaluate(table["salad"]))
+    self.assertAllEqual([[0], [-1]],
+                        self.evaluate(table.lookup([["brain"], ["tank"]])))
+
   def testExportSignatureMismatch(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
       self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
@@ -1393,6 +1412,21 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     out = table.lookup(input_string)
     self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
     self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
+
+  def testStaticVocabularyTablePythonAndNumpyKeys(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
+    vocab_file = self._createVocabFile("feat_to_id_py_keys.txt")
+    table = self.getVocabularyTable()(
+        lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
+        1,
+        experimental_is_anonymous=is_anonymous)
+    self.initialize_table(table)
+
+    self.assertAllEqual([0, 3], self.evaluate(table.lookup(["brain", "UNK"])))
+    self.assertAllEqual(
+        [1, 2], self.evaluate(table.lookup(np.array(["salad", "surgery"]))))
+    self.assertAllEqual(2, self.evaluate(table["surgery"]))
 
   def testStaticVocabularyTableGetItem(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
@@ -3213,6 +3247,19 @@ class IdTableWithHashBucketsTest(test.TestCase):
     out = table.lookup(input_string)
     self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
     self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
+
+  def testIdTableWithHashBucketsPythonAndNumpyKeys(self):
+    vocab_file = self._createVocabFile("feat_to_id_py_keys.txt")
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
+            -1), 1)
+    self.evaluate(table.initializer)
+
+    self.assertAllEqual([0, 3], self.evaluate(table.lookup(["brain", "UNK"])))
+    self.assertAllEqual(
+        [1, 2], self.evaluate(table.lookup(np.array(["salad", "surgery"]))))
+    self.assertAllEqual(2, self.evaluate(table.lookup("surgery")))
 
   def testInt32IdTableWithHashBuckets(self):
     vocab_file = self._createVocabFile("feat_to_id_2.txt", ("42", "1", "-1000"))
