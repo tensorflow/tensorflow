@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -220,6 +221,65 @@ TEST_F(ScopedAllocatorMgrTest, AllocatorFail) {
   void* ptr1 = sa_instances_[1]->AllocateRaw(0, 512 * sizeof(float));
   VLOG(2) << "Should fail because we exceed expected_use_count.";
   EXPECT_EQ(nullptr, sa_instances_[0]->AllocateRaw(0, 512 * sizeof(float)));
+  sa_instances_[0]->DeallocateRaw(ptr0);
+  sa_instances_[1]->DeallocateRaw(ptr1);
+}
+
+TEST_F(ScopedAllocatorMgrTest, Sub32BitOddElements) {
+  // Test ScopedAllocator with a sub-32-bit type (DT_HALF) with odd element
+  // counts.
+  fields_shapes_ = std::vector<TensorShape>({{3}, {5}});
+  // Each field gets aligned to kAllocatorAlignment (64 bytes).
+  // 64 bytes is 32 DT_HALF elements per field, so 64 elements total is enough.
+  backing_tensor_shape_ = TensorShape({64});
+  backing_tensor_ = Tensor(cpu_allocator(), DT_HALF, backing_tensor_shape_);
+
+  ScopedAllocatorMgr::PopulateFields(scope_id_, fields_shapes_, DT_HALF,
+                                     &fields_);
+
+  // PopulateFields should record the unpadded byte count in bytes_requested.
+  EXPECT_EQ(0, fields_[0].offset);
+  EXPECT_EQ(3 * sizeof(Eigen::half), fields_[0].bytes_requested);
+  EXPECT_EQ(64, fields_[0].bytes_allocated);
+  EXPECT_EQ(scope_id_ + 1, fields_[0].scope_id);
+
+  EXPECT_EQ(64, fields_[1].offset);
+  EXPECT_EQ(5 * sizeof(Eigen::half), fields_[1].bytes_requested);
+  EXPECT_EQ(64, fields_[1].bytes_allocated);
+  EXPECT_EQ(scope_id_ + 2, fields_[1].scope_id);
+
+  absl::Status s = AddScopedAllocator(2, scope_id_);
+  EXPECT_TRUE(s.ok());
+  SaveInstances(fields_shapes_.size());
+
+  ScopedAllocatorContainer* sac = sam_.GetContainer(step_id_);
+  EXPECT_NE(nullptr, sac);
+
+  // AllocateRaw should accept the 4-byte-padded size requested by
+  // TypedAllocator for sub-32-bit types (8 bytes for 3 halfs, 12 bytes for 5
+  // halfs).
+  size_t padded_size_0 =
+      TypedAllocator::AllocationBytes<Eigen::half>(3);  // 8 bytes
+  size_t padded_size_1 =
+      TypedAllocator::AllocationBytes<Eigen::half>(5);  // 12 bytes
+  EXPECT_EQ(8, padded_size_0);
+  EXPECT_EQ(12, padded_size_1);
+
+  // Intermediate non-matching byte count should be rejected.
+  EXPECT_EQ(nullptr, sa_instances_[0]->AllocateRaw(0, 7));
+
+  char* ptr0 = static_cast<char*>(
+      sa_instances_[0]->AllocateRaw(0, padded_size_0));
+  ASSERT_NE(nullptr, ptr0);
+  const char* base =
+      static_cast<const char*>(DMAHelper::base(&backing_tensor_));
+  EXPECT_EQ(ptr0, base);
+
+  char* ptr1 = static_cast<char*>(
+      sa_instances_[1]->AllocateRaw(0, padded_size_1));
+  ASSERT_NE(nullptr, ptr1);
+  EXPECT_EQ(ptr1, base + 64);
+
   sa_instances_[0]->DeallocateRaw(ptr0);
   sa_instances_[1]->DeallocateRaw(ptr1);
 }
