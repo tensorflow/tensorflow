@@ -123,7 +123,7 @@ namespace functor {
 template <typename T>
 class CSRSparseMatrixMulScalar<GPUDevice, T> {
  public:
-  explicit CSRSparseMatrixMulScalar() {}
+  explicit CSRSparseMatrixMulScalar() = default;
 
   absl::Status Compute(OpKernelContext* ctx, const CSRSparseMatrix& a,
                        typename TTypes<T>::ConstScalar b, CSRSparseMatrix* c) {
