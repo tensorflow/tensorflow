@@ -1835,6 +1835,36 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual([[[0, 4], [2, 6]], [[1, 5], [3, 7]]],
                         np_array_ops.swapaxes(x, -3, -1))
 
+  def testNumpyIntegerScalarArguments(self):
+    # NumPy integer scalars (e.g. from `np.argmax`) must behave like the
+    # equivalent Python ints, as they do in NumPy.
+    x = np.arange(24).reshape((2, 3, 4))
+    for i in (np.int32(1), np.int64(1), np.array(1)):
+      self.assertAllEqual(
+          np.swapaxes(x, 0, 1), np_array_ops.swapaxes(x, i - 1, i)
+      )
+      self.assertAllEqual(
+          np.moveaxis(x, 0, 1), np_array_ops.moveaxis(x, i - 1, i)
+      )
+      self.assertAllEqual(
+          np.take_along_axis(x, np.zeros((2, 1, 4), np.int64), axis=1),
+          np_array_ops.take_along_axis(
+              x, np.zeros((2, 1, 4), np.int64), axis=i
+          ),
+      )
+      self.assertAllEqual(np.reshape(x, 24), np_array_ops.reshape(x, i * 24))
+      for np_fn, tnp_fn, n in (
+          (np.split, np_array_ops.split, 2),
+          (np.vsplit, np_array_ops.vsplit, 2),
+          (np.hsplit, np_array_ops.hsplit, 3),
+          (np.dsplit, np_array_ops.dsplit, 2),
+      ):
+        expected = np_fn(x, n)
+        actual = tnp_fn(x, i * n)
+        self.assertLen(actual, len(expected))
+        for e, a in zip(expected, actual):
+          self.assertAllEqual(e, a)
+
   def testSwapaxesOutOfBoundsAxisRaises(self):
     # Regression test for GitHub issue #122054: an axis far outside
     # `[-rank, rank)` (e.g. -10 on a rank-5 array) used to be only
