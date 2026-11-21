@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -980,6 +981,184 @@ TEST(InstantiateErrors, TypeMismatch) {
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "input inputs[1] expected type float != int32, the type of y[0]");
+}
+
+// Returns a function whose body is `a = AddN<N=n>(x, y)`.
+FunctionDef AddNWithNumberAttr(int64_t n) {
+  return FDH::Create(
+      // Name
+      "AddNWithNumberAttr",
+      // Inputs
+      {"x: float", "y: float"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"}, "AddN", {"x", "y"}, {{"T", DT_FLOAT}, {"N", n}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+}
+
+TEST(InstantiateFunctionTest, ValidNumberAttrIsAccepted) {
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(AddNWithNumberAttr(2), AttrSlice(), GetOpSig,
+                                   &result));
+  EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT, DT_FLOAT}));
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
+}
+
+TEST(InstantiateErrors, NumberAttrTruncatesToInRangeValue) {
+  // 2^32 + 2 would truncate to 2 when narrowed to int.
+  InstantiationResult result;
+  HasError(InstantiateFunction(AddNWithNumberAttr(int64_t{4294967298}),
+                               AttrSlice(), GetOpSig, &result),
+           "Value for number attr N is too big: 4294967298");
+}
+
+TEST(InstantiateErrors, NumberAttrTooBig) {
+  InstantiationResult result;
+  HasError(InstantiateFunction(AddNWithNumberAttr(int64_t{2147483648}),
+                               AttrSlice(), GetOpSig, &result),
+           "Value for number attr N is too big: 2147483648");
+}
+
+TEST(InstantiateErrors, NumberAttrNegative) {
+  InstantiationResult result;
+  HasError(InstantiateFunction(AddNWithNumberAttr(-1), AttrSlice(), GetOpSig,
+                               &result),
+           "Value for number attr N -1 < 0");
+}
+
+// Returns a function whose body is `a = AddN<N=n>()`, a node with no inputs, so
+// that reading `n` as 0 would let it instantiate.
+FunctionDef AddNWithoutInputs(FDH::AttrValueWrapper n) {
+  return FDH::Create(
+      // Name
+      "AddNWithoutInputs",
+      // Inputs
+      {},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"}, "AddN", {}, {{"T", DT_FLOAT}, {"N", n}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+}
+
+TEST(InstantiateErrors, NumberAttrWrongType) {
+  // A non-int AttrValue must be rejected, not read as 0 through `i()`.
+  InstantiationResult string_result;
+  HasError(InstantiateFunction(AddNWithoutInputs("two"), AttrSlice(), GetOpSig,
+                               &string_result),
+           "AttrValue had value with type 'string' when 'int' expected");
+  InstantiationResult float_result;
+  HasError(InstantiateFunction(AddNWithoutInputs(2.0f), AttrSlice(), GetOpSig,
+                               &float_result),
+           "AttrValue had value with type 'float' when 'int' expected");
+}
+
+// Returns a function whose body is `a = One<T=t>()`.
+FunctionDef OneWithTypeAttr(FDH::AttrValueWrapper t) {
+  return FDH::Create(
+      // Name
+      "OneWithTypeAttr",
+      // Inputs
+      {},
+      // Outputs
+      {},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"}, "One", {}, {{"T", t}}}},
+      // Returns
+      {});
+}
+
+TEST(InstantiateErrors, TypeAttrWrongType) {
+  InstantiationResult result;
+  HasError(InstantiateFunction(OneWithTypeAttr("not_a_type"), AttrSlice(),
+                               GetOpSig, &result),
+           "Value for type attr T is not a valid type: \"not_a_type\"");
+}
+
+TEST(InstantiateErrors, TypeAttrInvalidType) {
+  InstantiationResult result;
+  HasError(InstantiateFunction(OneWithTypeAttr(DT_INVALID), AttrSlice(),
+                               GetOpSig, &result),
+           "Value for type attr T is not a valid type: enum value 0");
+}
+
+TEST(InstantiateErrors, TypeAttrOutOfRangeEnum) {
+  InstantiationResult result;
+  HasError(InstantiateFunction(OneWithTypeAttr(static_cast<DataType>(9999)),
+                               AttrSlice(), GetOpSig, &result),
+           "Value for type attr T is not a valid type: enum value 9999");
+}
+
+TEST(InstantiateFunctionTest, RefTypeAttrIsAccepted) {
+  // Function bodies can carry reference dtypes in their node attrs, for
+  // example when converted from a graph that reads variables by reference.
+  auto fdef = FDH::Create(
+      // Name
+      "RefTypeAttrInBody",
+      // Inputs
+      {"x: int64"},
+      // Outputs
+      {"y: int64"},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"}, "One", {}, {{"T", DT_INT64_REF}}},
+       {{"b"}, "Identity", {"a:y:0"}, {{"T", DT_INT64_REF}}},
+       {{"c"}, "Identity", {"x"}, {{"T", DT_INT64}}}},
+      // Returns
+      {{"y", "c:output:0"}});
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
+  const char* e = R"P(
+(x:int64) -> (c:int64) {
+  a = One[T=int64_ref]()
+  b = Identity[T=int64_ref](a)
+  c = Identity[T=int64](x)
+}
+)P";
+  EXPECT_EQ(DebugString(result.nodes), e);
+}
+
+TEST(InstantiateFunctionTest, RefTypeListAttrIsAccepted) {
+  auto fdef = FDH::Create(
+      // Name
+      "RefTypeListAttrInBody",
+      // Inputs
+      {"x: int64"},
+      // Outputs
+      {"y: int64"},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"}, "One", {}, {{"T", DT_INT64_REF}}},
+       {{"f"}, "One", {}, {{"T", DT_FLOAT_REF}}},
+       {{"n"},
+        "IdentityN",
+        {"a:y:0", "f:y:0"},
+        {{"T", DataTypeSlice{DT_INT64_REF, DT_FLOAT_REF}}}},
+       {{"c"}, "Identity", {"x"}, {{"T", DT_INT64}}}},
+      // Returns
+      {{"y", "c:output:0"}});
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
+  const char* e = R"P(
+(x:int64) -> (c:int64) {
+  a = One[T=int64_ref]()
+  f = One[T=float_ref]()
+  n = IdentityN[T={int64_ref, float_ref}](a, f)
+  c = Identity[T=int64](x)
+}
+)P";
+  EXPECT_EQ(DebugString(result.nodes), e);
 }
 
 TEST(FunctionCallFrame, Void_Void) {

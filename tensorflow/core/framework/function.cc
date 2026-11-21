@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <ctype.h>
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -102,7 +103,19 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
       return absl::NotFoundError(
           absl::StrCat("number attr not found: ", arg_def.number_attr()));
     }
-    num = v->i();
+    TF_RETURN_IF_ERROR(AttrValueHasType(*v, "int"));
+    const int64_t repeats = v->i();
+    if (repeats < 0) {
+      return absl::InvalidArgumentError(absl::StrCat("Value for number attr ",
+                                                     arg_def.number_attr(), " ",
+                                                     repeats, " < 0"));
+    }
+    if (static_cast<int64_t>(static_cast<int32_t>(repeats)) != repeats) {
+      return absl::InvalidArgumentError(absl::StrCat("Value for number attr ",
+                                                     arg_def.number_attr(),
+                                                     " is too big: ", repeats));
+    }
+    num = static_cast<int>(repeats);
   }
 
   DataType dtype;
@@ -115,6 +128,19 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
     if (v == nullptr) {
       return absl::NotFoundError(
           absl::StrCat("type attr not found: ", arg_def.type_attr()));
+    }
+    // Check the value directly rather than with AttrValueHasType(*v, "type"),
+    // which also rejects reference types. Function bodies may legitimately
+    // carry ref-typed attrs such as DT_INT64_REF.
+    const bool valid_type = v->value_case() == AttrValue::kType &&
+                            DataType_IsValid(v->type()) &&
+                            v->type() != DT_INVALID;
+    if (!valid_type) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Value for type attr ", arg_def.type_attr(), " is not a valid type: ",
+          v->value_case() == AttrValue::kType
+              ? absl::StrCat("enum value ", static_cast<int>(v->type()))
+              : SummarizeAttrValue(*v)));
     }
     dtype = v->type();
   }
