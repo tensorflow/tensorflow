@@ -67,12 +67,11 @@ class TableOpModel : public SingleOpModel {
 template <typename T>
 inline float GetLUTTolerance(float input_min, float input_max, float output_min,
                              float output_max) {
-  static_assert(
-      std::is_same<T, int8_t>::value || std::is_same<T, int16_t>::value,
-      "T must be an int8_t or int16_t.");
+  static_assert(std::is_same_v<T, int8_t> || std::is_same_v<T, int16_t>,
+                "T must be an int8_t or int16_t.");
 
   const float range_sum = (input_max - input_min) + (output_max - output_min);
-  if (std::is_same<T, int8_t>::value) {
+  if (std::is_same_v<T, int8_t>) {
     return range_sum / 256.0f;
   } else {
     return range_sum / 512.0f;
@@ -84,7 +83,7 @@ void TableWithExpLUTTest() {
   float input_min = -0.5f;
   float input_max = 0.8f;
   // Use symmetric inputs for int16 cases, nudge max for null zero-point
-  if (std::is_same<T, int16_t>::value) {
+  if (std::is_same_v<T, int16_t>) {
     input_min = -0.8f;
     input_max = 0.8f * std::numeric_limits<T>::max() /
                 static_cast<float>(std::numeric_limits<T>::max() + 1);
@@ -93,7 +92,7 @@ void TableWithExpLUTTest() {
   float output_min = 0.0f;
   float output_max = 2.4f;
   // Use symmetric outputs  for int16 cases, nudge max for null zero-point
-  if (std::is_same<T, int16_t>::value) {
+  if (std::is_same_v<T, int16_t>) {
     output_min = -2.4f;
     output_max = 2.4f * std::numeric_limits<T>::max() /
                  static_cast<float>(std::numeric_limits<T>::max() + 1);
