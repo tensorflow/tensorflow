@@ -64,6 +64,26 @@ TfLiteStatus ValidateLookupIndex(TfLiteContext* context, int32_t idx,
   return kTfLiteOk;
 }
 
+// Fails unless the block size of a legacy blockwise quantized `value` table
+// is positive and its scale tensor is a valid, in-range Float16 tensor,
+// which `EvalBlockwise` relies on.
+TfLiteStatus CheckBlockwiseBlocks(TfLiteContext* context,
+                                  const TfLiteTensor* value) {
+  const auto* params = reinterpret_cast<const TfLiteBlockwiseQuantization*>(
+      value->quantization.params);
+  TF_LITE_ENSURE(context, params != nullptr);
+  TF_LITE_ENSURE_MSG(
+      context, params->blocksize > 0,
+      "Embedding Lookup: blockwise quantized tables must have a positive "
+      "block size.");
+  TF_LITE_ENSURE(
+      context, params->scale >= 0 &&
+                   static_cast<size_t>(params->scale) < context->tensors_size);
+  const TfLiteTensor& scale = context->tensors[params->scale];
+  TF_LITE_ENSURE_TYPES_EQ(context, scale.type, kTfLiteFloat16);
+  return kTfLiteOk;
+}
+
 }  // namespace
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -94,6 +114,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
     TF_LITE_ENSURE(context, output->type == kTfLiteFloat32 ||
                                 output->type == kTfLiteFloat16);
+  } else if (value->quantization.type == kTfLiteBlockwiseQuantization) {
+    // Legacy per-row blockwise quantized tables are unpacked row by row at
+    // Eval time (see EvalBlockwise).
+    TF_LITE_ENSURE_OK(context, CheckBlockwiseBlocks(context, value));
   } else if (value->quantization.type == kTfLiteAffineQuantization) {
     const auto qparams = static_cast<const TfLiteAffineQuantization*>(
         value->quantization.params);
