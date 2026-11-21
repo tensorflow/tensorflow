@@ -240,6 +240,20 @@ tf_cc_test_mkl(
 )
 
 tf_cc_test_mkl(
+    name = "mkl_batch_matmul_op_test",
+    size = "small",
+    srcs = ["mkl_batch_matmul_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        ":mkl_batch_matmul_op",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core/framework:fake_input",
+        "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/status",
+    ] + MKL_TEST_DEPS,
+)
+
+tf_cc_test_mkl(
     name = "mkl_avgpooling_op_test",
     size = "small",
     srcs = ["mkl_avgpooling_op_test.cc"],

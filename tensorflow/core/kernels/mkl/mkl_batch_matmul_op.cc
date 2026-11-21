@@ -135,8 +135,8 @@ class BatchMatMulMkl : public OpKernel {
             "Matrix size-incompatible: In[0]: ", lhs.shape().DebugString(),
             ", In[1]: ", rhs.shape().DebugString(), " ", adj_x_, " ", adj_y_)));
 
-    out_shape.AddDim(lhs_rows);
-    out_shape.AddDim(rhs_cols);
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(lhs_rows));
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(rhs_cols));
     // The maximum number of DNNL tensor dimensions is DNNL_MAX_NDIMS = 12.
     OP_REQUIRES(
         ctx, out_shape.dims() <= DNNL_MAX_NDIMS,
