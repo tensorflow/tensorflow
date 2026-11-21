@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/ifrt/index_domain.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
@@ -123,6 +125,17 @@ TEST(IndexDomainTest, Intersect) {
     IndexDomain b(Index({1}), Shape({3}));
     EXPECT_THAT(a.Intersect(b), StatusIs(absl::StatusCode::kInvalidArgument));
   }
+
+  // Intersection origin whose non-zero element product exceeds
+  // `Shape::kMaxNumElements`.
+  {
+    constexpr int64_t kSqrtMaxNumElements = int64_t{1} << 28;
+    IndexDomain a(Index({kSqrtMaxNumElements, 0}),
+                  Shape({1, kSqrtMaxNumElements + 1}));
+    IndexDomain b(Index({0, kSqrtMaxNumElements}),
+                  Shape({kSqrtMaxNumElements + 1, 1}));
+    EXPECT_THAT(a.Intersect(b), StatusIs(absl::StatusCode::kInvalidArgument));
+  }
 }
 
 TEST(IndexDomainTest, Contains) {
@@ -155,13 +168,13 @@ TEST(IndexDomainTest, Contains) {
     EXPECT_THAT(b.Contains(a), IsOkAndHolds(false));
   }
 
-  // Disjoint / negative-origin domains.
+  // Disjoint domains.
   {
-    IndexDomain a(Index({0, 0}), Shape({4, 4}));
-    IndexDomain b(Index({-2, 0}), Shape({2, 2}));
+    IndexDomain a(Index({2, 0}), Shape({4, 4}));
+    IndexDomain b(Index({0, 0}), Shape({2, 2}));
     EXPECT_THAT(a.Contains(b), IsOkAndHolds(false));
 
-    IndexDomain c(Index({5, 5}), Shape({2, 2}));
+    IndexDomain c(Index({7, 5}), Shape({2, 2}));
     EXPECT_THAT(a.Contains(c), IsOkAndHolds(false));
   }
 

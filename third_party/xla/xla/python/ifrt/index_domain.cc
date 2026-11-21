@@ -87,7 +87,9 @@ absl::StatusOr<IndexDomain> IndexDomain::Intersect(
     origin[i] = low;
     shape[i] = high - low;
   }
-  return IndexDomain(Index(origin), Shape(shape));
+  ABSL_ASSIGN_OR_RETURN(Index result_origin, Index::Create(origin));
+  ABSL_ASSIGN_OR_RETURN(Shape result_shape, Shape::Create(shape));
+  return IndexDomain(std::move(result_origin), std::move(result_shape));
 }
 
 absl::StatusOr<bool> IndexDomain::Contains(const IndexDomain& other) const {

@@ -375,14 +375,6 @@ TEST_F(ArraySliceTest, CopySliceInvalidArguments) {
                 StatusIs(absl::StatusCode::kInvalidArgument));
   }
 
-  // Negative origin
-  {
-    IndexDomain domain(Index({-8, 0}), Shape({16, 128}));
-    EXPECT_THAT(client_->CopyArraySlices(absl::MakeSpan(&array, 1),
-                                         absl::MakeSpan(&domain, 1)),
-                StatusIs(absl::StatusCode::kInvalidArgument));
-  }
-
   if (client_->addressable_devices().size() >= 2) {
     std::vector<xla::ifrt::Device*> devices = {
         client_->addressable_devices()[0],
@@ -559,15 +551,6 @@ TEST_F(ArraySliceTest, UpdateSliceInvalidArguments) {
   // Out of bounds
   {
     Index origin({24, 0});
-    EXPECT_THAT(client_->UpdateArraySlices(absl::MakeSpan(&target, 1),
-                                           absl::MakeSpan(&slice, 1),
-                                           absl::MakeSpan(&origin, 1)),
-                StatusIs(absl::StatusCode::kInvalidArgument));
-  }
-
-  // Negative origin
-  {
-    Index origin({-8, 0});
     EXPECT_THAT(client_->UpdateArraySlices(absl::MakeSpan(&target, 1),
                                            absl::MakeSpan(&slice, 1),
                                            absl::MakeSpan(&origin, 1)),
