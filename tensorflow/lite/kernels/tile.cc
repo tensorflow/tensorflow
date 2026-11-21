@@ -270,6 +270,31 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
   }
 
   if (output->type == kTfLiteString) {
+    // GetString() does not bounds-check the string index, and the string
+    // tiling path below indexes the input by its declared shape
+    // (NumElements(input)). The flatbuffer verifier validates a string
+    // buffer's internal layout but never cross-checks the tensor shape against
+    // the number of strings the buffer actually contains, so a model whose
+    // string-tensor shape claims more elements than the buffer holds would read
+    // out of bounds. Reject such inputs (mirrors the gather.cc string guard).
+    //
+    // NumElements() multiplies the dimensions in 32-bit and can wrap for a
+    // malformed shape, which would defeat the check below. A string tensor
+    // never sizes an arena allocation from its shape, so an overflowing shape
+    // reaches this point; accumulate the element count in 64-bit with an
+    // overflow guard instead (matching the INT32_MAX idiom used above).
+    TF_LITE_ENSURE(context, input->bytes >= sizeof(int32_t));
+    int64_t num_elements = 1;
+    for (int i = 0; i < input->dims->size; ++i) {
+      const int64_t dim = input->dims->data[i];
+      TF_LITE_ENSURE(context, dim >= 0);
+      if (dim > 0) {
+        TF_LITE_ENSURE(
+            context, num_elements <= std::numeric_limits<int32_t>::max() / dim);
+      }
+      num_elements *= dim;
+    }
+    TF_LITE_ENSURE(context, GetStringCount(input) >= num_elements);
     DynamicBuffer buffer;
     TileString(*(input->dims), input, multipliers, &buffer, output);
     buffer.WriteToTensor(output, /*new_shape=*/nullptr);
