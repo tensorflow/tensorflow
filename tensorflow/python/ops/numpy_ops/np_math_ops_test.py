@@ -731,6 +731,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.average(a, axis=0, weights=full_weights, keepdims=True),
         np.average(a, axis=0, weights=full_weights, keepdims=True))
 
+    # `axis=None` reduces every axis, so `keepdims=True` keeps them all.
+    self.match(
+        np_math_ops.average(a, weights=full_weights, keepdims=True),
+        np.average(a, weights=full_weights, keepdims=True))
+
     # The returned sum of weights keeps the reduced axes too.
     actual_avg, actual_sum = np_math_ops.average(
         a, axis=1, weights=weights, returned=True, keepdims=True)
