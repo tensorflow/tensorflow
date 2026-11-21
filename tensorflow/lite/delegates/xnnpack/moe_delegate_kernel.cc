@@ -702,6 +702,16 @@ class MoeExpertsDelegateKernel::Impl {
                : Gelu(x);
   }
 
+  // True when the gate input is the ff1 input (the same weights and scales),
+  // as in a model whose experts are not gated and pass one projection as both.
+  // The gate projection then equals the ff1 projection and is not computed.
+  static bool GateIsFf1(const void* gate_weight, const float* gate_scale,
+                        size_t gate_scale_elements, const void* ff1_weight,
+                        const float* ff1_scale, size_t ff1_scale_elements) {
+    return gate_weight == ff1_weight && gate_scale == ff1_scale &&
+           gate_scale_elements == ff1_scale_elements;
+  }
+
   static void* AlignWorkspace(void* ptr) {
     const uintptr_t address = reinterpret_cast<uintptr_t>(ptr);
     const uintptr_t aligned = (address + kMoeXnnpackWorkspaceAlignment - 1) &
@@ -971,17 +981,23 @@ class MoeExpertsDelegateKernel::Impl {
     const BlockScaleLayout ff1_layout =
         ResolveBlockScaleLayout(ff1_scale_elements, gate_ff1_rows, model_dim);
 
+    const bool gate_is_ff1 =
+        GateIsFf1(gate_weight, gate_scale, gate_scale_elements, ff1_weight,
+                  ff1_scale, ff1_scale_elements);
     constexpr size_t kHiddenTile = 16;
     ParallelFor(threadpool_, hidden_dim, kHiddenTile,
                 [&](size_t offset, size_t size) {
                   const size_t end = offset + size;
                   for (size_t out = offset; out < end; ++out) {
-                    const float gate_val = DotExpertWeightRow(
-                        gate_weight, gate_scale, gate_layout, num_experts,
-                        expert, out, model_dim, token_src);
                     const float ff1_val = DotExpertWeightRow(
                         ff1_weight, ff1_scale, ff1_layout, num_experts, expert,
                         out, model_dim, token_src);
+                    const float gate_val =
+                        gate_is_ff1 ? ff1_val
+                                    : DotExpertWeightRow(
+                                          gate_weight, gate_scale, gate_layout,
+                                          num_experts, expert, out, model_dim,
+                                          token_src);
                     hidden[out] = Activate(gate_val) * ff1_val;
                   }
                 });
@@ -1043,12 +1059,24 @@ class MoeExpertsDelegateKernel::Impl {
                   model_dim * sizeof(float));
     }
 
-    CopyGateUpExpertWeight(gate_weight, gate_scale, gate_scale_elements,
-                           ff1_weight, ff1_scale, ff1_scale_elements,
-                           static_cast<size_t>(expert), scratch);
+    // A gate that is ff1 needs only the ff1 rows: half the weights to
+    // dequantize and half the fully connected work.
+    const bool gate_is_ff1 =
+        GateIsFf1(gate_weight, gate_scale, gate_scale_elements, ff1_weight,
+                  ff1_scale, ff1_scale_elements);
+    const size_t gate_up_channels = gate_is_ff1 ? hidden_dim : 2 * hidden_dim;
+    if (gate_is_ff1) {
+      CopyExpertWeight(ff1_weight, ff1_scale, ff1_scale_elements,
+                       static_cast<size_t>(expert), hidden_dim, model_dim,
+                       scratch);
+    } else {
+      CopyGateUpExpertWeight(gate_weight, gate_scale, gate_scale_elements,
+                             ff1_weight, ff1_scale, ff1_scale_elements,
+                             static_cast<size_t>(expert), scratch);
+    }
     if (!RunDynamicFullyConnected(
             context, gate_up_fc_.get(), routed_tokens, attr_.model_dim,
-            2 * attr_.hidden_dim, scratch->routed_src.data(),
+            static_cast<int>(gate_up_channels), scratch->routed_src.data(),
             scratch->kernel_buffer.data(), scratch->gate_up.data(), scratch)) {
       return false;
     }
@@ -1059,8 +1087,8 @@ class MoeExpertsDelegateKernel::Impl {
                   const size_t end = offset + size;
                   for (size_t token = offset; token < end; ++token) {
                     const float* gate =
-                        scratch->gate_up.data() + token * 2 * hidden_dim;
-                    const float* ff1 = gate + hidden_dim;
+                        scratch->gate_up.data() + token * gate_up_channels;
+                    const float* ff1 = gate_is_ff1 ? gate : gate + hidden_dim;
                     float* hidden = scratch->hidden.data() + token * hidden_dim;
                     for (size_t dim = 0; dim < hidden_dim; ++dim) {
                       hidden[dim] = Activate(gate[dim]) * ff1[dim];
