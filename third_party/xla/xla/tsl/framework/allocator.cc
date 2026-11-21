@@ -54,7 +54,7 @@ std::string AllocatorStats::DebugString() const {
 
 constexpr size_t Allocator::kAllocatorAlignment;
 
-Allocator::~Allocator() {}
+Allocator::~Allocator() = default;
 
 // If true, cpu allocator collects full stats.
 static bool cpu_allocator_collect_full_stats = false;
