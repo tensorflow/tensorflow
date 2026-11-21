@@ -396,6 +396,33 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.count_nonzero(a, axis=-3)
 
+  def testSearchsorted(self):
+    a = np.array([1, 2, 2, 3])
+    for v in [0, 2, 4, [0, 2, 4], [[0, 2], [4, 5]], np.array(2)]:
+      for side in ['left', 'right']:
+        self.match(
+            np_math_ops.searchsorted(a, v, side=side),
+            np.searchsorted(a, v, side=side))
+    # Mixed dtypes promote like NumPy instead of failing in the kernel.
+    self.match(
+        np_math_ops.searchsorted([1, 2, 3], 2.5),
+        np.searchsorted([1, 2, 3], 2.5))
+    self.match(
+        np_math_ops.searchsorted([1.0, 2.0], [1.5, 2.5]),
+        np.searchsorted([1.0, 2.0], [1.5, 2.5]))
+    self.match(
+        np_math_ops.searchsorted([False, True, True], True),
+        np.searchsorted([False, True, True], True))
+
+    with self.assertRaisesRegex(ValueError, 'too small depth'):
+      np_math_ops.searchsorted(np.array(1), 2)
+    with self.assertRaisesRegex(ValueError, 'too deep'):
+      np_math_ops.searchsorted([[1, 2], [3, 4]], 2)
+    with self.assertRaisesRegex(ValueError, 'sorter'):
+      np_math_ops.searchsorted([1, 2], 1, sorter=np.array([0, 1]))
+    with self.assertRaisesRegex(ValueError, 'search side must be'):
+      np_math_ops.searchsorted([1, 2], 1, side='middle')
+
   def testArgMaxArgMin(self):
     data = [
         0,
