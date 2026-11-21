@@ -16,6 +16,7 @@
 
 import gzip
 import os
+import pathlib
 import random
 import string
 import zlib
@@ -165,6 +166,17 @@ class TFRecordWriterTest(TFCompressionTestCase):
 
     # Negative number => better compression.
     return os.path.getsize(fn_a) - os.path.getsize(fn_b)
+
+  def testPathLikeAndBytesPaths(self):
+    records = [self._Record(0, i) for i in range(3)]
+    name = os.path.join(self.get_temp_dir(), "pathlike_tfrecord")
+    for path in (pathlib.Path(name), name.encode("utf-8")):
+      with tf_record.TFRecordWriter(path) as writer:
+        for r in records:
+          writer.write(r)
+      self.assertEqual(records, list(tf_record.tf_record_iterator(path)))
+      record, _ = tf_record.tf_record_random_reader(path).read(0)
+      self.assertEqual(records[0], record)
 
   def testWriteReadZLibFiles(self):
     """test Write Read ZLib Files"""

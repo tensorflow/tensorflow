@@ -468,7 +468,8 @@ def get_matching_files_v2(pattern):
   for implementation details.
 
   Args:
-    pattern: string or iterable of strings. The glob pattern(s).
+    pattern: string, bytes, `os.PathLike` or an iterable of those. The glob
+      pattern(s).
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -484,13 +485,16 @@ def get_matching_files_v2(pattern):
         for matching_filename in _pywrap_file_io.GetMatchingFiles(
             compat.as_bytes(pattern))
     ]
+  elif isinstance(pattern, (bytes, os.PathLike)):
+    return get_matching_files_v2(
+        compat.as_str_any(compat.path_to_str(pattern)))
   else:
     return [
         # Convert the filenames to string from bytes.
         compat.as_str_any(matching_filename)  # pylint: disable=g-complex-comprehension
         for single_filename in pattern
         for matching_filename in _pywrap_file_io.GetMatchingFiles(
-            compat.as_bytes(single_filename))
+            compat.path_to_bytes(single_filename))
     ]
 
 
