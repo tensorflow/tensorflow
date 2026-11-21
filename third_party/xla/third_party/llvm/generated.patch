@@ -1,1 +1,2119 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/AArch64/sve/rintn.c b/clang/test/CodeGen/AArch64/sve/rintn.c
+--- a/clang/test/CodeGen/AArch64/sve/rintn.c
++++ b/clang/test/CodeGen/AArch64/sve/rintn.c
+@@ -1,187 +0,0 @@
+-// REQUIRES: aarch64-registered-target
+-
+-// DEFINE: %{optimize} = opt -passes=mem2reg -S
+-
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve                        -fclangir -emit-cir -disable-O0-optnone -o - %s                       | FileCheck %s --check-prefixes=C,CIR %}
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS -fclangir -emit-cir -disable-O0-optnone -o - %s                       | FileCheck %s --check-prefixes=C,CIR %}
+-
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve                        -fclangir -emit-llvm -disable-O0-optnone -o - %s        | %{optimize} | FileCheck %s --check-prefixes=C,LLVM %}
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS -fclangir -emit-llvm -disable-O0-optnone -o - %s        | %{optimize} | FileCheck %s --check-prefixes=C,LLVM %}
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS -fclangir -emit-llvm -disable-O0-optnone -o - -x c++ %s | %{optimize} | FileCheck %s --check-prefixes=CPP,LLVM %}
+-
+-// RUN:                   %clang_cc1_cg_arm64_sve                                  -emit-llvm -disable-O0-optnone -o - %s        | %{optimize} | FileCheck %s --check-prefixes=C,LLVM
+-// RUN:                   %clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS           -emit-llvm -disable-O0-optnone -o - %s        | %{optimize} | FileCheck %s --check-prefixes=C,LLVM
+-// RUN:                   %clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS           -emit-llvm -disable-O0-optnone -o - -x c++ %s | %{optimize} | FileCheck %s --check-prefixes=CPP,LLVM
+-
+-// RUN:                   %clang_cc1_cg_arm64_sme                        -S -disable-O0-optnone -Werror -Wall -o /dev/null %s
+-
+-//=============================================================================
+-// NOTES
+-//
+-// Tests for SVE RINTN intrinsics
+-//=============================================================================
+-
+-#include <arm_sve.h>
+-
+-#if defined __ARM_FEATURE_SME
+-#define MODE_ATTR __arm_streaming
+-#else
+-#define MODE_ATTR
+-#endif
+-
+-#ifdef SVE_OVERLOADED_FORMS
+-// A simple used,unused... macro, long enough to represent any SVE builtin.
+-#define SVE_ACLE_FUNC(A1,A2_UNUSED,A3,A4_UNUSED) A1##A3
+-#else
+-#define SVE_ACLE_FUNC(A1,A2,A3,A4) A1##A2##A3##A4
+-#endif
+-
+-// C-LABEL: @test_svrintn_f16_z(
+-// CPP-LABEL: @_Z18test_svrintn_f16_zu10__SVBool_tu13__SVFloat16_t(
+-svfloat16_t test_svrintn_f16_z(svbool_t pg, svfloat16_t op) MODE_ATTR
+-{
+-// CIR:           %[[ZERO:.*]] = cir.const #cir.zero : !cir.vector<[8] x !cir.f16>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintn" %[[ZERO]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.f16>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 8 x half> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 8 x half> @llvm.aarch64.sve.frintn.nxv8f16(<vscale x 8 x half> zeroinitializer, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP]])
+-// LLVM:    ret <vscale x 8 x half> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintn,_f16,_z,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintn_f32_z(
+-// CPP-LABEL: @_Z18test_svrintn_f32_zu10__SVBool_tu13__SVFloat32_t(
+-svfloat32_t test_svrintn_f32_z(svbool_t pg, svfloat32_t op) MODE_ATTR
+-{
+-// CIR:           %[[ZERO:.*]] = cir.const #cir.zero : !cir.vector<[4] x !cir.float>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintn" %[[ZERO]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.float>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 4 x float> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 4 x float> @llvm.aarch64.sve.frintn.nxv4f32(<vscale x 4 x float> zeroinitializer, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP]])
+-// LLVM:    ret <vscale x 4 x float> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintn,_f32,_z,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintn_f64_z(
+-// CPP-LABEL: @_Z18test_svrintn_f64_zu10__SVBool_tu13__SVFloat64_t(
+-svfloat64_t test_svrintn_f64_z(svbool_t pg, svfloat64_t op) MODE_ATTR
+-{
+-// CIR:           %[[ZERO:.*]] = cir.const #cir.zero : !cir.vector<[2] x !cir.double>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintn" %[[ZERO]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.double>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 2 x double> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 2 x double> @llvm.aarch64.sve.frintn.nxv2f64(<vscale x 2 x double> zeroinitializer, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP]])
+-// LLVM:    ret <vscale x 2 x double> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintn,_f64,_z,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintn_f16_m(
+-// CPP-LABEL: @_Z18test_svrintn_f16_mu13__SVFloat16_tu10__SVBool_tS_(
+-svfloat16_t test_svrintn_f16_m(svfloat16_t inactive, svbool_t pg, svfloat16_t op) MODE_ATTR
+-{
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintn" %{{.*}}, %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.f16>
+-
+-// LLVM-SAME: <vscale x 8 x half> [[INACTIVE:%.*]], <vscale x 16 x i1> [[PG:%.*]], <vscale x 8 x half> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 8 x half> @llvm.aarch64.sve.frintn.nxv8f16(<vscale x 8 x half> [[INACTIVE]], <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP]])
+-// LLVM:    ret <vscale x 8 x half> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintn,_f16,_m,)(inactive, pg, op);
+-}
+-
+-// C-LABEL: @test_svrintn_f32_m(
+-// CPP-LABEL: @_Z18test_svrintn_f32_mu13__SVFloat32_tu10__SVBool_tS_(
+-svfloat32_t test_svrintn_f32_m(svfloat32_t inactive, svbool_t pg, svfloat32_t op) MODE_ATTR
+-{
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintn" %{{.*}}, %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.float>
+-
+-// LLVM-SAME: <vscale x 4 x float> [[INACTIVE:%.*]], <vscale x 16 x i1> [[PG:%.*]], <vscale x 4 x float> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 4 x float> @llvm.aarch64.sve.frintn.nxv4f32(<vscale x 4 x float> [[INACTIVE]], <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP]])
+-// LLVM:    ret <vscale x 4 x float> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintn,_f32,_m,)(inactive, pg, op);
+-}
+-
+-// C-LABEL: @test_svrintn_f64_m(
+-// CPP-LABEL: @_Z18test_svrintn_f64_mu13__SVFloat64_tu10__SVBool_tS_(
+-svfloat64_t test_svrintn_f64_m(svfloat64_t inactive, svbool_t pg, svfloat64_t op) MODE_ATTR
+-{
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintn" %{{.*}}, %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.double>
+-
+-// LLVM-SAME: <vscale x 2 x double> [[INACTIVE:%.*]], <vscale x 16 x i1> [[PG:%.*]], <vscale x 2 x double> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 2 x double> @llvm.aarch64.sve.frintn.nxv2f64(<vscale x 2 x double> [[INACTIVE]], <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP]])
+-// LLVM:    ret <vscale x 2 x double> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintn,_f64,_m,)(inactive, pg, op);
+-}
+-
+-// C-LABEL: @test_svrintn_f16_x(
+-// CPP-LABEL: @_Z18test_svrintn_f16_xu10__SVBool_tu13__SVFloat16_t(
+-svfloat16_t test_svrintn_f16_x(svbool_t pg, svfloat16_t op) MODE_ATTR
+-{
+-// CIR:           %[[UNDEF:.*]] = cir.const #cir.undef : !cir.vector<[8] x !cir.f16>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintn" %[[UNDEF]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.f16>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 8 x half> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 8 x half> @llvm.aarch64.sve.frintn.nxv8f16(<vscale x 8 x half> undef, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP]])
+-// LLVM:    ret <vscale x 8 x half> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintn,_f16,_x,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintn_f32_x(
+-// CPP-LABEL: @_Z18test_svrintn_f32_xu10__SVBool_tu13__SVFloat32_t(
+-svfloat32_t test_svrintn_f32_x(svbool_t pg, svfloat32_t op) MODE_ATTR
+-{
+-// CIR:           %[[UNDEF:.*]] = cir.const #cir.undef : !cir.vector<[4] x !cir.float>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintn" %[[UNDEF]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.float>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 4 x float> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 4 x float> @llvm.aarch64.sve.frintn.nxv4f32(<vscale x 4 x float> undef, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP]])
+-// LLVM:    ret <vscale x 4 x float> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintn,_f32,_x,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintn_f64_x(
+-// CPP-LABEL: @_Z18test_svrintn_f64_xu10__SVBool_tu13__SVFloat64_t(
+-svfloat64_t test_svrintn_f64_x(svbool_t pg, svfloat64_t op) MODE_ATTR
+-{
+-// CIR:           %[[UNDEF:.*]] = cir.const #cir.undef : !cir.vector<[2] x !cir.double>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintn" %[[UNDEF]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.double>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 2 x double> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 2 x double> @llvm.aarch64.sve.frintn.nxv2f64(<vscale x 2 x double> undef, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP]])
+-// LLVM:    ret <vscale x 2 x double> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintn,_f64,_x,)(pg, op);
+-}
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/AArch64/sve/rintp.c b/clang/test/CodeGen/AArch64/sve/rintp.c
+--- a/clang/test/CodeGen/AArch64/sve/rintp.c
++++ b/clang/test/CodeGen/AArch64/sve/rintp.c
+@@ -1,187 +0,0 @@
+-// REQUIRES: aarch64-registered-target
+-
+-// DEFINE: %{optimize} = opt -passes=mem2reg -S
+-
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve                        -fclangir -emit-cir -disable-O0-optnone -o - %s                       | FileCheck %s --check-prefixes=C,CIR %}
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS -fclangir -emit-cir -disable-O0-optnone -o - %s                       | FileCheck %s --check-prefixes=C,CIR %}
+-
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve                        -fclangir -emit-llvm -disable-O0-optnone -o - %s        | %{optimize} | FileCheck %s --check-prefixes=C,LLVM %}
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS -fclangir -emit-llvm -disable-O0-optnone -o - %s        | %{optimize} | FileCheck %s --check-prefixes=C,LLVM %}
+-// RUN: %if cir-enabled %{%clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS -fclangir -emit-llvm -disable-O0-optnone -o - -x c++ %s | %{optimize} | FileCheck %s --check-prefixes=CPP,LLVM %}
+-
+-// RUN:                   %clang_cc1_cg_arm64_sve                                  -emit-llvm -disable-O0-optnone -o - %s        | %{optimize} | FileCheck %s --check-prefixes=C,LLVM
+-// RUN:                   %clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS           -emit-llvm -disable-O0-optnone -o - %s        | %{optimize} | FileCheck %s --check-prefixes=C,LLVM
+-// RUN:                   %clang_cc1_cg_arm64_sve -DSVE_OVERLOADED_FORMS           -emit-llvm -disable-O0-optnone -o - -x c++ %s | %{optimize} | FileCheck %s --check-prefixes=CPP,LLVM
+-
+-// RUN:                   %clang_cc1_cg_arm64_sme                        -S -disable-O0-optnone -Werror -Wall -o /dev/null %s
+-
+-//=============================================================================
+-// NOTES
+-//
+-// Tests for SVE RINTP intrinsics
+-//=============================================================================
+-
+-#include <arm_sve.h>
+-
+-#if defined __ARM_FEATURE_SME
+-#define MODE_ATTR __arm_streaming
+-#else
+-#define MODE_ATTR
+-#endif
+-
+-#ifdef SVE_OVERLOADED_FORMS
+-// A simple used,unused... macro, long enough to represent any SVE builtin.
+-#define SVE_ACLE_FUNC(A1,A2_UNUSED,A3,A4_UNUSED) A1##A3
+-#else
+-#define SVE_ACLE_FUNC(A1,A2,A3,A4) A1##A2##A3##A4
+-#endif
+-
+-// C-LABEL: @test_svrintp_f16_z(
+-// CPP-LABEL: @_Z18test_svrintp_f16_zu10__SVBool_tu13__SVFloat16_t(
+-svfloat16_t test_svrintp_f16_z(svbool_t pg, svfloat16_t op) MODE_ATTR
+-{
+-// CIR:           %[[ZERO:.*]] = cir.const #cir.zero : !cir.vector<[8] x !cir.f16>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintp" %[[ZERO]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.f16>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 8 x half> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 8 x half> @llvm.aarch64.sve.frintp.nxv8f16(<vscale x 8 x half> zeroinitializer, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP]])
+-// LLVM:    ret <vscale x 8 x half> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintp,_f16,_z,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintp_f32_z(
+-// CPP-LABEL: @_Z18test_svrintp_f32_zu10__SVBool_tu13__SVFloat32_t(
+-svfloat32_t test_svrintp_f32_z(svbool_t pg, svfloat32_t op) MODE_ATTR
+-{
+-// CIR:           %[[ZERO:.*]] = cir.const #cir.zero : !cir.vector<[4] x !cir.float>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintp" %[[ZERO]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.float>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 4 x float> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 4 x float> @llvm.aarch64.sve.frintp.nxv4f32(<vscale x 4 x float> zeroinitializer, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP]])
+-// LLVM:    ret <vscale x 4 x float> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintp,_f32,_z,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintp_f64_z(
+-// CPP-LABEL: @_Z18test_svrintp_f64_zu10__SVBool_tu13__SVFloat64_t(
+-svfloat64_t test_svrintp_f64_z(svbool_t pg, svfloat64_t op) MODE_ATTR
+-{
+-// CIR:           %[[ZERO:.*]] = cir.const #cir.zero : !cir.vector<[2] x !cir.double>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintp" %[[ZERO]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.double>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 2 x double> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 2 x double> @llvm.aarch64.sve.frintp.nxv2f64(<vscale x 2 x double> zeroinitializer, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP]])
+-// LLVM:    ret <vscale x 2 x double> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintp,_f64,_z,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintp_f16_m(
+-// CPP-LABEL: @_Z18test_svrintp_f16_mu13__SVFloat16_tu10__SVBool_tS_(
+-svfloat16_t test_svrintp_f16_m(svfloat16_t inactive, svbool_t pg, svfloat16_t op) MODE_ATTR
+-{
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintp" %{{.*}}, %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.f16>
+-
+-// LLVM-SAME: <vscale x 8 x half> [[INACTIVE:%.*]], <vscale x 16 x i1> [[PG:%.*]], <vscale x 8 x half> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 8 x half> @llvm.aarch64.sve.frintp.nxv8f16(<vscale x 8 x half> [[INACTIVE]], <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP]])
+-// LLVM:    ret <vscale x 8 x half> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintp,_f16,_m,)(inactive, pg, op);
+-}
+-
+-// C-LABEL: @test_svrintp_f32_m(
+-// CPP-LABEL: @_Z18test_svrintp_f32_mu13__SVFloat32_tu10__SVBool_tS_(
+-svfloat32_t test_svrintp_f32_m(svfloat32_t inactive, svbool_t pg, svfloat32_t op) MODE_ATTR
+-{
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintp" %{{.*}}, %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.float>
+-
+-// LLVM-SAME: <vscale x 4 x float> [[INACTIVE:%.*]], <vscale x 16 x i1> [[PG:%.*]], <vscale x 4 x float> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 4 x float> @llvm.aarch64.sve.frintp.nxv4f32(<vscale x 4 x float> [[INACTIVE]], <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP]])
+-// LLVM:    ret <vscale x 4 x float> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintp,_f32,_m,)(inactive, pg, op);
+-}
+-
+-// C-LABEL: @test_svrintp_f64_m(
+-// CPP-LABEL: @_Z18test_svrintp_f64_mu13__SVFloat64_tu10__SVBool_tS_(
+-svfloat64_t test_svrintp_f64_m(svfloat64_t inactive, svbool_t pg, svfloat64_t op) MODE_ATTR
+-{
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintp" %{{.*}}, %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.double>
+-
+-// LLVM-SAME: <vscale x 2 x double> [[INACTIVE:%.*]], <vscale x 16 x i1> [[PG:%.*]], <vscale x 2 x double> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 2 x double> @llvm.aarch64.sve.frintp.nxv2f64(<vscale x 2 x double> [[INACTIVE]], <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP]])
+-// LLVM:    ret <vscale x 2 x double> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintp,_f64,_m,)(inactive, pg, op);
+-}
+-
+-// C-LABEL: @test_svrintp_f16_x(
+-// CPP-LABEL: @_Z18test_svrintp_f16_xu10__SVBool_tu13__SVFloat16_t(
+-svfloat16_t test_svrintp_f16_x(svbool_t pg, svfloat16_t op) MODE_ATTR
+-{
+-// CIR:           %[[UNDEF:.*]] = cir.const #cir.undef : !cir.vector<[8] x !cir.f16>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintp" %[[UNDEF]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[8] x !cir.f16>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 8 x half> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 8 x half> @llvm.aarch64.sve.frintp.nxv8f16(<vscale x 8 x half> undef, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP]])
+-// LLVM:    ret <vscale x 8 x half> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintp,_f16,_x,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintp_f32_x(
+-// CPP-LABEL: @_Z18test_svrintp_f32_xu10__SVBool_tu13__SVFloat32_t(
+-svfloat32_t test_svrintp_f32_x(svbool_t pg, svfloat32_t op) MODE_ATTR
+-{
+-// CIR:           %[[UNDEF:.*]] = cir.const #cir.undef : !cir.vector<[4] x !cir.float>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintp" %[[UNDEF]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[4] x !cir.float>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 4 x float> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 4 x float> @llvm.aarch64.sve.frintp.nxv4f32(<vscale x 4 x float> undef, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP]])
+-// LLVM:    ret <vscale x 4 x float> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintp,_f32,_x,)(pg, op);
+-}
+-
+-// C-LABEL: @test_svrintp_f64_x(
+-// CPP-LABEL: @_Z18test_svrintp_f64_xu10__SVBool_tu13__SVFloat64_t(
+-svfloat64_t test_svrintp_f64_x(svbool_t pg, svfloat64_t op) MODE_ATTR
+-{
+-// CIR:           %[[UNDEF:.*]] = cir.const #cir.undef : !cir.vector<[2] x !cir.double>
+-// CIR:           %[[CONVERT_PG:.*]] = cir.call_llvm_intrinsic "aarch64.sve.convert.from.svbool" %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.int<u, 1>>
+-// CIR:           cir.call_llvm_intrinsic "aarch64.sve.frintp" %[[UNDEF]], %[[CONVERT_PG]], %{{.*}} :
+-// CIR-SAME:          -> !cir.vector<[2] x !cir.double>
+-
+-// LLVM-SAME: <vscale x 16 x i1> [[PG:%.*]], <vscale x 2 x double> [[OP:%.*]])
+-// LLVM:    [[TMP0:%.*]] = call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG]])
+-// LLVM:    [[TMP1:%.*]] = call <vscale x 2 x double> @llvm.aarch64.sve.frintp.nxv2f64(<vscale x 2 x double> undef, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP]])
+-// LLVM:    ret <vscale x 2 x double> [[TMP1]]
+-  return SVE_ACLE_FUNC(svrintp,_f64,_x,)(pg, op);
+-}
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/AArch64/sve-intrinsics/acle_sve_rintn.c b/clang/test/CodeGen/AArch64/sve-intrinsics/acle_sve_rintn.c
+--- a/clang/test/CodeGen/AArch64/sve-intrinsics/acle_sve_rintn.c
++++ b/clang/test/CodeGen/AArch64/sve-intrinsics/acle_sve_rintn.c
+@@ -0,0 +1,176 @@
++// NOTE: Assertions have been autogenerated by utils/update_cc_test_checks.py
++// REQUIRES: aarch64-registered-target
++// RUN: %clang_cc1 -fclang-abi-compat=latest -triple aarch64 -target-feature +sve -disable-O0-optnone -Werror -Wall -emit-llvm -o - %s | opt -S -passes=mem2reg,tailcallelim | FileCheck %s
++// RUN: %clang_cc1 -fclang-abi-compat=latest -triple aarch64 -target-feature +sve -disable-O0-optnone -Werror -Wall -emit-llvm -o - -x c++ %s | opt -S -passes=mem2reg,tailcallelim | FileCheck %s -check-prefix=CPP-CHECK
++// RUN: %clang_cc1 -fclang-abi-compat=latest -DSVE_OVERLOADED_FORMS -triple aarch64 -target-feature +sve -disable-O0-optnone -Werror -Wall -emit-llvm -o - %s | opt -S -passes=mem2reg,tailcallelim | FileCheck %s
++// RUN: %clang_cc1 -fclang-abi-compat=latest -DSVE_OVERLOADED_FORMS -triple aarch64 -target-feature +sve -disable-O0-optnone -Werror -Wall -emit-llvm -o - -x c++ %s | opt -S -passes=mem2reg,tailcallelim | FileCheck %s -check-prefix=CPP-CHECK
++// RUN: %clang_cc1 -fclang-abi-compat=latest -triple aarch64 -target-feature +sve -S -disable-O0-optnone -Werror -Wall -o /dev/null %s
++// RUN: %clang_cc1 -fclang-abi-compat=latest -triple aarch64 -target-feature +sme -S -disable-O0-optnone -Werror -Wall -o /dev/null %s
++
++#include <arm_sve.h>
++
++#if defined __ARM_FEATURE_SME
++#define MODE_ATTR __arm_streaming
++#else
++#define MODE_ATTR
++#endif
++
++#ifdef SVE_OVERLOADED_FORMS
++// A simple used,unused... macro, long enough to represent any SVE builtin.
++#define SVE_ACLE_FUNC(A1,A2_UNUSED,A3,A4_UNUSED) A1##A3
++#else
++#define SVE_ACLE_FUNC(A1,A2,A3,A4) A1##A2##A3##A4
++#endif
++
++// CHECK-LABEL: @test_svrintn_f16_z(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintn.nxv8f16(<vscale x 8 x half> zeroinitializer, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintn_f16_zu10__SVBool_tu13__SVFloat16_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintn.nxv8f16(<vscale x 8 x half> zeroinitializer, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++svfloat16_t test_svrintn_f16_z(svbool_t pg, svfloat16_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintn,_f16,_z,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintn_f32_z(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintn.nxv4f32(<vscale x 4 x float> zeroinitializer, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintn_f32_zu10__SVBool_tu13__SVFloat32_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintn.nxv4f32(<vscale x 4 x float> zeroinitializer, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++svfloat32_t test_svrintn_f32_z(svbool_t pg, svfloat32_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintn,_f32,_z,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintn_f64_z(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintn.nxv2f64(<vscale x 2 x double> zeroinitializer, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintn_f64_zu10__SVBool_tu13__SVFloat64_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintn.nxv2f64(<vscale x 2 x double> zeroinitializer, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++svfloat64_t test_svrintn_f64_z(svbool_t pg, svfloat64_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintn,_f64,_z,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintn_f16_m(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintn.nxv8f16(<vscale x 8 x half> [[INACTIVE:%.*]], <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintn_f16_mu13__SVFloat16_tu10__SVBool_tS_(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintn.nxv8f16(<vscale x 8 x half> [[INACTIVE:%.*]], <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++svfloat16_t test_svrintn_f16_m(svfloat16_t inactive, svbool_t pg, svfloat16_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintn,_f16,_m,)(inactive, pg, op);
++}
++
++// CHECK-LABEL: @test_svrintn_f32_m(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintn.nxv4f32(<vscale x 4 x float> [[INACTIVE:%.*]], <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintn_f32_mu13__SVFloat32_tu10__SVBool_tS_(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintn.nxv4f32(<vscale x 4 x float> [[INACTIVE:%.*]], <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++svfloat32_t test_svrintn_f32_m(svfloat32_t inactive, svbool_t pg, svfloat32_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintn,_f32,_m,)(inactive, pg, op);
++}
++
++// CHECK-LABEL: @test_svrintn_f64_m(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintn.nxv2f64(<vscale x 2 x double> [[INACTIVE:%.*]], <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintn_f64_mu13__SVFloat64_tu10__SVBool_tS_(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintn.nxv2f64(<vscale x 2 x double> [[INACTIVE:%.*]], <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++svfloat64_t test_svrintn_f64_m(svfloat64_t inactive, svbool_t pg, svfloat64_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintn,_f64,_m,)(inactive, pg, op);
++}
++
++// CHECK-LABEL: @test_svrintn_f16_x(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintn.nxv8f16(<vscale x 8 x half> undef, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintn_f16_xu10__SVBool_tu13__SVFloat16_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintn.nxv8f16(<vscale x 8 x half> undef, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++svfloat16_t test_svrintn_f16_x(svbool_t pg, svfloat16_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintn,_f16,_x,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintn_f32_x(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintn.nxv4f32(<vscale x 4 x float> undef, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintn_f32_xu10__SVBool_tu13__SVFloat32_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintn.nxv4f32(<vscale x 4 x float> undef, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++svfloat32_t test_svrintn_f32_x(svbool_t pg, svfloat32_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintn,_f32,_x,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintn_f64_x(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintn.nxv2f64(<vscale x 2 x double> undef, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintn_f64_xu10__SVBool_tu13__SVFloat64_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintn.nxv2f64(<vscale x 2 x double> undef, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++svfloat64_t test_svrintn_f64_x(svbool_t pg, svfloat64_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintn,_f64,_x,)(pg, op);
++}
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/AArch64/sve-intrinsics/acle_sve_rintp.c b/clang/test/CodeGen/AArch64/sve-intrinsics/acle_sve_rintp.c
+--- a/clang/test/CodeGen/AArch64/sve-intrinsics/acle_sve_rintp.c
++++ b/clang/test/CodeGen/AArch64/sve-intrinsics/acle_sve_rintp.c
+@@ -0,0 +1,176 @@
++// NOTE: Assertions have been autogenerated by utils/update_cc_test_checks.py
++// REQUIRES: aarch64-registered-target
++// RUN: %clang_cc1 -fclang-abi-compat=latest -triple aarch64 -target-feature +sve -disable-O0-optnone -Werror -Wall -emit-llvm -o - %s | opt -S -passes=mem2reg,tailcallelim | FileCheck %s
++// RUN: %clang_cc1 -fclang-abi-compat=latest -triple aarch64 -target-feature +sve -disable-O0-optnone -Werror -Wall -emit-llvm -o - -x c++ %s | opt -S -passes=mem2reg,tailcallelim | FileCheck %s -check-prefix=CPP-CHECK
++// RUN: %clang_cc1 -fclang-abi-compat=latest -DSVE_OVERLOADED_FORMS -triple aarch64 -target-feature +sve -disable-O0-optnone -Werror -Wall -emit-llvm -o - %s | opt -S -passes=mem2reg,tailcallelim | FileCheck %s
++// RUN: %clang_cc1 -fclang-abi-compat=latest -DSVE_OVERLOADED_FORMS -triple aarch64 -target-feature +sve -disable-O0-optnone -Werror -Wall -emit-llvm -o - -x c++ %s | opt -S -passes=mem2reg,tailcallelim | FileCheck %s -check-prefix=CPP-CHECK
++// RUN: %clang_cc1 -fclang-abi-compat=latest -triple aarch64 -target-feature +sve -S -disable-O0-optnone -Werror -Wall -o /dev/null %s
++// RUN: %clang_cc1 -fclang-abi-compat=latest -triple aarch64 -target-feature +sme -S -disable-O0-optnone -Werror -Wall -o /dev/null %s
++
++#include <arm_sve.h>
++
++#if defined __ARM_FEATURE_SME
++#define MODE_ATTR __arm_streaming
++#else
++#define MODE_ATTR
++#endif
++
++#ifdef SVE_OVERLOADED_FORMS
++// A simple used,unused... macro, long enough to represent any SVE builtin.
++#define SVE_ACLE_FUNC(A1,A2_UNUSED,A3,A4_UNUSED) A1##A3
++#else
++#define SVE_ACLE_FUNC(A1,A2,A3,A4) A1##A2##A3##A4
++#endif
++
++// CHECK-LABEL: @test_svrintp_f16_z(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintp.nxv8f16(<vscale x 8 x half> zeroinitializer, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintp_f16_zu10__SVBool_tu13__SVFloat16_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintp.nxv8f16(<vscale x 8 x half> zeroinitializer, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++svfloat16_t test_svrintp_f16_z(svbool_t pg, svfloat16_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintp,_f16,_z,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintp_f32_z(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintp.nxv4f32(<vscale x 4 x float> zeroinitializer, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintp_f32_zu10__SVBool_tu13__SVFloat32_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintp.nxv4f32(<vscale x 4 x float> zeroinitializer, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++svfloat32_t test_svrintp_f32_z(svbool_t pg, svfloat32_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintp,_f32,_z,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintp_f64_z(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintp.nxv2f64(<vscale x 2 x double> zeroinitializer, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintp_f64_zu10__SVBool_tu13__SVFloat64_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintp.nxv2f64(<vscale x 2 x double> zeroinitializer, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++svfloat64_t test_svrintp_f64_z(svbool_t pg, svfloat64_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintp,_f64,_z,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintp_f16_m(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintp.nxv8f16(<vscale x 8 x half> [[INACTIVE:%.*]], <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintp_f16_mu13__SVFloat16_tu10__SVBool_tS_(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintp.nxv8f16(<vscale x 8 x half> [[INACTIVE:%.*]], <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++svfloat16_t test_svrintp_f16_m(svfloat16_t inactive, svbool_t pg, svfloat16_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintp,_f16,_m,)(inactive, pg, op);
++}
++
++// CHECK-LABEL: @test_svrintp_f32_m(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintp.nxv4f32(<vscale x 4 x float> [[INACTIVE:%.*]], <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintp_f32_mu13__SVFloat32_tu10__SVBool_tS_(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintp.nxv4f32(<vscale x 4 x float> [[INACTIVE:%.*]], <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++svfloat32_t test_svrintp_f32_m(svfloat32_t inactive, svbool_t pg, svfloat32_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintp,_f32,_m,)(inactive, pg, op);
++}
++
++// CHECK-LABEL: @test_svrintp_f64_m(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintp.nxv2f64(<vscale x 2 x double> [[INACTIVE:%.*]], <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintp_f64_mu13__SVFloat64_tu10__SVBool_tS_(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintp.nxv2f64(<vscale x 2 x double> [[INACTIVE:%.*]], <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++svfloat64_t test_svrintp_f64_m(svfloat64_t inactive, svbool_t pg, svfloat64_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintp,_f64,_m,)(inactive, pg, op);
++}
++
++// CHECK-LABEL: @test_svrintp_f16_x(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintp.nxv8f16(<vscale x 8 x half> undef, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintp_f16_xu10__SVBool_tu13__SVFloat16_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 8 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv8i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 8 x half> @llvm.aarch64.sve.frintp.nxv8f16(<vscale x 8 x half> undef, <vscale x 8 x i1> [[TMP0]], <vscale x 8 x half> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 8 x half> [[TMP1]]
++//
++svfloat16_t test_svrintp_f16_x(svbool_t pg, svfloat16_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintp,_f16,_x,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintp_f32_x(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintp.nxv4f32(<vscale x 4 x float> undef, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintp_f32_xu10__SVBool_tu13__SVFloat32_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 4 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv4i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 4 x float> @llvm.aarch64.sve.frintp.nxv4f32(<vscale x 4 x float> undef, <vscale x 4 x i1> [[TMP0]], <vscale x 4 x float> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 4 x float> [[TMP1]]
++//
++svfloat32_t test_svrintp_f32_x(svbool_t pg, svfloat32_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintp,_f32,_x,)(pg, op);
++}
++
++// CHECK-LABEL: @test_svrintp_f64_x(
++// CHECK-NEXT:  entry:
++// CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintp.nxv2f64(<vscale x 2 x double> undef, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++// CPP-CHECK-LABEL: @_Z18test_svrintp_f64_xu10__SVBool_tu13__SVFloat64_t(
++// CPP-CHECK-NEXT:  entry:
++// CPP-CHECK-NEXT:    [[TMP0:%.*]] = tail call <vscale x 2 x i1> @llvm.aarch64.sve.convert.from.svbool.nxv2i1(<vscale x 16 x i1> [[PG:%.*]])
++// CPP-CHECK-NEXT:    [[TMP1:%.*]] = tail call <vscale x 2 x double> @llvm.aarch64.sve.frintp.nxv2f64(<vscale x 2 x double> undef, <vscale x 2 x i1> [[TMP0]], <vscale x 2 x double> [[OP:%.*]])
++// CPP-CHECK-NEXT:    ret <vscale x 2 x double> [[TMP1]]
++//
++svfloat64_t test_svrintp_f64_x(svbool_t pg, svfloat64_t op) MODE_ATTR
++{
++  return SVE_ACLE_FUNC(svrintp,_f64,_x,)(pg, op);
++}
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -24033,7 +24033,10 @@
+     }
+     if (!GatherShuffles.empty()) {
+       unsigned SliceSize = getPartNumElems(VF, NumParts);
+-      if (Mask.size() == E->Scalars.size())
++      // Single shuffle of the same entry covers the whole vector.
++      if (GatherShuffles.size() == 1)
++        SliceSize = Mask.size();
++      else if (Mask.size() == E->Scalars.size())
+         SliceSize = getPartNumElems(
+             E->Scalars.size(),
+             getNumberOfParts(VecTy, ScalarTy, E->Scalars.size()));
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/RISCV/fround-optsize.ll b/llvm/test/CodeGen/RISCV/fround-optsize.ll
+--- a/llvm/test/CodeGen/RISCV/fround-optsize.ll
++++ b/llvm/test/CodeGen/RISCV/fround-optsize.ll
+@@ -0,0 +1,222 @@
++; RUN: llc -mtriple=riscv32 -mattr=+zfh -verify-machineinstrs -target-abi=ilp32f < %s \
++; RUN:   | FileCheck %s --check-prefixes=CHECK-F16,CHECK-ZFH
++; RUN: llc -mtriple=riscv64 -mattr=+zfh -verify-machineinstrs -target-abi=lp64f < %s \
++; RUN:   | FileCheck %s --check-prefixes=CHECK-F16,CHECK-ZFH
++; RUN: llc -mtriple=riscv32 -mattr=+zhinx -verify-machineinstrs -target-abi=ilp32 < %s \
++; RUN:   | FileCheck %s --check-prefixes=CHECK-F16,CHECK-ZHINX
++; RUN: llc -mtriple=riscv64 -mattr=+zhinx -verify-machineinstrs -target-abi=lp64 < %s \
++; RUN:   | FileCheck %s --check-prefixes=CHECK-F16,CHECK-ZHINX
++
++define half @floor_f16_optsize(half %a) nounwind optsize {
++; CHECK-ZFH-LABEL: floor_f16_optsize:
++; CHECK-ZFH:       # %bb.0:
++; CHECK-ZFH-NEXT:    li a0, 25
++; CHECK-ZFH-NEXT:    slli a0, a0, 10
++; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
++; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
++; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
++; CHECK-ZFH-NEXT:    beqz a0, .LBB0_2
++; CHECK-ZFH-NEXT:  # %bb.1:
++; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rdn
++; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rdn
++; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
++; CHECK-ZFH-NEXT:  .LBB0_2:
++; CHECK-ZFH-NEXT:    ret
++;
++; CHECK-ZHINX-LABEL: floor_f16_optsize:
++; CHECK-ZHINX:       # %bb.0:
++; CHECK-ZHINX-NEXT:    fabs.h a1, a0
++; CHECK-ZHINX-NEXT:    li a2, 25
++; CHECK-ZHINX-NEXT:    slli a2, a2, 10
++; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
++; CHECK-ZHINX-NEXT:    beqz a1, .LBB0_2
++; CHECK-ZHINX-NEXT:  # %bb.1:
++; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rdn
++; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rdn
++; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
++; CHECK-ZHINX-NEXT:  .LBB0_2:
++; CHECK-ZHINX-NEXT:    ret
++  %1 = call half @llvm.floor.f16(half %a)
++  ret half %1
++}
++
++define half @ceil_f16_optsize(half %a) nounwind optsize {
++; CHECK-ZFH-LABEL: ceil_f16_optsize:
++; CHECK-ZFH:       # %bb.0:
++; CHECK-ZFH-NEXT:    li a0, 25
++; CHECK-ZFH-NEXT:    slli a0, a0, 10
++; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
++; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
++; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
++; CHECK-ZFH-NEXT:    beqz a0, .LBB1_2
++; CHECK-ZFH-NEXT:  # %bb.1:
++; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rup
++; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rup
++; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
++; CHECK-ZFH-NEXT:  .LBB1_2:
++; CHECK-ZFH-NEXT:    ret
++;
++; CHECK-ZHINX-LABEL: ceil_f16_optsize:
++; CHECK-ZHINX:       # %bb.0:
++; CHECK-ZHINX-NEXT:    fabs.h a1, a0
++; CHECK-ZHINX-NEXT:    li a2, 25
++; CHECK-ZHINX-NEXT:    slli a2, a2, 10
++; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
++; CHECK-ZHINX-NEXT:    beqz a1, .LBB1_2
++; CHECK-ZHINX-NEXT:  # %bb.1:
++; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rup
++; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rup
++; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
++; CHECK-ZHINX-NEXT:  .LBB1_2:
++; CHECK-ZHINX-NEXT:    ret
++  %1 = call half @llvm.ceil.f16(half %a)
++  ret half %1
++}
++
++define half @trunc_f16_optsize(half %a) nounwind optsize {
++; CHECK-ZFH-LABEL: trunc_f16_optsize:
++; CHECK-ZFH:       # %bb.0:
++; CHECK-ZFH-NEXT:    li a0, 25
++; CHECK-ZFH-NEXT:    slli a0, a0, 10
++; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
++; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
++; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
++; CHECK-ZFH-NEXT:    beqz a0, .LBB2_2
++; CHECK-ZFH-NEXT:  # %bb.1:
++; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rtz
++; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rtz
++; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
++; CHECK-ZFH-NEXT:  .LBB2_2:
++; CHECK-ZFH-NEXT:    ret
++;
++; CHECK-ZHINX-LABEL: trunc_f16_optsize:
++; CHECK-ZHINX:       # %bb.0:
++; CHECK-ZHINX-NEXT:    fabs.h a1, a0
++; CHECK-ZHINX-NEXT:    li a2, 25
++; CHECK-ZHINX-NEXT:    slli a2, a2, 10
++; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
++; CHECK-ZHINX-NEXT:    beqz a1, .LBB2_2
++; CHECK-ZHINX-NEXT:  # %bb.1:
++; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rtz
++; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rtz
++; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
++; CHECK-ZHINX-NEXT:  .LBB2_2:
++; CHECK-ZHINX-NEXT:    ret
++  %1 = call half @llvm.trunc.f16(half %a)
++  ret half %1
++}
++
++define half @rint_f16_optsize(half %a) nounwind optsize {
++; CHECK-ZFH-LABEL: rint_f16_optsize:
++; CHECK-ZFH:       # %bb.0:
++; CHECK-ZFH-NEXT:    li a0, 25
++; CHECK-ZFH-NEXT:    slli a0, a0, 10
++; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
++; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
++; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
++; CHECK-ZFH-NEXT:    beqz a0, .LBB3_2
++; CHECK-ZFH-NEXT:  # %bb.1:
++; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0
++; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0
++; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
++; CHECK-ZFH-NEXT:  .LBB3_2:
++; CHECK-ZFH-NEXT:    ret
++;
++; CHECK-ZHINX-LABEL: rint_f16_optsize:
++; CHECK-ZHINX:       # %bb.0:
++; CHECK-ZHINX-NEXT:    fabs.h a1, a0
++; CHECK-ZHINX-NEXT:    li a2, 25
++; CHECK-ZHINX-NEXT:    slli a2, a2, 10
++; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
++; CHECK-ZHINX-NEXT:    beqz a1, .LBB3_2
++; CHECK-ZHINX-NEXT:  # %bb.1:
++; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0
++; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1
++; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
++; CHECK-ZHINX-NEXT:  .LBB3_2:
++; CHECK-ZHINX-NEXT:    ret
++  %1 = call half @llvm.rint.f16(half %a)
++  ret half %1
++}
++
++define half @round_f16_optsize(half %a) nounwind optsize {
++; CHECK-ZFH-LABEL: round_f16_optsize:
++; CHECK-ZFH:       # %bb.0:
++; CHECK-ZFH-NEXT:    li a0, 25
++; CHECK-ZFH-NEXT:    slli a0, a0, 10
++; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
++; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
++; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
++; CHECK-ZFH-NEXT:    beqz a0, .LBB4_2
++; CHECK-ZFH-NEXT:  # %bb.1:
++; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rmm
++; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rmm
++; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
++; CHECK-ZFH-NEXT:  .LBB4_2:
++; CHECK-ZFH-NEXT:    ret
++;
++; CHECK-ZHINX-LABEL: round_f16_optsize:
++; CHECK-ZHINX:       # %bb.0:
++; CHECK-ZHINX-NEXT:    fabs.h a1, a0
++; CHECK-ZHINX-NEXT:    li a2, 25
++; CHECK-ZHINX-NEXT:    slli a2, a2, 10
++; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
++; CHECK-ZHINX-NEXT:    beqz a1, .LBB4_2
++; CHECK-ZHINX-NEXT:  # %bb.1:
++; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rmm
++; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rmm
++; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
++; CHECK-ZHINX-NEXT:  .LBB4_2:
++; CHECK-ZHINX-NEXT:    ret
++  %1 = call half @llvm.round.f16(half %a)
++  ret half %1
++}
++
++define half @roundeven_f16_minsize(half %a) nounwind minsize {
++; CHECK-ZFH-LABEL: roundeven_f16_minsize:
++; CHECK-ZFH:       # %bb.0:
++; CHECK-ZFH-NEXT:    li a0, 25
++; CHECK-ZFH-NEXT:    slli a0, a0, 10
++; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
++; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
++; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
++; CHECK-ZFH-NEXT:    beqz a0, .LBB5_2
++; CHECK-ZFH-NEXT:  # %bb.1:
++; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rne
++; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rne
++; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
++; CHECK-ZFH-NEXT:  .LBB5_2:
++; CHECK-ZFH-NEXT:    ret
++;
++; CHECK-ZHINX-LABEL: roundeven_f16_minsize:
++; CHECK-ZHINX:       # %bb.0:
++; CHECK-ZHINX-NEXT:    fabs.h a1, a0
++; CHECK-ZHINX-NEXT:    li a2, 25
++; CHECK-ZHINX-NEXT:    slli a2, a2, 10
++; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
++; CHECK-ZHINX-NEXT:    beqz a1, .LBB5_2
++; CHECK-ZHINX-NEXT:  # %bb.1:
++; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rne
++; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rne
++; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
++; CHECK-ZHINX-NEXT:  .LBB5_2:
++; CHECK-ZHINX-NEXT:    ret
++  %1 = call half @llvm.roundeven.f16(half %a)
++  ret half %1
++}
++
++define float @floor_f32_optsize(float %a) nounwind optsize {
++; CHECK-F16-LABEL: floor_f32_optsize:
++; CHECK-F16:       # %bb.0:
++; CHECK-F16-NEXT:    tail floorf
++  %1 = call float @llvm.floor.f32(float %a)
++  ret float %1
++}
++
++define float @ceil_f32_optsize(float %a) nounwind optsize {
++; CHECK-F16-LABEL: ceil_f32_optsize:
++; CHECK-F16:       # %bb.0:
++; CHECK-F16-NEXT:    tail ceilf
++  %1 = call float @llvm.ceil.f32(float %a)
++  ret float %1
++}
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/gather-shuffle-single-entry-multi-part.ll b/llvm/test/Transforms/SLPVectorizer/X86/gather-shuffle-single-entry-multi-part.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/gather-shuffle-single-entry-multi-part.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/gather-shuffle-single-entry-multi-part.ll
+@@ -0,0 +1,125 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
++; RUN: opt -passes=slp-vectorizer -S -mtriple=x86_64-unknown-linux-gnu -mattr=+avx < %s | FileCheck %s
++
++define void @test(ptr %p, ptr %out) {
++; CHECK-LABEL: define void @test(
++; CHECK-SAME: ptr [[P:%.*]], ptr [[OUT:%.*]]) #[[ATTR0:[0-9]+]] {
++; CHECK-NEXT:  [[ENTRY:.*:]]
++; CHECK-NEXT:    [[TMP0:%.*]] = load <4 x i32>, ptr [[P]], align 4
++; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <4 x i32> [[TMP0]], <4 x i32> poison, <16 x i32> <i32 1, i32 1, i32 3, i32 3, i32 0, i32 0, i32 2, i32 2, i32 3, i32 3, i32 1, i32 1, i32 2, i32 2, i32 0, i32 0>
++; CHECK-NEXT:    [[TMP2:%.*]] = shufflevector <4 x i32> [[TMP0]], <4 x i32> poison, <8 x i32> <i32 1, i32 1, i32 0, i32 0, i32 3, i32 3, i32 2, i32 2>
++; CHECK-NEXT:    [[TMP3:%.*]] = lshr <8 x i32> [[TMP2]], <i32 16, i32 15, i32 16, i32 15, i32 16, i32 15, i32 16, i32 15>
++; CHECK-NEXT:    [[TMP4:%.*]] = shufflevector <4 x i32> [[TMP0]], <4 x i32> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
++; CHECK-NEXT:    [[TMP5:%.*]] = shl <4 x i32> [[TMP4]], splat (i32 1)
++; CHECK-NEXT:    [[TMP6:%.*]] = xor <16 x i32> [[TMP1]], <i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15, i32 16>
++; CHECK-NEXT:    [[TMP7:%.*]] = shufflevector <8 x i32> [[TMP3]], <8 x i32> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <4 x i32> [[TMP5]], <4 x i32> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP9:%.*]] = shufflevector <4 x i32> [[TMP5]], <4 x i32> poison, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP10:%.*]] = shufflevector <8 x i32> [[TMP3]], <8 x i32> [[TMP9]], <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 poison, i32 poison, i32 poison, i32 poison, i32 8, i32 9, i32 10, i32 11>
++; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <16 x i32> [[TMP10]], <16 x i32> [[TMP1]], <16 x i32> <i32 0, i32 1, i32 18, i32 12, i32 2, i32 3, i32 22, i32 13, i32 4, i32 5, i32 26, i32 14, i32 6, i32 7, i32 30, i32 15>
++; CHECK-NEXT:    [[TMP12:%.*]] = add <16 x i32> [[TMP6]], [[TMP11]]
++; CHECK-NEXT:    [[TMP13:%.*]] = trunc <16 x i32> [[TMP12]] to <16 x i8>
++; CHECK-NEXT:    store <16 x i8> [[TMP13]], ptr [[OUT]], align 1
++; CHECK-NEXT:    ret void
++;
++entry:
++  %p1 = getelementptr inbounds i32, ptr %p, i64 1
++  %p2 = getelementptr inbounds i32, ptr %p, i64 2
++  %p3 = getelementptr inbounds i32, ptr %p, i64 3
++  %a = load i32, ptr %p, align 4
++  %b = load i32, ptr %p1, align 4
++  %c = load i32, ptr %p2, align 4
++  %d = load i32, ptr %p3, align 4
++  %r0 = lshr i32 %b, 16
++  %r1 = lshr i32 %b, 15
++  %r2 = lshr i32 %a, 16
++  %r3 = lshr i32 %a, 15
++  %r4 = lshr i32 %d, 16
++  %r5 = lshr i32 %d, 15
++  %r6 = lshr i32 %c, 16
++  %r7 = lshr i32 %c, 15
++  %s0 = shl i32 %d, 1
++  %s1 = shl i32 %c, 1
++  %s2 = shl i32 %b, 1
++  %s3 = shl i32 %a, 1
++  %u0 = xor i32 %b, 1
++  %v0 = add i32 %u0, %r0
++  %t0 = trunc i32 %v0 to i8
++  %u1 = xor i32 %b, 2
++  %v1 = add i32 %u1, %r1
++  %t1 = trunc i32 %v1 to i8
++  %u2 = xor i32 %d, 3
++  %v2 = add i32 %u2, %d
++  %t2 = trunc i32 %v2 to i8
++  %u3 = xor i32 %d, 4
++  %v3 = add i32 %u3, %s0
++  %t3 = trunc i32 %v3 to i8
++  %u4 = xor i32 %a, 5
++  %v4 = add i32 %u4, %r2
++  %t4 = trunc i32 %v4 to i8
++  %u5 = xor i32 %a, 6
++  %v5 = add i32 %u5, %r3
++  %t5 = trunc i32 %v5 to i8
++  %u6 = xor i32 %c, 7
++  %v6 = add i32 %u6, %c
++  %t6 = trunc i32 %v6 to i8
++  %u7 = xor i32 %c, 8
++  %v7 = add i32 %u7, %s1
++  %t7 = trunc i32 %v7 to i8
++  %u8 = xor i32 %d, 9
++  %v8 = add i32 %u8, %r4
++  %t8 = trunc i32 %v8 to i8
++  %u9 = xor i32 %d, 10
++  %v9 = add i32 %u9, %r5
++  %t9 = trunc i32 %v9 to i8
++  %u10 = xor i32 %b, 11
++  %v10 = add i32 %u10, %b
++  %t10 = trunc i32 %v10 to i8
++  %u11 = xor i32 %b, 12
++  %v11 = add i32 %u11, %s2
++  %t11 = trunc i32 %v11 to i8
++  %u12 = xor i32 %c, 13
++  %v12 = add i32 %u12, %r6
++  %t12 = trunc i32 %v12 to i8
++  %u13 = xor i32 %c, 14
++  %v13 = add i32 %u13, %r7
++  %t13 = trunc i32 %v13 to i8
++  %u14 = xor i32 %a, 15
++  %v14 = add i32 %u14, %a
++  %t14 = trunc i32 %v14 to i8
++  %u15 = xor i32 %a, 16
++  %v15 = add i32 %u15, %s3
++  %t15 = trunc i32 %v15 to i8
++  %o1 = getelementptr inbounds i8, ptr %out, i64 1
++  %o2 = getelementptr inbounds i8, ptr %out, i64 2
++  %o3 = getelementptr inbounds i8, ptr %out, i64 3
++  %o4 = getelementptr inbounds i8, ptr %out, i64 4
++  %o5 = getelementptr inbounds i8, ptr %out, i64 5
++  %o6 = getelementptr inbounds i8, ptr %out, i64 6
++  %o7 = getelementptr inbounds i8, ptr %out, i64 7
++  %o8 = getelementptr inbounds i8, ptr %out, i64 8
++  %o9 = getelementptr inbounds i8, ptr %out, i64 9
++  %o10 = getelementptr inbounds i8, ptr %out, i64 10
++  %o11 = getelementptr inbounds i8, ptr %out, i64 11
++  %o12 = getelementptr inbounds i8, ptr %out, i64 12
++  %o13 = getelementptr inbounds i8, ptr %out, i64 13
++  %o14 = getelementptr inbounds i8, ptr %out, i64 14
++  %o15 = getelementptr inbounds i8, ptr %out, i64 15
++  store i8 %t0, ptr %out, align 1
++  store i8 %t1, ptr %o1, align 1
++  store i8 %t2, ptr %o2, align 1
++  store i8 %t3, ptr %o3, align 1
++  store i8 %t4, ptr %o4, align 1
++  store i8 %t5, ptr %o5, align 1
++  store i8 %t6, ptr %o6, align 1
++  store i8 %t7, ptr %o7, align 1
++  store i8 %t8, ptr %o8, align 1
++  store i8 %t9, ptr %o9, align 1
++  store i8 %t10, ptr %o10, align 1
++  store i8 %t11, ptr %o11, align 1
++  store i8 %t12, ptr %o12, align 1
++  store i8 %t13, ptr %o13, align 1
++  store i8 %t14, ptr %o14, align 1
++  store i8 %t15, ptr %o15, align 1
++  ret void
++}
+diff -ruN --strip-trailing-cr a/llvm/third_party/llvm/llvm-project/llvm/test/CodeGen/RISCV/fround-optsize.ll b/llvm/third_party/llvm/llvm-project/llvm/test/CodeGen/RISCV/fround-optsize.ll
+--- a/llvm/third_party/llvm/llvm-project/llvm/test/CodeGen/RISCV/fround-optsize.ll
++++ b/llvm/third_party/llvm/llvm-project/llvm/test/CodeGen/RISCV/fround-optsize.ll
+@@ -1,222 +0,0 @@
+-; RUN: llc -mtriple=riscv32 -mattr=+zfh -verify-machineinstrs -target-abi=ilp32f < %s \
+-; RUN:   | FileCheck %s --check-prefixes=CHECK-F16,CHECK-ZFH
+-; RUN: llc -mtriple=riscv64 -mattr=+zfh -verify-machineinstrs -target-abi=lp64f < %s \
+-; RUN:   | FileCheck %s --check-prefixes=CHECK-F16,CHECK-ZFH
+-; RUN: llc -mtriple=riscv32 -mattr=+zhinx -verify-machineinstrs -target-abi=ilp32 < %s \
+-; RUN:   | FileCheck %s --check-prefixes=CHECK-F16,CHECK-ZHINX
+-; RUN: llc -mtriple=riscv64 -mattr=+zhinx -verify-machineinstrs -target-abi=lp64 < %s \
+-; RUN:   | FileCheck %s --check-prefixes=CHECK-F16,CHECK-ZHINX
+-
+-define half @floor_f16_optsize(half %a) nounwind optsize {
+-; CHECK-ZFH-LABEL: floor_f16_optsize:
+-; CHECK-ZFH:       # %bb.0:
+-; CHECK-ZFH-NEXT:    li a0, 25
+-; CHECK-ZFH-NEXT:    slli a0, a0, 10
+-; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
+-; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
+-; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
+-; CHECK-ZFH-NEXT:    beqz a0, .LBB0_2
+-; CHECK-ZFH-NEXT:  # %bb.1:
+-; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rdn
+-; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rdn
+-; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
+-; CHECK-ZFH-NEXT:  .LBB0_2:
+-; CHECK-ZFH-NEXT:    ret
+-;
+-; CHECK-ZHINX-LABEL: floor_f16_optsize:
+-; CHECK-ZHINX:       # %bb.0:
+-; CHECK-ZHINX-NEXT:    fabs.h a1, a0
+-; CHECK-ZHINX-NEXT:    li a2, 25
+-; CHECK-ZHINX-NEXT:    slli a2, a2, 10
+-; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
+-; CHECK-ZHINX-NEXT:    beqz a1, .LBB0_2
+-; CHECK-ZHINX-NEXT:  # %bb.1:
+-; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rdn
+-; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rdn
+-; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
+-; CHECK-ZHINX-NEXT:  .LBB0_2:
+-; CHECK-ZHINX-NEXT:    ret
+-  %1 = call half @llvm.floor.f16(half %a)
+-  ret half %1
+-}
+-
+-define half @ceil_f16_optsize(half %a) nounwind optsize {
+-; CHECK-ZFH-LABEL: ceil_f16_optsize:
+-; CHECK-ZFH:       # %bb.0:
+-; CHECK-ZFH-NEXT:    li a0, 25
+-; CHECK-ZFH-NEXT:    slli a0, a0, 10
+-; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
+-; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
+-; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
+-; CHECK-ZFH-NEXT:    beqz a0, .LBB1_2
+-; CHECK-ZFH-NEXT:  # %bb.1:
+-; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rup
+-; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rup
+-; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
+-; CHECK-ZFH-NEXT:  .LBB1_2:
+-; CHECK-ZFH-NEXT:    ret
+-;
+-; CHECK-ZHINX-LABEL: ceil_f16_optsize:
+-; CHECK-ZHINX:       # %bb.0:
+-; CHECK-ZHINX-NEXT:    fabs.h a1, a0
+-; CHECK-ZHINX-NEXT:    li a2, 25
+-; CHECK-ZHINX-NEXT:    slli a2, a2, 10
+-; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
+-; CHECK-ZHINX-NEXT:    beqz a1, .LBB1_2
+-; CHECK-ZHINX-NEXT:  # %bb.1:
+-; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rup
+-; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rup
+-; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
+-; CHECK-ZHINX-NEXT:  .LBB1_2:
+-; CHECK-ZHINX-NEXT:    ret
+-  %1 = call half @llvm.ceil.f16(half %a)
+-  ret half %1
+-}
+-
+-define half @trunc_f16_optsize(half %a) nounwind optsize {
+-; CHECK-ZFH-LABEL: trunc_f16_optsize:
+-; CHECK-ZFH:       # %bb.0:
+-; CHECK-ZFH-NEXT:    li a0, 25
+-; CHECK-ZFH-NEXT:    slli a0, a0, 10
+-; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
+-; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
+-; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
+-; CHECK-ZFH-NEXT:    beqz a0, .LBB2_2
+-; CHECK-ZFH-NEXT:  # %bb.1:
+-; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rtz
+-; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rtz
+-; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
+-; CHECK-ZFH-NEXT:  .LBB2_2:
+-; CHECK-ZFH-NEXT:    ret
+-;
+-; CHECK-ZHINX-LABEL: trunc_f16_optsize:
+-; CHECK-ZHINX:       # %bb.0:
+-; CHECK-ZHINX-NEXT:    fabs.h a1, a0
+-; CHECK-ZHINX-NEXT:    li a2, 25
+-; CHECK-ZHINX-NEXT:    slli a2, a2, 10
+-; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
+-; CHECK-ZHINX-NEXT:    beqz a1, .LBB2_2
+-; CHECK-ZHINX-NEXT:  # %bb.1:
+-; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rtz
+-; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rtz
+-; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
+-; CHECK-ZHINX-NEXT:  .LBB2_2:
+-; CHECK-ZHINX-NEXT:    ret
+-  %1 = call half @llvm.trunc.f16(half %a)
+-  ret half %1
+-}
+-
+-define half @rint_f16_optsize(half %a) nounwind optsize {
+-; CHECK-ZFH-LABEL: rint_f16_optsize:
+-; CHECK-ZFH:       # %bb.0:
+-; CHECK-ZFH-NEXT:    li a0, 25
+-; CHECK-ZFH-NEXT:    slli a0, a0, 10
+-; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
+-; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
+-; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
+-; CHECK-ZFH-NEXT:    beqz a0, .LBB3_2
+-; CHECK-ZFH-NEXT:  # %bb.1:
+-; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0
+-; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0
+-; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
+-; CHECK-ZFH-NEXT:  .LBB3_2:
+-; CHECK-ZFH-NEXT:    ret
+-;
+-; CHECK-ZHINX-LABEL: rint_f16_optsize:
+-; CHECK-ZHINX:       # %bb.0:
+-; CHECK-ZHINX-NEXT:    fabs.h a1, a0
+-; CHECK-ZHINX-NEXT:    li a2, 25
+-; CHECK-ZHINX-NEXT:    slli a2, a2, 10
+-; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
+-; CHECK-ZHINX-NEXT:    beqz a1, .LBB3_2
+-; CHECK-ZHINX-NEXT:  # %bb.1:
+-; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0
+-; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1
+-; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
+-; CHECK-ZHINX-NEXT:  .LBB3_2:
+-; CHECK-ZHINX-NEXT:    ret
+-  %1 = call half @llvm.rint.f16(half %a)
+-  ret half %1
+-}
+-
+-define half @round_f16_optsize(half %a) nounwind optsize {
+-; CHECK-ZFH-LABEL: round_f16_optsize:
+-; CHECK-ZFH:       # %bb.0:
+-; CHECK-ZFH-NEXT:    li a0, 25
+-; CHECK-ZFH-NEXT:    slli a0, a0, 10
+-; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
+-; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
+-; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
+-; CHECK-ZFH-NEXT:    beqz a0, .LBB4_2
+-; CHECK-ZFH-NEXT:  # %bb.1:
+-; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rmm
+-; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rmm
+-; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
+-; CHECK-ZFH-NEXT:  .LBB4_2:
+-; CHECK-ZFH-NEXT:    ret
+-;
+-; CHECK-ZHINX-LABEL: round_f16_optsize:
+-; CHECK-ZHINX:       # %bb.0:
+-; CHECK-ZHINX-NEXT:    fabs.h a1, a0
+-; CHECK-ZHINX-NEXT:    li a2, 25
+-; CHECK-ZHINX-NEXT:    slli a2, a2, 10
+-; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
+-; CHECK-ZHINX-NEXT:    beqz a1, .LBB4_2
+-; CHECK-ZHINX-NEXT:  # %bb.1:
+-; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rmm
+-; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rmm
+-; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
+-; CHECK-ZHINX-NEXT:  .LBB4_2:
+-; CHECK-ZHINX-NEXT:    ret
+-  %1 = call half @llvm.round.f16(half %a)
+-  ret half %1
+-}
+-
+-define half @roundeven_f16_minsize(half %a) nounwind minsize {
+-; CHECK-ZFH-LABEL: roundeven_f16_minsize:
+-; CHECK-ZFH:       # %bb.0:
+-; CHECK-ZFH-NEXT:    li a0, 25
+-; CHECK-ZFH-NEXT:    slli a0, a0, 10
+-; CHECK-ZFH-NEXT:    fmv.h.x fa5, a0
+-; CHECK-ZFH-NEXT:    fabs.h fa4, fa0
+-; CHECK-ZFH-NEXT:    flt.h a0, fa4, fa5
+-; CHECK-ZFH-NEXT:    beqz a0, .LBB5_2
+-; CHECK-ZFH-NEXT:  # %bb.1:
+-; CHECK-ZFH-NEXT:    fcvt.w.h a0, fa0, rne
+-; CHECK-ZFH-NEXT:    fcvt.h.w fa5, a0, rne
+-; CHECK-ZFH-NEXT:    fsgnj.h fa0, fa5, fa0
+-; CHECK-ZFH-NEXT:  .LBB5_2:
+-; CHECK-ZFH-NEXT:    ret
+-;
+-; CHECK-ZHINX-LABEL: roundeven_f16_minsize:
+-; CHECK-ZHINX:       # %bb.0:
+-; CHECK-ZHINX-NEXT:    fabs.h a1, a0
+-; CHECK-ZHINX-NEXT:    li a2, 25
+-; CHECK-ZHINX-NEXT:    slli a2, a2, 10
+-; CHECK-ZHINX-NEXT:    flt.h a1, a1, a2
+-; CHECK-ZHINX-NEXT:    beqz a1, .LBB5_2
+-; CHECK-ZHINX-NEXT:  # %bb.1:
+-; CHECK-ZHINX-NEXT:    fcvt.w.h a1, a0, rne
+-; CHECK-ZHINX-NEXT:    fcvt.h.w a1, a1, rne
+-; CHECK-ZHINX-NEXT:    fsgnj.h a0, a1, a0
+-; CHECK-ZHINX-NEXT:  .LBB5_2:
+-; CHECK-ZHINX-NEXT:    ret
+-  %1 = call half @llvm.roundeven.f16(half %a)
+-  ret half %1
+-}
+-
+-define float @floor_f32_optsize(float %a) nounwind optsize {
+-; CHECK-F16-LABEL: floor_f32_optsize:
+-; CHECK-F16:       # %bb.0:
+-; CHECK-F16-NEXT:    tail floorf
+-  %1 = call float @llvm.floor.f32(float %a)
+-  ret float %1
+-}
+-
+-define float @ceil_f32_optsize(float %a) nounwind optsize {
+-; CHECK-F16-LABEL: ceil_f32_optsize:
+-; CHECK-F16:       # %bb.0:
+-; CHECK-F16-NEXT:    tail ceilf
+-  %1 = call float @llvm.ceil.f32(float %a)
+-  ret float %1
+-}
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Transforms/LoopInvariantCodeMotionUtils.h b/mlir/include/mlir/Transforms/LoopInvariantCodeMotionUtils.h
+--- a/mlir/include/mlir/Transforms/LoopInvariantCodeMotionUtils.h
++++ b/mlir/include/mlir/Transforms/LoopInvariantCodeMotionUtils.h
+@@ -69,30 +69,9 @@
+     function_ref<void(Operation *, Region *)> moveOutOfRegion);
+ 
+ /// Move side-effect free loop invariant code out of a loop-like op using
+-/// methods provided by the interface. This includes code in control-flow
+-/// regions nested in the loop body, see
+-/// `moveLoopInvariantCodeFromNestedRegions`.
++/// methods provided by the interface.
+ size_t moveLoopInvariantCode(LoopLikeOpInterface loopLike);
+ 
+-/// Move loop invariant code out of the control-flow regions nested in the body
+-/// of a loop-like op, e.g., out of an `scf.if` that stays in the loop:
+-///
+-/// ```mlir
+-/// scf.for %i = %lb to %ub step %step {
+-///   scf.if %cond {
+-///     %v = arith.muli %a, %b : i32  // Moved before the loop.
+-///     memref.store %v, %m[%i] : memref<?xi32>
+-///   }
+-/// }
+-/// ```
+-///
+-/// Only regions of `RegionBranchOpInterface` ops are inspected, and nested
+-/// loops are skipped. A nested region is not guaranteed to execute, so only
+-/// speculatable ops without memory effects are moved.
+-///
+-/// Returns the number of operations moved.
+-size_t moveLoopInvariantCodeFromNestedRegions(LoopLikeOpInterface loopLike);
+-
+ /// Hoist loop-invariant tensor subsets (subset extraction and subset insertion
+ /// ops) from loop-like ops. Extraction ops are moved before the loop. Insertion
+ /// ops are moved after the loop. The loop body operates on newly added region
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Affine/Transforms/AffineLoopInvariantCodeMotion.cpp b/mlir/lib/Dialect/Affine/Transforms/AffineLoopInvariantCodeMotion.cpp
+--- a/mlir/lib/Dialect/Affine/Transforms/AffineLoopInvariantCodeMotion.cpp
++++ b/mlir/lib/Dialect/Affine/Transforms/AffineLoopInvariantCodeMotion.cpp
+@@ -16,7 +16,6 @@
+ #include "mlir/Dialect/Affine/Analysis/Utils.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
+-#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
+ 
+ namespace mlir {
+ namespace affine {
+@@ -205,9 +204,6 @@
+   for (auto *op : opsToMove) {
+     op->moveBefore(forOp);
+   }
+-
+-  // Hoist invariant ops nested in control-flow ops that stay in the loop.
+-  moveLoopInvariantCodeFromNestedRegions(forOp);
+ }
+ 
+ void LoopInvariantCodeMotion::runOnOperation() {
+diff -ruN --strip-trailing-cr a/mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp b/mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp
+--- a/mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp
++++ b/mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp
+@@ -15,12 +15,9 @@
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/OperationSupport.h"
+ #include "mlir/IR/PatternMatch.h"
+-#include "mlir/IR/RegionGraphTraits.h"
+-#include "mlir/Interfaces/ControlFlowInterfaces.h"
+ #include "mlir/Interfaces/LoopLikeInterface.h"
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
+ #include "mlir/Interfaces/SubsetOpInterface.h"
+-#include "llvm/ADT/DepthFirstIterator.h"
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Support/DebugLog.h"
+ #include <queue>
+@@ -112,57 +109,13 @@
+ }
+ 
+ size_t mlir::moveLoopInvariantCode(LoopLikeOpInterface loopLike) {
+-  size_t numMoved = moveLoopInvariantCode(
++  return moveLoopInvariantCode(
+       loopLike.getLoopRegions(),
+       [&](Value value, Region *) {
+         return loopLike.isDefinedOutsideOfLoop(value);
+       },
+       [&](Operation *op, Region *) { return isPure(op); },
+       [&](Operation *op, Region *) { loopLike.moveOutOfLoop(op); });
+-  return numMoved + moveLoopInvariantCodeFromNestedRegions(loopLike);
+-}
+-
+-/// Hoists pure loop-invariant ops out of the control-flow regions nested in
+-/// `region`, which is part of the body of `loopLike`. Ops directly in `region`
+-/// are hoisted only if `isNested` is set, i.e., if `region` is not a region of
+-/// the loop itself. Returns the number of ops moved.
+-static size_t hoistFromNestedRegions(Region &region,
+-                                     LoopLikeOpInterface loopLike,
+-                                     bool isNested) {
+-  if (region.empty())
+-    return 0;
+-  size_t numMoved = 0;
+-  auto definedOutside = [&](Value value) {
+-    return loopLike.isDefinedOutsideOfLoop(value);
+-  };
+-  // Unreachable blocks are skipped: dominance is not verified there. Reachable
+-  // blocks are visited in an order in which definitions precede their uses.
+-  for (Block *block : llvm::depth_first(&region.front())) {
+-    for (Operation &op : llvm::make_early_inc_range(*block)) {
+-      if (isNested && isPure(&op) && canBeHoisted(&op, definedOutside)) {
+-        LDBG() << "Moving loop-invariant op: "
+-               << OpWithFlags(&op, OpPrintingFlags().skipRegions());
+-        loopLike.moveOutOfLoop(&op);
+-        ++numMoved;
+-        continue;
+-      }
+-      // Descend into control-flow ops only: ops in other regions may depend on
+-      // the enclosing op, and nested loops are processed on their own.
+-      if (!isa<RegionBranchOpInterface>(op) || isa<LoopLikeOpInterface>(op))
+-        continue;
+-      for (Region &nested : op.getRegions())
+-        numMoved += hoistFromNestedRegions(nested, loopLike, /*isNested=*/true);
+-    }
+-  }
+-  return numMoved;
+-}
+-
+-size_t
+-mlir::moveLoopInvariantCodeFromNestedRegions(LoopLikeOpInterface loopLike) {
+-  size_t numMoved = 0;
+-  for (Region *region : loopLike.getLoopRegions())
+-    numMoved += hoistFromNestedRegions(*region, loopLike, /*isNested=*/false);
+-  return numMoved;
+ }
+ 
+ namespace {
+diff -ruN --strip-trailing-cr a/mlir/test/Dialect/Affine/affine-loop-invariant-code-motion.mlir b/mlir/test/Dialect/Affine/affine-loop-invariant-code-motion.mlir
+--- a/mlir/test/Dialect/Affine/affine-loop-invariant-code-motion.mlir
++++ b/mlir/test/Dialect/Affine/affine-loop-invariant-code-motion.mlir
+@@ -134,11 +134,11 @@
+ 
+   // CHECK: memref.alloc() : memref<10xf32>
+   // CHECK-NEXT: %[[cst:.*]] = arith.constant 8.000000e+00 : f32
+-  // CHECK-NEXT: %[[add:.*]] = arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.for %{{.*}} = 0 to 10 {
+   // CHECK-NEXT: affine.apply #map{{[0-9]*}}(%arg0)
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[add]]
++  // CHECK-NEXT: arith.addf %[[cst]], %[[cst]] : f32
++  // CHECK-NEXT: affine.store
+   // CHECK-NEXT: }
+ 
+ 
+@@ -283,10 +283,10 @@
+   // CHECK-NEXT: %[[cst:.*]] = arith.constant 8.000000e+00 : f32
+   // CHECK-NEXT: affine.for %{{.*}} = 0 to 10 {
+   // CHECK-NEXT: }
+-  // CHECK-NEXT: %[[add:.*]] = arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.for %{{.*}} = 0 to 10 {
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[add]]
++  // CHECK-NEXT: arith.addf %[[cst]], %[[cst]] : f32
++  // CHECK-NEXT: affine.store
+   // CHECK-NEXT: }
+ 
+ 
+@@ -310,11 +310,11 @@
+ 
+   // CHECK: memref.alloc() : memref<10xf32>
+   // CHECK-NEXT: %[[cst:.*]] = arith.constant 8.000000e+00 : f32
+-  // CHECK-NEXT: %[[add:.*]] = arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.for %{{.*}} = 0 to 10 {
+   // CHECK-NEXT: affine.for %{{.*}} = 0 to 10 {
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT:   affine.store %[[add]]
++  // CHECK-NEXT:   arith.addf %[[cst]], %[[cst]] : f32
++  // CHECK-NEXT:   affine.store
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+ 
+@@ -341,13 +341,13 @@
+ 
+   // CHECK: memref.alloc() : memref<10xf32>
+   // CHECK-NEXT: %[[cst:.*]] = arith.constant 8.000000e+00 : f32
+-  // CHECK-NEXT: %[[add:.*]] = arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.for %[[arg0:.*]] = 0 to 10 {
+   // CHECK-NEXT: affine.for %[[arg1:.*]] = 0 to 10 {
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[add]], %{{.*}}[%[[arg0]]] : memref<10xf32>
++  // CHECK-NEXT: arith.addf %[[cst]], %[[cst]] : f32
++  // CHECK-NEXT: affine.store {{.*}}[%[[arg0]]] : memref<10xf32>
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[add]], %{{.*}}[%[[arg1]]] : memref<10xf32>
++  // CHECK-NEXT: affine.store {{.*}}[%[[arg1]]] : memref<10xf32>
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+@@ -377,15 +377,15 @@
+ 
+   // CHECK: memref.alloc() : memref<10xf32>
+   // CHECK-NEXT: %[[cst:.*]] = arith.constant 8.000000e+00 : f32
+-  // CHECK-NEXT: %[[add:.*]] = arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.for %[[arg0:.*]] = 0 to 10 {
+   // CHECK-NEXT: affine.for %[[arg1:.*]] = 0 to 10 {
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[add]], %{{.*}}[%[[arg0]]] : memref<10xf32>
++  // CHECK-NEXT: arith.addf %[[cst]], %[[cst]] : f32
++  // CHECK-NEXT: affine.store {{.*}}[%[[arg0]]] : memref<10xf32>
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[add]], %{{.*}}[%[[arg0]]] : memref<10xf32>
++  // CHECK-NEXT: affine.store {{.*}}[%[[arg0]]] : memref<10xf32>
+   // CHECK-NEXT: } else {
+-  // CHECK-NEXT: affine.store %[[add]], %{{.*}}[%[[arg1]]] : memref<10xf32>
++  // CHECK-NEXT: affine.store {{.*}}[%[[arg1]]] : memref<10xf32>
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+@@ -419,12 +419,12 @@
+   // CHECK-NEXT: %[[cst:.*]] = arith.constant 8.000000e+00 : f32
+   // CHECK-NEXT: affine.for %[[arg0:.*]] = 0 to 10 {
+   // CHECK-NEXT: }
+-  // CHECK-NEXT: %[[add:.*]] = arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.for %{{.*}} = 0 to 10 {
+   // CHECK-NEXT: affine.if
++  // CHECK-NEXT: arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.load {{.*}}[%[[arg0]]] : memref<10xf32>
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[add]], %{{.*}}[%[[arg0]]] : memref<10xf32>
++  // CHECK-NEXT: affine.store {{.*}}[%[[arg0]]] : memref<10xf32>
+   // CHECK-NEXT: } else {
+   // CHECK-NEXT: affine.load {{.*}}[%[[arg0]]] : memref<10xf32>
+   // CHECK-NEXT: }
+@@ -455,9 +455,9 @@
+   // CHECK-NEXT: %[[cst:.*]] = arith.constant 8.000000e+00 : f32
+   // CHECK-NEXT: affine.for %{{.*}} = 0 to 10 {
+   // CHECK-NEXT: }
+-  // CHECK-NEXT: %[[add:.*]] = arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.for %[[arg0:.*]] = 0 to 10 {
+   // CHECK-NEXT: affine.if
++  // CHECK-NEXT: arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.load {{.*}}[%[[arg0]]] : memref<10xf32>
+   // CHECK-NEXT: affine.if
+   // CHECK-NEXT: affine.load {{.*}}[%[[arg0]]] : memref<10xf32>
+@@ -487,13 +487,13 @@
+ 
+   // CHECK: memref.alloc() : memref<10xf32>
+   // CHECK-NEXT: %[[cst:.*]] = arith.constant 8.000000e+00 : f32
+-  // CHECK-NEXT: %[[add:.*]] = arith.addf %[[cst]], %[[cst]] : f32
+   // CHECK-NEXT: affine.for %[[arg0:.*]] = 0 to 10 {
+   // CHECK-NEXT: affine.for %[[arg1:.*]] = 0 to 10 {
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[add]], %{{.*}}[%[[arg0]]] : memref<10xf32>
++  // CHECK-NEXT: arith.addf %[[cst]], %[[cst]] : f32
++  // CHECK-NEXT: affine.store {{.*}}[%[[arg0]]] : memref<10xf32>
+   // CHECK-NEXT: affine.for %[[arg2:.*]] = 0 to 10 {
+-  // CHECK-NEXT: affine.store %[[add]], %{{.*}}[%[[arg2]]] : memref<10xf32>
++  // CHECK-NEXT: affine.store {{.*}}[%[[arg2]]] : memref<10xf32>
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+@@ -1011,86 +1011,6 @@
+   return %r : i32
+ }
+ 
+-// -----
+-
+-// Pure loop-invariant ops are hoisted out of an affine.if that itself stays in
+-// the loop.
+-
+-#set = affine_set<(d0) : (d0 - 4 >= 0)>
+-
+-// CHECK-LABEL: func @hoist_invariant_op_from_affine_if
+-func.func @hoist_invariant_op_from_affine_if(%arg0: i32, %arg1: i32, %m: memref<16xi32>) {
+-  // CHECK: %[[MUL:.*]] = arith.muli %arg0, %arg1
+-  // CHECK: affine.for
+-  // CHECK:   affine.if
+-  // CHECK:     affine.store %[[MUL]]
+-  affine.for %i = 0 to 16 {
+-    affine.if #set(%i) {
+-      %0 = arith.muli %arg0, %arg1 : i32
+-      affine.store %0, %m[%i] : memref<16xi32>
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// Chains of invariant ops are hoisted from nested affine.if ops and else
+-// regions, while ops depending on the loop IV stay in place.
+-
+-#set = affine_set<(d0) : (d0 - 4 >= 0)>
+-
+-// CHECK-LABEL: func @hoist_invariant_chain_from_nested_affine_if
+-func.func @hoist_invariant_chain_from_nested_affine_if(%arg0: i32, %arg1: i32, %m: memref<16xi32>) {
+-  // CHECK: %[[MUL:.*]] = arith.muli %arg0, %arg1
+-  // CHECK: %[[ADD:.*]] = arith.addi %[[MUL]], %arg0
+-  // CHECK: %[[SUB:.*]] = arith.subi %[[ADD]], %arg1
+-  // CHECK: %[[XOR:.*]] = arith.xori %arg0, %arg1
+-  // CHECK: affine.for %[[IV:.*]] = 0 to 16
+-  // CHECK:   affine.store %[[SUB]]
+-  // CHECK:   %[[CAST:.*]] = arith.index_cast %[[IV]]
+-  // CHECK:   %[[VAR:.*]] = arith.addi %[[ADD]], %[[CAST]]
+-  // CHECK:   affine.store %[[VAR]]
+-  // CHECK:   affine.store %[[XOR]]
+-  affine.for %i = 0 to 16 {
+-    affine.if #set(%i) {
+-      %0 = arith.muli %arg0, %arg1 : i32
+-      %1 = arith.addi %0, %arg0 : i32
+-      affine.if #set(%i) {
+-        %2 = arith.subi %1, %arg1 : i32
+-        affine.store %2, %m[%i] : memref<16xi32>
+-      }
+-      %3 = arith.index_cast %i : index to i32
+-      %4 = arith.addi %1, %3 : i32
+-      affine.store %4, %m[%i] : memref<16xi32>
+-    } else {
+-      %5 = arith.xori %arg0, %arg1 : i32
+-      affine.store %5, %m[%i] : memref<16xi32>
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// Non-speculatable ops must not be hoisted out of an affine.if, since the
+-// condition may guard against undefined behavior (e.g. division by zero).
+-
+-#set = affine_set<(d0) : (d0 - 4 >= 0)>
+-
+-// CHECK-LABEL: func @no_hoist_non_speculatable_op_from_affine_if
+-func.func @no_hoist_non_speculatable_op_from_affine_if(%arg0: i32, %arg1: i32, %m: memref<16xi32>) {
+-  // CHECK: affine.for
+-  // CHECK:   affine.if
+-  // CHECK:     arith.divsi
+-  affine.for %i = 0 to 16 {
+-    affine.if #set(%i) {
+-      %0 = arith.divsi %arg0, %arg1 : i32
+-      affine.store %0, %m[%i] : memref<16xi32>
+-    }
+-  }
+-  return
+-}
+ 
+ // -----
+ 
+@@ -1127,52 +1047,3 @@
+ // CHECK:      affine.for
+ // CHECK-NEXT:   affine.store
+ // CHECK-NEXT:   func.call @use
+-
+-// -----
+-
+-// The yields of a hoisted value stay in place.
+-
+-#set = affine_set<(d0) : (d0 - 4 >= 0)>
+-
+-// CHECK-LABEL: func @hoist_yielded_invariant_op_from_affine_if
+-func.func @hoist_yielded_invariant_op_from_affine_if(%arg0: i32, %arg1: i32, %arg2: memref<16xi32>) -> i32 {
+-  // CHECK: %[[INIT:.*]] = arith.muli %arg0, %arg1
+-  // CHECK: %[[MUL:.*]] = arith.muli %arg0, %[[INIT]]
+-  // CHECK: affine.for
+-  // CHECK:   affine.if
+-  // CHECK:     affine.yield %[[MUL]]
+-  %0 = arith.muli %arg0, %arg1 : i32
+-  %res = affine.for %i = 0 to 16 iter_args(%acc = %0) -> (i32) {
+-    %next = affine.if #set(%i) -> i32 {
+-      %1 = arith.muli %arg0, %0 : i32
+-      affine.store %1, %arg2[%i] : memref<16xi32>
+-      affine.yield %1 : i32
+-    } else {
+-      affine.yield %acc : i32
+-    }
+-    affine.yield %next : i32
+-  }
+-  return %res : i32
+-}
+-
+-// -----
+-
+-// Pure loop-invariant ops are hoisted out of any control-flow region nested in
+-// the loop, not only out of affine.if.
+-
+-// CHECK-LABEL: func @hoist_invariant_op_from_scf_if
+-func.func @hoist_invariant_op_from_scf_if(%arg0: i32, %arg1: i32, %m: memref<16xi32>) {
+-  // CHECK: %[[MUL:.*]] = arith.muli %arg0, %arg1
+-  // CHECK: affine.for
+-  // CHECK:   scf.if
+-  // CHECK:     affine.store %[[MUL]]
+-  affine.for %i = 0 to 16 {
+-    %t = arith.index_cast %i : index to i32
+-    %c = arith.cmpi sgt, %t, %arg0 : i32
+-    scf.if %c {
+-      %0 = arith.muli %arg0, %arg1 : i32
+-      affine.store %0, %m[%i] : memref<16xi32>
+-    }
+-  }
+-  return
+-}
+diff -ruN --strip-trailing-cr a/mlir/test/Dialect/SparseTensor/sparse_kernels_to_iterator.mlir b/mlir/test/Dialect/SparseTensor/sparse_kernels_to_iterator.mlir
+--- a/mlir/test/Dialect/SparseTensor/sparse_kernels_to_iterator.mlir
++++ b/mlir/test/Dialect/SparseTensor/sparse_kernels_to_iterator.mlir
+@@ -95,8 +95,6 @@
+ // CHECK:           %[[VAL_12:.*]] = sparse_tensor.coordinates %[[VAL_1]] level = 0 : tensor<10xi32, #sparse{{.*}}> to memref<?xindex>
+ // CHECK:           %[[VAL_13:.*]] = memref.load %[[VAL_11]]{{\[}}%[[VAL_3]]] : memref<?xindex>
+ // CHECK:           %[[VAL_14:.*]] = memref.load %[[VAL_11]]{{\[}}%[[VAL_2]]] : memref<?xindex>
+-// CHECK:           %[[VAL_29:.*]] = sparse_tensor.values %[[VAL_0]] : tensor<10xi32, #sparse{{.*}}> to memref<?xi32>
+-// CHECK:           %[[VAL_31:.*]] = sparse_tensor.values %[[VAL_1]] : tensor<10xi32, #sparse{{.*}}> to memref<?xi32>
+ // CHECK:           %[[VAL_15:.*]]:2 = scf.while (%[[VAL_16:.*]] = %[[VAL_9]], %[[VAL_17:.*]] = %[[VAL_13]]) : (index, index) -> (index, index) {
+ // CHECK:             %[[VAL_18:.*]] = arith.cmpi ult, %[[VAL_16]], %[[VAL_10]] : index
+ // CHECK:             %[[VAL_19:.*]] = arith.cmpi ult, %[[VAL_17]], %[[VAL_14]] : index
+@@ -111,17 +109,21 @@
+ // CHECK:             %[[VAL_27:.*]] = arith.cmpi eq, %[[VAL_24]], %[[VAL_25]] : index
+ // CHECK:             %[[VAL_28:.*]] = arith.andi %[[VAL_26]], %[[VAL_27]] : i1
+ // CHECK:             scf.if %[[VAL_28]] {
++// CHECK:               %[[VAL_29:.*]] = sparse_tensor.values %[[VAL_0]] : tensor<10xi32, #sparse{{.*}}> to memref<?xi32>
+ // CHECK:               %[[VAL_30:.*]] = memref.load %[[VAL_29]]{{\[}}%[[VAL_21]]] : memref<?xi32>
++// CHECK:               %[[VAL_31:.*]] = sparse_tensor.values %[[VAL_1]] : tensor<10xi32, #sparse{{.*}}> to memref<?xi32>
+ // CHECK:               %[[VAL_32:.*]] = memref.load %[[VAL_31]]{{\[}}%[[VAL_22]]] : memref<?xi32>
+ // CHECK:               %[[VAL_33:.*]] = arith.addi %[[VAL_30]], %[[VAL_32]] : i32
+ // CHECK:               memref.store %[[VAL_33]], %[[VAL_6]]{{\[}}%[[VAL_25]]] : memref<10xi32>
+ // CHECK:             } else {
+ // CHECK:               scf.if %[[VAL_26]] {
+-// CHECK:                 %[[VAL_35:.*]] = memref.load %[[VAL_29]]{{\[}}%[[VAL_21]]] : memref<?xi32>
++// CHECK:                 %[[VAL_34:.*]] = sparse_tensor.values %[[VAL_0]] : tensor<10xi32, #sparse{{.*}}> to memref<?xi32>
++// CHECK:                 %[[VAL_35:.*]] = memref.load %[[VAL_34]]{{\[}}%[[VAL_21]]] : memref<?xi32>
+ // CHECK:                 memref.store %[[VAL_35]], %[[VAL_6]]{{\[}}%[[VAL_25]]] : memref<10xi32>
+ // CHECK:               } else {
+ // CHECK:                 scf.if %[[VAL_27]] {
+-// CHECK:                   %[[VAL_37:.*]] = memref.load %[[VAL_31]]{{\[}}%[[VAL_22]]] : memref<?xi32>
++// CHECK:                   %[[VAL_36:.*]] = sparse_tensor.values %[[VAL_1]] : tensor<10xi32, #sparse{{.*}}> to memref<?xi32>
++// CHECK:                   %[[VAL_37:.*]] = memref.load %[[VAL_36]]{{\[}}%[[VAL_22]]] : memref<?xi32>
+ // CHECK:                   memref.store %[[VAL_37]], %[[VAL_6]]{{\[}}%[[VAL_25]]] : memref<10xi32>
+ // CHECK:                 }
+ // CHECK:               }
+@@ -132,14 +134,16 @@
+ // CHECK:             %[[VAL_41:.*]] = arith.select %[[VAL_27]], %[[VAL_40]], %[[VAL_22]] : index
+ // CHECK:             scf.yield %[[VAL_39]], %[[VAL_41]] : index, index
+ // CHECK:           }
++// CHECK:           %[[VAL_42:.*]] = sparse_tensor.values %[[VAL_0]] : tensor<10xi32, #sparse{{.*}}> to memref<?xi32>
+ // CHECK:           scf.for %[[VAL_43:.*]] = %[[VAL_44:.*]]#0 to %[[VAL_10]] step %[[VAL_2]] {
+ // CHECK:             %[[VAL_45:.*]] = memref.load %[[VAL_8]]{{\[}}%[[VAL_43]]] : memref<?xindex>
+-// CHECK:             %[[VAL_46:.*]] = memref.load %[[VAL_29]]{{\[}}%[[VAL_43]]] : memref<?xi32>
++// CHECK:             %[[VAL_46:.*]] = memref.load %[[VAL_42]]{{\[}}%[[VAL_43]]] : memref<?xi32>
+ // CHECK:             memref.store %[[VAL_46]], %[[VAL_6]]{{\[}}%[[VAL_45]]] : memref<10xi32>
+ // CHECK:           }
++// CHECK:           %[[VAL_47:.*]] = sparse_tensor.values %[[VAL_1]] : tensor<10xi32, #sparse{{.*}}> to memref<?xi32>
+ // CHECK:           scf.for %[[VAL_48:.*]] = %[[VAL_49:.*]]#1 to %[[VAL_14]] step %[[VAL_2]] {
+ // CHECK:             %[[VAL_50:.*]] = memref.load %[[VAL_12]]{{\[}}%[[VAL_48]]] : memref<?xindex>
+-// CHECK:             %[[VAL_51:.*]] = memref.load %[[VAL_31]]{{\[}}%[[VAL_48]]] : memref<?xi32>
++// CHECK:             %[[VAL_51:.*]] = memref.load %[[VAL_47]]{{\[}}%[[VAL_48]]] : memref<?xi32>
+ // CHECK:             memref.store %[[VAL_51]], %[[VAL_6]]{{\[}}%[[VAL_50]]] : memref<10xi32>
+ // CHECK:           }
+ // CHECK:           %[[VAL_52:.*]] = bufferization.to_tensor %[[VAL_6]] : memref<10xi32>
+diff -ruN --strip-trailing-cr a/mlir/test/Transforms/loop-invariant-code-motion.mlir b/mlir/test/Transforms/loop-invariant-code-motion.mlir
+--- a/mlir/test/Transforms/loop-invariant-code-motion.mlir
++++ b/mlir/test/Transforms/loop-invariant-code-motion.mlir
+@@ -85,12 +85,12 @@
+   }
+ 
+   // CHECK: memref.alloc() : memref<10xf32>
+-  // CHECK-NEXT: %[[CST:.*]] = arith.constant 8.000000e+00 : f32
+-  // CHECK-NEXT: %[[ADD:.*]] = arith.addf %[[CST]], %[[CST]] : f32
++  // CHECK-NEXT: arith.constant 8.000000e+00 : f32
+   // CHECK-NEXT: affine.for
+   // CHECK-NEXT: affine.apply
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[ADD]]
++  // CHECK-NEXT: arith.addf
++  // CHECK-NEXT: affine.store
+   // CHECK-NEXT: }
+ 
+ 
+@@ -114,9 +114,9 @@
+   // CHECK-NEXT: %[[CST:.*]] = arith.constant 8.000000e+00 : f32
+   // CHECK-NEXT: affine.for %[[ARG:.*]] = 0 to 20 {
+   // CHECK-NEXT: }
+-  // CHECK-NEXT: arith.addf %[[CST]], %[[CST]] : f32
+   // CHECK-NEXT: affine.for %[[ARG:.*]] = 0 to 10 {
+   // CHECK-NEXT: affine.if #set(%[[ARG]], %[[ARG]]) {
++  // CHECK-NEXT: arith.addf %[[CST]], %[[CST]] : f32
+   // CHECK-NEXT: }
+ 
+   return
+@@ -173,13 +173,8 @@
+   // CHECK-NEXT: arith.constant 0 : i32
+   // CHECK-NEXT: %[[CST:.*]] = arith.constant 42 : i32
+   // CHECK-NEXT: arith.constant 7 : index
+-  // CHECK-NEXT: %[[ADD:.*]] = arith.addi %[[CST]], %[[CST]] : i32
+-  // CHECK-NEXT: %[[POISON:.*]] = ub.poison : i32
+   // CHECK-NEXT: affine.for
+   // CHECK-NEXT: %[[IF:.*]] = affine.if
+-  // CHECK-NEXT: affine.yield %[[ADD]]
+-  // CHECK-NEXT: } else {
+-  // CHECK-NEXT: affine.yield %[[POISON]]
+   // CHECK: arith.addi %{{.*}}, %[[IF]]
+ 
+   return %sum_result : i32
+@@ -290,11 +285,11 @@
+ 
+   // CHECK: memref.alloc
+   // CHECK-NEXT: arith.constant
+-  // CHECK-NEXT: %[[ADD:.*]] = arith.addf
+   // CHECK-NEXT: affine.for
+   // CHECK-NEXT: affine.for
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[ADD]]
++  // CHECK-NEXT: arith.addf
++  // CHECK-NEXT: affine.store
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+ 
+@@ -321,11 +316,11 @@
+   // CHECK-NEXT: arith.constant
+   // CHECK-NEXT: affine.for
+   // CHECK-NEXT: }
+-  // CHECK-NEXT: %[[ADD:.*]] = arith.addf
+-  // CHECK-NEXT: arith.addf %[[ADD]], %[[ADD]]
+   // CHECK-NEXT: affine.for
+   // CHECK-NEXT: affine.if
++  // CHECK-NEXT: arith.addf
+   // CHECK-NEXT: affine.if
++  // CHECK-NEXT: arith.addf
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+ 
+@@ -354,15 +349,15 @@
+ 
+   // CHECK: memref.alloc
+   // CHECK-NEXT: arith.constant
+-  // CHECK-NEXT: %[[ADD:.*]] = arith.addf
+-  // CHECK-NEXT: arith.addf %[[ADD]], %[[ADD]]
+   // CHECK-NEXT: affine.for
+   // CHECK-NEXT: affine.for
+   // CHECK-NEXT: affine.if
+-  // CHECK-NEXT: affine.store %[[ADD]]
++  // CHECK-NEXT: arith.addf
++  // CHECK-NEXT: affine.store
+   // CHECK-NEXT: affine.if
++  // CHECK-NEXT: arith.addf
+   // CHECK-NEXT: } else {
+-  // CHECK-NEXT: affine.store %[[ADD]]
++  // CHECK-NEXT: affine.store
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+   // CHECK-NEXT: }
+@@ -498,14 +493,10 @@
+   // CHECK-NEXT: arith.constant 0 : i32
+   // CHECK-NEXT: %[[CST_42:.*]] = arith.constant 42 : i32
+   // CHECK-NEXT: %[[CST_7:.*]] = arith.constant 7 : index
+-  // CHECK-NEXT: %[[ADD:.*]] = arith.addi %[[CST_42]], %[[CST_42]] : i32
+-  // CHECK-NEXT: %[[POISON:.*]] = ub.poison : i32
+   // CHECK-NEXT: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}}
+   // CHECK-NEXT: %[[CMP:.*]] = arith.cmpi ult, %[[IV]], %[[CST_7]]
+   // CHECK-NEXT: %[[IF:.*]] = scf.if %[[CMP]]
+-  // CHECK-NEXT: scf.yield %[[ADD]]
+-  // CHECK-NEXT: } else {
+-  // CHECK-NEXT: scf.yield %[[POISON]]
++  // CHECK-NEXT: arith.addi %[[CST_42]], %[[CST_42]] : i32
+   // CHECK: arith.addi %{{.*}}, %[[IF]]
+ 
+   return %sum_result : i32
+@@ -1591,221 +1582,3 @@
+   }
+   func.return %final : vector<4x4xf32>
+ }
+-
+-// -----
+-
+-// Invariant ops are hoisted out of regions of ops that stay in the loop.
+-
+-// CHECK-LABEL: func @hoist_from_scf_if(
+-//  CHECK-SAME:     %[[A:.*]]: i32, %[[B:.*]]: i32,
+-//       CHECK:   %[[MUL:.*]] = arith.muli %[[A]], %[[B]]
+-//       CHECK:   scf.for
+-//       CHECK:     scf.if
+-//       CHECK:       memref.store %[[MUL]]
+-func.func @hoist_from_scf_if(%a: i32, %b: i32, %buf: memref<?xi32>,
+-                             %lb: index, %ub: index, %step: index) {
+-  scf.for %i = %lb to %ub step %step {
+-    %cond = arith.cmpi sgt, %i, %lb : index
+-    scf.if %cond {
+-      %m = arith.muli %a, %b : i32
+-      memref.store %m, %buf[%i] : memref<?xi32>
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: func @hoist_from_execute_region(
+-//  CHECK-SAME:     %[[A:.*]]: i32, %[[B:.*]]: i32,
+-//       CHECK:   %[[MUL:.*]] = arith.muli %[[A]], %[[B]]
+-//       CHECK:   scf.for
+-//       CHECK:     scf.execute_region
+-//       CHECK:       memref.store %[[MUL]]
+-func.func @hoist_from_execute_region(%a: i32, %b: i32, %buf: memref<?xi32>,
+-                                     %lb: index, %ub: index, %step: index) {
+-  scf.for %i = %lb to %ub step %step {
+-    scf.execute_region {
+-      %m = arith.muli %a, %b : i32
+-      memref.store %m, %buf[%i] : memref<?xi32>
+-      scf.yield
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// The enclosing loop can be any loop-like op.
+-
+-// CHECK-LABEL: func @hoist_from_scf_if_in_parallel(
+-//  CHECK-SAME:     %[[A:.*]]: i32, %[[B:.*]]: i32,
+-//       CHECK:   %[[ADD:.*]] = arith.addi %[[A]], %[[B]]
+-//       CHECK:   scf.parallel
+-//       CHECK:     scf.if
+-//       CHECK:       memref.store %[[ADD]]
+-func.func @hoist_from_scf_if_in_parallel(%a: i32, %b: i32,
+-                                         %buf: memref<?xi32>, %lb: index,
+-                                         %ub: index, %step: index) {
+-  scf.parallel (%i) = (%lb) to (%ub) step (%step) {
+-    %cond = arith.cmpi eq, %i, %lb : index
+-    scf.if %cond {
+-      %add = arith.addi %a, %b : i32
+-      memref.store %add, %buf[%i] : memref<?xi32>
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// Invariant ops are hoisted out of the whole loop nest.
+-
+-// CHECK-LABEL: func @hoist_from_affine_if_in_loop_nest(
+-//  CHECK-SAME:     %[[A:.*]]: f32,
+-//       CHECK:   %[[ADD:.*]] = arith.addf %[[A]], %[[A]]
+-//       CHECK:   affine.for
+-//       CHECK:     affine.for
+-//       CHECK:       affine.if
+-//       CHECK:         affine.store %[[ADD]]
+-func.func @hoist_from_affine_if_in_loop_nest(%a: f32, %buf: memref<10xf32>) {
+-  affine.for %i = 0 to 10 {
+-    affine.for %j = 0 to 10 {
+-      affine.if affine_set<(d0, d1) : (d1 - d0 >= 0)>(%i, %i) {
+-        %add = arith.addf %a, %a : f32
+-        affine.store %add, %buf[%i] : memref<10xf32>
+-      }
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// Chains of invariant ops are hoisted across nesting levels.
+-
+-// CHECK-LABEL: func @hoist_chain_across_nested_ifs(
+-//  CHECK-SAME:     %[[A:.*]]: i32, %[[B:.*]]: i32,
+-//       CHECK:   %[[MUL:.*]] = arith.muli %[[A]], %[[B]]
+-//       CHECK:   %[[ADD:.*]] = arith.addi %[[MUL]], %[[A]]
+-//       CHECK:   %[[SUB:.*]] = arith.subi %[[ADD]], %[[B]]
+-//       CHECK:   scf.for %[[I:.*]] =
+-//       CHECK:     scf.if
+-//       CHECK:       scf.if
+-//       CHECK:         memref.store %[[SUB]]
+-//       CHECK:       %[[CAST:.*]] = arith.index_cast %[[I]]
+-//       CHECK:       %[[VAR:.*]] = arith.addi %[[ADD]], %[[CAST]]
+-//       CHECK:       memref.store %[[VAR]]
+-func.func @hoist_chain_across_nested_ifs(%a: i32, %b: i32, %buf: memref<?xi32>,
+-                                         %lb: index, %ub: index, %step: index) {
+-  scf.for %i = %lb to %ub step %step {
+-    %cond = arith.cmpi sgt, %i, %lb : index
+-    scf.if %cond {
+-      %m = arith.muli %a, %b : i32
+-      %s = arith.addi %m, %a : i32
+-      scf.if %cond {
+-        %t = arith.subi %s, %b : i32
+-        memref.store %t, %buf[%i] : memref<?xi32>
+-      }
+-      %iv = arith.index_cast %i : index to i32
+-      %v = arith.addi %s, %iv : i32
+-      memref.store %v, %buf[%i] : memref<?xi32>
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// A pure op with regions is hoisted as a whole.
+-
+-// CHECK-LABEL: func @hoist_pure_if_as_unit(
+-//  CHECK-SAME:     %[[A:.*]]: i32, %[[B:.*]]: i32, %[[C:.*]]: i1,
+-//       CHECK:   %[[X:.*]] = scf.if %[[C]]
+-//       CHECK:     arith.muli %[[A]], %[[B]]
+-//       CHECK:   scf.for
+-//       CHECK:     scf.if
+-//       CHECK:       memref.store %[[X]]
+-func.func @hoist_pure_if_as_unit(%a: i32, %b: i32, %c: i1,
+-                                 %buf: memref<?xi32>, %lb: index, %ub: index,
+-                                 %step: index) {
+-  scf.for %i = %lb to %ub step %step {
+-    %cond = arith.cmpi sgt, %i, %lb : index
+-    scf.if %cond {
+-      %x = scf.if %c -> (i32) {
+-        %m = arith.muli %a, %b : i32
+-        scf.yield %m : i32
+-      } else {
+-        scf.yield %a : i32
+-      }
+-      memref.store %x, %buf[%i] : memref<?xi32>
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// Non-speculatable ops stay under the condition that guards them.
+-
+-// CHECK-LABEL: func @do_not_hoist_divsi_from_scf_if(
+-//       CHECK:   scf.for
+-//       CHECK:     scf.if
+-//       CHECK:       arith.divsi
+-func.func @do_not_hoist_divsi_from_scf_if(%a: i32, %b: i32,
+-                                          %buf: memref<?xi32>, %lb: index,
+-                                          %ub: index, %step: index) {
+-  scf.for %i = %lb to %ub step %step {
+-    %cond = arith.cmpi sgt, %i, %lb : index
+-    scf.if %cond {
+-      %d = arith.divsi %a, %b : i32
+-      memref.store %d, %buf[%i] : memref<?xi32>
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// linalg.index depends on the enclosing linalg.generic and must stay in it.
+-
+-// CHECK-LABEL: func @do_not_hoist_linalg_index(
+-//       CHECK:   scf.for
+-//       CHECK:     linalg.generic
+-//       CHECK:       linalg.index
+-func.func @do_not_hoist_linalg_index(%buf: memref<?xindex>, %lb: index,
+-                                     %ub: index, %step: index) {
+-  scf.for %i = %lb to %ub step %step {
+-    linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>],
+-                    iterator_types = ["parallel"]}
+-        outs(%buf : memref<?xindex>) {
+-    ^bb0(%out: index):
+-      %idx = linalg.index 0 : index
+-      linalg.yield %idx : index
+-    }
+-  }
+-  return
+-}
+-
+-// -----
+-
+-// Ops in unreachable blocks may use values defined after the loop.
+-
+-// CHECK-LABEL: func @do_not_hoist_from_unreachable_block(
+-//       CHECK:   scf.for
+-//       CHECK:     scf.execute_region
+-//       CHECK:       arith.muli
+-func.func @do_not_hoist_from_unreachable_block(%a: i32, %lb: index,
+-                                               %ub: index,
+-                                               %step: index) -> i32 {
+-  scf.for %i = %lb to %ub step %step {
+-    scf.execute_region {
+-      scf.yield
+-    ^dead:
+-      %x = arith.muli %late, %a : i32
+-      scf.yield
+-    }
+-  }
+-  %late = arith.addi %a, %a : i32
+-  return %late : i32
+-}
