@@ -318,13 +318,14 @@ namespace ifrt {
 namespace impl {
 
 LogicalResult verifyNestedInIfrtFunc(Operation* op) {
-  auto func_op = op->getParentOfType<func::FuncOp>();
-  if (func_op != nullptr &&
-      !func_op->hasAttr(::xla::ifrt::kIfrtFunctionAttrName) &&
-      !func_op->hasAttr(::xla::ifrt::kIfrtReshardFunctionAttrName)) {
+  func::FuncOp func_op =
+      llvm::dyn_cast_or_null<func::FuncOp>(op->getParentOp());
+  if (func_op == nullptr ||
+      (!func_op->hasAttr(::xla::ifrt::kIfrtFunctionAttrName) &&
+       !func_op->hasAttr(::xla::ifrt::kIfrtReshardFunctionAttrName))) {
     return op->emitOpError()
            << "must be in a FuncOp with attr `"
-           << ::xla::ifrt::kIfrtFunctionAttrName << "` or atttr `"
+           << ::xla::ifrt::kIfrtFunctionAttrName << "` or attr `"
            << ::xla::ifrt::kIfrtReshardFunctionAttrName << "`";
   }
   return success();

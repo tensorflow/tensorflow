@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
-#include "mlir/IR/Visitors.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -105,7 +104,7 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
   llvm::DenseMap<std::pair<mlir::SymbolRefAttr, mlir::StringAttr>,
                  mlir::SymbolRefAttr>
       module_and_type_refs_to_callee_symbol_ref;
-  auto result = main_func.walk([&](CallOp call_op) -> mlir::WalkResult {
+  for (CallOp call_op : main_func.getOps<CallOp>()) {
     mlir::StringAttr module_type_attr =
         call_op->getAttrOfType<mlir::StringAttr>(kIfrtModuleTypeAttrName);
     if (module_type_attr == nullptr) {
@@ -116,52 +115,48 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
         module_type_attr = builder.getStringAttr(*module_type);
         call_op->setAttr(kIfrtModuleTypeAttrName, module_type_attr);
       } else {
-        return mlir::WalkResult::interrupt();
+        signalPassFailure();
+        return;
       }
     }
 
-    bool new_module_type = callee_module_type_count[call_op.getCallee()]
-                               .insert(module_type_attr)
-                               .second;
+    auto& module_types = callee_module_type_count[call_op.getCallee()];
+    bool new_module_type = module_types.insert(module_type_attr).second;
+    mlir::SymbolRefAttr& callee_symbol_ref =
+        module_and_type_refs_to_callee_symbol_ref[std::make_pair(
+            call_op.getCallee(), module_type_attr)];
     // Clone the callee module if it is of a new type, and there's more than
     // one type.
     if (new_module_type) {
-      if (callee_module_type_count[call_op.getCallee()].size() > 1) {
+      if (module_types.size() > 1) {
         mlir::FailureOr<mlir::ModuleOp> callee_module =
             GetOutlinedAtomProgramModule(call_op, symbol_table);
         if (mlir::failed(callee_module)) {
-          return mlir::WalkResult::interrupt();
+          signalPassFailure();
+          return;
         }
         ClonedAtomProgramModule cloned =
             CloneOutlinedAtomProgramModule(*callee_module, symbol_table);
-        module_and_type_refs_to_callee_symbol_ref[std::make_pair(
-            call_op.getCallee(), module_type_attr)] = cloned.callee_ref;
+        callee_symbol_ref = cloned.callee_ref;
       } else {
-        module_and_type_refs_to_callee_symbol_ref[std::make_pair(
-            call_op.getCallee(), module_type_attr)] = call_op.getCalleeAttr();
+        callee_symbol_ref = call_op.getCalleeAttr();
       }
     }
-    call_op.setCalleeAttr(
-        module_and_type_refs_to_callee_symbol_ref[std::make_pair(
-            call_op.getCallee(), module_type_attr)]);
-    return mlir::WalkResult::advance();
-  });
-  if (result.wasInterrupted()) {
-    signalPassFailure();
-    return;
+    call_op.setCalleeAttr(callee_symbol_ref);
   }
 
   // Stores symbol references to modules that have been preprocessed.
   mlir::DenseSet<mlir::SymbolRefAttr> preprocessed_modules;
-  result = main_func.walk([&](CallOp call_op) -> mlir::WalkResult {
+  for (CallOp call_op : main_func.getOps<CallOp>()) {
     // Preprocess a module only if it hasn't been already preprocessed.
     if (!preprocessed_modules.insert(call_op.getCallee()).second) {
-      return mlir::WalkResult::advance();
+      continue;
     }
     mlir::FailureOr<mlir::ModuleOp> callee_module =
         GetOutlinedAtomProgramModule(call_op, symbol_table);
     if (mlir::failed(callee_module)) {
-      return mlir::WalkResult::interrupt();
+      signalPassFailure();
+      return;
     }
     mlir::StringAttr module_type_attr =
         call_op->getAttrOfType<mlir::StringAttr>(kIfrtModuleTypeAttrName);
@@ -172,13 +167,9 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
       CHECK(module_type_attr == kIfrtModuleTypeMpmdReshard);
     }
     if (mlir::failed(runPipeline(pm, *callee_module))) {
-      return mlir::WalkResult::interrupt();
+      signalPassFailure();
+      return;
     }
-    return mlir::WalkResult::advance();
-  });
-  if (result.wasInterrupted()) {
-    signalPassFailure();
-    return;
   }
 }
 

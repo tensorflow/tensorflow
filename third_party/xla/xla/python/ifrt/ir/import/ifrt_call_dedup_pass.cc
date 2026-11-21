@@ -208,12 +208,12 @@ class IfrtCallDedupPass
     // the top-level `FuncOp` iterator and each callee is resolved only once.
     llvm::SmallVector<std::pair<CallOp, mlir::func::FuncOp>> calls;
     for (mlir::func::FuncOp func_op : GetIfrtFunctions(module_op)) {
-      func_op.walk([&](CallOp call_op) {
+      for (CallOp call_op : func_op.getOps<CallOp>()) {
         if (mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
             callee != nullptr && callee.getBody().hasOneBlock()) {
           calls.push_back({call_op, callee});
         }
-      });
+      }
     }
 
     // Process calls in program order so deduplicated producer outputs (e.g.,

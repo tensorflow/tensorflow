@@ -108,3 +108,24 @@ xla_cc_test(
         "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
+
+xla_cc_test(
+    name = "lower_to_ifrt_test",
+    srcs = ["lower_to_ifrt_test.cc"],
+    tags = ["not_run:arm"],
+    deps = [
+        ":lower_to_ifrt",
+        "//xla/client:executable_build_options",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:ifrt_ir_test_base",
+        "//xla/python/ifrt/ir:utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)

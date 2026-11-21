@@ -42,14 +42,12 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "mlir/IR/Visitors.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
-#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/mpmd/ir/dialect.h"
 #include "shardy/dialect/mpmd/ir/utils.h"
@@ -392,7 +390,7 @@ class BuildCompileOptionsPass
     mlir::SymbolTableCollection symbol_table;
     mlir::func::FuncOp func_op = GetMainFunction(module);
 
-    auto walk_result = func_op.walk([&](CallOp call_op) {
+    for (CallOp call_op : func_op.getOps<CallOp>()) {
       mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
       mlir::ModuleOp callee_module = callee->getParentOfType<mlir::ModuleOp>();
       std::string callee_name = callee_module.getSymName()->str();
@@ -414,7 +412,8 @@ class BuildCompileOptionsPass
         call_op.emitError()
             << " is missing " << xla::ifrt::kIfrtMeshNameAttrName.str()
             << " attribute";
-        return mlir::WalkResult::interrupt();
+        signalPassFailure();
+        return;
       }
       // While the users provide per-mesh compilation options, we need to
       // include callee name in the key because fragments assigned to the same
@@ -431,11 +430,6 @@ class BuildCompileOptionsPass
         compile_options.env_option_overrides = option_overrides->second;
       }
       compile_options_map_.emplace(compile_options_key, compile_options);
-      return mlir::WalkResult::skip();
-    });
-
-    if (walk_result.wasInterrupted()) {
-      signalPassFailure();
     }
   }
 

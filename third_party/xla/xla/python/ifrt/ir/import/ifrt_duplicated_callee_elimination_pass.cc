@@ -17,13 +17,13 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"
+#include "xla/python/ifrt/ir/utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -85,14 +85,16 @@ void IfrtDuplicatedCalleeEliminationPass::runOnOperation() {
   mlir::SymbolTableCollection symbol_table;
   mlir::DenseMap<mlir::func::FuncOp, mlir::SymbolRefAttr, FuncInfo>
       unique_funcs;
-  getOperation().walk([&](CallOp call_op) {
-    mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-    auto [it, inserted] =
-        unique_funcs.insert({callee, call_op.getCalleeAttr()});
-    if (!inserted) {
-      call_op.setCalleeAttr(it->second);
+  for (mlir::func::FuncOp func_op : GetIfrtFunctions(getOperation())) {
+    for (CallOp call_op : func_op.getOps<CallOp>()) {
+      mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+      auto [it, inserted] =
+          unique_funcs.insert({callee, call_op.getCalleeAttr()});
+      if (!inserted) {
+        call_op.setCalleeAttr(it->second);
+      }
     }
-  });
+  }
 }
 
 }  // namespace

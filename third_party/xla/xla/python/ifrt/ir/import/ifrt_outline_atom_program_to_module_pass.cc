@@ -26,8 +26,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
-#include "mlir/IR/Visitors.h"
-#include "mlir/Support/WalkResult.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
@@ -60,10 +58,10 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
   llvm::SmallVector<mlir::Operation*, 16> to_erase;
   mlir::ModuleOp module_op = getOperation();
   mlir::func::FuncOp main_func = GetMainFunction(module_op);
-  auto result = main_func.walk([&](CallOp call_op) -> mlir::WalkResult {
+  for (CallOp call_op : main_func.getOps<CallOp>()) {
     // Maybe visited by a previous CallOp with the same callee.
     if (visited.contains(call_op)) {
-      return mlir::WalkResult::advance();
+      continue;
     }
 
     // Find the callee.
@@ -71,7 +69,7 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
     if (callee.getSymName() == kCalleeMainFuncName &&
         llvm::isa<mlir::ModuleOp>(callee->getParentOp())) {
       // Atom program is already outlined in module. Do nothing.
-      return mlir::WalkResult::advance();
+      continue;
     }
 
     // Create a ModuleOp and clone callee into it.
@@ -124,7 +122,8 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
                 << "uses a symbol in attributes `"
                 << sym_use.getSymbolRef().getRootReference().str()
                 << "` that does not exist in the ModuleOp.";
-            return mlir::WalkResult::interrupt();
+            signalPassFailure();
+            return;
           }
           if (auto mesh_op = llvm::dyn_cast<mlir::sdy::MeshOp>(sym_op)) {
             if (visited_meshes.insert(mesh_op).second) {
@@ -139,7 +138,8 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
                 << sym_use.getSymbolRef().getRootReference().str()
                 << "` that is not a FuncOp or MeshOp. Cannot handle such "
                    "cases for now.";
-            return mlir::WalkResult::interrupt();
+            signalPassFailure();
+            return;
           }
         }
       }
@@ -160,7 +160,8 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
               << "requires symbol `" << callee.getSymName()
               << "` only used by ifrt.Call. Found use by `"
               << user.getOperationName() << "`";
-          return mlir::WalkResult::interrupt();
+          signalPassFailure();
+          return;
         }
         user.setCalleeAttr(new_symbol);
         visited.insert(user);
@@ -169,13 +170,8 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
 
     // Can't erase callee yet during iteration.
     to_erase.push_back(callee);
-    return mlir::WalkResult::advance();
-  });
-
-  if (result.wasInterrupted()) {
-    signalPassFailure();
-    return;
   }
+
   for (mlir::Operation* op : to_erase) {
     op->erase();
   }

@@ -27,10 +27,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
-#include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
@@ -190,7 +188,7 @@ void IfrtPopulateAtomProgramMetadataPass::runOnOperation() {
   mlir::func::FuncOp main_func = GetMainFunction(module_op);
 
   // Group `CallOp`s by `(callee, metadata)` in forward program order using
-  // `IfrtCallOpInfo`, scoping `group_idx_by_call` to the read-only walk so it
+  // `IfrtCallOpInfo`, scoping `group_idx_by_call` to the read-only scan so it
   // is destroyed before any `CallOp`'s callee attribute is mutated. Because
   // each callee's earliest group appears first in `all_groups`, iterating
   // `llvm::reverse(all_groups)` clones later variants first and lets the
@@ -199,9 +197,10 @@ void IfrtPopulateAtomProgramMetadataPass::runOnOperation() {
   llvm::SmallVector<llvm::SmallVector<CallOp, 2>> all_groups;
   {
     llvm::DenseMap<CallOp, size_t, IfrtCallOpInfo> group_idx_by_call;
-    mlir::WalkResult result = main_func.walk([&](CallOp call_op) {
+    for (CallOp call_op : main_func.getOps<CallOp>()) {
       if (mlir::failed(GetOutlinedAtomProgramModule(call_op, symbol_table))) {
-        return mlir::WalkResult::interrupt();
+        signalPassFailure();
+        return;
       }
       auto [group_it, group_inserted] =
           group_idx_by_call.insert({call_op, all_groups.size()});
@@ -210,11 +209,6 @@ void IfrtPopulateAtomProgramMetadataPass::runOnOperation() {
       } else {
         all_groups[group_it->second].push_back(call_op);
       }
-      return mlir::WalkResult::advance();
-    });
-    if (result.wasInterrupted()) {
-      signalPassFailure();
-      return;
     }
   }
 

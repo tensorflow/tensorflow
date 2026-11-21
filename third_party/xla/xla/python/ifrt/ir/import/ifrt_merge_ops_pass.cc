@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
@@ -214,10 +213,11 @@ bool MergeOpsIgnoringControlDependencies(FuncOp func_op) {
   llvm::DenseMap<llvm::hash_code, std::queue<IfrtPairwiseArrayOpInterface>>
       merge_groups;
 
-  func_op.walk([&](IfrtPairwiseArrayOpInterface array_op) {
+  for (IfrtPairwiseArrayOpInterface array_op :
+       func_op.getOps<IfrtPairwiseArrayOpInterface>()) {
     if (array_op->use_empty() || !array_op.getControlInputs().empty() ||
         array_op.getInputs().empty() || array_op.getOutputs().empty()) {
-      return;
+      continue;
     }
     if (CopyArraysOp copy_arrays_op =
             mlir::dyn_cast<CopyArraysOp>(array_op.getOperation());
@@ -233,7 +233,7 @@ bool MergeOpsIgnoringControlDependencies(FuncOp func_op) {
                bitcast_op != nullptr && HasUniformDevices(bitcast_op)) {
       merge_groups[GetMergeKey(bitcast_op)].push(array_op);
     }
-  });
+  }
 
   // Rewrite each group of ops while respecting the dominance order.
   bool rewritten = false;

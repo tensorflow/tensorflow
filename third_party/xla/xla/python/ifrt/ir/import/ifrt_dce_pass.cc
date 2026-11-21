@@ -28,16 +28,13 @@ limitations under the License.
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Iterators.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
-#include "mlir/IR/Visitors.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -343,53 +340,47 @@ class IfrtDcePass : public impl::IfrtDcePassBase<IfrtDcePass> {
     // calls.
     llvm::DenseSet<mlir::func::FuncOp> simplified_callees;
     for (mlir::func::FuncOp func_op : ifrt_funcs) {
-      mlir::WalkResult walk_result = func_op.walk([&](CallOp call_op) {
+      for (CallOp call_op : func_op.getOps<CallOp>()) {
         mlir::FailureOr<mlir::func::FuncOp> callee =
             symbol_manager->GetCallee(call_op);
         if (mlir::failed(callee)) {
-          return mlir::WalkResult::interrupt();
+          signalPassFailure();
+          return;
         }
         if (simplified_callees.insert(*callee).second) {
           symbol_manager->RecordOpMutation(*callee, [&]() {
             (void)mlir::simplifyRegions(rewriter, callee->getBody());
           });
         }
-        return mlir::WalkResult::advance();
-      });
-      if (walk_result.wasInterrupted()) {
-        signalPassFailure();
-        return;
       }
     }
 
     for (mlir::func::FuncOp func_op : ifrt_funcs) {
-      mlir::WalkResult walk_result =
-          func_op.walk<mlir::WalkOrder::PreOrder, mlir::ReverseIterator>(
-              [&](mlir::Operation* op) {
-                return llvm::TypeSwitch<mlir::Operation*, mlir::WalkResult>(op)
-                    .Case<CallOp>([&](CallOp call_op) {
-                      if (mlir::failed(EliminateCallDce(
-                              call_op, *symbol_manager, rewriter))) {
-                        return mlir::WalkResult::interrupt();
-                      }
-                      return mlir::WalkResult::skip();
+      for (mlir::Operation* op = &func_op.getBody().front().back();
+           op != nullptr;) {
+        mlir::Operation* prev_op = op->getPrevNode();
+        const mlir::LogicalResult op_result =
+            llvm::TypeSwitch<mlir::Operation*, mlir::LogicalResult>(op)
+                .Case<CallOp>([&](CallOp call_op) {
+                  return EliminateCallDce(call_op, *symbol_manager, rewriter);
+                })
+                .Case<IfrtPairwiseArrayOpInterface>(
+                    [&](IfrtPairwiseArrayOpInterface pairwise_op) {
+                      EliminateUnusedPairwiseArrayOpOutputs(
+                          pairwise_op, *symbol_manager, rewriter);
+                      return mlir::success();
                     })
-                    .Case<IfrtPairwiseArrayOpInterface>(
-                        [&](IfrtPairwiseArrayOpInterface pairwise_op) {
-                          EliminateUnusedPairwiseArrayOpOutputs(
-                              pairwise_op, *symbol_manager, rewriter);
-                          return mlir::WalkResult::skip();
-                        })
-                    .Case<RemapArraysOp>([&](RemapArraysOp remap_op) {
-                      EliminateUnusedRemapArraysOutputs(
-                          remap_op, *symbol_manager, rewriter);
-                      return mlir::WalkResult::skip();
-                    })
-                    .Default(mlir::WalkResult::advance());
-              });
-      if (walk_result.wasInterrupted()) {
-        signalPassFailure();
-        return;
+                .Case<RemapArraysOp>([&](RemapArraysOp remap_op) {
+                  EliminateUnusedRemapArraysOutputs(remap_op, *symbol_manager,
+                                                    rewriter);
+                  return mlir::success();
+                })
+                .Default(mlir::success());
+        if (mlir::failed(op_result)) {
+          signalPassFailure();
+          return;
+        }
+        op = prev_op;
       }
     }
 

@@ -22,7 +22,8 @@ include "mlir/IR/OpBase.td"
 // Op interfaces
 //===---------------------------------------------------------------------------
 
-// Verifies op used in a FuncOp with `ifrt.function` attr.
+// Verifies that the op is directly nested in a `FuncOp` with `ifrt.function` or
+// `ifrt.reshard_function` attr.
 def NestedInIfrtFunc : NativeOpTrait<"xla::ifrt::NestedInIfrtFuncTrait">;
 
 // Verifies callee is a valid symbol ref to callee_op_type.

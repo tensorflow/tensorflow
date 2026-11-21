@@ -119,3 +119,31 @@ module @control_inputs_added_to_copy_arrays {
     return %1 : tensor<2x2xi32>
   }
 }
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [2,3]>
+// CHECK-LABEL: @multiple_ifrt_functions
+module @multiple_ifrt_functions {
+  // CHECK-LABEL: func.func @main
+  func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
+    // CHECK: %[[MAIN_COPIED:.+]], %{{.+}} = ifrt.CopyArrays(%arg0)
+    %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> !array1
+    // CHECK: %[[SEC_RESULT:.+]] = call @secondary(%[[MAIN_COPIED]])
+    %1 = func.call @secondary(%0) : (!array1) -> !array0
+    // CHECK: return %[[SEC_RESULT]]
+    return %1 : !array0
+  }
+
+  // CHECK-LABEL: func.func private @secondary
+  func.func private @secondary(%arg0: !array1) -> !array0
+      attributes {ifrt.function} {
+    // CHECK: %[[SEC_COPIED:.+]], %{{.+}} = ifrt.CopyArrays(%arg0)
+    %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array1) -> !array0
+    // CHECK: return %[[SEC_COPIED]]
+    return %0 : !array0
+  }
+}

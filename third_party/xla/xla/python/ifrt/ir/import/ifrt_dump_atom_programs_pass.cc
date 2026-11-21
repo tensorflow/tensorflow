@@ -89,27 +89,23 @@ class IfrtDumpAtomProgramsPass
     absl::flat_hash_set<std::string> dumped_atom_program_names;
 
     mlir::func::FuncOp main_func = GetMainFunction(getOperation());
-    mlir::WalkResult result =
-        main_func.walk([&](CallOp call_op) -> mlir::WalkResult {
-          mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-          CHECK(callee != nullptr);
-          auto atom_program_module =
-              llvm::cast<mlir::ModuleOp>(callee->getParentOp());
-          std::string atom_program_name =
-              atom_program_module.getSymNameAttr().str();
-          if (dumped_atom_program_names.insert(atom_program_name).second) {
-            if (auto status = DumpOperation(atom_program_module, dump_dir,
-                                            atom_program_name);
-                !status.ok()) {
-              call_op->emitOpError()
-                  << "failed to dump atom program: " << status.ToString();
-              return mlir::WalkResult::interrupt();
-            }
-          }
-          return mlir::WalkResult::advance();
-        });
-    if (result.wasInterrupted()) {
-      signalPassFailure();
+    for (CallOp call_op : main_func.getOps<CallOp>()) {
+      mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+      CHECK(callee != nullptr);
+      auto atom_program_module =
+          llvm::cast<mlir::ModuleOp>(callee->getParentOp());
+      std::string atom_program_name =
+          atom_program_module.getSymNameAttr().str();
+      if (dumped_atom_program_names.insert(atom_program_name).second) {
+        if (auto status =
+                DumpOperation(atom_program_module, dump_dir, atom_program_name);
+            !status.ok()) {
+          call_op->emitOpError()
+              << "failed to dump atom program: " << status.ToString();
+          signalPassFailure();
+          return;
+        }
+      }
     }
 
     // Clones the module because the bodies of non-IFRT functions are erased

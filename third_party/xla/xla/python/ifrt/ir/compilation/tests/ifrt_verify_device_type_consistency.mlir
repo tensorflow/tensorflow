@@ -171,3 +171,60 @@ module @multiple_cuda_and_rocm{
     return %0 : tensor<2x2xi32>
   }
 }
+
+// -----
+
+// CHECK-LABEL: @good_call_multiple_ifrt_functions
+#sharding = #ifrt.sharding_param<2 to [0] on 2>
+module @good_call_multiple_ifrt_functions {
+  func.func @main() -> !ifrt.array<tensor<2xi32>, #sharding, [0,3]>
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @const_hlo() on devices [0,3]
+        : () -> !ifrt.array<tensor<2xi32>, #sharding, [0,3]>
+    return %0 : !ifrt.array<tensor<2xi32>, #sharding, [0,3]>
+  }
+
+  func.func @secondary() -> !ifrt.array<tensor<2xi32>, #sharding, [5,6]>
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @const_hlo() on devices [5,6]
+        : () -> !ifrt.array<tensor<2xi32>, #sharding, [5,6]>
+    return %0 : !ifrt.array<tensor<2xi32>, #sharding, [5,6]>
+  }
+
+  func.func private @const_hlo() -> tensor<2xi32> {
+    %0 = mhlo.constant dense<1> : tensor<2xi32>
+    return %0 : tensor<2xi32>
+  }
+}
+
+// -----
+
+module @error_in_secondary_ifrt_function {
+  func.func @main() -> !ifrt.array<tensor<2x2xi32>,
+                                   #ifrt.sharding_param<2x1 to [0] on 2>,
+                                   [0, 1]>
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @hlo() on devices [0,1]
+        : () -> !ifrt.array<tensor<2x2xi32>,
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+    return %0 : !ifrt.array<tensor<2x2xi32>,
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+  }
+
+  func.func @secondary() -> !ifrt.array<tensor<2x2xi32>,
+                                        #ifrt.sharding_param<2x1 to [0] on 2>,
+                                        [0, 2]>
+      attributes {ifrt.function} {
+    // expected-error @+1 {{'ifrt.Call' op requires a single platform type. Expected platform: tpu. Actual platform of logical device 2: cpu}}
+    %0, %ctrl_0 = ifrt.Call @hlo() on devices [0,2]
+        : () -> !ifrt.array<tensor<2x2xi32>,
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [0,2]>
+    return %0 : !ifrt.array<tensor<2x2xi32>,
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [0,2]>
+  }
+
+  func.func private @hlo() -> tensor<2x2xi32> {
+    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
+    return %0 : tensor<2x2xi32>
+  }
+}

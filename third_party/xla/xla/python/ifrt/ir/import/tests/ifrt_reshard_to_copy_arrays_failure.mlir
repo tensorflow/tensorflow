@@ -81,3 +81,40 @@ module @all_reshards_converted_to_copy_arrays {
     return %0, %1 : !array1, !array1
   }
 }
+
+// -----
+
+#sharding_src = #ifrt.sharding_param<2x1 to [0] on 2>
+#sharding_dst = #ifrt.sharding_param<1x1 to [0] on 2>
+!array0 = !ifrt.array<tensor<2x2xi32>, #sharding_src, [0, 1]>
+!array1_copy = !ifrt.array<tensor<2x2xi32>, #sharding_src, [2, 3]>
+!array1_reshard = !ifrt.array<tensor<2x2xi32>, #sharding_dst, [2, 3]>
+
+module @remaining_reshard_in_secondary_ifrt_function {
+  func.func @main(%arg0: !array0) -> !array1_copy attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> !array1_copy
+    return %0 : !array1_copy
+  }
+
+  func.func @secondary(%arg0: !array0) -> !array1_reshard
+      attributes {ifrt.function} {
+    // expected-error @+1 {{Detected `ifrt.Reshard` op remaining after converting reshards to `ifrt.CopyArrays`; inputs: [!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>], outputs: [!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [2, 3]>]}}
+    %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> !array1_reshard
+    return %0 : !array1_reshard
+  }
+}
+
+// -----
+
+#sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+!array0 = !ifrt.array<tensor<2x2xi32>, #sharding, [0, 1]>
+!array1 = !ifrt.array<tensor<2x2xi32>, #sharding, [2, 3]>
+
+module @reshard_with_used_control_output {
+  func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
+    // expected-error @+1 {{'ifrt.Reshard' op cannot extract `ifrt.CopyArrays` from `ifrt.Reshard` with control dependency output}}
+    %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> !array1
+    %1, %ctrl_1 = ifrt.CopyArrays(%0) after %ctrl_0 : (!array1) -> !array0
+    return %1 : !array0
+  }
+}

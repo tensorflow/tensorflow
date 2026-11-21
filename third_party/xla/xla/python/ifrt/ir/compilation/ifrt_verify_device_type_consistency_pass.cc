@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/compilation/passes.h"  // IWYU pragma: keep
 #include "xla/python/ifrt/ir/compilation/utils.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -151,55 +152,54 @@ bool IfrtVerifyDeviceTypeConsistencyPass::IsConsistentWithModuleType(
 void IfrtVerifyDeviceTypeConsistencyPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
   mlir::SymbolTableCollection symbol_table;
-  mlir::WalkResult result =
-      module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
-        llvm::ArrayRef<int> devices = call_op.getDevices();
-        DCHECK(!devices.empty()) << "has empty device list";
+  for (mlir::func::FuncOp func_op : GetIfrtFunctions(module_op)) {
+    for (CallOp call_op : func_op.getOps<CallOp>()) {
+      llvm::ArrayRef<int> devices = call_op.getDevices();
+      DCHECK(!devices.empty()) << "has empty device list";
 
-        mlir::FailureOr<ModuleType> callee_module_type =
-            getChildAnalysis<ModuleTypeAnalysis>(
-                call_op.getCalleeOp(symbol_table))
-                .GetModuleType();
-        if (mlir::failed(callee_module_type)) {
-          return mlir::WalkResult::interrupt();
+      mlir::FailureOr<ModuleType> callee_module_type =
+          getChildAnalysis<ModuleTypeAnalysis>(
+              call_op.getCalleeOp(symbol_table))
+              .GetModuleType();
+      if (mlir::failed(callee_module_type)) {
+        signalPassFailure();
+        return;
+      }
+
+      // Use the first device ID to find platform name.
+      mlir::FailureOr<llvm::StringRef> first_platform =
+          GetPlatformNameForDeviceId(call_op, devices.front(), platform_names_);
+      if (mlir::failed(first_platform)) {
+        signalPassFailure();
+        return;
+      }
+
+      if (!IsConsistentWithModuleType(*callee_module_type, *first_platform)) {
+        call_op->emitOpError()
+            << "has platform: " << *first_platform
+            << ", which is incompatible with the module type inferred from "
+               "callee.";
+        signalPassFailure();
+        return;
+      }
+
+      for (int device_id : devices) {
+        mlir::FailureOr<llvm::StringRef> device_platform =
+            GetPlatformNameForDeviceId(call_op, device_id, platform_names_);
+        if (mlir::failed(device_platform)) {
+          signalPassFailure();
+          return;
         }
-
-        // Use the first device ID to find platform name.
-        mlir::FailureOr<llvm::StringRef> first_platform =
-            GetPlatformNameForDeviceId(call_op, devices.front(),
-                                       platform_names_);
-        if (mlir::failed(first_platform)) {
-          return mlir::WalkResult::interrupt();
-        }
-
-        if (!IsConsistentWithModuleType(*callee_module_type, *first_platform)) {
+        if (*device_platform != *first_platform) {
           call_op->emitOpError()
-              << "has platform: " << *first_platform
-              << ", which is incompatible with the module type inferred from "
-                 "callee.";
-          return mlir::WalkResult::interrupt();
+              << "requires a single platform type. Expected platform: "
+              << *first_platform << ". Actual platform of logical device "
+              << device_id << ": " << *device_platform;
+          signalPassFailure();
+          return;
         }
-
-        for (int device_id : devices) {
-          mlir::FailureOr<llvm::StringRef> device_platform =
-              GetPlatformNameForDeviceId(call_op, device_id, platform_names_);
-          if (mlir::failed(device_platform)) {
-            return mlir::WalkResult::interrupt();
-          }
-          if (*device_platform != *first_platform) {
-            call_op->emitOpError()
-                << "requires a single platform type. Expected platform: "
-                << *first_platform << ". Actual platform of logical device "
-                << device_id << ": " << *device_platform;
-            return mlir::WalkResult::interrupt();
-          }
-        }
-        return mlir::WalkResult::advance();
-      });
-
-  if (result.wasInterrupted()) {
-    signalPassFailure();
-    return;
+      }
+    }
   }
 }
 

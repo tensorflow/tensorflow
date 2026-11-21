@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
-#include "mlir/Support/WalkResult.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -410,7 +410,7 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   mlir::SymbolUserMap symbol_users(symbol_table, module_op);
 
   // Stash the errors in a MapVector, which maintains the order in which they
-  // are encountered. We do not emit an error within the walk because atom
+  // are encountered. We do not emit an error during dispatch because atom
   // programs share a context and their compilations are dispatched in parallel.
   // Any error emitted here could leak into a scoped diagnostic handler used
   // while dispatching a compilation.
@@ -420,94 +420,102 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>
       cloned_modules;
 
-  // Walk and dispatch the compilations in parallel.
-  module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
-    UserContextScope user_context_scope(user_context_);
-    // Do not dispatch the atom program for compilation it has already been
-    // dispatched.
-    if (!call_to_compile_results.contains(call_op)) {
-      mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-      auto callee_module =
-          llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
-      if (callee.getSymName() != kCalleeMainFuncName ||
-          callee_module == nullptr) {
-        // No need to clone the call op because it won't be modified if
-        // any error is encountered.
-        call_op_to_error.try_emplace(
-            call_op,
-            absl::StrCat(
-                "requires callee outlined as `", kCalleeMainFuncName.str(),
-                "` function in a ModuleOp. Actual callee name: ",
-                callee.getSymName().str(), ". Actual callee parent: ",
-                callee->getParentOp()->getName().getStringRef().str()));
-        return mlir::WalkResult::advance();
-      }
+  const llvm::SmallVector<mlir::func::FuncOp> ifrt_funcs =
+      GetIfrtFunctions(module_op);
 
-      absl::StatusOr<AtomProgramCompileResult> compile_result =
-          CompileModule(call_op, callee_module, cloned_modules, symbol_users);
-      if (!compile_result.ok()) {
-        call_op_to_error.try_emplace(
-            call_op,
-            absl::StrCat("failed to dispatch compilation of atom executable: ",
-                         compile_result.status().ToString()));
-        return mlir::WalkResult::advance();
+  // Dispatch the compilations in parallel.
+  for (mlir::func::FuncOp func_op : ifrt_funcs) {
+    for (CallOp call_op : func_op.getOps<CallOp>()) {
+      UserContextScope user_context_scope(user_context_);
+      // Do not dispatch the atom program for compilation it has already been
+      // dispatched.
+      if (!call_to_compile_results.contains(call_op)) {
+        mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+        auto callee_module =
+            llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
+        if (callee.getSymName() != kCalleeMainFuncName ||
+            callee_module == nullptr) {
+          // No need to clone the call op because it won't be modified if
+          // any error is encountered.
+          call_op_to_error.try_emplace(
+              call_op,
+              absl::StrCat(
+                  "requires callee outlined as `", kCalleeMainFuncName.str(),
+                  "` function in a ModuleOp. Actual callee name: ",
+                  callee.getSymName().str(), ". Actual callee parent: ",
+                  callee->getParentOp()->getName().getStringRef().str()));
+          continue;
+        }
+
+        absl::StatusOr<AtomProgramCompileResult> compile_result =
+            CompileModule(call_op, callee_module, cloned_modules, symbol_users);
+        if (!compile_result.ok()) {
+          call_op_to_error.try_emplace(
+              call_op,
+              absl::StrCat(
+                  "failed to dispatch compilation of atom executable: ",
+                  compile_result.status().ToString()));
+          continue;
+        }
+        // Clone the CallOp because it will be modified later, but we want
+        // to keep the original to be able to access the future.
+        call_to_compile_results[call_op.clone()] = *std::move(compile_result);
       }
-      // Clone the CallOp because it will be modified later, but we want
-      // to keep the original to be able to access the future.
-      call_to_compile_results[call_op.clone()] = *std::move(compile_result);
     }
-    return mlir::WalkResult::advance();
-  });
+  }
 
   if (call_op_to_error.empty()) {
     // Map from the hash of the CallOp to the symbol ref of the
     // LoadedExecutableOp.
     llvm::DenseMap<CallOp, mlir::SymbolRefAttr, IfrtCallOpInfo>
         call_op_to_loaded_exec_op_ref;
-    // Walk, wait on compilations, and generate LoadedExecutableOps.
-    module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
-      mlir::SymbolRefAttr loaded_exec_op_ref;
-      if (auto loaded_exec_op_ref_it =
-              call_op_to_loaded_exec_op_ref.find(call_op);
-          loaded_exec_op_ref_it != call_op_to_loaded_exec_op_ref.end()) {
-        // Reuse the symbol ref to the LoadedExecutableOp if we've already
-        // created an op for the CallOp.
-        loaded_exec_op_ref = loaded_exec_op_ref_it->second;
-      } else {
-        AtomProgramCompileResult& compile_result =
-            call_to_compile_results[call_op];
-        auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(
-            call_op.getCalleeOp(symbol_table)->getParentOp());
-        absl::StatusOr<mlir::SymbolRefAttr> symbol_ref =
-            GenerateLoadedExecutableOp(callee_module, compile_result.name,
-                                       call_op, builder);
-        if (!symbol_ref.ok()) {
-          call_op_to_error.try_emplace(
-              call_op, absl::StrCat("failed to generate loaded executable op: ",
-                                    symbol_ref.status().ToString()));
-          return mlir::WalkResult::advance();
+    // Wait on compilations and generate `LoadedExecutableOp`s.
+    for (mlir::func::FuncOp func_op : ifrt_funcs) {
+      for (CallOp call_op :
+           llvm::make_early_inc_range(func_op.getOps<CallOp>())) {
+        mlir::SymbolRefAttr loaded_exec_op_ref;
+        if (auto loaded_exec_op_ref_it =
+                call_op_to_loaded_exec_op_ref.find(call_op);
+            loaded_exec_op_ref_it != call_op_to_loaded_exec_op_ref.end()) {
+          // Reuse the symbol ref to the LoadedExecutableOp if we've already
+          // created an op for the CallOp.
+          loaded_exec_op_ref = loaded_exec_op_ref_it->second;
+        } else {
+          AtomProgramCompileResult& compile_result =
+              call_to_compile_results[call_op];
+          auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(
+              call_op.getCalleeOp(symbol_table)->getParentOp());
+          absl::StatusOr<mlir::SymbolRefAttr> symbol_ref =
+              GenerateLoadedExecutableOp(callee_module, compile_result.name,
+                                         call_op, builder);
+          if (!symbol_ref.ok()) {
+            call_op_to_error.try_emplace(
+                call_op,
+                absl::StrCat("failed to generate loaded executable op: ",
+                             symbol_ref.status().ToString()));
+            continue;
+          }
+          loaded_exec_op_ref = *symbol_ref;
+          // Clone the CallOp because it will be modified next, but we want to
+          // keep the original to get the symbol ref for equal CallOps.
+          call_op_to_loaded_exec_op_ref[call_op.clone()] = loaded_exec_op_ref;
+          // Save the atom program executable to extend its lifetime.
+          SaveCompileResultFuture(compile_result);
         }
-        loaded_exec_op_ref = *symbol_ref;
-        // Clone the CallOp because it will be modified next, but we want to
-        // keep the original to get the symbol ref for equal CallOps.
-        call_op_to_loaded_exec_op_ref[call_op.clone()] = loaded_exec_op_ref;
-        // Save the atom program executable to extend its lifetime.
-        SaveCompileResultFuture(compile_result);
-      }
 
-      // Generate CallLoadedExecutableOp.
-      builder.setInsertionPointAfter(call_op);
-      auto new_call = CallLoadedExecutableOp::create(
-          builder, call_op.getLoc(), call_op.getResultTypes(),
-          call_op.getInputs(), call_op.getControlInputs(),
-          call_op.getArgAttrsAttr(), call_op.getResAttrsAttr(),
-          loaded_exec_op_ref, call_op.getIoAliases(),
-          call_op.getDonatedInputIndices());
-      new_call->setDiscardableAttrs(call_op->getDiscardableAttrDictionary());
-      call_op.replaceAllUsesWith(new_call.getResults());
-      call_op.erase();
-      return mlir::WalkResult::advance();
-    });
+        // Generate CallLoadedExecutableOp.
+        builder.setInsertionPointAfter(call_op);
+        auto new_call = CallLoadedExecutableOp::create(
+            builder, call_op.getLoc(), call_op.getResultTypes(),
+            call_op.getInputs(), call_op.getControlInputs(),
+            call_op.getArgAttrsAttr(), call_op.getResAttrsAttr(),
+            loaded_exec_op_ref, call_op.getIoAliases(),
+            call_op.getDonatedInputIndices());
+        new_call->setDiscardableAttrs(call_op->getDiscardableAttrDictionary());
+        call_op.replaceAllUsesWith(new_call.getResults());
+        call_op.erase();
+      }
+    }
     // Erase the CallOp clones that we're used as keys of the map.
     for (auto& [call_op, loaded_exec_op_ref] : call_op_to_loaded_exec_op_ref) {
       call_op.erase();

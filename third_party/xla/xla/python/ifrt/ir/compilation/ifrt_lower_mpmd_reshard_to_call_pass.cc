@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/python/ifrt/ir/compilation/passes.h"
 #include "xla/python/ifrt/ir/constants.h"
@@ -75,7 +74,8 @@ class IfrtLowerMpmdReshardToCallPass
     mlir::SymbolTable symbol_table(module_op);
     mlir::OpBuilder builder(&getContext());
     mlir::func::FuncOp main_func = GetMainFunction(module_op);
-    auto result = main_func->walk([&](ReshardOp reshard_op) {
+    for (ReshardOp reshard_op :
+         llvm::make_early_inc_range(main_func.getOps<ReshardOp>())) {
       // Uniquify the devices the MPMD reshard executes on. It is unclear what
       // the devices order should be, but it is fine to return them sorted
       // because they are used only used for debugging purposes.
@@ -97,7 +97,8 @@ class IfrtLowerMpmdReshardToCallPass
       if (!does_reshard) {
         reshard_op.emitOpError()
             << "does not reshard any arrays. Use CopyArraysOp instead";
-        return mlir::WalkResult::interrupt();
+        signalPassFailure();
+        return;
       }
 
       std::vector<int> devices(device_set.begin(), device_set.end());
@@ -173,10 +174,6 @@ class IfrtLowerMpmdReshardToCallPass
                        builder.getStringAttr(kIfrtModuleTypeMpmdReshard));
       reshard_op.replaceAllUsesWith(call_op.getResults());
       reshard_op.erase();
-      return mlir::WalkResult::advance();
-    });
-    if (result.wasInterrupted()) {
-      signalPassFailure();
     }
   }
 };

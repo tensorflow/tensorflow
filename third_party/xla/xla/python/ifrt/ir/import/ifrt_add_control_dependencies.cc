@@ -16,7 +16,6 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Value.h"
-#include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"
@@ -38,19 +37,22 @@ class IfrtAddCtrlDependenciesPass
 
 void IfrtAddCtrlDependenciesPass::runOnOperation() {
   mlir::func::FuncOp func_op = getOperation();
+  if (!IsIfrtFunction(func_op)) {
+    return;
+  }
   // Mapping between IfrtDevicesAttr and the control output of the last
   // CallOp traversed that has that devices attribute.
   llvm::DenseMap<IfrtDevicesAttr, mlir::TypedValue<IfrtControlType>>
       call_op_to_control_output;
-  func_op.walk([&](CallOp call_op) {
+  for (CallOp call_op : func_op.getOps<CallOp>()) {
     IfrtDevicesAttr devices_attr = call_op.getDevicesAttr();
-    if (mlir::TypedValue<IfrtControlType> ctrl_input =
-            call_op_to_control_output.lookup(devices_attr)) {
+    mlir::TypedValue<IfrtControlType>& ctrl_input =
+        call_op_to_control_output[devices_attr];
+    if (ctrl_input) {
       call_op.getControlInputsMutable().append(ctrl_input);
     }
-    call_op_to_control_output[devices_attr] = call_op.getControlOutput();
-    return mlir::WalkResult::skip();
-  });
+    ctrl_input = call_op.getControlOutput();
+  }
 }
 
 }  // namespace

@@ -93,7 +93,8 @@ namespace ifrt {
 
 namespace impl {
 
-// Verifies `op` used in a FuncOp with `ifrt.function` attr.
+// Verifies that `op` is directly nested in a `FuncOp` with `ifrt.function` or
+// `ifrt.reshard_function` attr.
 LogicalResult verifyNestedInIfrtFunc(Operation* op);
 
 }  // namespace impl

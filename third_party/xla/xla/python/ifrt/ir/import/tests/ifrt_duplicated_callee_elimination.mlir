@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: ifrt-opt %s -ifrt-duplicated-callee-elimination | FileCheck %s
+// RUN: ifrt-opt %s -ifrt-duplicated-callee-elimination -split-input-file | FileCheck %s
 
 // CHECK-LABEL: @main
 func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>,
@@ -56,4 +56,32 @@ func.func private @callee_different_attr() attributes {_ifrt.attr} {
 
 func.func private @callee_different_signature(%arg0: tensor<2x2xi32>) {
   return
+}
+
+// -----
+
+// CHECK-LABEL: module @multiple_ifrt_functions
+module @multiple_ifrt_functions {
+  // CHECK-LABEL: func.func @main
+  func.func @main() attributes {ifrt.function} {
+    // CHECK: ifrt.Call @callee()
+    %ctrl_0 = ifrt.Call @callee() on devices [0,1] : () -> ()
+    return
+  }
+
+  // CHECK-LABEL: func.func @secondary
+  func.func @secondary() attributes {ifrt.function} {
+    // CHECK-NEXT: ifrt.Call @callee()
+    // CHECK-NEXT: return
+    %ctrl_0 = ifrt.Call @callee_dup() on devices [0,1] : () -> ()
+    return
+  }
+
+  func.func private @callee() {
+    return
+  }
+
+  func.func private @callee_dup() {
+    return
+  }
 }

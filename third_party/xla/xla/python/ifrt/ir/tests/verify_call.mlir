@@ -106,7 +106,7 @@ func.func @callee(%arg0: tensor<i32>) -> tensor<i32> {
 func.func @call_requires_in_ifrt_function(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>) {
-  // expected-error@+1 {{'ifrt.Call' op must be in a FuncOp with attr `ifrt.function`}}
+  // expected-error@+1 {{'ifrt.Call' op must be in a FuncOp with attr `ifrt.function` or attr `ifrt.reshard_function`}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                    [0,1]>)
@@ -117,6 +117,40 @@ func.func @call_requires_in_ifrt_function(
 
 func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
   return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+module @call_directly_in_module {
+  func.func private @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %arg0 : tensor<2x2xi32>
+  }
+  %arg = "builtin.unrealized_conversion_cast"() : () -> !array
+  // expected-error@+1 {{'ifrt.Call' op must be in a FuncOp with attr `ifrt.function` or attr `ifrt.reshard_function`}}
+  %0, %ctrl = ifrt.Call @callee(%arg) on devices [0,1] : (!array) -> !array
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+module @call_in_nested_region {
+  func.func private @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %arg0 : tensor<2x2xi32>
+  }
+  func.func @main(%arg0: !array) attributes {ifrt.function} {
+    %cond = stablehlo.constant dense<true> : tensor<i1>
+    "stablehlo.if"(%cond) ({
+      // expected-error@+1 {{'ifrt.Call' op must be in a FuncOp with attr `ifrt.function` or attr `ifrt.reshard_function`}}
+      %0, %ctrl = ifrt.Call @callee(%arg0) on devices [0,1] : (!array) -> !array
+      stablehlo.return
+    }, {
+      stablehlo.return
+    }) : (tensor<i1>) -> ()
+    return
+  }
 }
 
 // -----
