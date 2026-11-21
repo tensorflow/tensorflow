@@ -40,7 +40,9 @@ namespace {
 TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_KERNEL_LOG(context,
                      "Encountered an unresolved custom op. Did you miss "
-                     "a custom op or delegate?");
+                     "a custom op or delegate? See instructions: "
+                     "https://developers.google.com/edge/litert/conversion/"
+                     "tensorflow/ops_custom");
   return kTfLiteError;
 }
 
