@@ -1396,6 +1396,7 @@ xla_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
     deps = [
+        ":copy_insertion",
         ":instruction_fusion",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

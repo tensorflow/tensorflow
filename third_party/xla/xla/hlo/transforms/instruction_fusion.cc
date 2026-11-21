@@ -948,6 +948,31 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
   return true;
 }
 
+const HloInstruction* StripBitcasts(const HloInstruction* hlo,
+                                    const ShapeIndex& index = {}) {
+  for (int64_t i : index) {
+    if (hlo->opcode() != HloOpcode::kTuple) {
+      return nullptr;
+    }
+    hlo = hlo->operand(i);
+  }
+  while (hlo->opcode() == HloOpcode::kBitcast) {
+    hlo = hlo->operand(0);
+  }
+  return hlo;
+}
+
+bool SharesArrayBuffer(const HloInstruction* op,
+                       const HloInstruction* target_base) {
+  op = StripBitcasts(op);
+  return op == target_base ||
+         (op->opcode() == HloOpcode::kTuple &&
+          absl::c_any_of(op->operands(),
+                         [target_base](const HloInstruction* operand) {
+                           return SharesArrayBuffer(operand, target_base);
+                         }));
+}
+
 }  // namespace
 
 /*static*/ bool InstructionFusion::IsEmbeddedComputation(
@@ -981,15 +1006,29 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
     VLOG(4) << "in/out pair: " << operand_number << " "
             << pair.first.operand_index.ToString() << " "
             << pair.second.ToString();
+    const HloInstruction* in_place_operand = consumer->operand(operand_number);
+    const HloInstruction* in_place_base =
+        StripBitcasts(in_place_operand, pair.first.operand_index);
     // Check if the consumer also has an additional operand that has the same
     // value as the in-place buffer. If so, it's unsafe to fuse.
     for (int i = 0; i < consumer->operand_count(); ++i) {
       if (i != operand_number &&
-          consumer->operand(operand_number) == consumer->operand(i)) {
+          (in_place_operand == consumer->operand(i) ||
+           (in_place_base != nullptr &&
+            SharesArrayBuffer(consumer->operand(i), in_place_base)))) {
         return FusionDecision::Forbid(
             "The consumer is an in-place operation that has an additional "
             "operand that has the same value as the in-place buffer");
       }
+    }
+    if (in_place_base != nullptr && producer != in_place_operand &&
+        (SharesArrayBuffer(producer, in_place_base) ||
+         absl::c_any_of(producer->operands(), [&](const HloInstruction* op) {
+           return op != in_place_operand &&
+                  SharesArrayBuffer(op, in_place_base);
+         }))) {
+      return FusionDecision::Forbid(
+          "Producer aliases the consumer in place buffer.");
     }
     if (consumer->operand(operand_number) == producer ||
         absl::c_find(producer->operands(), consumer->operand(operand_number)) !=
@@ -1033,7 +1072,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       // If the producer has only elementwise ops or bitcasts, we can fuse.
       if (producer_nonelementwise_ops.empty()) {
         if (consumer->opcode() != HloOpcode::kFusion) {
-          return FusionDecision::Allow();
+          continue;
         }
         // If the consumer fusion has both elementwise and non-elementwise ops,
         // and ops of the two groups access the same buffer of the producer, we
@@ -1045,7 +1084,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
             ExtractInstructions(consumer, [&](const HloInstruction* inst) {
               // Exclude instructions which are same as inplace fusion roots.
               return is_nonelementwise_op(inst) &&
-                     inst != inplace_instr_and_index.first;
+                     inst != StripBitcasts(inplace_instr_and_index.first);
             });
         auto* fused_computation = consumer->fused_instructions_computation();
         std::unique_ptr<HloReachabilityMap> reachability =
@@ -1058,11 +1097,12 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
               return reachability->IsReachable(inplace_consumer_parameter,
                                                instr);
             });
-        return inplace_conflict_after_fusion
-                   ? FusionDecision::Forbid(
-                         "Non-elementwise ops in consumer lead to inplace "
-                         "conflict after fusion.")
-                   : FusionDecision::Allow();
+        if (inplace_conflict_after_fusion) {
+          return FusionDecision::Forbid(
+              "Non-elementwise ops in consumer lead to inplace "
+              "conflict after fusion.");
+        }
+        continue;
       }
       auto dus_ops =
           ExtractInstructions(consumer, HloOpcode::kDynamicUpdateSlice);
@@ -1071,7 +1111,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       // TODO(akuegel): Are there other ops than dynamic update slice where we
       // have a special emitter if it can be done in-place?
       if (dus_ops.empty()) {
-        return FusionDecision::Allow();
+        continue;
       }
       if (dus_ops.size() > 1) {
         return FusionDecision::Forbid("multiple dus ops, bailing.");
@@ -1079,7 +1119,9 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       auto dus = dus_ops[0];
       auto producer_nonelementwise = producer_nonelementwise_ops[0];
       if (producer_nonelementwise->opcode() == HloOpcode::kSlice) {
-        if (producer_nonelementwise->shape() != dus->operand(1)->shape()) {
+        if (producer_nonelementwise->shape() != dus->operand(1)->shape() ||
+            get_real_operand(producer, producer_nonelementwise->operand(0)) !=
+                get_real_operand(consumer, dus->operand(0))) {
           return FusionDecision::Forbid(
               "Slice op has a different shape than the update shape of the "
               "dus op, bailing.");
@@ -1101,10 +1143,12 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
               "Fusing slice into DUS will also fuse another non-elementwise "
               "op with shared operand as DUS.");
         }
-        return FusionDecision::Allow();
+        continue;
       }
       if (producer_nonelementwise->opcode() == HloOpcode::kDynamicSlice) {
-        if (producer_nonelementwise->shape() != dus->operand(1)->shape()) {
+        if (producer_nonelementwise->shape() != dus->operand(1)->shape() ||
+            get_real_operand(producer, producer_nonelementwise->operand(0)) !=
+                get_real_operand(consumer, dus->operand(0))) {
           return FusionDecision::Forbid(
               "Dynamic slice op has a different shape than the update shape "
               "of the dus op, bailing.");
@@ -1128,7 +1172,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
               "Fusing DS into DUS will also fuse another non-elementwise op "
               "with shared operand as DUS.");
         }
-        return FusionDecision::Allow();
+        continue;
       }
       return FusionDecision::Forbid(
           "unrecognized inplace update non-elementwise output pair");
