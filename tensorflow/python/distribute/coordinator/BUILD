@@ -109,6 +109,7 @@ distribute_py_strict_test(
         "noasan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
         "notpu",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
+        "requires-mem:16g",
     ],
     xla_enable_strict_auto_jit = False,  # TODO(b/291174864)
     xla_tags = [
