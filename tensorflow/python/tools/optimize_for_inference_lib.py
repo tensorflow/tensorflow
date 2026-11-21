@@ -157,7 +157,7 @@ def strtobool(val_str):
   else:
     tf_logging.warning(
         "Wrong string values.       Supports False/false or True/true only."
-        " val_str = ",
+        " val_str = %s",
         val_str,
     )
     return False
@@ -722,7 +722,7 @@ def convert_placeholder_to_const(input_graph_def, nodes_to_convert=None):
           tf_logging.warning(
               "Not converting to Const. Currently only bool            "
               " PlaceholderWithDefault or Placeholder can be converted to"
-              " const.             current dtype = ",
+              " const.             current dtype = %s",
               node.attr["dtype"],
           )
 
