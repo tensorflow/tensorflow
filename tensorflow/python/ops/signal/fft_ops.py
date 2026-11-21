@@ -188,9 +188,9 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
         fft_length = _infer_fft_length_for_rfft(input_tensor, fft_rank)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _tensor_util.constant_value(fft_length)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
@@ -256,9 +256,9 @@ def _fftn_wrapper(fft_n, default_name):
         fft_length = _infer_fft_length_for_fftn(input_tensor)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _tensor_util.constant_value(fft_length)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       if norm is None:
@@ -299,9 +299,9 @@ def _ifftn_wrapper(ifft_n, default_name):
         fft_length = _infer_fft_length_for_fftn(input_tensor)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _tensor_util.constant_value(fft_length)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       if norm is None:
@@ -353,9 +353,9 @@ def _rfftn_wrapper(rfft_n, default_name):
         fft_length = _infer_fft_length_for_fftn(input_tensor)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _tensor_util.constant_value(fft_length)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       if norm is None:

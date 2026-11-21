@@ -177,17 +177,11 @@ class FFTBase : public OpKernel {
                       "fft_length must have shape [", fft_rank, "]")));
 
       auto fft_length_as_vec = fft_length.vec<int32_t>();
-      bool is_empty = (input_shape.num_elements() == 0);
       for (int i = 0; i < fft_rank; ++i) {
         OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                     absl::InvalidArgumentError(absl::StrCat(
                         "fft_length[", i,
                         "] must >= 0, but got: ", fft_length_as_vec(i))));
-        OP_REQUIRES(ctx, is_empty || fft_length_as_vec(i) > 0,
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "fft_length[", i,
-                        "] must be > 0 for non-empty inputs, but got: ",
-                        fft_length_as_vec(i))));
         fft_shape[i] = fft_length_as_vec(i);
         // Each input dimension must have length of at least fft_shape[i]. For
         // IRFFTs, the inner-most input dimension must have length of at least
@@ -249,6 +243,9 @@ class FFTBase : public OpKernel {
     // An empty input is handled inside DoFFT, which zeroes the output. The
     // output is sized from `fft_length`, so it can be non-empty even when the
     // input is not, and it must not be returned unwritten.
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
     DoFFT(ctx, in, fft_shape, out);
   }
 
@@ -319,17 +316,11 @@ class FFTNBase : public OpKernel {
                     "fft_length must have shape [", fft_rank,
                     "], but got: ", fft_length.shape().DebugString(), ".")));
     auto fft_length_as_vec = fft_length.vec<int32_t>();
-    bool is_empty = (input_shape.num_elements() == 0);
     for (int i = 0; i < fft_rank; ++i) {
       OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                   absl::InvalidArgumentError(absl::StrCat(
                       "fft_length[", i,
                       "] must >= 0, but got: ", fft_length_as_vec(i))));
-      OP_REQUIRES(
-          ctx, is_empty || fft_length_as_vec(i) > 0,
-          absl::InvalidArgumentError(absl::StrCat(
-              "fft_length[", i, "] must be > 0 for non-empty inputs, but got: ",
-              fft_length_as_vec(i))));
       fft_shape[i] = fft_length_as_vec(i);
       auto input_index = input_rank - fft_rank + i;
       if (IsReal()) {
@@ -392,6 +383,9 @@ class FFTNBase : public OpKernel {
     }
 
     // As above, DoFFTN zeroes the output for an empty input.
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
     DoFFTN(ctx, in, fft_shape.data(), axes_shape.data(), out);
   }
 
