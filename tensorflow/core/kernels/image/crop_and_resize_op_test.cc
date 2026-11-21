@@ -47,6 +47,19 @@ class CropAndResizeOpTest : public OpsTestBase {
   }
 };
 
+namespace {
+// All of these box coordinates are finite, so they pass the kernel's
+// boxes-finiteness validation, but (kLargeNegativeBox - kLargePositiveBox)
+// multiplied by (image_width - 1) overflows float32 to -inf. The sampling
+// coordinate then becomes NaN, because 0 * -inf is NaN. With the box signs
+// mirrored (or y1 at -FLT_MAX and y2 at 0), the scale overflows to +inf and
+// the coordinate is NaN through -inf + 0 * inf as well.
+constexpr float kLargeNegativeBox = -1.81283853e38f;  // 0xffff0862
+constexpr float kLargePositiveBox = 4.2949673e8f;     // 0x4dcccccd
+constexpr float kSmallDenormalBox = 0x1.65p-141f;     // 0x00000165
+constexpr float kLowestFloatBox = -3.40282347e+38f;   // 0xff7fffff (-FLT_MAX)
+}  // namespace
+
 #define REGISTER_TEST(T)                                               \
   TEST_F(CropAndResizeOpTest, TestCropAndResize##T) {                  \
     MakeOp<T>(0, "bilinear");                                          \
@@ -353,6 +366,127 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Extrapolated) {
      v,  3,  4});
   // clang-format on
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(CropAndResizeOpTest, TestCropAndResizeFiniteBoxesOverflowingWidthScale) {
+  const float v = -1;
+  MakeOp<float>(v, "bilinear");
+  // Input:
+  //  1,  2,  3,  4
+  //  5,  6,  7,  8
+  //  9, 10, 11, 12
+  // 13, 14, 15, 16
+  AddInputFromArray<float>(
+      TensorShape({1, 4, 4, 1}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  // width_scale = (kLargeNegativeBox - kLargePositiveBox) * 3 / 2 is -inf, so
+  // in_x is NaN for x == 0 (0 * -inf) and -inf for x > 0. Every sampled column
+  // must take the extrapolation value instead of indexing with floorf(NaN).
+  AddInputFromArray<float>(
+      TensorShape({1, 4}),
+      {0.1f, kLargePositiveBox, kSmallDenormalBox, kLargeNegativeBox});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const Tensor& output = *GetOutput(0);
+  ASSERT_EQ(output.NumElements(), 6);
+  for (int i = 0; i < output.NumElements(); ++i) {
+    EXPECT_EQ(output.flat<float>()(i), v);
+  }
+}
+
+TEST_F(CropAndResizeOpTest,
+       TestCropAndResizeFiniteBoxesOverflowingHeightScale) {
+  const float v = -1;
+  MakeOp<float>(v, "bilinear");
+  AddInputFromArray<float>(
+      TensorShape({1, 4, 4, 1}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  // Same construction on the y axis: height_scale is -inf, so in_y is NaN for
+  // y == 0 and -inf for y > 0, and every row must be extrapolated.
+  AddInputFromArray<float>(
+      TensorShape({1, 4}),
+      {kLargePositiveBox, 0.1f, kLargeNegativeBox, kSmallDenormalBox});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 2});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const Tensor& output = *GetOutput(0);
+  ASSERT_EQ(output.NumElements(), 6);
+  for (int i = 0; i < output.NumElements(); ++i) {
+    EXPECT_EQ(output.flat<float>()(i), v);
+  }
+}
+
+TEST_F(CropAndResizeOpTest,
+       TestCropAndResizeFiniteBoxesOverflowingHeightScalePosInf) {
+  const float v = -1;
+  MakeOp<float>(v, "bilinear");
+  AddInputFromArray<float>(
+      TensorShape({1, 4, 4, 1}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  // Here y1 is -FLT_MAX and y2 is 0, so height_scale overflows to +inf while
+  // width_scale stays 0: in_y is NaN for y == 0 (-inf + 0 * inf) and for
+  // y > 0 (-inf + inf), and in_x stays 0. Every row must be extrapolated
+  // instead of indexing with floorf(NaN).
+  AddInputFromArray<float>(TensorShape({1, 4}),
+                           {kLowestFloatBox, 0.0f, 0.0f, 0.0f});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {16, 1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const Tensor& output = *GetOutput(0);
+  ASSERT_EQ(output.NumElements(), 16);
+  for (int i = 0; i < output.NumElements(); ++i) {
+    EXPECT_EQ(output.flat<float>()(i), v);
+  }
+}
+
+TEST_F(CropAndResizeOpTest,
+       TestCropAndResizeFiniteBoxesOverflowingScaleNearest) {
+  const float v = -1;
+  MakeOp<float>(v, "nearest");
+  AddInputFromArray<float>(
+      TensorShape({1, 4, 4, 1}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  // The nearest-neighbor method samples the same NaN coordinate through
+  // roundf() and must also take the extrapolation value.
+  AddInputFromArray<float>(
+      TensorShape({1, 4}),
+      {0.1f, kLargePositiveBox, kSmallDenormalBox, kLargeNegativeBox});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const Tensor& output = *GetOutput(0);
+  ASSERT_EQ(output.NumElements(), 6);
+  for (int i = 0; i < output.NumElements(); ++i) {
+    EXPECT_EQ(output.flat<float>()(i), v);
+  }
+}
+
+TEST_F(CropAndResizeOpTest,
+       TestCropAndResizeFiniteBoxesOverflowingScalePosInf) {
+  const float v = -1;
+  MakeOp<float>(v, "bilinear");
+  AddInputFromArray<float>(
+      TensorShape({1, 4, 4, 1}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  // Mirrored coordinates: width_scale is +inf, and in_x is NaN both for
+  // x == 0 (0 * inf) and for x > 0 (-inf + inf).
+  AddInputFromArray<float>(
+      TensorShape({1, 4}),
+      {0.1f, kLargeNegativeBox, kSmallDenormalBox, kLargePositiveBox});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const Tensor& output = *GetOutput(0);
+  ASSERT_EQ(output.NumElements(), 6);
+  for (int i = 0; i < output.NumElements(); ++i) {
+    EXPECT_EQ(output.flat<float>()(i), v);
+  }
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3NoCrop) {
