@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/custom_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -611,6 +612,79 @@ TEST_P(NanoRtClientTest, CustomCallTest) {
 
   EXPECT_TRUE(event.IsConcrete());
   EXPECT_EQ(result, 3.0f);
+}
+
+static absl::Status ReadCustomOptions(
+    ffi::Dictionary custom_options,
+    ffi::Result<ffi::BufferR0<PrimitiveType::S64>> out) {
+  if (custom_options.empty()) {
+    out->typed_data()[0] = -1;
+    return absl::OkStatus();
+  }
+  ABSL_ASSIGN_OR_RETURN(int64_t step, custom_options.get<int64_t>("step"));
+  ABSL_ASSIGN_OR_RETURN(absl::string_view tag,
+                   custom_options.get<absl::string_view>("tag"));
+  out->typed_data()[0] = step + static_cast<int64_t>(tag.size());
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kReadCustomOptions, ReadCustomOptions,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::CustomOptions>()
+                           .Ret<ffi::BufferR0<PrimitiveType::S64>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_nanort_test$$read_custom_options", "Host",
+                         kReadCustomOptions);
+
+TEST_P(NanoRtClientTest, CustomCallCustomOptionsTest) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule module
+
+    ENTRY custom_call {
+      c0 = s64[] custom-call(),
+        custom_call_target="__xla_nanort_test$$read_custom_options",
+        api_version=API_VERSION_TYPED_FFI
+      c1 = s64[] custom-call(),
+        custom_call_target="__xla_nanort_test$$read_custom_options",
+        api_version=API_VERSION_TYPED_FFI
+      ROOT sum = s64[] add(c0, c1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kModuleStr));
+  XlaComputation computation(module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
+
+  alignas(32) int64_t result = 0;
+  Results results = {{&result, 1}};
+  NanoRtExecutable::ManagedTemp<64> temp(executable->temp_buffer_size());
+
+  // Unset custom_options passes an empty dictionary to FFI handlers.
+  {
+    auto event = executable->Execute({}, results, temp);
+    tsl::BlockUntilReady(event);
+    ASSERT_TRUE(event.IsConcrete());
+    EXPECT_EQ(result, -2);
+  }
+
+  // Per-execution custom_options are retained across async thunk execution even
+  // after the caller drops its own ExecuteOptions / shared_ptr.
+  Eigen::ThreadPool tp(2);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+  tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> event;
+  {
+    NanoRtExecutable::ExecuteOptions execute_options;
+    execute_options.set_intra_op_thread_pool(&device);
+    execute_options.set_custom_options(
+        std::make_shared<CustomOptions>(CustomOptions::Map{
+            {"step", int64_t{40}}, {"tag", std::string("vreduce")}}));
+    event = executable->Execute({}, results, temp, execute_options);
+  }
+  tsl::BlockUntilReady(event);
+  ASSERT_TRUE(event.IsConcrete());
+  EXPECT_EQ(result, 2 * (40 + 7));
 }
 
 TEST_P(NanoRtClientTest, ProgramShapeTestInt4) {

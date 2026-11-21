@@ -149,6 +149,7 @@ cc_library(
     deps = [
         ":host_offloading_allocator",
         ":host_offloading_buffer",
+        "//xla:custom_options",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_executable",
@@ -259,6 +260,7 @@ strict_cc_test(
         ":host_offloading_executable_proto_cc",
         ":host_offloading_nanort_executable",
         ":host_offloading_pjrt_executable",
+        "//xla:custom_options",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_tree",

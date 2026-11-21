@@ -276,6 +276,7 @@ HostOffloadingNanoRtExecutable::Execute(
     nanort_execute_options.set_ffi_context(
         &execute_options.context->ffi_context());
   }
+  nanort_execute_options.set_custom_options(execute_options.custom_options);
   nanort_execute_options.set_intra_op_thread_pool(&intra_op_device_);
   nanort_execute_options.set_launch_id(execute_options.launch_id);
 

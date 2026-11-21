@@ -65,6 +65,7 @@ xla_cc_test(
         ":nanort_client",
         ":nanort_executable",
         "//xla:array2d",
+        "//xla:custom_options",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -116,6 +117,7 @@ cc_library(
         "//xla/backends/cpu/nanort:nanort_users",
     ]),
     deps = [
+        "//xla:custom_options",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:util",

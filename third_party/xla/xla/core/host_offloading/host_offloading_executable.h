@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/host_offloading/host_offloading_allocator.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
+#include "xla/custom_options.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -82,9 +83,10 @@ class HostOffloadingExecutable {
   virtual ~HostOffloadingExecutable() = default;
 
   struct ExecuteOptions {
-    int32_t device_index;
-    int32_t launch_id;
-    const ExecuteContext* context;
+    int32_t device_index = 0;
+    int32_t launch_id = 0;
+    const ExecuteContext* context = nullptr;
+    std::shared_ptr<const CustomOptions> custom_options;
   };
 
   // Executes host offloading executable with given `parameters` and writes
