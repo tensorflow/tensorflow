@@ -633,6 +633,7 @@ class CoordinationServicePreemptionHandler(object):
                       on_failure_fn=None,
                       on_transient_failure_fn=None,
                       on_recovery_fn=None,
+                      on_iterator_cancelled_fn=None,
                       worker_device_name="(unknown)"):
     """Catches errors during closure execution and handles them.
 
@@ -642,6 +643,8 @@ class CoordinationServicePreemptionHandler(object):
         happens.
       on_recovery_fn: an optional function to run when a worker is recovered
         from preemption.
+      on_iterator_cancelled_fn: an optional function returning True if dataset
+        resources were rebuilt for a cancelled worker iterator.
       worker_device_name: the device name of the worker instance that is passing
         through the failure.
 
@@ -716,6 +719,16 @@ class CoordinationServicePreemptionHandler(object):
         if on_transient_failure_fn:
           on_transient_failure_fn()
         return
+      if (
+          _is_iterator_cancelled_error(e)
+          and not self._cluster.closure_queue._cancellation_mgr.is_cancelled  # pylint: disable=protected-access
+      ):
+        if on_iterator_cancelled_fn and on_iterator_cancelled_fn(e):
+          logging.error(
+              "Remote function on worker %s failed with cancelled iterator "
+              "%r:%s\nRebuilding dataset resources on this worker.",
+              worker_device_name, e, e)
+          return
       raise e
 
   def _handle_failure_and_recovery(self,
@@ -880,6 +893,7 @@ class WorkerPreemptionHandler(object):
                       on_failure_fn=None,
                       on_transient_failure_fn=None,
                       on_recovery_fn=None,
+                      on_iterator_cancelled_fn=None,
                       worker_device_name="(unknown)"):
     """Catches worker preemption error and wait until failed workers are back.
 
@@ -889,6 +903,8 @@ class WorkerPreemptionHandler(object):
         happens.
       on_recovery_fn: an optional function to run when a worker is recovered
         from preemption.
+      on_iterator_cancelled_fn: an optional function returning True if dataset
+        resources were rebuilt for a cancelled worker iterator.
       worker_device_name: the device name of the worker instance that is passing
         through the failure.
 
@@ -923,6 +939,18 @@ class WorkerPreemptionHandler(object):
         if on_transient_failure_fn:
           on_transient_failure_fn()
         return
+
+      if (
+          _is_iterator_cancelled_error(e)
+          and not self._cluster.closure_queue._cancellation_mgr.is_cancelled  # pylint: disable=protected-access
+      ):
+        if on_iterator_cancelled_fn and on_iterator_cancelled_fn(e):
+          logging.error(
+              "Remote function on worker %s failed with cancelled iterator "
+              "%r:%s\nRebuilding dataset resources on this worker.",
+              worker_device_name, e, e)
+          return
+        raise e
 
       # Ignoring derived CancelledErrors to tolerate transient failures in
       # PS-worker communication, which initially exposed as an UnavailableError
@@ -1044,6 +1072,7 @@ class Worker(object):
     self._resource_tracking_lock = threading.Lock()
     self._resource_remote_value_refs = []
     self._is_dead_with_error = None
+    self._consecutive_iterator_cancellations = 0
     self._should_worker_thread_run = True
 
     # Worker threads need to start after `Worker`'s initialization.
@@ -1107,6 +1136,27 @@ class Worker(object):
         if resource:
           self._schedule_resource(resource._closure)  # pylint: disable=protected-access
       self._is_dead_with_error = False
+    self._consecutive_iterator_cancellations = 0
+
+  def _on_iterator_cancelled(self, closure, e):
+    """Rebuilds non-variable resources on this worker once after cancellation."""
+    if self._consecutive_iterator_cancellations >= 1:
+      return False
+    has_rebuilt = False
+    with self._resource_tracking_lock:
+      for weakref_resource in self._resource_remote_value_refs:
+        resource = weakref_resource()
+        if resource and not isinstance(
+            resource._closure, PerWorkerVariableClosure  # pylint: disable=protected-access
+        ):
+          resource._set_aborted(ClosureAbortedError(e))  # pylint: disable=protected-access
+          self._schedule_resource(resource._closure)  # pylint: disable=protected-access
+          has_rebuilt = True
+    if not has_rebuilt:
+      return False
+    self._consecutive_iterator_cancellations += 1
+    self._cluster.closure_queue.put_back(closure)
+    return True
 
   def _process_closure(self, closure):
     """Runs a closure with preemption handling."""
@@ -1116,6 +1166,8 @@ class Worker(object):
           on_transient_failure_fn=(
               lambda: self._cluster.closure_queue.put_back(closure)),
           on_recovery_fn=self._on_worker_recovery,
+          on_iterator_cancelled_fn=(
+              lambda e: self._on_iterator_cancelled(closure, e)),
           worker_device_name=self.device_name):
         closure.execute_on(self)
         with metric_utils.monitored_timer("remote_value_fetch"):
@@ -1123,6 +1175,7 @@ class Worker(object):
           # becomes unavailable at a later time.
           closure.maybe_call_with_output_remote_value(lambda r: r.get())
         self._cluster.closure_queue.mark_finished()
+        self._consecutive_iterator_cancellations = 0
     except Exception as e:  # pylint: disable=broad-except
       # Avoid logging the derived cancellation error
       if not isinstance(e, errors.CancelledError):
@@ -1850,3 +1903,12 @@ def _is_worker_failure(error):
     return True
 
   return False
+
+
+def _is_iterator_cancelled_error(error):
+  """Whether the error indicates a cancelled tf.data iterator on a worker."""
+  if isinstance(error, (ClosureInputError, ClosureAbortedError)):
+    error = error.original_exception
+  return isinstance(error, errors.CancelledError) and (
+      "Iterator was cancelled" in str(error)
+  )
