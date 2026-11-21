@@ -25,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -42,11 +43,15 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/tfrt/graph_executor/test_config.pb.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
@@ -1446,6 +1451,105 @@ TEST(SavedModelTest, SetsModuleName) {
   // name.
   EXPECT_THAT(verifying_compiler.GetModuleNames(),
               ::testing::Contains("serving_default"));
+}
+
+tensorflow::MetaGraphDef MakeSyntheticMetaGraphDef() {
+  tensorflow::MetaGraphDef meta;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      "meta_info_def{tensorflow_version:'2.19'} asset_file_def{filename:'v' "
+      "tensor_info{name:'a:0'}} saver_def{filename_tensor_name:'s:0' "
+      "restore_op_name:'r'} graph_def{versions{producer:2474} "
+      "node{name:'x' op:'Placeholder' attr{key:'dtype' value{type:DT_INT32}}} "
+      "node{name:'y' op:'Identity' input:'x' attr{key:'T' "
+      "value{type:DT_INT32}}} node{name:'s' op:'Placeholder' attr{key:'dtype' "
+      "value{type:DT_STRING}}} node{name:'a' op:'Placeholder' attr{key:'dtype' "
+      "value{type:DT_STRING}}} node{name:'r' op:'NoOp' input:'^s' input:'^a'}} "
+      "signature_def{key:'serving_default' value{inputs{key:'x' value{"
+      "name:'x:0' dtype:DT_INT32}} outputs{key:'y' value{name:'y:0' "
+      "dtype:DT_INT32}} method_name:'tensorflow/serving/predict'}}",
+      &meta));
+  auto* obj = meta.mutable_object_graph_def()->add_nodes();
+  obj->mutable_user_object()->set_identifier(std::string(4096, 'x'));
+  (*meta.mutable_collection_def())["c"].mutable_bytes_list()->add_value("v");
+  return meta;
+}
+
+void ExpectOnlySignaturesRetained(const tensorflow::MetaGraphDef& meta,
+                                  const tensorflow::MetaGraphDef& expected) {
+  EXPECT_FALSE(meta.has_object_graph_def());
+  EXPECT_FALSE(meta.has_meta_info_def());
+  EXPECT_TRUE(meta.collection_def().empty());
+  EXPECT_FALSE(meta.has_saver_def());
+  EXPECT_TRUE(meta.asset_file_def().empty());
+  EXPECT_TRUE(meta.graph_def().node().empty());
+  ASSERT_EQ(meta.signature_def_size(), expected.signature_def_size());
+  for (const auto& [key, val] : expected.signature_def()) {
+    ASSERT_TRUE(meta.signature_def().contains(key));
+    EXPECT_EQ(meta.signature_def().at(key).SerializeAsString(),
+              val.SerializeAsString());
+  }
+}
+
+TEST(SavedModelTest, DropsUnusedMetaGraphDefFieldsOnDirectoryLoad) {
+  std::string dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v2");
+  TF_ASSERT_OK_AND_ASSIGN(const auto orig, ReadSavedModel(dir, {"serve"}));
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto model, SavedModelImpl::LoadSavedModel(
+                      DefaultSavedModelOptions(runtime.get()), dir, {"serve"}));
+  std::vector<tensorflow::Tensor> out;
+  TF_ASSERT_OK(model->Run({}, "serving_default",
+                          {CreateTfTensor<int32_t>({1, 3}, {1, 1, 1})}, &out));
+
+  ExpectOnlySignaturesRetained(model->GetMetaGraphDef(), orig);
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_THAT(GetTfTensorData<int32_t>(out[0]), ::testing::ElementsAre(6));
+}
+
+TEST(SavedModelTest, DropsUnusedMetaGraphDefFieldsOnLazyLoadingAndProtoLoad) {
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.enable_lazy_loading = true;
+  std::string dir = CreateTempDir(::tsl::Env::Default(), "slim_meta");
+  const tensorflow::MetaGraphDef synth = MakeSyntheticMetaGraphDef();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto model,
+                          SavedModelImpl::LoadSavedModel(options, synth, dir));
+  std::vector<tensorflow::Tensor> out;
+  TF_ASSERT_OK(model->Run({}, "serving_default",
+                          {CreateTfTensor<int32_t>({1}, {7})}, &out));
+
+  EXPECT_GT(synth.ByteSizeLong(), 4096u);
+  EXPECT_LT(model->GetMetaGraphDef().ByteSizeLong(), 512u);
+  ExpectOnlySignaturesRetained(model->GetMetaGraphDef(), synth);
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_THAT(GetTfTensorData<int32_t>(out[0]), ::testing::ElementsAre(7));
+}
+
+TEST(SavedModelTest, CopiesSignatureDefsOutOfCallerArenaOwnedMetaGraphDef) {
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  std::string dir = CreateTempDir(::tsl::Env::Default(), "arena_meta");
+  const tensorflow::MetaGraphDef synth = MakeSyntheticMetaGraphDef();
+
+  std::unique_ptr<SavedModel> model;
+  {
+    tensorflow::protobuf::Arena caller_arena;
+    auto* arena_meta =
+        tensorflow::protobuf::Arena::Create<tensorflow::MetaGraphDef>(
+            &caller_arena, synth);
+    TF_ASSERT_OK_AND_ASSIGN(
+        model, SavedModelImpl::LoadSavedModel(
+                   DefaultSavedModelOptions(runtime.get()), *arena_meta, dir));
+  }
+  std::vector<tensorflow::Tensor> out;
+  TF_ASSERT_OK(model->Run({}, "serving_default",
+                          {CreateTfTensor<int32_t>({1}, {11})}, &out));
+
+  ExpectOnlySignaturesRetained(model->GetMetaGraphDef(), synth);
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_THAT(GetTfTensorData<int32_t>(out[0]), ::testing::ElementsAre(11));
 }
 
 }  // namespace

@@ -319,12 +319,8 @@ class SavedModelImpl final : public SavedModel {
   void IncrementInferredModelTypePerRequestCount();
 
   SymbolUids symbol_uids_;
-  // `meta_graph_def_` only contains metadata of the model. The graph_def field
-  // is removed.
-  //
-  // TODO(b/191931702): We should only keep content that are actually used
-  // (eg. SignatureDefs), instead of keeping the whole saved model, to avoid
-  // unnecessary memory usage.
+  // `meta_graph_def_` retains only `signature_def`; `graph_def` and other
+  // unused metadata fields are dropped during loading.
   tensorflow::MetaGraphDef meta_graph_def_;
   tfrt::BefBuffer bef_;
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
