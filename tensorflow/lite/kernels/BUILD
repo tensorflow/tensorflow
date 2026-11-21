@@ -395,40 +395,28 @@ cc_test(
 cc_library(
     name = "cpu_backend_gemm",
     srcs = [
-        "cpu_backend_gemm_custom_gemv.h",
-        "cpu_backend_gemm_eigen.cc",
-        "cpu_backend_gemm_eigen.h",
-        "cpu_backend_gemm_gemmlowp.h",
-        "cpu_backend_gemm_x86.h",
+        "cpu_backend_gemm_xnnpack.cc",
     ],
     hdrs = [
         "cpu_backend_gemm.h",
         "cpu_backend_gemm_params.h",
-        "cpu_backend_gemm_ruy.h",
+        "cpu_backend_gemm_reference.h",
+        "cpu_backend_gemm_xnnpack.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
-        ":tflite_with_ruy",
+        ":cpu_backend_context",
+        "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/kernels/internal:cpu_check",
-        "//tensorflow/lite/kernels/internal:types",
-        ":cpu_backend_context",
-        ":cpu_backend_threadpool",
-        # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
-        # cpu_backend_gemm.h about why ruy is the generic path.
-        "@ruy//ruy",
-        "@ruy//ruy:matrix",
-        "@ruy//ruy:path",
-        "@ruy//ruy:mul_params",
+        "@pthreadpool",
         "@ruy//ruy/profiler:instrumentation",
-        # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
-        # is false, but putting these dependencies in a select() seems to
-        # defeat copybara's rewriting rules.
-        "@gemmlowp",
-        "@eigen_archive//:eigen3",
-    ],
+    ] + select({
+        "//tensorflow/lite:tflite_kernel_use_xnnpack_false": [],
+        "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+        "//conditions:default": ["@XNNPACK"],
+    }),
 )
 
 cc_test(
@@ -437,11 +425,8 @@ cc_test(
     deps = [
         ":cpu_backend_context",
         ":cpu_backend_gemm",
+        "//tensorflow/lite/kernels/internal:common",
         "@com_google_googletest//:gtest_main",
-        "@ruy//ruy:matrix",
-        # ruy:reference_mul provides the reference implementation
-        # that this test compares against.
-        "@ruy//ruy:reference_mul",
     ],
 )
 
