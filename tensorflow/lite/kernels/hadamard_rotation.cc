@@ -139,6 +139,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     op_data->random_binary_vector = vec;
     op_data->is_initialized = true;
   }
+  // Eval divides the feature size by hadamard_size.
+  TF_LITE_ENSURE(context, op_data->hadamard_size > 0);
 
   // Prepare the inputs.
   const TfLiteTensor* input_tensor;
@@ -147,8 +149,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE(context, input_tensor->type == kTfLiteFloat32 ||
                               input_tensor->type == kTfLiteInt32);
+  // Eval reads the feature dimensions from dims->data[0..2].
+  TF_LITE_ENSURE(context, NumDimensions(input_tensor) == 2 ||
+                              NumDimensions(input_tensor) == 3);
 
-  return kTfLiteOk;
+  // Eval copies the whole input into the output and transforms it in place,
+  // so the output must have the same type and shape as the input.
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input_tensor->type);
+  return context->ResizeTensor(context, output,
+                               TfLiteIntArrayCopy(input_tensor->dims));
 }
 
 void Free(TfLiteContext* context, void* buffer) {
