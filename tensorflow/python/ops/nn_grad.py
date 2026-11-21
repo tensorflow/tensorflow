@@ -1177,3 +1177,36 @@ def _IsotonicRegressionGrad(op: ops.Operation, grad_output, grad_segments):
   del grad_segments  # Discrete, non-differentiable.
   segments = op.outputs[1]
   return _MeanAggregator(grad_output, segments)
+
+
+@ops.RegisterGradient("FlashAttention")
+def _FlashAttentionGrad(op: ops.Operation, grad_output, grad_softmax_lse):
+  """Gradient for FlashAttention.
+
+  Args:
+    op: The FlashAttention op.
+    grad_output: Gradient with respect to the attention output.
+    grad_softmax_lse: Gradient with respect to the softmax log-sum-exp, which
+      is an auxiliary output for the backward pass and is not differentiated.
+
+  Returns:
+    Gradients with respect to query, key and value, and None for the dropout
+    seed and offset.
+  """
+  del grad_softmax_lse
+  query, key, value, seed, offset = op.inputs
+  output, softmax_lse = op.outputs
+  query_grad, key_grad, value_grad = gen_nn_ops.flash_attention_grad(
+      query,
+      key,
+      value,
+      output,
+      softmax_lse,
+      grad_output,
+      seed,
+      offset,
+      scale=op.get_attr("scale"),
+      dropout_rate=op.get_attr("dropout_rate"),
+      is_causal=op.get_attr("is_causal"),
+  )
+  return query_grad, key_grad, value_grad, None, None
