@@ -612,20 +612,20 @@ module @call_op_arg_and_res_attrs_and_empty_dict_normalization {
     //   #1: {mhlo.layout_mode = "auto"}
     //   #2: {mhlo.layout_mode = "auto"} (merges into #1)
     //   #3: {mhlo.layout_mode = "default"} (distinct from #0 and #1)
-    //   #4: omitted / out-of-bounds (normalizes to empty, merges into #0)
+    //   #4: {} (normalizes to empty, merges into #0)
     // CallOp res_attrs:
     //   #0: {} (normalizes to empty)
     //   #1: {mhlo.layout_mode = "auto"}
     //   #2: {mhlo.layout_mode = "auto"} (merges into #1)
-    //   #3: omitted / out-of-bounds (normalizes to empty, merges into #0)
+    //   #3: {} (normalizes to empty, merges into #0)
     // CHECK: %[[OUT:.*]]:4, %{{.*}} = ifrt.Call @f(%arg0, %arg0, %arg0, %arg0, %arg0) on devices [0, 1]
     %0:4, %ctrl_0 = ifrt.Call @f(%arg0, %arg0, %arg0, %arg0, %arg0)
         on devices [0, 1]
         <arg_attrs = [{}, {mhlo.layout_mode = "auto"},
                       {mhlo.layout_mode = "auto"},
-                      {mhlo.layout_mode = "default"}],
+                      {mhlo.layout_mode = "default"}, {}],
          res_attrs = [{}, {mhlo.layout_mode = "auto"},
-                      {mhlo.layout_mode = "auto"}]>
+                      {mhlo.layout_mode = "auto"}, {}]>
         : (!array, !array, !array, !array, !array)
         -> (!array, !array, !array, !array)
     // CHECK: return %[[OUT]]#0, %[[OUT]]#1, %[[OUT]]#1, %[[OUT]]#0

@@ -93,7 +93,13 @@ def Ifrt_PairwiseArrayOpInterface
                        [Ifrt_ArrayOpInterface]> {
   let description = [{
     Interface for IFRT operations whose array inputs map pairwise to array
-    outputs (`inputs[i]` -> `outputs[i]`).
+    outputs (`inputs[i]` -> `outputs[i]`). Verified operations have at least one
+    input array (`!getInputs().empty()`) and equal numbers of input and output
+    arrays (`getInputs().size() == getOutputs().size()`).
+  }];
+
+  let verify = [{
+    return ::xla::ifrt::detail::VerifyPairwiseArrayOp($_op);
   }];
 
   let methods = [
@@ -179,6 +185,14 @@ def Ifrt_CallOpInterface
     Interface for IFRT call operations (`ifrt.Call` and
     `ifrt.CallLoadedExecutable`) sharing callee references, `io_aliases`,
     `donated_input_indices`, and argument/result attribute dictionaries.
+    Verified operations have valid `io_aliases` and `donated_input_indices`
+    (in-bounds, unique, and compatible dtypes and per-shard shapes), and when
+    present, `arg_attrs` and `res_attrs` match `getInputs().size()` and
+    `getOutputs().size()`, respectively.
+  }];
+
+  let verify = [{
+    return ::xla::ifrt::detail::VerifyCallOp($_op);
   }];
 
   let methods = [

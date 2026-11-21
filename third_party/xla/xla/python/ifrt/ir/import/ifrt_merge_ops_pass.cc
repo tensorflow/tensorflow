@@ -53,12 +53,9 @@ class IfrtMergeOpsPass : public impl::IfrtMergeOpsPassBase<IfrtMergeOpsPass> {
   void runOnOperation() override;
 };
 
-// Returns true if `op` has non-empty inputs/outputs, all inputs share the same
-// devices, and all outputs share the same devices.
+// Returns true if all inputs of `op` share the same devices and all outputs
+// share the same devices.
 bool HasUniformDevices(IfrtPairwiseArrayOpInterface op) {
-  if (op.getInputs().empty() || op.getOutputs().empty()) {
-    return false;
-  }
   IfrtDevicesAttr src_devices =
       GetArrayType(op.getInputs().front()).getDevicesAttr();
   IfrtDevicesAttr dst_devices =
@@ -73,12 +70,9 @@ bool HasUniformDevices(IfrtPairwiseArrayOpInterface op) {
          });
 }
 
-// Returns true if `op` has non-empty inputs/outputs, all inputs share the same
-// layout mode, and all outputs share the same layout mode.
+// Returns true if all inputs of `op` share the same layout mode and all outputs
+// share the same layout mode.
 bool HasUniformLayoutModes(CopyArraysOp op) {
-  if (op.getInputs().empty() || op.getOutputs().empty()) {
-    return false;
-  }
   IfrtArrayType first_input = GetArrayType(op.getInputs().front());
   IfrtArrayType first_output = GetArrayType(op.getOutputs().front());
   return llvm::all_of(op.getInputs().drop_front(),
@@ -151,9 +145,8 @@ llvm::hash_code GetMergeKey(CopyArraysOp op) {
 // - donated because the donation is all-or-nothing.
 llvm::hash_code GetMergeKey(ReshardOp op) { return GetBaseMergeKey(op); }
 
-// Groups `BitcastArraysOp`s by:
-// - src and dst devices to avoid merging `BitcastArraysOp`s across meshes.
-// - `donated` because the donation is all-or-nothing.
+// Groups `BitcastArraysOp`s by devices to avoid merging `BitcastArraysOp`s
+// across meshes.
 llvm::hash_code GetMergeKey(BitcastArraysOp op) { return GetBaseMergeKey(op); }
 
 void RewriteMergedGroup(mlir::IRRewriter& rewriter,
@@ -215,14 +208,12 @@ bool MergeOpsIgnoringControlDependencies(FuncOp func_op) {
 
   for (IfrtPairwiseArrayOpInterface array_op :
        func_op.getOps<IfrtPairwiseArrayOpInterface>()) {
-    if (array_op->use_empty() || !array_op.getControlInputs().empty() ||
-        array_op.getInputs().empty() || array_op.getOutputs().empty()) {
+    if (array_op->use_empty() || !array_op.getControlInputs().empty()) {
       continue;
     }
     if (CopyArraysOp copy_arrays_op =
             mlir::dyn_cast<CopyArraysOp>(array_op.getOperation());
-        copy_arrays_op != nullptr && HasUniformDevices(copy_arrays_op) &&
-        HasUniformLayoutModes(copy_arrays_op)) {
+        copy_arrays_op != nullptr && HasUniformLayoutModes(copy_arrays_op)) {
       merge_groups[GetMergeKey(copy_arrays_op)].push(array_op);
     } else if (ReshardOp reshard_op =
                    mlir::dyn_cast<ReshardOp>(array_op.getOperation());

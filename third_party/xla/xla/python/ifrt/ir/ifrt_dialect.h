@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -51,6 +52,12 @@ IfrtShardingParamAttr GetShardingParamAttr(IfrtArrayType array_type);
 
 // Returns true if the given attribute is has unspecified sharding.
 bool IsUnspecifiedSharding(IfrtShardingAttrInterface sharding_attr);
+
+// Verifies that `lhs` and `rhs` have equal per-shard local shapes, emitting an
+// op error on `op` on failure.
+mlir::LogicalResult VerifyPerShardShapesAreEqual(mlir::Operation* op,
+                                                 IfrtArrayType lhs,
+                                                 IfrtArrayType rhs);
 
 }  // namespace ifrt
 }  // namespace xla

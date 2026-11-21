@@ -194,8 +194,9 @@ def Ifrt_BitcastArraysOp
   let summary = "Bitcasts `Array`s to new `Array`s with a different type.";
   let description = [{
     A metadata-only op that can change the per-shard interpretation without
-    changing the per-sharding location. The new arrays must use the same
-    devices, have the same on-device size, and have the same memory kind.
+    changing the per-sharding location. The input arrays must be donated
+    (`donated = true`), and the new arrays must use the same devices, have the
+    same on-device size, and have the same memory kind.
 
     The `dtype`, `shape`, `sharding`, and `layout` of the new arrays might be
     different from the input arrays.
@@ -307,7 +308,6 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
     $callee `(` $inputs `)` oilist(`after` $control_inputs) prop-dict attr-dict
     `:` functional-type($inputs, $outputs)
   }];
-  let hasVerifier = 1;
 }
 
 def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
@@ -349,6 +349,7 @@ def Ifrt_AfterOp : Ifrt_Op<"After", [NestedInIfrtFunc]> {
 
   let arguments = (ins Variadic<Ifrt_ArrayType>:$inputs);
   let results = (outs Ifrt_ControlType:$control_output);
+  let hasVerifier = 1;
 }
 
 #endif  // XLA_PYTHON_IFRT_IR_IFRT_OPS_TD_

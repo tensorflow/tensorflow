@@ -49,7 +49,8 @@ func.func @good_reshard_function(
     attributes {ifrt.reshard_function} {
   %0, %ctrl0 = ifrt.Reshard(%arg0) : (!array_d01) -> !array_d01_copy
   %1, %ctrl1 = ifrt.CopyArrays(%arg0) : (!array_d01) -> !array_d01_copy
-  %2, %ctrl2 = ifrt.BitcastArrays(%arg0) : (!array_d01) -> !array_d01_bc
+  %2, %ctrl2 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array_d01) -> !array_d01_bc
   %3, %ctrl3 = ifrt.Assemble(%arg1, %arg2)
       : (!array_s0, !array_s1) -> !array_d01
   %4, %5, %ctrl4 = ifrt.Disassemble(%arg0)

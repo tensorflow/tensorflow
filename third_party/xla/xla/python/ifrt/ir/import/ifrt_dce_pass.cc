@@ -130,10 +130,6 @@ void EliminateUnusedRemapArraysOutputs(RemapArraysOp remap_op,
     }
   }
 
-  if (new_inputs.empty() || kept_mappings.empty()) {
-    return;
-  }
-
   llvm::SmallVector<mlir::Attribute> new_mappings;
   new_mappings.reserve(kept_mappings.size());
   for (IfrtArrayMappingAttr mapping : kept_mappings) {

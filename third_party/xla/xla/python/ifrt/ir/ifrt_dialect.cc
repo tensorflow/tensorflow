@@ -791,5 +791,26 @@ bool IsUnspecifiedSharding(IfrtShardingAttrInterface sharding_attr) {
   return mlir::isa<IfrtUnspecifiedShardingAttr>(sharding_attr);
 }
 
+mlir::LogicalResult VerifyPerShardShapesAreEqual(mlir::Operation* op,
+                                                 IfrtArrayType lhs,
+                                                 IfrtArrayType rhs) {
+  absl::StatusOr<llvm::SmallVector<int64_t>> lhs_shard_shape = lhs.LocalShape();
+  if (!lhs_shard_shape.ok()) {
+    return op->emitOpError() << "unable to get per-shard shape of array " << lhs
+                             << ": " << lhs_shard_shape.status().message();
+  }
+  absl::StatusOr<llvm::SmallVector<int64_t>> rhs_shard_shape = rhs.LocalShape();
+  if (!rhs_shard_shape.ok()) {
+    return op->emitOpError() << "unable to get per-shard shape of array " << rhs
+                             << ": " << rhs_shard_shape.status().message();
+  }
+  if (*lhs_shard_shape != *rhs_shard_shape) {
+    return op->emitOpError()
+           << "Arrays have different per-shard shapes: " << lhs << " vs. "
+           << rhs;
+  }
+  return mlir::success();
+}
+
 }  // namespace ifrt
 }  // namespace xla

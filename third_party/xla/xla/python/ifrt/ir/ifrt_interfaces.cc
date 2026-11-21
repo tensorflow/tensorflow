@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 
 // Generated definitions.
@@ -56,7 +58,122 @@ bool IsInOperandRange(unsigned operand_num, mlir::OperandRange inputs) {
          operand_num < inputs.getBeginOperandIndex() + inputs.size();
 }
 
+// Verifies that `io_alias` references valid input/output indices on `op` and
+// aliases arrays with matching element types and per-shard shapes.
+mlir::LogicalResult VerifyIoAlias(mlir::Operation* op, IoAlias io_alias,
+                                  mlir::OperandRange inputs,
+                                  mlir::ResultRange outputs) {
+  if (io_alias.input_index < 0 || io_alias.input_index >= inputs.size()) {
+    return op->emitOpError()
+           << "can't alias input #" << io_alias.input_index << " to output #"
+           << io_alias.output_index << " as only having " << inputs.size()
+           << " inputs";
+  }
+  if (io_alias.output_index < 0 || io_alias.output_index >= outputs.size()) {
+    return op->emitOpError()
+           << "can't alias input #" << io_alias.input_index << " to output #"
+           << io_alias.output_index << " as only having " << outputs.size()
+           << " outputs";
+  }
+  const IfrtArrayType aliased_input =
+      GetArrayType(inputs[io_alias.input_index]);
+  const IfrtArrayType aliased_output =
+      GetArrayType(outputs[io_alias.output_index]);
+  if (aliased_input != aliased_output) {
+    // TODO(b/382761415): Relax this aliasing check to allow for different
+    // per-shard shapes as long as the byte size is the same. We cannot do this
+    // now because we do not have layout information.
+    if (aliased_input.getShape().getElementType() !=
+        aliased_output.getShape().getElementType()) {
+      return op->emitOpError() << "can't alias input #" << io_alias.input_index
+                               << " to output #" << io_alias.output_index
+                               << " with different dtypes: " << aliased_input
+                               << " vs. " << aliased_output;
+    }
+    if (mlir::failed(
+            VerifyPerShardShapesAreEqual(op, aliased_input, aliased_output))) {
+      return op->emitOpError() << "can't alias input #" << io_alias.input_index
+                               << " to output #" << io_alias.output_index;
+    }
+  }
+  return mlir::success();
+}
+
+// Verifies `donated_input_indices` and `io_aliases` on `call_op`.
+mlir::LogicalResult VerifyIoAliasesAndDonations(IfrtCallOpInterface call_op,
+                                                mlir::OperandRange inputs,
+                                                mlir::ResultRange outputs) {
+  mlir::Operation* op = call_op.getOperation();
+  llvm::SmallSet<int, 4> aliased_or_donated_inputs;
+  llvm::SmallSet<int, 4> aliased_outputs;
+  for (const int32_t donated_input_index : call_op.getDonatedInputIndices()) {
+    if (donated_input_index < 0 || donated_input_index >= inputs.size()) {
+      return op->emitOpError()
+             << "can't donate input #" << donated_input_index
+             << " as only having " << inputs.size() << " inputs";
+    }
+    if (!aliased_or_donated_inputs.insert(donated_input_index).second) {
+      return op->emitOpError() << "can't donate input #" << donated_input_index
+                               << " more than once";
+    }
+  }
+  for (const IoAlias& io_alias : call_op.getIoAliasPairs()) {
+    if (mlir::failed(VerifyIoAlias(op, io_alias, inputs, outputs))) {
+      return mlir::failure();
+    }
+    if (!aliased_or_donated_inputs.insert(io_alias.input_index).second) {
+      return op->emitOpError() << "can't alias or donate input #"
+                               << io_alias.input_index << " more than once";
+    }
+    if (!aliased_outputs.insert(io_alias.output_index).second) {
+      return op->emitOpError() << "can't alias output #"
+                               << io_alias.output_index << " more than once";
+    }
+  }
+  return mlir::success();
+}
+
 }  // namespace
+
+namespace detail {
+
+mlir::LogicalResult VerifyPairwiseArrayOp(mlir::Operation* op) {
+  IfrtPairwiseArrayOpInterface pairwise_op =
+      llvm::cast<IfrtPairwiseArrayOpInterface>(op);
+  mlir::OperandRange inputs = pairwise_op.getInputs();
+  mlir::ResultRange outputs = pairwise_op.getOutputs();
+  if (inputs.empty()) {
+    return op->emitOpError() << "requires at least one input array";
+  }
+  if (inputs.size() != outputs.size()) {
+    return op->emitOpError()
+           << "requires the same number of input and output arrays";
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult VerifyCallOp(mlir::Operation* op) {
+  IfrtCallOpInterface call_op = llvm::cast<IfrtCallOpInterface>(op);
+  mlir::OperandRange inputs = call_op.getInputs();
+  mlir::ResultRange outputs = call_op.getOutputs();
+
+  if (mlir::ArrayAttr arg_attrs = call_op.getArgAttrsAttr();
+      arg_attrs != nullptr && arg_attrs.size() != inputs.size()) {
+    return op->emitOpError()
+           << "requires `arg_attrs` to have the same size as `inputs` ("
+           << arg_attrs.size() << " vs. " << inputs.size() << ")";
+  }
+  if (mlir::ArrayAttr res_attrs = call_op.getResAttrsAttr();
+      res_attrs != nullptr && res_attrs.size() != outputs.size()) {
+    return op->emitOpError()
+           << "requires `res_attrs` to have the same size as `outputs` ("
+           << res_attrs.size() << " vs. " << outputs.size() << ")";
+  }
+
+  return VerifyIoAliasesAndDonations(call_op, inputs, outputs);
+}
+
+}  // namespace detail
 
 llvm::SmallVector<IoAlias, 4> GetIoAliases(mlir::ArrayAttr io_aliases) {
   llvm::SmallVector<IoAlias, 4> aliases;
@@ -290,7 +407,7 @@ bool IsAliasedOperand(mlir::OpOperand& operand) {
         return IsInOperandRange(operand_num, copy_op.getInputs()) &&
                copy_op.getReuse();
       })
-      .Case<BitcastArraysOp, RemapArraysOp, AssembleOp>([&](auto alias_op) {
+      .Case<RemapArraysOp, AssembleOp>([&](auto alias_op) {
         return IsInOperandRange(operand_num, alias_op.getInputs()) &&
                !alias_op.getDonated();
       })

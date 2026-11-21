@@ -331,10 +331,74 @@ func.func @error_different_layouts(%arg0: !array0)
                       #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
 func.func @error_auto_layout(%arg0: !array0)
     attributes {ifrt.function} {
-  // expected-error@+1 {{op does not allow input or output arrays with `auto` layout}}
+  // expected-error@+1 {{'ifrt.RemapArrays' op does not allow input array #0 with `auto` layout}}
   %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
       [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
       : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0], layout = "auto">
+func.func @error_auto_layout_output(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.RemapArrays' op does not allow output array #0 with `auto` layout}}
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
+      : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1], layout = "auto">
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0], layout = "auto">
+func.func @error_auto_layout_both(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.RemapArrays' op does not allow input array #0 with `auto` layout}}
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
+      : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [2], layout = "auto">
+!array2 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+func.func @error_auto_layout_unmapped_input(%arg0: !array0, %arg1: !array1)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.RemapArrays' op does not allow input array #1 with `auto` layout}}
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1) mappings =
+      [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
+      : (!array0, !array1) -> (!array2)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array2 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [2], layout = "auto">
+func.func @error_auto_layout_unmapped_output(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.RemapArrays' op does not allow output array #1 with `auto` layout}}
+  %0, %1, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
+      : (!array0) -> (!array1, !array2)
   return
 }
 

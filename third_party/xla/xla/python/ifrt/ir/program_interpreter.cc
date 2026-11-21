@@ -697,7 +697,6 @@ struct BitcastArraysOpState {
 
   std::vector<ArrayHandle> input_handles;
   absl::flat_hash_set<ArrayHandle> dead_inputs;
-  bool bitcast_is_donated;
 
   std::vector<ArrayHandle> output_handles;
   std::vector<ArraySpec> output_specs;
@@ -734,12 +733,10 @@ struct BitcastArraysOpState {
       }
 
       // The default buffer donation semantic is finalized at compilation time.
-      // Users can override the donation semantic at runtime. In the meantime,
-      // the IFRT client BitcastArrays API requires all input arrays have the
-      // same donation semantic. Insert a CopyArrays op if BitcastArrays
-      // requires all input arrays to be donated, but some of the input arrays
-      // have been marked as non-donatable.
-      if (bitcast_is_donated && !array_it->second.can_be_donated) {
+      // Users can override the donation semantic at runtime. Since
+      // `BitcastArraysOp` requires all input arrays to be donated, clone any
+      // input array that has been marked as non-donatable at runtime.
+      if (!array_it->second.can_be_donated) {
         ArrayRef array = array_it->second.array;
         LOG_FIRST_N(WARNING, 5)
             << "Array is cloned because is have been marked as non-donatable "
@@ -753,12 +750,11 @@ struct BitcastArraysOpState {
             env.client->CopyArrays(
                 absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
                 /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
-        inputs.push_back(std::move(copied_arrays[0]));
+        inputs.push_back(std::move(copied_arrays.front()));
       } else {
         inputs.push_back(array_it->second.array);
       }
-      if ((bitcast_is_donated && array_it->second.can_be_donated) ||
-          dead_inputs.contains(handle)) {
+      if (array_it->second.can_be_donated || dead_inputs.contains(handle)) {
         arrays_to_remove.push_back(handle);
       }
     }
@@ -766,13 +762,11 @@ struct BitcastArraysOpState {
     ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> bitcast_arrays,
                      env.client->BitcastArrays(
                          absl::MakeSpan(inputs), absl::MakeSpan(output_specs),
-                         bitcast_is_donated ? ArrayCopySemantics::kDonateInput
-                                            : ArrayCopySemantics::kReuseInput));
+                         ArrayCopySemantics::kDonateInput));
 
-    for (const auto handle : arrays_to_remove) {
-      // Donated bitcast arrays are proactively deleted, and aliased arrays
-      // cannot be deleted later. Thus, remove the arrays from the deletable
-      // program arguments set.
+    for (const ArrayHandle handle : arrays_to_remove) {
+      // Donated bitcast arrays are proactively deleted, so remove them from
+      // the deletable program arguments set.
       env.deletable_program_arguments.erase(handle);
       env.handle_to_array.erase(handle);
     }
@@ -803,8 +797,6 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
 
   PopulateInputHandlesAndDeadInputs(bitcast_op, liveness_, state.input_handles,
                                     state.dead_inputs);
-  state.bitcast_is_donated = bitcast_op.getDonated();
-
   PopulateOutputHandles(bitcast_op, state.output_handles);
   state.output_specs.reserve(bitcast_op.getOutputs().size());
   for (const auto output : bitcast_op.getOutputs()) {

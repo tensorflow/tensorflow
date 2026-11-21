@@ -67,6 +67,15 @@ llvm::SmallVector<IoAlias, 4> GetIoAliases(mlir::ArrayAttr io_aliases);
 
 namespace detail {
 
+// Verifies invariants shared by `IfrtPairwiseArrayOpInterface` operations
+// (`!getInputs().empty()` and `getInputs().size() == getOutputs().size()`).
+mlir::LogicalResult VerifyPairwiseArrayOp(mlir::Operation* op);
+
+// Verifies invariants shared by `IfrtCallOpInterface` operations
+// (`arg_attrs`/`res_attrs` arity and `io_aliases`/`donated_input_indices`
+// bounds, uniqueness, and dtype/per-shard shape compatibility).
+mlir::LogicalResult VerifyCallOp(mlir::Operation* op);
+
 template <typename OpT>
 IfrtPairwiseArrayOpInterface ClonePairwiseArrayOpWithNewInputsAndOutputs(
     OpT op, mlir::RewriterBase& rewriter, mlir::Location loc,
@@ -223,8 +232,7 @@ bool IsDonatedOperand(mlir::OpOperand& operand);
 // Returns true if `operand` is an array input paired with an output via
 // `io_aliases` (on `IfrtCallOpInterface`, which consumes the input buffer) or
 // aliased without donation via `reuse = true` (`CopyArraysOp`) or
-// `donated = false` (`BitcastArraysOp`, `RemapArraysOp`, `AssembleOp`,
-// `DisassembleOp`).
+// `donated = false` (`RemapArraysOp`, `AssembleOp`, `DisassembleOp`).
 bool IsAliasedOperand(mlir::OpOperand& operand);
 
 // Returns true if `operand` is donated or aliased to its owner IFRT operation.

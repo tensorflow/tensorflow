@@ -1405,37 +1405,36 @@ module @oob_intermediate_copy_module {
                  HasSubstr("Logical device id 2 is out of range")));
   }
 
-  constexpr absl::string_view kOutOfBoundsBitcastSource = R"mlir(
+  constexpr absl::string_view kOutOfBoundsReshardSource = R"mlir(
 !in_out_array = !ifrt.array<tensor<2x2xi32>,
                             #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 !oob_array = !ifrt.array<tensor<2x2xi32>,
-                         #ifrt.sharding_param<2x1 to [0] on 2>, [0,2]>
-module @oob_intermediate_bitcast_module {
-  func.func @main(%arg0: !in_out_array {ifrt.donated}) -> (!in_out_array)
+                         #ifrt.sharding_param<1x2 to [0] on 2>, [0,2]>
+module @oob_intermediate_reshard_module {
+  func.func @main(%arg0: !in_out_array) -> (!in_out_array)
       attributes {ifrt.function} {
-    %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
-        : (!in_out_array) -> (!oob_array)
-    %1, %ctrl_1 = ifrt.BitcastArrays(%0) after %ctrl_0 <donated = true>
+    %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!in_out_array) -> (!oob_array)
+    %1, %ctrl_1 = ifrt.Reshard(%0) after %ctrl_0
         : (!oob_array) -> (!in_out_array)
     return %1 : !in_out_array
   }
 }
   )mlir";
   {
-    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> oob_bitcast_module,
-                         LoadFromSource(kOutOfBoundsBitcastSource));
+    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> oob_reshard_module,
+                         LoadFromSource(kOutOfBoundsReshardSource));
     EXPECT_THAT(IfrtIrExecutable::Create(
-                    std::make_unique<IfrtIRProgram>(*oob_bitcast_module),
+                    std::make_unique<IfrtIRProgram>(*oob_reshard_module),
                     make_options(), &client_, atom_compiler)
                     .Await(),
                 StatusIs(absl::StatusCode::kInvalidArgument,
                          HasSubstr("Logical device id 2 is out of range")));
   }
   {
-    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> oob_bitcast_module,
-                         LoadFromSource(kOutOfBoundsBitcastSource));
+    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> oob_reshard_module,
+                         LoadFromSource(kOutOfBoundsReshardSource));
     EXPECT_THAT(CompiledIfrtIrProgram::Create(
-                    std::make_unique<IfrtIRProgram>(*oob_bitcast_module),
+                    std::make_unique<IfrtIRProgram>(*oob_reshard_module),
                     make_options(), &client_, atom_compiler)
                     .Await(),
                 StatusIs(absl::StatusCode::kInvalidArgument,

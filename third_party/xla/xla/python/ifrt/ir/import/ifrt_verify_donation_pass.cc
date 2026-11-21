@@ -543,7 +543,6 @@ mlir::LogicalResult VerifyCallOpAliasesAndDonations(IfrtCallOpInterface op,
 // shards more than once within the same op.
 mlir::LogicalResult VerifyBitcastArraysOp(BitcastArraysOp op,
                                           DonationTracker& tracker) {
-  CHECK(op.getDonated());
   if (mlir::failed(tracker.DonateInputs(op, op.getInputs(), /*donated=*/true,
                                         /*allow_duplicates=*/false))) {
     return mlir::failure();

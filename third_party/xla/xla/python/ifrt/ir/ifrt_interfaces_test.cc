@@ -880,7 +880,7 @@ module {
                   %x_le_don: !arr, %x_le_alias: !arr, %x_le_plain: !arr,
                   %x_copy_plain: !arr, %x_copy_reuse: !arr, %x_copy_don: !arr,
                   %x_reshard_plain: !arr, %x_reshard_don: !arr,
-                  %x_bitcast_alias: !arr, %x_bitcast_don: !arr,
+                  %x_bitcast_don: !arr,
                   %s_remap_alias: !arr_d0, %s_remap_don: !arr_d0,
                   %s0_alias: !arr_d0, %s1_alias: !arr_d1,
                   %s0_don: !arr_d0, %s1_don: !arr_d1, %ctrl: !ifrt.control)
@@ -901,9 +901,8 @@ module {
     %r0, %r_ctrl0 = ifrt.Reshard(%x_reshard_plain) : (!arr) -> !arr
     %r1, %r_ctrl1 = ifrt.Reshard(%x_reshard_don) <donated = true>
         : (!arr) -> !arr
-    %b0, %b_ctrl0 = ifrt.BitcastArrays(%x_bitcast_alias) : (!arr) -> !arr_3d
-    %b1, %b_ctrl1 = ifrt.BitcastArrays(%x_bitcast_don) <donated = true>
-        : (!arr) -> !arr_3d
+    %b0, %b_ctrl0 = ifrt.BitcastArrays(%x_bitcast_don) after %ctrl
+        <donated = true> : (!arr) -> !arr_3d
     %m0, %m_ctrl0 = ifrt.RemapArrays(%s_remap_alias)
         mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
         after %ctrl : (!arr_d0) -> !arr_d0
@@ -998,17 +997,16 @@ module {
   EXPECT_FALSE(IsAliasedOperand(reshard_ops[1]->getOpOperand(0)));
   EXPECT_TRUE(IsDonatedOrAliasedByUser(reshard_ops[1].getInputs()[0]));
 
-  // `BitcastArraysOp`: `donated = false` (aliased) vs. `donated = true`
-  // (donated).
+  // `BitcastArraysOp`: always `donated = true`, plus control input operand.
   llvm::SmallVector<BitcastArraysOp> bitcasts(
       main_func.getOps<BitcastArraysOp>());
-  ASSERT_EQ(bitcasts.size(), 2u);
-  EXPECT_FALSE(IsDonatedOperand(bitcasts[0]->getOpOperand(0)));
-  EXPECT_TRUE(IsAliasedOperand(bitcasts[0]->getOpOperand(0)));
+  ASSERT_EQ(bitcasts.size(), 1u);
+  EXPECT_TRUE(IsDonatedOperand(bitcasts[0]->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(bitcasts[0]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(bitcasts[0]->getOpOperand(0)));
+  EXPECT_FALSE(IsDonatedOperand(bitcasts[0]->getOpOperand(1)));
+  EXPECT_FALSE(IsAliasedOperand(bitcasts[0]->getOpOperand(1)));
   EXPECT_TRUE(IsDonatedOrAliasedByUser(bitcasts[0].getInputs()[0]));
-  EXPECT_TRUE(IsDonatedOperand(bitcasts[1]->getOpOperand(0)));
-  EXPECT_FALSE(IsAliasedOperand(bitcasts[1]->getOpOperand(0)));
-  EXPECT_TRUE(IsDonatedOrAliasedByUser(bitcasts[1].getInputs()[0]));
 
   // `RemapArraysOp`: `donated = false` (aliased) vs. `donated = true`
   // (donated), plus control input operand.

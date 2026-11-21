@@ -20,7 +20,8 @@
                       #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
 func.func @bitcast_drop_and_add_a_dimension(%arg0: !array0, %arg1: !array1)
     attributes {ifrt.function} {
-  %0, %1, %ctrl_0 = ifrt.BitcastArrays(%arg0, %arg1) : (!array0, !array1) -> (!array1, !array0)
+  %0, %1, %ctrl_0 = ifrt.BitcastArrays(%arg0, %arg1) <donated = true>
+      : (!array0, !array1) -> (!array1, !array0)
   return
 }
 
@@ -32,7 +33,8 @@ func.func @bitcast_drop_and_add_a_dimension(%arg0: !array0, %arg1: !array1)
                       #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
 func.func @bitcast_drop_one_dimension_different_dtype(%arg0: !array0)
     attributes {ifrt.function} {
-  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> (!array1)
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array0) -> (!array1)
   return
 }
 
@@ -44,7 +46,8 @@ func.func @bitcast_drop_one_dimension_different_dtype(%arg0: !array0)
                       #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
 func.func @bitcast_add_one_dimension(%arg0: !array0)
     attributes {ifrt.function} {
-  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> (!array1)
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array0) -> (!array1)
   return
 }
 
@@ -52,7 +55,7 @@ func.func @bitcast_add_one_dimension(%arg0: !array0)
 
 func.func @requires_at_least_one_input() attributes {ifrt.function} {
   // expected-error@+1 {{'ifrt.BitcastArrays' op requires at least one input array}}
-  %ctrl_0 = ifrt.BitcastArrays() : () -> ()
+  %ctrl_0 = ifrt.BitcastArrays() <donated = true> : () -> ()
   return
 }
 
@@ -62,7 +65,7 @@ func.func @requires_at_least_one_input() attributes {ifrt.function} {
                       #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
 func.func @error_zero_inputs_one_output() attributes {ifrt.function} {
   // expected-error@+1 {{'ifrt.BitcastArrays' op requires at least one input array}}
-  %0, %ctrl_0 = ifrt.BitcastArrays() : () -> (!array0)
+  %0, %ctrl_0 = ifrt.BitcastArrays() <donated = true> : () -> (!array0)
   return
 }
 
@@ -73,7 +76,7 @@ func.func @error_zero_inputs_one_output() attributes {ifrt.function} {
 func.func @error_one_input_zero_outputs(%arg0: !array0)
     attributes {ifrt.function} {
   // expected-error@+1 {{'ifrt.BitcastArrays' op requires the same number of input and output arrays}}
-  %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> ()
+  %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true> : (!array0) -> ()
   return
 }
 
@@ -86,7 +89,65 @@ func.func @error_one_input_zero_outputs(%arg0: !array0)
 func.func @error_different_num_inputs_and_outputs(%arg0: !array0)
     attributes {ifrt.function} {
   // expected-error@+1 {{op requires the same number of input and output arrays}}
-  %0, %1, %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> (!array0, !array1)
+  %0, %1, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array0) -> (!array0, !array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
+func.func @error_not_donated_default(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.BitcastArrays' op requires `donated` to be set to true}}
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
+func.func @error_not_donated_explicit_false(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.BitcastArrays' op requires `donated` to be set to true}}
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = false>
+      : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1],
+                      layout = "auto">
+!array1 = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
+func.func @error_auto_layout_input(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.BitcastArrays' op does not allow input or output arrays with `auto` layout}}
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1],
+                      layout = "auto">
+func.func @error_auto_layout_output(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.BitcastArrays' op does not allow input or output arrays with `auto` layout}}
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array0) -> (!array1)
   return
 }
 
@@ -101,7 +162,8 @@ func.func @error_different_num_inputs_and_outputs(%arg0: !array0)
 func.func @error_different_memory_kind(%arg0: !array0)
     attributes {ifrt.function} {
   // expected-error@+1 {{op requires input array #0 and output array #0 to have the same memory kind}}
-  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> (!array1)
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array0) -> (!array1)
   return
 }
 
@@ -113,7 +175,36 @@ func.func @error_different_memory_kind(%arg0: !array0)
                       #ifrt.sharding_param<1x1 to [0] on 3>, [0,1,2]>
 func.func @error_different_num_devices(%arg0: !array0)
     attributes {ifrt.function} {
-  // expected-error@+1 {{op requires input array #0 and output array #0 to have the same number of devices}}
-  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> (!array1)
+  // expected-error@+1 {{op requires input array #0 and output array #0 to have the same devices}}
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,2]>
+func.func @error_different_device_ids_same_count(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.BitcastArrays' op requires input array #0 and output array #0 to have the same devices}}
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [1,0]>
+func.func @error_different_device_order(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.BitcastArrays' op requires input array #0 and output array #0 to have the same devices}}
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true>
+      : (!array0) -> (!array1)
   return
 }

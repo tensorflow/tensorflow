@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -57,16 +58,14 @@ struct SpecializedCallee {
 
 // Returns the normalized `mlir::DictionaryAttr` at `index` from `attrs` (an
 // `arg_attrs` or `res_attrs` `mlir::ArrayAttr`), or a null `mlir::Attribute` if
-// `attrs` is null, `index` is out of bounds, or the dictionary is empty.
+// `attrs` is null or the dictionary at `index` is empty.
 mlir::Attribute GetNormalizedDictAttrAt(mlir::ArrayAttr attrs, size_t index) {
-  if (attrs == nullptr || index >= attrs.size()) {
+  if (attrs == nullptr) {
     return mlir::Attribute();
   }
-  auto dict = llvm::dyn_cast<mlir::DictionaryAttr>(attrs[index]);
-  if (dict == nullptr || dict.empty()) {
-    return mlir::Attribute();
-  }
-  return dict;
+  CHECK_LT(index, attrs.size());
+  auto dict = llvm::cast<mlir::DictionaryAttr>(attrs[index]);
+  return dict.empty() ? mlir::Attribute() : mlir::Attribute(dict);
 }
 
 // Identifies duplicate non-donated, non-aliased inputs of `call_op`. Populates
