@@ -22,6 +22,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as reader_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import lookup_ops as core_lookup_ops
 from tensorflow.python.ops import string_ops
@@ -146,6 +147,145 @@ class DatasetInitializerTest(test.TestCase):
     self.evaluate(core_lookup_ops.tables_initializer())
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, 2], result)
+
+  def test_index_table_from_dataset_vocab_size_exceeds_cardinality(self):
+    data = ["apple", "banana", "orange", "grape", "kiwi", "mango"]
+    ds = dataset_ops.Dataset.from_tensor_slices(data)
+    for vocab_size in (
+        10,
+        2**31 - 1,
+        2**40,
+        2**50,
+        dtypes.int64.max,
+        constant_op.constant(2**40, dtype=dtypes.int64),
+    ):
+      with self.assertRaisesRegex(
+          errors.FailedPreconditionError,
+          "Input dataset was expected to contain .* but contained only "
+          "6 elements.",
+      ):
+        lookup_ops.index_table_from_dataset(
+            dataset=ds,
+            vocab_size=vocab_size,
+            num_oov_buckets=1,
+            default_value=-1,
+        )
+
+  def test_table_from_dataset_vocab_size_exceeds_cardinality(self):
+    keys = dataset_ops.Dataset.from_tensor_slices(["a", "b"])
+    values = dataset_ops.Dataset.from_tensor_slices([0, 1])
+    ds = dataset_ops.Dataset.zip((keys, values))
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        "Input dataset was expected to contain .* but contained only "
+        "2 elements.",
+    ):
+      lookup_ops.table_from_dataset(ds, vocab_size=2**40)
+
+    with self.assertRaisesRegex(ValueError, "must not exceed"):
+      lookup_ops.table_from_dataset(ds, vocab_size=dtypes.int64.max + 1)
+
+  def test_index_table_from_dataset_empty_with_vocab_size(self):
+    ds = dataset_ops.Dataset.from_tensor_slices(
+        constant_op.constant([], dtype=dtypes.string)
+    )
+    for vocab_size in (1, 2**40):
+      with self.assertRaisesRegex(
+          errors.FailedPreconditionError,
+          "contained only 0 elements.",
+      ):
+        lookup_ops.index_table_from_dataset(
+            dataset=ds, vocab_size=vocab_size, default_value=-1
+        )
+
+  def test_index_table_from_dataset_valid_vocab_size(self):
+    data = ["apple", "banana", "orange"]
+    ds = dataset_ops.Dataset.from_tensor_slices(data)
+
+    # Exact cardinality match.
+    table_exact = lookup_ops.index_table_from_dataset(
+        ds, vocab_size=3, default_value=-1
+    )
+    self.evaluate(core_lookup_ops.tables_initializer())
+    self.assertAllEqual(
+        [0, 1, 2, -1],
+        self.evaluate(
+            table_exact.lookup(
+                constant_op.constant(["apple", "banana", "orange", "kiwi"])
+            )
+        ),
+    )
+
+    # Truncated vocabulary (vocab_size < cardinality).
+    table_trunc = lookup_ops.index_table_from_dataset(
+        ds, vocab_size=2, default_value=-1
+    )
+    self.evaluate(core_lookup_ops.tables_initializer())
+    self.assertAllEqual(
+        [0, 1, -1],
+        self.evaluate(
+            table_trunc.lookup(
+                constant_op.constant(["apple", "banana", "orange"])
+            )
+        ),
+    )
+
+    # Infinite dataset with finite vocab_size.
+    ds_inf = dataset_ops.Dataset.range(10).map(string_ops.as_string).repeat()
+    table_inf = lookup_ops.index_table_from_dataset(
+        ds_inf, vocab_size=3, default_value=-1
+    )
+    self.evaluate(core_lookup_ops.tables_initializer())
+    self.assertAllEqual(
+        [0, 1, 2, -1],
+        self.evaluate(
+            table_inf.lookup(constant_op.constant(["0", "1", "2", "3"]))
+        ),
+    )
+
+    # Unknown cardinality dataset with matching and mismatched vocab_size.
+    ds_unknown = ds.filter(lambda _: True)
+    table_unknown = lookup_ops.index_table_from_dataset(
+        ds_unknown, vocab_size=3, default_value=-1
+    )
+    self.evaluate(core_lookup_ops.tables_initializer())
+    self.assertAllEqual(
+        [0, 1, 2],
+        self.evaluate(
+            table_unknown.lookup(
+                constant_op.constant(["apple", "banana", "orange"])
+            )
+        ),
+    )
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        "Input dataset was expected to contain 4 elements but contained only "
+        "3 elements.",
+    ):
+      lookup_ops.index_table_from_dataset(
+          ds_unknown, vocab_size=4, default_value=-1
+      )
+
+  def test_index_table_from_dataset_oversized_vocab_size_graph_mode(self):
+    for use_tensor in (False, True):
+      with ops.Graph().as_default() as g, self.session(graph=g):
+        ds = dataset_ops.Dataset.from_tensor_slices(["apple", "banana"])
+        vocab_size = (
+            constant_op.constant(2**40, dtype=dtypes.int64)
+            if use_tensor
+            else 2**40
+        )
+        lookup_ops.index_table_from_dataset(
+            dataset=ds,
+            vocab_size=vocab_size,
+            num_oov_buckets=1,
+            default_value=-1,
+        )
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            "Input dataset was expected to contain",
+        ):
+          self.evaluate(core_lookup_ops.tables_initializer())
 
 
 if __name__ == "__main__":
