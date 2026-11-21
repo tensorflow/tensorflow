@@ -1941,7 +1941,7 @@ def append(arr, values, axis=None):
 
 @tf_export.tf_export('experimental.numpy.average', v1=[])
 @np_utils.np_doc('average')
-def average(a, axis=None, weights=None, returned=False):  # pylint: disable=missing-docstring
+def average(a, axis=None, weights=None, returned=False, keepdims=False):  # pylint: disable=missing-docstring
   if axis is not None and not isinstance(axis, int):
     # TODO(wangpeng): Support tuple of ints as `axis`
     raise ValueError(
@@ -1966,7 +1966,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
       # See the note in `_scalar`: `astype` is unavailable without the
       # `enable_numpy_methods_on_tensor()` opt-in.
       a = math_ops.cast(a, np_utils.result_type(a.dtype, default_float_type))
-    avg = math_ops.reduce_mean(a, axis=axis)
+    avg = math_ops.reduce_mean(a, axis=axis, keepdims=keepdims)
     if returned:
       if axis is None:
         weights_sum = array_ops.size(a)
@@ -1986,12 +1986,17 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
           math_ops.reduce_all(array_ops.shape(a) == array_ops.shape(weights)),
           [array_ops.shape(a), array_ops.shape(weights)],
       )
-      weights_sum = math_ops.reduce_sum(weights, axis=axis)
+      weights_sum = math_ops.reduce_sum(
+          weights, axis=axis, keepdims=keepdims
+      )
       control_flow_assert.Assert(
           math_ops.reduce_all(math_ops.not_equal(weights_sum, 0)),
           ['Weights sum to zero, cannot be normalized.'],
       )
-      avg = math_ops.reduce_sum(a * weights, axis=axis) / weights_sum
+      avg = (
+          math_ops.reduce_sum(a * weights, axis=axis, keepdims=keepdims)
+          / weights_sum
+      )
       return avg, weights_sum
 
     if axis is None:
@@ -2009,6 +2014,8 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
         )
         axes = ops.convert_to_tensor([[axis], [0]])
         avg = math_ops.tensordot(a, weights, axes) / weights_sum
+        if keepdims:
+          avg = array_ops.expand_dims(avg, axis)
         return avg, weights_sum
 
       # We condition on rank rather than shape equality, because if we do the
