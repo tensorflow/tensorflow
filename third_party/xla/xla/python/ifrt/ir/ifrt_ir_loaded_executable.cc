@@ -24,16 +24,13 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/OperationSupport.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/compiled_memory_stats.h"
@@ -51,10 +48,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/serialization_utils.h"
 #include "xla/python/ifrt/ir/utils.h"
 #include "xla/python/ifrt/ir/version.h"
-#include "xla/python/ifrt/memory.h"
-#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
-#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -206,61 +200,27 @@ std::optional<std::vector<xla::OpSharding>>
 IfrtIrLoadedExecutable::GetParameterShardings() const {
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetParameterShardings"; });
-  std::vector<xla::OpSharding> parameter_shardings;
-  for (const auto& [idx, spec] : llvm::enumerate(program_->in_specs)) {
-    if (auto hlo_sharding =
-            dyn_cast_or_null<xla::ifrt::HloSharding>(spec.sharding.get())) {
-      parameter_shardings.push_back(hlo_sharding->xla_hlo_sharding().ToProto());
-    } else {
-      LOG(ERROR) << "Failed to get sharding of parameter #" << idx
-                 << ". Sharding is not an HloSharding.";
-      return std::nullopt;
-    }
-  }
-  return parameter_shardings;
+  return xla::ifrt::GetOpShardings(program_->in_specs, "parameter");
 }
 
 std::optional<std::vector<xla::OpSharding>>
 IfrtIrLoadedExecutable::GetOutputShardings() const {
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetOutputShardings"; });
-  std::vector<xla::OpSharding> output_shardings;
-  for (const auto& [idx, spec] : llvm::enumerate(program_->out_specs)) {
-    if (auto hlo_sharding =
-            dyn_cast_or_null<xla::ifrt::HloSharding>(spec.sharding.get())) {
-      output_shardings.push_back(hlo_sharding->xla_hlo_sharding().ToProto());
-    } else {
-      LOG(ERROR) << "Failed to get sharding of output #" << idx
-                 << ". Sharding is not an HloSharding.";
-      return std::nullopt;
-    }
-  }
-  return output_shardings;
+  return xla::ifrt::GetOpShardings(program_->out_specs, "output");
 }
 
 absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 IfrtIrLoadedExecutable::GetParameterLayouts() const {
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetParameterLayouts"; });
-  ABSL_RETURN_IF_ERROR(program_->layout_status);
-  std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
-  parameter_layouts.reserve(program_->in_specs.size());
-  for (const auto& spec : program_->in_specs) {
-    parameter_layouts.push_back(spec.layout);
-  }
-  return parameter_layouts;
+  return xla::ifrt::GetLayouts(program_->layout_status, program_->in_specs);
 }
 
 absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 IfrtIrLoadedExecutable::GetOutputLayouts() const {
   TraceMe traceme([]() { return "IfrtIrLoadedExecutable::GetOutputLayouts"; });
-  ABSL_RETURN_IF_ERROR(program_->layout_status);
-  std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
-  output_layouts.reserve(program_->out_specs.size());
-  for (const auto& spec : program_->out_specs) {
-    output_layouts.push_back(spec.layout);
-  }
-  return output_layouts;
+  return xla::ifrt::GetLayouts(program_->layout_status, program_->out_specs);
 }
 
 absl::StatusOr<std::vector<std::shared_ptr<xla::HloModule>>>
@@ -299,16 +259,7 @@ absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 IfrtIrLoadedExecutable::GetOutputMemoryKinds() const {
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetOutputMemoryKinds"; });
-  std::vector<absl::string_view> output_memory_kinds;
-  for (const auto& [idx, spec] : llvm::enumerate(program_->out_specs)) {
-    output_memory_kinds.push_back(spec.sharding->memory_kind().value());
-  }
-  // Pretend that the MPMD executable is a SPMD executable and return a
-  // single array. We do not return per-SPMD program memory kinds because the
-  // order in the vector would not be well-defined.
-  std::vector<std::vector<absl::string_view>> output_memory_kinds_vector = {
-      output_memory_kinds};
-  return output_memory_kinds_vector;
+  return xla::ifrt::GetOutputMemoryKinds(program_->out_specs);
 }
 
 absl::StatusOr<AttributeMap> IfrtIrLoadedExecutable::GetCostAnalysis() const {

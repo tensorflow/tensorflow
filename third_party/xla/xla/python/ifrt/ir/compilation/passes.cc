@@ -89,13 +89,12 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
   pm.addPass(createIfrtPrecompileAtomProgramPreprocessingPass(
       {/*platform_names=*/llvm::to_vector(options.platform_names),
        /*compile_options=*/compile_options}));
+  pm.addPass(
+      createIfrtVerifyBoundExternalLoadedExecutablePass(bound_executable_map));
   pm.addPass(createIfrtCompileAtomProgramPass(
       std::move(compiler), compile_options->compile_options_overrides,
       atom_executable_future_map, compiled_atom_program_future_map));
   pm.addPass(mlir::createSymbolDCEPass());
-
-  pm.addPass(
-      createIfrtVerifyBoundExternalLoadedExecutablePass(bound_executable_map));
 
   if (!ifrt_to_dot_pass_options.dot_graph_dump_to.empty()) {
     ABSL_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(

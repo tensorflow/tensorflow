@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -79,8 +79,10 @@ tsl::Executor& GetIfrtIrCompilationExecutor();
 // `loading_mode` is `AtomProgramLoadingMode::kDeferred`, or
 // `CompileAndLoadXla` and `CompileAndLoadMpmdReshard` when `loading_mode` is
 // `AtomProgramLoadingMode::kEager`), and extracts top-level input/output
-// `ArraySpec`s and donatable input indices.
-absl::StatusOr<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
+// `ArraySpec`s and donatable input indices. If lowering fails after atom
+// program compilations have been dispatched, the returned future waits for all
+// in-flight atom compilation futures to settle before propagating the error.
+tsl::Future<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
     absl_nonnull std::unique_ptr<IfrtIRProgram> ifrt_ir_program,
     absl_nonnull std::unique_ptr<IfrtIRCompileOptions> ifrt_ir_compile_options,
     Client* absl_nonnull client,
@@ -88,7 +90,8 @@ absl::StatusOr<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
     AtomProgramLoadingMode loading_mode);
 
 // Populates `layout` on `in_specs` and `out_specs` from compiled/loaded atom
-// executables and device defaults.
+// executables and device defaults. Leaves `in_specs` and `out_specs` unmodified
+// on error.
 absl::Status PopulateIfrtIrProgramLayouts(
     mlir::ModuleOp mlir_module, Client* absl_nonnull client,
     const AtomExecutableMap& atom_program_executables,

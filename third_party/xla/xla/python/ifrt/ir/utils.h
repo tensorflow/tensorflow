@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_UTILS_H_
 #define XLA_PYTHON_IFRT_IR_UTILS_H_
 
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -36,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -43,7 +49,9 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -159,6 +167,28 @@ absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
 // Returns a DeviceList for the given device ids.
 absl::StatusOr<DeviceListRef> LookUpDevices(Client* client,
                                             absl::Span<const DeviceId> ids);
+
+// Builds and validates a `RemapPlan` from `remap_op` using `device_list` to
+// resolve logical device IDs.
+absl::StatusOr<RemapPlan> BuildRemapPlan(Client* absl_nonnull client,
+                                         const DeviceListRef& device_list,
+                                         RemapArraysOp remap_op);
+
+// Converts `specs` shardings to `xla::OpSharding` protos, returning
+// `std::nullopt` if any `ArraySpec` does not carry an `HloSharding`.
+std::optional<std::vector<xla::OpSharding>> GetOpShardings(
+    absl::Span<const ArraySpec> specs, absl::string_view kind);
+
+// Extracts `PjRtLayout`s from `specs` once `layout_status` is OK.
+absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>> GetLayouts(
+    const absl::Status& layout_status, absl::Span<const ArraySpec> specs);
+
+// Extracts output memory kinds from `out_specs` as a single outer entry
+// representing the top-level IFRT IR program outputs. Returned
+// `absl::string_view`s reference `MemoryKind`'s globally interned storage and
+// remain valid after `out_specs` is destroyed.
+absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+GetOutputMemoryKinds(absl::Span<const ArraySpec> out_specs);
 
 }  // namespace ifrt
 }  // namespace xla

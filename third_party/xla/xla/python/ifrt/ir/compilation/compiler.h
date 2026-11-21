@@ -77,6 +77,14 @@ class IfrtIrProgramCompiler final
       override;
 
  private:
+  // Validates `program` and `options`, creates an `AtomProgramCompiler`, and
+  // schedules `compile_fn` asynchronously on the default thread pool while
+  // preserving `UserContextScope::current()`.
+  template <typename ResultT, typename CompileFn>
+  tsl::Future<ResultT> ScheduleCompilation(
+      std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options,
+      CompileFn compile_fn);
+
   Client* absl_nonnull const client_;
   const AtomProgramCompilerFactory atom_program_compiler_factory_;
 };

@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/utils.h"
 
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncDialect.h"
@@ -39,13 +45,27 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout_util.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/basic_device_list.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/mock.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -55,6 +75,8 @@ using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::NiceMock;
+using ::testing::SizeIs;
 
 TEST(UtilsTest, GetPrettyLocationUnknownLoc) {
   mlir::MLIRContext context;
@@ -521,6 +543,144 @@ TEST(UtilsTest, IfrtArrayTypeEnforcesShapeMaxNumElements) {
                 StatusIs(absl::StatusCode::kUnknown,
                          HasSubstr("exceeds maximum supported elements")));
   }
+}
+
+TEST(UtilsTest, ShardingFromIfrtArrayTypeValidatesShardingAttrAndDeviceIds) {
+  mlir::MLIRContext context;
+  support::RegisterMlirDialects(context);
+  const char* kModuleStr = R"mlir(
+!arr_valid = !ifrt.array<tensor<4x2xf32>,
+                         #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1],
+                         memory_kind = "pinned_host">
+!arr_unspec = !ifrt.array<tensor<4x2xf32>, #ifrt.sharding_unspecified, [0, 1]>
+!arr_oob = !ifrt.array<tensor<4x2xf32>,
+                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+module {
+  func.func @main(%a: !arr_valid, %b: !arr_unspec, %c: !arr_oob)
+      attributes {ifrt.function} {
+    return
+  }
+}
+)mlir";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       support::ParseMlirModuleString(kModuleStr, context));
+  mlir::func::FuncOp main_func = GetMainFunction(*module);
+
+  NiceMock<MockDevice> device0;
+  NiceMock<MockDevice> device1;
+  DeviceListRef device_list = BasicDeviceList::Create({&device0, &device1});
+  NiceMock<MockClient> client;
+  ON_CALL(client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devs) {
+        return BasicDeviceList::Create(devs);
+      });
+
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef sharding,
+      ShardingFromIfrtArrayType(GetArrayType(main_func.getArgument(0)), &client,
+                                device_list));
+  const auto* hlo_sharding = xla::ifrt::dyn_cast<HloSharding>(sharding.get());
+  ASSERT_NE(hlo_sharding, nullptr);
+  EXPECT_EQ(hlo_sharding->xla_hlo_sharding(),
+            xla::HloSharding::IotaTile({2, 1}));
+  EXPECT_EQ(sharding->memory_kind(), MemoryKind("pinned_host"));
+  EXPECT_THAT(sharding->devices()->devices(), ElementsAre(&device0, &device1));
+
+  EXPECT_THAT(ShardingFromIfrtArrayType(GetArrayType(main_func.getArgument(1)),
+                                        &client, device_list),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("IfrtShardingParamAttr")));
+  EXPECT_THAT(ShardingFromIfrtArrayType(GetArrayType(main_func.getArgument(2)),
+                                        &client, device_list),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Logical device id 2 is out of range")));
+}
+
+TEST(UtilsTest, GetOpShardingsReturnsOpShardingsOrNulloptForNonHloSharding) {
+  NiceMock<MockDevice> device0;
+  NiceMock<MockDevice> device1;
+  DeviceListRef device_list = BasicDeviceList::Create({&device0, &device1});
+
+  const std::vector<ArraySpec> hlo_specs = {
+      ArraySpec{
+          /*dtype=*/DType(DType::kF32),
+          /*shape=*/Shape({4, 2}),
+          /*sharding=*/
+          HloSharding::Create(device_list, MemoryKind(),
+                              xla::HloSharding::IotaTile({2, 1})),
+      },
+  };
+  std::optional<std::vector<xla::OpSharding>> op_shardings =
+      GetOpShardings(hlo_specs, "parameter");
+  ASSERT_TRUE(op_shardings.has_value());
+  ASSERT_THAT(*op_shardings, SizeIs(1));
+  ASSERT_OK_AND_ASSIGN(xla::HloSharding roundtripped,
+                       xla::HloSharding::FromProto((*op_shardings)[0]));
+  EXPECT_EQ(roundtripped, xla::HloSharding::IotaTile({2, 1}));
+
+  const std::vector<ArraySpec> opaque_specs = {
+      ArraySpec{
+          /*dtype=*/DType(DType::kF32),
+          /*shape=*/Shape({4, 2}),
+          /*sharding=*/OpaqueSharding::Create(device_list, MemoryKind()),
+      },
+  };
+  EXPECT_EQ(GetOpShardings(opaque_specs, "output"), std::nullopt);
+}
+
+TEST(UtilsTest, GetLayoutsPropagatesStatusAndExtractsLayouts) {
+  NiceMock<MockDevice> device0;
+  DeviceListRef device_list = BasicDeviceList::Create({&device0});
+  auto layout0 = std::make_shared<const xla::PjRtLayout>(
+      xla::LayoutUtil::MakeLayout({1, 0}));
+  const std::vector<ArraySpec> specs = {
+      ArraySpec{
+          /*dtype=*/DType(DType::kF32),
+          /*shape=*/Shape({2, 2}),
+          /*sharding=*/OpaqueSharding::Create(device_list, MemoryKind()),
+          /*layout=*/layout0,
+      },
+      ArraySpec{
+          /*dtype=*/DType(DType::kF32),
+          /*shape=*/Shape({2, 2}),
+          /*sharding=*/OpaqueSharding::Create(device_list, MemoryKind()),
+          /*layout=*/nullptr,
+      },
+  };
+
+  EXPECT_THAT(
+      GetLayouts(absl::UnimplementedError("layouts unavailable"), specs),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("layouts unavailable")));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts,
+      GetLayouts(absl::OkStatus(), specs));
+  EXPECT_THAT(layouts, ElementsAre(layout0, nullptr));
+}
+
+TEST(UtilsTest, GetOutputMemoryKindsReturnsInternedViews) {
+  std::vector<std::vector<absl::string_view>> memory_kinds;
+  {
+    NiceMock<MockDevice> device0;
+    DeviceListRef device_list = BasicDeviceList::Create({&device0});
+    std::string dynamic_kind = absl::StrCat("custom_mem_", "kind");
+    std::vector<ArraySpec> out_specs = {
+        ArraySpec{
+            /*dtype=*/DType(DType::kF32),
+            /*shape=*/Shape({2, 2}),
+            /*sharding=*/OpaqueSharding::Create(device_list, MemoryKind()),
+        },
+        ArraySpec{
+            /*dtype=*/DType(DType::kF32),
+            /*shape=*/Shape({2, 2}),
+            /*sharding=*/
+            OpaqueSharding::Create(device_list, MemoryKind(dynamic_kind)),
+        },
+    };
+    ASSERT_OK_AND_ASSIGN(memory_kinds, GetOutputMemoryKinds(out_specs));
+  }
+  ASSERT_THAT(memory_kinds, SizeIs(1));
+  EXPECT_THAT(memory_kinds[0], ElementsAre("device", "custom_mem_kind"));
 }
 
 }  // namespace

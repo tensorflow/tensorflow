@@ -119,7 +119,7 @@ absl::StatusOr<uint64_t> IfrtIRCompileOptions::Fingerprint(
 
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options) {
-  if (!isa<IfrtIRCompileOptions>(options.get())) {
+  if (!isa_and_nonnull<IfrtIRCompileOptions>(options.get())) {
     return absl::InvalidArgumentError("options must be IfrtIRCompileOptions");
   }
   return std::unique_ptr<IfrtIRCompileOptions>(

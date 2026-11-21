@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -40,16 +41,14 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/compilation/mock_atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_test_base.h"
 #include "xla/python/ifrt/mock.h"
-#include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -67,33 +66,6 @@ using ::testing::SizeIs;
 using ::testing::StrictMock;
 
 using LayoutPtr = std::shared_ptr<const xla::PjRtLayout>;
-
-class MockAtomProgramCompiler : public AtomProgramCompiler {
- public:
-  MOCK_METHOD(
-      tsl::Future<LoadedExecutableRef>, CompileAndLoadXla,
-      (std::unique_ptr<HloProgram> computation, xla::CompileOptions options,
-       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks),
-      (override));
-  MOCK_METHOD(
-      tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>,
-      CompileXla,
-      (std::unique_ptr<HloProgram> computation, xla::CompileOptions options,
-       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks),
-      (override));
-  MOCK_METHOD(tsl::Future<LoadedExecutableRef>, CompileAndLoadMpmdReshard,
-              (std::vector<DType> dtypes, std::vector<Shape> shapes,
-               std::vector<IfrtArrayType> in_array_types,
-               std::vector<IfrtArrayType> out_array_types),
-              (override));
-  MOCK_METHOD(
-      tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>,
-      CompileMpmdReshard,
-      (std::vector<DType> dtypes, std::vector<Shape> shapes,
-       std::vector<IfrtArrayType> in_array_types,
-       std::vector<IfrtArrayType> out_array_types),
-      (override));
-};
 
 class ProgramLoweringTest : public test_util::IfrtIrTestBase {
  protected:
@@ -185,10 +157,11 @@ module @deferred_lowering_module {
     ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                          LoadFromSource(kSource));
     lowered_state = LowerIfrtIrProgram(
-        std::make_unique<IfrtIRProgram>(*module),
-        std::make_unique<IfrtIRCompileOptions>(
-            std::vector<DeviceId>{DeviceId(10), DeviceId(11)}),
-        &client_, compiler, AtomProgramLoadingMode::kDeferred);
+                        std::make_unique<IfrtIRProgram>(*module),
+                        std::make_unique<IfrtIRCompileOptions>(
+                            std::vector<DeviceId>{DeviceId(10), DeviceId(11)}),
+                        &client_, compiler, AtomProgramLoadingMode::kDeferred)
+                        .Await();
   }
   ASSERT_OK(lowered_state);
   EXPECT_TRUE(lowered_state->ifrt_ir_program->OwnsMlirContext());
@@ -255,7 +228,8 @@ module @eager_lowering_module {
       LowerIfrtIrProgram(std::make_unique<IfrtIRProgram>(*module),
                          std::make_unique<IfrtIRCompileOptions>(
                              std::vector<DeviceId>{DeviceId(10), DeviceId(11)}),
-                         &client_, compiler, AtomProgramLoadingMode::kEager));
+                         &client_, compiler, AtomProgramLoadingMode::kEager)
+          .Await());
   EXPECT_FALSE(state.ifrt_ir_program->OwnsMlirContext());
   EXPECT_EQ(state.compiled_atom_program_future_map, nullptr);
   ASSERT_NE(state.atom_executable_future_map, nullptr);
@@ -322,8 +296,8 @@ module @copy_arrays_layout_module {
       LowerIfrtIrProgram(std::make_unique<IfrtIRProgram>(*module),
                          std::make_unique<IfrtIRCompileOptions>(
                              std::vector<DeviceId>{DeviceId(10), DeviceId(11)}),
-                         &client_, compiler,
-                         AtomProgramLoadingMode::kDeferred));
+                         &client_, compiler, AtomProgramLoadingMode::kDeferred)
+          .Await());
   ASSERT_NE(state.compiled_atom_program_future_map, nullptr);
   ASSERT_THAT(*state.compiled_atom_program_future_map, SizeIs(1));
 
@@ -364,7 +338,8 @@ module @null_binding_module {
                          std::make_unique<IfrtIRCompileOptions>(
                              std::vector<DeviceId>{DeviceId(10), DeviceId(11)},
                              AtomExecutableMap{{"null_bound", nullptr}}),
-                         &client_, compiler, AtomProgramLoadingMode::kDeferred),
+                         &client_, compiler, AtomProgramLoadingMode::kDeferred)
+          .Await(),
       StatusIs(absl::StatusCode::kInvalidArgument,
                HasSubstr("Bound executable `null_bound` must not be null")));
   EXPECT_THAT(
@@ -372,7 +347,8 @@ module @null_binding_module {
                          std::make_unique<IfrtIRCompileOptions>(
                              std::vector<DeviceId>{DeviceId(10), DeviceId(11)},
                              AtomExecutableMap{{"null_bound", nullptr}}),
-                         &client_, compiler, AtomProgramLoadingMode::kEager),
+                         &client_, compiler, AtomProgramLoadingMode::kEager)
+          .Await(),
       StatusIs(absl::StatusCode::kInvalidArgument,
                HasSubstr("Bound executable `null_bound` must not be null")));
 }
@@ -408,8 +384,8 @@ module @invalid_layouts_module {
       LowerIfrtIrProgram(std::make_unique<IfrtIRProgram>(*module),
                          std::make_unique<IfrtIRCompileOptions>(
                              std::vector<DeviceId>{DeviceId(10), DeviceId(11)}),
-                         &client_, compiler,
-                         AtomProgramLoadingMode::kDeferred));
+                         &client_, compiler, AtomProgramLoadingMode::kDeferred)
+          .Await());
   ASSERT_NE(state.compiled_atom_program_future_map, nullptr);
   ASSERT_THAT(*state.compiled_atom_program_future_map, SizeIs(1));
   const auto& [atom_name, atom_future] =
@@ -454,6 +430,8 @@ module @invalid_layouts_module {
       StatusIs(absl::StatusCode::kInternal, HasSubstr("Parameter 0 layout")));
 
   // Empty output layouts vector -> out-of-range error instead of OOB read.
+  // Parameter layout resolution succeeds first, so verify `in_specs` and
+  // `out_specs` are not partially mutated when output layout resolution fails.
   EXPECT_CALL(*atom_exec, GetParameterLayouts())
       .WillRepeatedly(Return(std::vector<LayoutPtr>{param_layout_}));
   EXPECT_CALL(*atom_exec, GetOutputLayouts())
@@ -465,6 +443,10 @@ module @invalid_layouts_module {
           absl::MakeSpan(state.out_specs), state.device_list),
       StatusIs(absl::StatusCode::kInternal,
                HasSubstr("Output 0 out of range")));
+  ASSERT_THAT(state.in_specs, SizeIs(1));
+  EXPECT_EQ(state.in_specs[0].layout, nullptr);
+  ASSERT_THAT(state.out_specs, SizeIs(1));
+  EXPECT_EQ(state.out_specs[0].layout, nullptr);
 
   // Null output layout entry -> InternalError instead of falling back to
   // BuildDefaultLayout.
@@ -476,6 +458,102 @@ module @invalid_layouts_module {
           &compiled_map, absl::MakeSpan(state.in_specs),
           absl::MakeSpan(state.out_specs), state.device_list),
       StatusIs(absl::StatusCode::kInternal, HasSubstr("Output 0 layout")));
+}
+
+TEST_F(ProgramLoweringTest,
+       DrainsInFlightAtomCompilationFuturesBeforeReturningLoweringError) {
+  constexpr absl::string_view kSource = R"mlir(
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+module @partial_dispatch_error_module {
+  func.func @main(%arg0: !array) -> (!array) attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        : (!array) -> !array
+    %1, %ctrl_1 = ifrt.Call @add_one(%0) after %ctrl_0 on devices [0,1]
+        {ifrt.compile_options_key = "bad_override"} : (!array) -> !array
+    return %1 : !array
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %arg0 : tensor<2x2xi32>
+  }
+}
+  )mlir";
+
+  // 1. Deferred loading mode (`CompileXla`).
+  {
+    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                         LoadFromSource(kSource));
+    using CompiledAtomPtr =
+        absl_nonnull std::shared_ptr<const CompiledAtomProgram>;
+    auto [deferred_promise, deferred_future] =
+        tsl::MakePromise<CompiledAtomPtr>();
+    auto compiler = std::make_shared<StrictMock<MockAtomProgramCompiler>>();
+    EXPECT_CALL(*compiler, CompileXla)
+        .WillOnce(
+            [future = std::move(deferred_future)](
+                std::unique_ptr<HloProgram>, xla::CompileOptions,
+                std::vector<tsl::RCReference<LoadedHostCallback>>) mutable {
+              return std::move(future);
+            });
+
+    auto overrides = std::make_shared<
+        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>();
+    overrides->insert(
+        {"bad_override", std::make_unique<IfrtIRCompileOptions>()});
+    auto options = std::make_unique<IfrtIRCompileOptions>(
+        std::vector<DeviceId>{DeviceId(10), DeviceId(11)}, AtomExecutableMap{},
+        std::move(overrides));
+
+    tsl::Future<LoweredIfrtIrProgramState> lowered_future = LowerIfrtIrProgram(
+        std::make_unique<IfrtIRProgram>(*module), std::move(options), &client_,
+        compiler, AtomProgramLoadingMode::kDeferred);
+    EXPECT_FALSE(lowered_future.IsReady());
+
+    auto atom_exec = std::make_shared<NiceMock<MockExecutable>>();
+    deferred_promise.Set(std::make_shared<const CompiledAtomProgram>(
+        CompiledAtomProgram{atom_exec, std::make_unique<LoadOptions>()}));
+    EXPECT_TRUE(lowered_future.IsReady());
+    EXPECT_THAT(lowered_future.Await(),
+                StatusIs(absl::StatusCode::kUnknown,
+                         HasSubstr("not of type `XlaCompileOptions`")));
+  }
+
+  // 2. Eager loading mode (`CompileAndLoadXla`).
+  {
+    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                         LoadFromSource(kSource));
+    auto [eager_promise, eager_future] =
+        tsl::MakePromise<LoadedExecutableRef>();
+    auto compiler = std::make_shared<StrictMock<MockAtomProgramCompiler>>();
+    EXPECT_CALL(*compiler, CompileAndLoadXla)
+        .WillOnce(
+            [future = std::move(eager_future)](
+                std::unique_ptr<HloProgram>, xla::CompileOptions,
+                std::vector<tsl::RCReference<LoadedHostCallback>>) mutable {
+              return std::move(future);
+            });
+
+    auto overrides = std::make_shared<
+        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>();
+    overrides->insert(
+        {"bad_override", std::make_unique<IfrtIRCompileOptions>()});
+    auto options = std::make_unique<IfrtIRCompileOptions>(
+        std::vector<DeviceId>{DeviceId(10), DeviceId(11)}, AtomExecutableMap{},
+        std::move(overrides));
+
+    tsl::Future<LoweredIfrtIrProgramState> lowered_future = LowerIfrtIrProgram(
+        std::make_unique<IfrtIRProgram>(*module), std::move(options), &client_,
+        compiler, AtomProgramLoadingMode::kEager);
+    EXPECT_FALSE(lowered_future.IsReady());
+
+    auto loaded_exec = std::make_shared<NiceMock<MockLoadedExecutable>>();
+    eager_promise.Set(LoadedExecutableRef(loaded_exec));
+    EXPECT_TRUE(lowered_future.IsReady());
+    EXPECT_THAT(lowered_future.Await(),
+                StatusIs(absl::StatusCode::kUnknown,
+                         HasSubstr("not of type `XlaCompileOptions`")));
+  }
 }
 
 }  // namespace

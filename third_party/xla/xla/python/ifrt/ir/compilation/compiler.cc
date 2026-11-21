@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/compilation/compiled_ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/ifrt_ir_executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.h"
 #include "xla/python/ifrt/ir/ifrt_ir_loaded_executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
@@ -39,10 +41,10 @@ limitations under the License.
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/with_user_context.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -68,11 +70,10 @@ IfrtIrProgramCompiler::IfrtIrProgramCompiler(
       atom_program_compiler_factory_(std::move(atom_program_compiler_factory)) {
 }
 
-tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>>
-IfrtIrProgramCompiler::Compile(std::unique_ptr<Program> program,
-                               std::unique_ptr<CompileOptions> options) {
-  tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::Compile");
-
+template <typename ResultT, typename CompileFn>
+tsl::Future<ResultT> IfrtIrProgramCompiler::ScheduleCompilation(
+    std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options,
+    CompileFn compile_fn) {
   if (!isa_and_nonnull<IfrtIRProgram>(program.get())) {
     return absl::InvalidArgumentError(
         "IFRT IR compiler requires an IFRT IR program");
@@ -83,24 +84,34 @@ IfrtIrProgramCompiler::Compile(std::unique_ptr<Program> program,
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<AtomProgramCompiler> atom_program_compiler,
                    atom_program_compiler_factory_(*ifrt_ir_compile_options));
 
-  auto [promise, future] =
-      tsl::MakePromise<std::shared_ptr<CompiledIfrtIrProgram>>();
-  tsl::Env::Default()->SchedClosure(
-      [client = client_, program = std::move(program),
+  auto [promise, future] = tsl::MakePromise<ResultT>();
+  // `client_` outlives all `Compile` tasks per `xla::ifrt::Compiler`'s lifetime
+  // contract (callers must await all returned compilation futures before
+  // destroying the compiler and client).
+  tsl::Env::Default()->SchedClosure(WithCurrentUserContext(
+      [client = client_,
+       ifrt_ir_program = cast<IfrtIRProgram>(std::move(program)),
        ifrt_ir_compile_options = std::move(ifrt_ir_compile_options),
        atom_program_compiler = std::move(atom_program_compiler),
+       compile_fn = std::move(compile_fn),
        promise = std::move(promise)]() mutable {
-        CompiledIfrtIrProgram::Create(
-            xla::unique_ptr_down_cast<IfrtIRProgram>(std::move(program)),
-            std::move(ifrt_ir_compile_options), client,
-            std::move(atom_program_compiler))
+        compile_fn(std::move(ifrt_ir_program),
+                   std::move(ifrt_ir_compile_options), client,
+                   std::move(atom_program_compiler))
             .OnReady([promise = std::move(promise)](
-                         absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>>
-                             compiled_program) mutable {
-              promise.Set(std::move(compiled_program));
+                         absl::StatusOr<ResultT> result) mutable {
+              promise.Set(std::move(result));
             });
-      });
+      }));
   return future;
+}
+
+tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>>
+IfrtIrProgramCompiler::Compile(std::unique_ptr<Program> program,
+                               std::unique_ptr<CompileOptions> options) {
+  tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::Compile");
+  return ScheduleCompilation<std::shared_ptr<CompiledIfrtIrProgram>>(
+      std::move(program), std::move(options), CompiledIfrtIrProgram::Create);
 }
 
 tsl::Future<LoadedExecutableRef> IfrtIrProgramCompiler::CompileAndLoad(
@@ -108,25 +119,29 @@ tsl::Future<LoadedExecutableRef> IfrtIrProgramCompiler::CompileAndLoad(
   tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::CompileAndLoad");
 
   auto [promise, future] = tsl::MakePromise<LoadedExecutableRef>();
+  // `client_` outlives all `CompileAndLoad` tasks per `xla::ifrt::Compiler`'s
+  // lifetime contract.
   Compile(std::move(program), std::move(options))
-      .OnReady([client = client_, promise = std::move(promise)](
-                   absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>>
-                       compiled_program) mutable {
-        if (compiled_program.ok()) {
-          promise.Set(IfrtIrLoadedExecutable::Create(
-              client, *std::move(compiled_program)));
-        } else {
-          promise.Set(compiled_program.status());
-        }
-      });
+      .OnReady(WithCurrentUserContext(
+          [client = client_, promise = std::move(promise)](
+              absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>>
+                  compiled_program) mutable {
+            if (compiled_program.ok()) {
+              promise.Set(IfrtIrLoadedExecutable::Create(
+                  client, *std::move(compiled_program)));
+            } else {
+              promise.Set(compiled_program.status());
+            }
+          }));
   return future;
 }
 
 tsl::Future<ExecutableRef> IfrtIrProgramCompiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
-  return absl::UnimplementedError(
-      "IFRT IR compiler does not support AOT compilation");
+  tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::Compile");
+  return ScheduleCompilation<ExecutableRef>(
+      std::move(program), std::move(options), IfrtIrExecutable::Create);
 }
 
 absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(

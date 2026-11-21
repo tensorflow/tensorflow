@@ -134,7 +134,13 @@ class IfrtCompileAtomProgramPass
         tsl::Future<LoadedExecutableRef>,
         tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>>
         executable;
+    bool transferred = false;
   };
+
+  // Transfers ownership of `compile_result.executable` into
+  // `compiled_atom_program_future_map_` or `atom_executable_future_map_` if it
+  // has not already been transferred.
+  void SaveCompileResultFuture(AtomProgramCompileResult& compile_result);
 
   // Generates a LoadedExecutableOp.
   // Returns the symbol of the generated LoadedExecutableOp.
@@ -489,27 +495,7 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
         // keep the original to get the symbol ref for equal CallOps.
         call_op_to_loaded_exec_op_ref[call_op.clone()] = loaded_exec_op_ref;
         // Save the atom program executable to extend its lifetime.
-        if (auto* compiled_program = std::get_if<tsl::Future<
-                absl_nonnull std::shared_ptr<const CompiledAtomProgram>>>(
-                &compile_result.executable)) {
-          CHECK(compiled_atom_program_future_map_ != nullptr);
-          CHECK(compiled_atom_program_future_map_
-                    ->try_emplace(compile_result.name,
-                                  std::move(*compiled_program))
-                    .second)
-              << "Failed to insert compiled atom program to map. "
-              << "Executable `" << compile_result.name << "` already exists";
-        } else {
-          auto& loaded_executable = std::get<tsl::Future<LoadedExecutableRef>>(
-              compile_result.executable);
-          CHECK(atom_executable_future_map_ != nullptr);
-          CHECK(atom_executable_future_map_
-                    ->try_emplace(compile_result.name,
-                                  std::move(loaded_executable))
-                    .second)
-              << "Failed to insert atom program executable to map. "
-              << "Executable `" << compile_result.name << "` already exists";
-        }
+        SaveCompileResultFuture(compile_result);
       }
 
       // Generate CallLoadedExecutableOp.
@@ -531,9 +517,48 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
     }
   }
 
+  if (!call_op_to_error.empty()) {
+    // Retain any already-dispatched compilation futures so callers can drain
+    // in-flight compilations before tearing down the compiler or client.
+    for (auto& [unused_call_op, compile_result] : call_to_compile_results) {
+      SaveCompileResultFuture(compile_result);
+    }
+    for (auto& [call_op, error] : call_op_to_error) {
+      call_op.emitOpError() << error;
+    }
+    signalPassFailure();
+  }
+
   // Erase the CallOp clones that we're used as keys of the map.
   for (auto& [call_op, future] : call_to_compile_results) {
     call_op.erase();
+  }
+}
+
+void IfrtCompileAtomProgramPass::SaveCompileResultFuture(
+    AtomProgramCompileResult& compile_result) {
+  if (compile_result.transferred) {
+    return;
+  }
+  compile_result.transferred = true;
+  if (auto* compiled_program = std::get_if<
+          tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>>(
+          &compile_result.executable)) {
+    CHECK(compiled_atom_program_future_map_ != nullptr);
+    CHECK(compiled_atom_program_future_map_
+              ->try_emplace(compile_result.name, std::move(*compiled_program))
+              .second)
+        << "Failed to insert compiled atom program to map. "
+        << "Executable `" << compile_result.name << "` already exists";
+  } else {
+    auto& loaded_executable =
+        std::get<tsl::Future<LoadedExecutableRef>>(compile_result.executable);
+    CHECK(atom_executable_future_map_ != nullptr);
+    CHECK(atom_executable_future_map_
+              ->try_emplace(compile_result.name, std::move(loaded_executable))
+              .second)
+        << "Failed to insert atom program executable to map. "
+        << "Executable `" << compile_result.name << "` already exists";
   }
 }
 
