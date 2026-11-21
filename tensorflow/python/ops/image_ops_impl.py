@@ -1779,6 +1779,22 @@ def resize_images_v2(images,
     implementation. As a result, `tf.image.resize(..., method='bicubic')`
     always executes on the CPU, even when GPU devices are available.
 
+  Warning:
+    When downscaling images, interpolation methods that do not perform
+    anti-aliasing (such as `nearest`, or `bilinear` and `bicubic` without
+    `antialias=True`) can be vulnerable to **image-scaling attacks**. An
+    adversary can craft an input image that appears normal at its original
+    resolution but produces attacker-controlled content after downscaling.
+    This is relevant for ML pipelines that resize user-supplied images before
+    feeding them to a model.
+
+    To reduce this risk, use `antialias=True` when downscaling with `bilinear`
+    or `bicubic`, or use the `area` interpolation method, which always
+    anti-aliases. Note that `antialias` is ignored for `nearest`, so `nearest`
+    stays vulnerable when downscaling. For more details, see Quiring et al.,
+    "Adversarial Preprocessing: Understanding and Preventing Image-Scaling
+    Attacks in Machine Learning" (USENIX Security 2020).
+
 
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
