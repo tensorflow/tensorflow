@@ -974,6 +974,50 @@ struct functor_traits<scalar_rsqrt_bfloat16_op> {
   };
 };
 
+// TF-owned logistic (sigmoid) functor for bfloat16.
+//
+// Eigen's generic scalar_logistic_op computes exp(x) / (1 + exp(x)) in the
+// input type. For bfloat16 every intermediate (exp, add, div) is rounded back
+// to bfloat16 on both the scalar and packet paths, so the result is neither
+// correctly rounded nor monotonic: e.g. sigmoid(5.75) returns 0.9921875,
+// smaller than sigmoid(5.5) = 0.99609375, and sigmoid(6.0) returns 1.0.
+// Instead, widen to float, use Eigen's accurate float logistic, and round to
+// bfloat16 once.
+//
+// https://github.com/tensorflow/tensorflow/issues/123104
+struct scalar_logistic_bfloat16_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bfloat16
+  operator()(const bfloat16& x) const {
+    return bfloat16(scalar_logistic_op<float>()(static_cast<float>(x)));
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    using FloatPacket =
+        typename find_packet_by_size<float,
+                                     unpacket_traits<Packet>::size>::type;
+    const FloatPacket xf = pcast<Packet, FloatPacket>(x);
+    return pcast<FloatPacket, Packet>(
+        scalar_logistic_op<float>().packetOp(xf));
+  }
+};
+
+template <>
+struct functor_traits<scalar_logistic_bfloat16_op> {
+  enum {
+    Cost = functor_traits<scalar_logistic_op<float>>::Cost +
+           2 * NumTraits<float>::AddCost,  // bfloat16 <-> float conversions.
+    // Vectorize only where a float packet of the same width exists and
+    // bfloat16 <-> float packet casts are available; otherwise fall back to
+    // the (still correctly widened) scalar path.
+    PacketAccess =
+        functor_traits<scalar_logistic_op<float>>::PacketAccess &&
+        find_packet_by_size<float, packet_traits<bfloat16>::size>::value &&
+        type_casting_traits<bfloat16, float>::VectorizedCast &&
+        type_casting_traits<float, bfloat16>::VectorizedCast,
+  };
+};
+
 // igamma(a, x) = P(a, x) is defined only for a > 0, x >= 0.  Eigen's
 // scalar_igamma_op short-circuits to 0 when x == 0 before the domain check
 // fires, so a <= 0 with x == 0 silently returns 0 instead of NaN.  The
@@ -1198,6 +1242,12 @@ struct erfinv : base<T, Eigen::internal::scalar_erfinv_op<T>> {};
 
 template <typename T>
 struct sigmoid : base<T, Eigen::internal::scalar_logistic_op<T>> {};
+
+// Avoid Eigen's multiply-rounded bfloat16 logistic (see
+// Eigen::internal::scalar_logistic_bfloat16_op above).
+template <>
+struct sigmoid<bfloat16>
+    : base<bfloat16, Eigen::internal::scalar_logistic_bfloat16_op> {};
 
 template <typename T>
 struct sin : base<T, Eigen::internal::scalar_sin_op<T>> {};
