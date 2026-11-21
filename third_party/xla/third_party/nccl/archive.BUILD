@@ -82,6 +82,10 @@ cc_library(
         "src/nccl.h",
     ],
     strip_include_prefix = "src",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
 )
 
 cc_library(
@@ -91,6 +95,10 @@ cc_library(
         exclude = ["src/include/plugin/**"],
     ),
     strip_include_prefix = "src/include",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
@@ -98,6 +106,10 @@ cc_library(
     name = "plugin_hdrs",
     hdrs = glob(["src/include/plugin/**"]),
     strip_include_prefix = "src/include/plugin",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
@@ -105,6 +117,10 @@ cc_library(
     name = "device_hdrs",
     hdrs = glob(["src/device/**/*.h"]),
     strip_include_prefix = "src/device",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
 )
 
 py_binary(
@@ -162,6 +178,10 @@ cuda_rdc_library(
     ] + glob(include = [
         "src/device/**/*.cu.cc",
     ]),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":device_hdrs",
         ":include_hdrs",
@@ -177,6 +197,10 @@ cc_library(
         "src/transport/net.cc",
     ],
     linkopts = ["-lrt"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":include_hdrs",
         ":plugin_hdrs",
@@ -189,6 +213,10 @@ cc_library(
     hdrs = ["src/nccl.h"],
     include_prefix = "third_party/nccl",
     strip_include_prefix = "src",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
@@ -201,6 +229,10 @@ cc_library(
     hdrs = ["src/nccl.h"],
     include_prefix = "third_party/nccl",
     strip_include_prefix = "src",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
@@ -238,6 +270,10 @@ cc_library(
     include_prefix = "third_party/nccl",
     linkopts = ["-lrt"],
     strip_include_prefix = "src",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":device",
@@ -278,6 +314,10 @@ cuda_library(
     # an old version of glibc.
     local_defines = ["__STDC_FORMAT_MACROS"],
     strip_include_prefix = "src",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     target_compatible_with = select({
         "@local_config_cuda//cuda:using_clang": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -300,6 +340,10 @@ cc_library(
     include_prefix = "third_party/nccl",
     linkopts = ["-lrt"],
     strip_include_prefix = "src",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     target_compatible_with = select({
         "@local_config_cuda//cuda:using_nvcc": [],
         "//conditions:default": ["@platforms//:incompatible"],
