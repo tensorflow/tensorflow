@@ -224,6 +224,25 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(expected, second, rtol=1e-6, atol=1e-9)
 
   @parameterized.parameters(
+      window_ops.hann_window,
+      window_ops.hamming_window,
+      window_ops.kaiser_window,
+      window_ops.vorbis_window,
+      window_ops.kaiser_bessel_derived_window,
+  )
+  def test_int64_window_length(self, window_fn):
+    # `tf.signal.stft` passes its `frame_length` through to the window
+    # function, so any integer dtype must be accepted.
+    expected = self.evaluate(window_fn(16))
+    self.assertAllClose(
+        expected, window_fn(constant_op.constant(16, dtypes.int64)))
+    self.assertAllClose(expected, window_fn(np.int64(16)))
+
+  def test_float_window_length_raises(self):
+    with self.assertRaises(TypeError):
+      window_ops.hann_window(constant_op.constant(16.0))
+
+  @parameterized.parameters(
       itertools.product(_WINDOW_LENGTHS, (False, True), _TF_DTYPE_TOLERANCE)
   )
   def test_hann_window(self, window_length, periodic, tf_dtype_tol):

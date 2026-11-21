@@ -29,6 +29,25 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _window_length_to_int32(window_length, name=None):
+  """Converts `window_length` to an int32 tensor.
+
+  Any integer dtype is accepted, so an int64 `frame_length` (e.g. passed on by
+  `tf.signal.stft`) or a NumPy integer works as well as a Python `int`.
+  """
+  window_length = ops.convert_to_tensor(
+      window_length, dtype_hint=dtypes.int32, name=name
+  )
+  if window_length.dtype != dtypes.int32:
+    if not window_length.dtype.is_integer:
+      raise TypeError(
+          'window_length must be an integer. Found dtype '
+          f'{window_length.dtype}.'
+      )
+    window_length = math_ops.cast(window_length, dtypes.int32)
+  return window_length
+
+
 def _check_params(window_length, dtype):
   """Check window_length and dtype params.
 
@@ -45,7 +64,7 @@ def _check_params(window_length, dtype):
   """
   if not dtype.is_floating:
     raise ValueError('dtype must be a floating point type. Found %s' % dtype)
-  window_length = ops.convert_to_tensor(window_length, dtype=dtypes.int32)
+  window_length = _window_length_to_int32(window_length)
   window_length.shape.assert_has_rank(0)
   return window_length
 
@@ -267,8 +286,9 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
     raise ValueError('dtype must be a floating point type. Found %s' % dtype)
 
   with ops.name_scope(name, default_name, [window_length, periodic]):
-    window_length = ops.convert_to_tensor(window_length, dtype=dtypes.int32,
-                                          name='window_length')
+    window_length = _window_length_to_int32(
+        window_length, name='window_length'
+    )
     window_length.shape.assert_has_rank(0)
     window_length_const = tensor_util.constant_value(window_length)
     if window_length_const == 1:
