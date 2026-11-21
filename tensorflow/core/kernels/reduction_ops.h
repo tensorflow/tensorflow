@@ -121,6 +121,7 @@ CASTING_SPECIALIZATION(int8_t, int64_t);
 CASTING_SPECIALIZATION(int16_t, int64_t);
 CASTING_SPECIALIZATION(int32_t, int64_t);
 CASTING_SPECIALIZATION(bfloat16, float);
+CASTING_SPECIALIZATION(Eigen::half, float);
 #undef CASTING_SPECIALIZATION
 
 // TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
