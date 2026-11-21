@@ -30,13 +30,15 @@ using ::testing::ElementsAre;
 class AddOpModel : public SingleOpModel {
  public:
   AddOpModel(const TensorData& input1, const TensorData& input2,
-             const TensorData& output) {
+             const TensorData& output, bool allocate_and_delegate = true) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_STABLEHLO_ADD, BuiltinOptions_NONE, 0);
     SetBypassDefaultDelegates();
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
   }
 
   int input1() { return input1_; }
@@ -58,6 +60,13 @@ TEST(StablehloElementwise, AddWorks) {
   model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.3, 0.5});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAre(-1.9, 0.4, 1.0, 1.3));
+}
+
+TEST(StablehloElementwise, AddRejectsMismatchedOutputType) {
+  AddOpModel model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                   {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_INT8, {}},
+                   /*allocate_and_delegate=*/false);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
 }
 
 }  // namespace

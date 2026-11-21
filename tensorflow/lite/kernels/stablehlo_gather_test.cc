@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -32,10 +33,13 @@ using ::testing::ElementsAreArray;
 class StablehloGatherOpModel : public SingleOpModel {
  public:
   StablehloGatherOpModel(const TensorData& input, const TensorData& indices,
-                         const TfLiteStablehloGatherParams& params) {
+                         const TfLiteStablehloGatherParams& params,
+                         std::optional<TensorType> output_type = std::nullopt,
+                         bool allocate_and_delegate = true) {
     input_ = AddInput(input);
     indices_ = AddInput(indices);
-    output_ = AddOutput(TensorData(input.type, {2, 3, 2, 2}));
+    output_ =
+        AddOutput(TensorData(output_type.value_or(input.type), {2, 3, 2, 2}));
     SetBuiltinOp(
         BuiltinOperator_STABLEHLO_GATHER,
         BuiltinOptions2_StablehloGatherOptions,
@@ -56,7 +60,9 @@ class StablehloGatherOpModel : public SingleOpModel {
                             params.slice_sizes + params.num_slice_sizes)),
             params.indices_are_sorted)
             .Union());
-    BuildInterpreter({GetShape(input_), GetShape(indices_)});
+    BuildInterpreter({GetShape(input_), GetShape(indices_)},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
   }
 
   template <typename T>
@@ -179,6 +185,26 @@ TEST(StablehloScatterOpTest, WorksWithDynamicShapes) {
                                         13, 14, 15, 16, 9,  10, 11, 12,
                                         11, 12, 13, 14, 17, 18, 19, 20};
   EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray(expected_values));
+}
+
+TEST(StablehloScatterOpTest, RejectsMismatchedOutputType) {
+  TfLiteStablehloGatherParams params = {
+      {2, 3},     // offset_dims
+      2,          // num_offset_dims;
+      {0},        // collapsed_slice_dims
+      1,          // num_collapsed_slice_dims;
+      {1, 0},     // start_index_map
+      2,          // num_start_index_map;
+      2,          // index_vector_dim;
+      {1, 2, 2},  // slice_sizes
+      3,          // num_slice_sizes;
+      false       // indices_are_sorted;
+  };
+  StablehloGatherOpModel model({TensorType_FLOAT32, {3, 4, 2}},
+                               {TensorType_INT64, {2, 3, 2}}, params,
+                               /*output_type=*/TensorType_INT8,
+                               /*allocate_and_delegate=*/false);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
 }
 
 }  // namespace

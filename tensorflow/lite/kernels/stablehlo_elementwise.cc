@@ -43,6 +43,7 @@ TfLiteStatus ElementwisePrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, input_tensor1->type, output->type);
 
   // We need the copy since ResizeTensor takes ownership of output_size.
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_tensor1->dims);

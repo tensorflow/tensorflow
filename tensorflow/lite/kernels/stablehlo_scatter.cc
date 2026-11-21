@@ -366,6 +366,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, updates->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   // Output is the same size as input. Scatter just updates some of the values.
   // Need the copy since ResizeTensor takes ownership of output_size
