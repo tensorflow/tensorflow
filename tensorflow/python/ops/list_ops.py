@@ -188,6 +188,7 @@ def tensor_list_set_item(input_handle,
                          resize_if_index_out_of_bounds=False,
                          name=None):
   """Sets `item` at `index` in input list."""
+  resize_if_index_out_of_bounds = bool(resize_if_index_out_of_bounds)
   output_handle = gen_list_ops.tensor_list_set_item(
       input_handle=input_handle,
       index=index,
