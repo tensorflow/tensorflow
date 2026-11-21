@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/backends/gpu/transforms/fusion/priority_fusion.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -55,6 +55,8 @@ limitations under the License.
 #include "xla/backends/gpu/cost_model/gpu_performance_model.h"
 #include "xla/backends/gpu/cost_model/gpu_performance_model_base.h"
 #include "xla/backends/gpu/cost_model/triton_emitter_constraints.h"
+#include "xla/backends/gpu/transforms/fusion/fusion_deduplication_cache.h"
+#include "xla/backends/gpu/transforms/fusion/fusion_process_dump.pb.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
@@ -73,8 +75,6 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusion_deduplication_cache.h"
-#include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"

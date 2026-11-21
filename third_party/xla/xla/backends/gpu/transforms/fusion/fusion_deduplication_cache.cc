@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusion_deduplication_cache.h"
+#include "xla/backends/gpu/transforms/fusion/fusion_deduplication_cache.h"
 
 #include <cstddef>
 #include <cstdint>

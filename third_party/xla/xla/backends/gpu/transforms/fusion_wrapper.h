@@ -15,33 +15,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_FUSION_WRAPPER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_FUSION_WRAPPER_H_
 
-#include "absl/strings/string_view.h"
-#include "xla/codegen/emitters/fusion_wrapper_base.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla {
-namespace gpu {
-
-// Wraps leftover unfused instruction that are in the entry computation that
-// have no LHLO equivalent in fusions containing just that instruction.
-class FusionWrapper : public emitters::FusionWrapperBase {
- public:
-  explicit FusionWrapper(const se::DeviceDescription& device_description)
-      : device_description_(device_description) {}
-
-  absl::string_view name() const override { return "fusion-wrapper"; }
-
-  bool MustWrapInstruction(const HloInstruction& instruction) override;
-  HloInstruction::FusionKind ChooseFusionKind(
-      const HloInstruction& producer, const HloInstruction& consumer) override;
-
- private:
-  const se::DeviceDescription& device_description_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/transforms/fusion/fusion_wrapper.h"
+#include "xla/backends/gpu/transforms/fusion/fusion_wrapper.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_FUSION_WRAPPER_H_

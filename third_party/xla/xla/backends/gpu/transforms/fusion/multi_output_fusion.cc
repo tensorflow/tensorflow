@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/transforms/multi_output_fusion.h"
+#include "xla/backends/gpu/transforms/fusion/multi_output_fusion.h"
 
 #include <algorithm>
 #include <cstddef>

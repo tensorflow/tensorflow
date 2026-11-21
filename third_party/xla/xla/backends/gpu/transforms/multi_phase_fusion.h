@@ -16,48 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_MULTI_PHASE_FUSION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_MULTI_PHASE_FUSION_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla::gpu {
-
-// Fuses small fusions with producer-consumer dependencies into nested fusions.
-// Nested fusions are lowered as a sequence of phases of a single kernel by
-// `ThreadBlockSpecializedFusion`. Phases are separated by block or cluster
-// barriers and exchange data via DRAM and caches. Execution as sequential
-// phases of a single kernel pays that launch overhead only once.
-//
-// This pass identifies connected DAGs of eligible small fusions that do not
-// introduce dataflow cycles, orders them into phases, and wraps each subgraph
-// in a `kCustom` fusion with `kind == "__phased_block_cluster"`. The fusion's
-// output tuple contains both the intermediate and output buffers of all phases.
-// This way, XLA's standard bufferization passes handle intermediate phases
-// correctly without changes. Outputs consumed outside the multi-phase fusion
-// are projected via `get-tuple-element`.
-//
-// Current limitations (to be lifted in follow-up CLs):
-//   * Only native MLIR emitter stages (`kLoop`, `kReduction`, `kTranspose`,
-//     `kConcatenate`) fitting within one thread-block cluster.
-class MultiPhaseFusion : public HloModulePass {
- public:
-  explicit MultiPhaseFusion(const se::DeviceDescription& device_info)
-      : device_info_(device_info) {}
-
-  absl::string_view name() const override { return "multi-phase-fusion"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  se::DeviceDescription device_info_;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/transforms/fusion/multi_phase_fusion.h"
+#include "xla/backends/gpu/transforms/fusion/multi_phase_fusion.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_MULTI_PHASE_FUSION_H_

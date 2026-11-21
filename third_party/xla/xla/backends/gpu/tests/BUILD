@@ -311,7 +311,7 @@ xla_test(
         ":gpu_pjrt_codegen_test",
         "//xla:error_spec",
         "//xla:xla_proto_cc",
-        "//xla/backends/gpu/transforms:horizontal_fusion",
+        "//xla/backends/gpu/transforms/fusion:horizontal_fusion",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/stream_executor:device_description",

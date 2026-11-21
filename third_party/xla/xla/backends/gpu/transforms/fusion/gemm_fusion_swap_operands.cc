@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
+#include "xla/backends/gpu/transforms/fusion/gemm_fusion_swap_operands.h"
 
 #include <cstddef>
 #include <cstdint>

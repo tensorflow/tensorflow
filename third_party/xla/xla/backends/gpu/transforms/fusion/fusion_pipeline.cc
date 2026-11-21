@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusion_pipeline.h"
+#include "xla/backends/gpu/transforms/fusion/fusion_pipeline.h"
 
 #include <memory>
 #include <utility>
@@ -22,10 +22,10 @@ limitations under the License.
 #include "xla/backends/gpu/cost_model/gpu_hlo_cost_analysis.h"
 #include "xla/backends/gpu/transforms/config_aware_cse.h"
 #include "xla/backends/gpu/transforms/conv_canonicalizer.h"
-#include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
-#include "xla/backends/gpu/transforms/multi_output_fusion.h"
-#include "xla/backends/gpu/transforms/multi_phase_fusion.h"
-#include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/backends/gpu/transforms/fusion/conv_fusion_rewriter.h"
+#include "xla/backends/gpu/transforms/fusion/multi_output_fusion.h"
+#include "xla/backends/gpu/transforms/fusion/multi_phase_fusion.h"
+#include "xla/backends/gpu/transforms/fusion/priority_fusion.h"
 #include "xla/backends/gpu/transforms/ragged_dot_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/sort_iota_fusion.h"
 #include "xla/backends/gpu/transforms/variadic_op_splitter.h"
