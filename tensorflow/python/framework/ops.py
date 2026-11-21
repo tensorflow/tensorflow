@@ -441,6 +441,14 @@ class _EagerTensorBase(
       raise RuntimeError(
           "tf.Tensor does not support DLPack export with a copy=True"
       )
+    # The C++ exporter reads the data pointer before it validates the dtype,
+    # which aborts the process for string, resource and variant tensors.
+    dtype = self.dtype
+    if not (dtype.is_bool or dtype.is_integer or dtype.is_floating
+            or dtype.is_complex):
+      raise errors.InvalidArgumentError(
+          None, None, f"{dtype.name} is not supported by dlpack"
+      )
     return pywrap_tfe.TFE_ToDlpackCapsule(self)
 
   def __dlpack_device__(self):

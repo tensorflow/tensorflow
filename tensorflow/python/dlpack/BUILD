@@ -30,6 +30,8 @@ py_library(
     deps = [
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -45,6 +47,8 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
