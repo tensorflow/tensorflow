@@ -481,6 +481,14 @@ class PhysicalDevice(
   pass
 
 
+def _validate_string_arg(value, arg_name):
+  """Validates that a string parameter for C API bindings is str or bytes."""
+  if not isinstance(value, (str, bytes)):
+    raise TypeError(
+        f"{arg_name} must be a string, got {type(value).__name__}."
+    )
+
+
 class _AtomicCounter(object):
   """A simple atomic counter."""
 
@@ -862,6 +870,7 @@ class Context:
       ValueError: if context is not initialized.
     """
     # TODO(yuefengz): support checking multiple workers.
+    _validate_string_arg(worker_name, "worker_name")
     if self._context_handle:
       return pywrap_tfe.TFE_ContextCheckAlive(self._context_handle, worker_name)
     else:
@@ -943,12 +952,15 @@ class Context:
     return self._coordination_service_config
 
   def set_config_key_value(self, key, value):
+    _validate_string_arg(key, "key")
+    _validate_string_arg(value, "value")
     self.ensure_initialized()
     pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
 
   # If `timeout_in_ms=0`, this will block until the key-value is set or the
   # worker shuts down.
   def get_config_key_value(self, key, timeout_in_ms=0):
+    _validate_string_arg(key, "key")
     self.ensure_initialized()
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_GetConfigKeyValue(
@@ -958,6 +970,7 @@ class Context:
     return value
 
   def delete_config_key_value(self, key):
+    _validate_string_arg(key, "key")
     self.ensure_initialized()
     pywrap_tfe.TFE_DeleteConfigKeyValue(self._context_handle, key)
 
@@ -968,6 +981,7 @@ class Context:
       error_code: a `tf.errors` error code.
       error_message: a string. The error message.
     """
+    _validate_string_arg(error_message, "error_message")
     if self._context_handle:
       pywrap_tfe.TFE_ReportErrorToCluster(
           self._context_handle, error_code, error_message
@@ -1955,12 +1969,14 @@ class Context:
 
   def get_memory_info(self, dev):
     """Returns a dict of memory info for the device."""
+    _validate_string_arg(dev, "dev")
     self._initialize_physical_devices()
     self.ensure_initialized()
     return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
 
   def reset_memory_stats(self, dev):
     """Resets the tracked memory stats for the device."""
+    _validate_string_arg(dev, "dev")
     self._initialize_physical_devices()
     self.ensure_initialized()
     pywrap_tfe.TFE_ResetMemoryStats(self._context_handle, dev)

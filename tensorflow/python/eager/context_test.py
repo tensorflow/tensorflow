@@ -186,6 +186,27 @@ class ContextTest(test.TestCase, parameterized.TestCase):
     ):
       context.Context().wait_at_barrier('barrier', 1)
 
+  def testCheckAliveInvalidWorkerName(self):
+    ctx = context.Context()
+    ctx.ensure_initialized()
+    for bad_worker in (None, 123):
+      with self.assertRaises(TypeError):
+        ctx.check_alive(bad_worker)
+
+  def testCoordinationServiceMethodsInvalidStringArgs(self):
+    ctx = context.Context()
+    ctx.ensure_initialized()
+    with self.assertRaises(TypeError):
+      ctx.set_config_key_value(None, 'value')
+    with self.assertRaises(TypeError):
+      ctx.set_config_key_value('key', None)
+    with self.assertRaises(TypeError):
+      ctx.get_config_key_value(None)
+    with self.assertRaises(TypeError):
+      ctx.delete_config_key_value(None)
+    with self.assertRaises(TypeError):
+      ctx.report_error_to_cluster(1, None)
+
   def testSetLogicalDeviceAfterContextInitialization(self):
     ctx = context.Context()
     ctx.set_logical_cpu_devices(4)
