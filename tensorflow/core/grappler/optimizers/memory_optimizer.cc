@@ -1471,10 +1471,16 @@ absl::Status MemoryOptimizer::Optimize(Cluster* cluster,
     for (int i = 0; i < 25 && updated_graph; ++i) {
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
       updated_graph = false;
+      // SchedulingPass() accumulates AddN inputs into a TemporaryVariable,
+      // which lives in the step container until DestroyTemporaryVariable
+      // runs. Eager function calls share a step container that isn't cleared
+      // between calls, so a call that fails before DestroyTemporaryVariable
+      // runs, or one that overlaps another call, would find the variable
+      // already created.
       if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
            optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
            optimization_level_ == RewriterConfig::HEURISTICS) &&
-          cluster != nullptr) {
+          !item.optimization_options().is_eager_mode && cluster != nullptr) {
         if (SchedulingPass(cluster, &memory, &optimized_item)) {
           // Reset the inferred memory usage since the graph changed.
           memory.reset();
