@@ -480,6 +480,37 @@ TEST(VerifyModel, StringTensorIsLargerThanRequired) {
                   "String tensor input buffer last offset must be 19"));
 }
 
+TEST(VerifyModel, StringTensorHasFewerStringsThanShape) {
+  // Buffer layout is internally valid and holds a single string, but the shape
+  // declares two elements. Kernels index such a tensor by its shape, so the
+  // buffer must hold at least that many strings.
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({2}, TensorType_STRING,
+                    {1, 0, 0, 0, 12, 0, 0, 0, 13, 0, 0, 0, 'A'}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "String tensor input requires 2 strings for its shape, but "
+                  "the buffer holds only 1"));
+}
+
+TEST(VerifyModel, StringTensorHasNegativeDimension) {
+  // A negative dimension after a zero dimension would leave the element count
+  // at zero and silently skip the string-count check. Constant string tensors
+  // must have non-negative dimensions, so this is rejected outright.
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({0, -1}, TensorType_STRING,
+                    {1, 0, 0, 0, 12, 0, 0, 0, 13, 0, 0, 0, 'A'}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "String tensor input has invalid negative dimension"));
+}
+
 TEST(VerifyModel, AllOpsAreSupported) {
   TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"CustomOp"});
   builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");

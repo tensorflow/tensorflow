@@ -127,6 +127,43 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                 NameOrEmptyString(tensor.name()), buffer_size);
     return false;
   }
+
+  // The checks above validate the buffer's internal offset table, but never
+  // that the buffer holds one string per element declared by the tensor shape.
+  // Kernels that index a string tensor by its declared shape (e.g. tile, slice,
+  // strided_slice, roll, comparison, fill) call GetString() up to the shape's
+  // element count with no per-index bound, so a buffer with fewer strings than
+  // the shape declares produces an out of bounds read. Require the buffer to
+  // hold at least that many strings. The element count is accumulated the same
+  // way as in VerifyNumericTensorBuffer, with the same 32-bit overflow guard.
+  // A constant string tensor must have fully defined, non-negative dimensions;
+  // a negative dimension would otherwise leave num_elements at 0 (once any
+  // dimension is 0) and silently skip the check.
+  if (tensor.shape()) {
+    uint64_t num_elements = 1;
+    for (int dim : *tensor.shape()) {
+      if (dim < 0) {
+        ReportError(error_reporter,
+                    "String tensor %s has invalid negative dimension",
+                    NameOrEmptyString(tensor.name()));
+        return false;
+      }
+      num_elements *= dim;
+      if (num_elements > UINT_MAX) {
+        ReportError(error_reporter, "String tensor %s dimension overflow",
+                    NameOrEmptyString(tensor.name()));
+        return false;
+      }
+    }
+    if (num_strings < num_elements) {
+      ReportError(error_reporter,
+                  "String tensor %s requires %u strings for its shape, but the "
+                  "buffer holds only %u",
+                  NameOrEmptyString(tensor.name()),
+                  static_cast<unsigned>(num_elements), num_strings);
+      return false;
+    }
+  }
   return true;
 }
 
