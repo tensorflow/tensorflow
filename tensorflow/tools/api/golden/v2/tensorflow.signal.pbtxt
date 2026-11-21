@@ -1,6 +1,10 @@
 path: "tensorflow.signal"
 tf_module {
   member_method {
+    name: "blackman_window"
+    argspec: "args=[\'window_length\', \'periodic\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
     name: "dct"
     argspec: "args=[\'input\', \'type\', \'n\', \'axis\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'2\', \'None\', \'-1\', \'None\', \'None\'], "
   }
