@@ -73,7 +73,7 @@ struct hash {
 };
 
 template <typename T>
-struct hash<T, typename std::enable_if<std::is_enum<T>::value>::type> {
+struct hash<T, std::enable_if_t<std::is_enum_v<T>>> {
   size_t operator()(T value) const {
     // This works around a defect in the std::hash C++ spec that isn't fixed in
     // (at least) gcc 4.8.4:
