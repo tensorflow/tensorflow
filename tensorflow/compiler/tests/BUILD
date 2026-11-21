@@ -907,6 +907,33 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
+    name = "isotonic_regression_op_test",
+    size = "small",
+    srcs = ["isotonic_regression_op_test.py"],
+    disabled_backends = [
+        "gpu",
+        "gpu_a100",
+        "gpu_h100",
+    ],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_strict_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
