@@ -65,11 +65,6 @@ absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space);
 absl::StatusOr<std::vector<std::pair<int64_t, MemorySpaceColor>>>
 ParseIndexMemorySpacePairs(absl::string_view str);
 
-// Returns true if the instruction's collectives mode requires symmetric
-// (collective) memory. Device-initiated and one-sided collectives need all
-// buffers registered with the collective runtime ahead of time.
-bool RequiresCollectiveSymmetricMemorySpace(const HloInstruction* inst);
-
 // Returns true if the given operand use requires collective memory space.
 bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& option);
 

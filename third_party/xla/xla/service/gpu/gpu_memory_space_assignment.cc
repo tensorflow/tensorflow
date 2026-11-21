@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -132,7 +133,7 @@ static bool SupportsMemorySpaceAnnotations(const HloInstruction* inst) {
 // Returns true if the instruction's collectives mode requires symmetric
 // (collective) memory. Device-initiated and one-sided collectives need all
 // buffers registered with the collective runtime ahead of time.
-bool RequiresCollectiveSymmetricMemorySpace(const HloInstruction* inst) {
+static bool RequiresCollectiveSymmetricMemorySpace(const HloInstruction* inst) {
   if (!inst->has_backend_config()) {
     return false;
   }
@@ -142,6 +143,10 @@ bool RequiresCollectiveSymmetricMemorySpace(const HloInstruction* inst) {
   }
   const auto mode = gpu_config->collective_backend_config().collectives_mode();
   return mode == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
+}
+
+static bool RequiresTritonSymmetricOutput(const HloInstruction* inst) {
+  return IsTritonTwoShotAllGather(*inst);
 }
 
 bool IsCollectiveMemoryInstruction(const HloInstruction* inst) {
@@ -253,7 +258,8 @@ bool RequiresCollectiveOutput(const HloValue& value,
   // Handle standard collectives under NCCL user/symmetric buffers, or
   // device-initiated/one-sided collectives requiring symmetric memory.
   if (IsNcclSymmetricOrUserBuffersEnabledForInstruction(def, option) ||
-      RequiresCollectiveSymmetricMemorySpace(def)) {
+      RequiresCollectiveSymmetricMemorySpace(def) ||
+      RequiresTritonSymmetricOutput(def)) {
     return true;
   }
 

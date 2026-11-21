@@ -119,6 +119,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/analysis:hlo_ordering",

@@ -1391,5 +1391,62 @@ TEST_F(GpuMemorySpaceAssignmentTest,
                                    FindInstruction(module.get(), "e"), {}));
 }
 
+TEST_F(GpuMemorySpaceAssignmentTest,
+       TwoShotAllGatherFusionColorsOnlyOutputsInCollectiveMemory) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m, replica_count=2
+
+    ag_comp {
+      param_0 = f32[524288]{0} parameter(0)
+      ROOT ag = f32[1048576]{0} all-gather(param_0),
+        dimensions={0},
+        replica_groups={{0,1}},
+        backend_config={"collective_backend_config":{
+          "kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"
+        }}
+    }
+
+    async_comp {
+      param_0 = f32[524288]{0} parameter(0)
+      ROOT ag_fusion = f32[1048576]{0} fusion(param_0),
+        kind=kCustom, calls=ag_comp,
+        backend_config={"fusion_backend_config":{"kind":"__triton_collective"}}
+    }
+
+    ENTRY main {
+      p0 = f32[524288]{0} parameter(0)
+      ag_start = ((f32[524288]{0}), f32[1048576]{0}) async-start(p0),
+        calls=async_comp
+      ROOT ag_done = f32[1048576]{0} async-done(ag_start)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
+
+  HloInstruction* ag_fusion = module->GetComputationWithName("async_comp")
+                                  ->GetInstructionWithName("ag_fusion");
+  const HloInstruction* ag_done =
+      module->entry_computation()->GetInstructionWithName("ag_done");
+  const DebugOptions& options = module->config().debug_options();
+  EXPECT_FALSE(RequiresCollectiveInput(HloUse(ag_fusion, 0), options));
+  EXPECT_TRUE(RequiresCollectiveOutput(
+      alias_analysis->dataflow_analysis().GetUniqueValueAt(ag_fusion, {}),
+      options));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "p0"),
+            static_cast<int>(MemorySpaceColor::kDefault));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "ag_fusion"),
+            static_cast<int>(MemorySpaceColor::kCollective));
+  EXPECT_EQ(alias_analysis->GetUniqueBufferAt(ag_done),
+            alias_analysis->GetUniqueBufferAt(ag_fusion));
+}
+
 }  // namespace
 }  // namespace xla::gpu
