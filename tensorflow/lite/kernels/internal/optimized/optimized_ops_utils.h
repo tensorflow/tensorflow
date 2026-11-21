@@ -30,11 +30,11 @@ namespace optimized_ops {
 // and not the more straightforward
 //    Eigen::Map<Eigen::Matrix<const float, ...>>
 template <typename Scalar>
-using VectorMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Matrix<typename std::remove_const<Scalar>::type,
-                                   Eigen::Dynamic, 1>>,
-    Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, 1>>>::type;
+using VectorMap =
+    std::conditional_t<std::is_const_v<Scalar>,
+                       Eigen::Map<const Eigen::Matrix<
+                           std::remove_const_t<Scalar>, Eigen::Dynamic, 1>>,
+                       Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, 1>>>;
 
 template <typename Scalar>
 VectorMap<Scalar> MapAsVector(Scalar* data, const RuntimeShape& shape) {
@@ -46,11 +46,11 @@ VectorMap<Scalar> MapAsVector(Scalar* data, const RuntimeShape& shape) {
 // as a Eigen matrix expression. The same explanation as for VectorMap
 // above also applies here.
 template <typename Scalar>
-using MatrixMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Matrix<typename std::remove_const<Scalar>::type,
-                                   Eigen::Dynamic, Eigen::Dynamic>>,
-    Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>::type;
+using MatrixMap = std::conditional_t<
+    std::is_const_v<Scalar>,
+    Eigen::Map<const Eigen::Matrix<std::remove_const_t<Scalar>, Eigen::Dynamic,
+                                   Eigen::Dynamic>>,
+    Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>;
 
 template <typename Scalar>
 MatrixMap<Scalar> MapAsMatrixWithLastDimAsRows(Scalar* data,
@@ -70,11 +70,11 @@ MatrixMap<Scalar> MapAsMatrixWithFirstDimAsCols(Scalar* data,
 }
 
 template <typename Scalar>
-using ArrayMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Array<typename std::remove_const<Scalar>::type,
-                                  Eigen::Dynamic, Eigen::Dynamic>>,
-    Eigen::Map<Eigen::Array<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>::type;
+using ArrayMap = std::conditional_t<
+    std::is_const_v<Scalar>,
+    Eigen::Map<const Eigen::Array<std::remove_const_t<Scalar>, Eigen::Dynamic,
+                                  Eigen::Dynamic>>,
+    Eigen::Map<Eigen::Array<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>;
 
 template <typename Scalar>
 ArrayMap<Scalar> MapAsArrayWithLastDimAsRows(Scalar* data,
