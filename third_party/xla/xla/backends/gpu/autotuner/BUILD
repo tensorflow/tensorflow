@@ -4,10 +4,6 @@ load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
-    "//xla/tsl/platform:build_config.bzl",
-    "tf_proto_library",
-)
-load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
@@ -1421,17 +1417,6 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-tf_proto_library(
-    name = "gpu_autotuning_proto",
-    srcs = ["gpu_autotuning.proto"],
-    deps = [
-        "//xla:autotuning_proto",
-        "//xla:xla_data_proto",
-        "//xla/service:hlo_proto",
-        "//xla/service/gpu:backend_configs",
     ],
 )
 

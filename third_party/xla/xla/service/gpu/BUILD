@@ -3484,55 +3484,6 @@ xla_test(
     ],
 )
 
-cc_library(
-    name = "hlo_algorithm_denylist",
-    srcs = ["hlo_algorithm_denylist.cc"],
-    hdrs = ["hlo_algorithm_denylist.h"],
-    deps = [
-        ":backend_configs_cc",
-        "//xla:autotuning_proto_cc",
-        "//xla:debug_options_flags",
-        "//xla/backends/gpu/autotuner:gpu_autotuning_proto_cc",
-        "//xla/hlo/ir:backend_config",
-        "//xla/hlo/ir:hlo",
-        "//xla/stream_executor:dnn",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_protobuf//:protobuf",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_algorithm_denylist_test",
-    srcs = ["hlo_algorithm_denylist_test.cc"],
-    data = ["data/hlo_algorithm_denylist.pbtxt"],
-    deps = [
-        ":backend_configs_cc",
-        ":hlo_algorithm_denylist",
-        "//xla:autotuning_proto_cc",
-        "//xla:debug_options_flags",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:hlo_proto_cc",
-        "//xla/stream_executor:dnn",
-        "//xla/tests:test_utils",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:path",
-    ],
-)
-
 xla_cc_test(
     name = "gpu_float_support_test",
     srcs = ["gpu_float_support_test.cc"],
