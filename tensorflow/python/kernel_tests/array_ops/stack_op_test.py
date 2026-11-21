@@ -33,6 +33,7 @@ from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
+from tensorflow.python.types import core
 
 
 def np_split_squeeze(array, axis):
@@ -361,6 +362,20 @@ class StackOpTest(test.TestCase):
           self.assertAllEqual(self.evaluate(c), [True, True])
 
 
+class _StringDtypeTensor(core.Tensor):
+  """A `core.Tensor` whose `dtype` is a string, like a Keras 3 variable."""
+
+  def __init__(self, value):
+    self._value = constant_op.constant(value)
+
+  @property
+  def dtype(self):
+    return self._value.dtype.name
+
+  def __tf_tensor__(self, dtype=None, name=None):
+    return ops.convert_to_tensor(self._value, dtype=dtype, name=name)
+
+
 class AutomaticStackingTest(test.TestCase):
 
   def testSimple(self):
@@ -432,6 +447,18 @@ class AutomaticStackingTest(test.TestCase):
 
     t_2 = ops.convert_to_tensor([t_0, t_0, t_1], dtype=dtypes.float64)
     self.assertEqual(dtypes.float64, t_2.dtype)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorLikeWithStringDtype(self):
+    # Keras 3 variables are `core.Tensor`s whose `dtype` is a string.
+    a = _StringDtypeTensor([1.0, 2.0])
+    s = array_ops_stack.stack([a, [3.0, 4.0]])
+    self.assertEqual(dtypes.float32, s.dtype)
+    self.assertAllEqual([[1.0, 2.0], [3.0, 4.0]], s)
+    t = ops.convert_to_tensor([a, constant_op.constant([5.0, 6.0])],
+                              dtype=dtypes.float64)
+    self.assertEqual(dtypes.float64, t.dtype)
+    self.assertAllEqual([[1.0, 2.0], [5.0, 6.0]], t)
 
   def testInvalidValuesTypeRaisesTypeError(self):
     t = constant_op.constant([1, 2, 3])

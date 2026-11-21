@@ -813,6 +813,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
     ],
 )

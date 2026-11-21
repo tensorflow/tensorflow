@@ -1220,6 +1220,17 @@ def parallel_stack(values, name="parallel_stack"):
 
 
 # pylint: disable=invalid-name
+def _base_dtype(tensor):
+  """Returns the base `DType` of a `core.Tensor`.
+
+  Some tensor-like objects (e.g. Keras 3 variables) report `dtype` as a string.
+  """
+  dtype = tensor.dtype
+  if not isinstance(dtype, dtypes.DType):
+    dtype = dtypes.as_dtype(dtype)
+  return dtype.base_dtype
+
+
 def _autopacking_helper(list_or_tuple, dtype, name):
   """Converts the given list or tuple to a tensor by packing.
 
@@ -1241,7 +1252,7 @@ def _autopacking_helper(list_or_tuple, dtype, name):
   with ops.name_scope(name) as scope:
     for i, elem in enumerate(list_or_tuple):
       if isinstance(elem, core.Tensor):
-        if dtype is not None and elem.dtype.base_dtype != dtype:
+        if dtype is not None and _base_dtype(elem) != dtype:
           raise TypeError(f"Cannot convert a list containing a tensor of dtype "
                           f"{elem.dtype} to {dtype} (Tensor is: {elem!r})")
         converted_elems.append(elem)
@@ -1282,7 +1293,7 @@ def _get_dtype_from_nested_lists(list_or_tuple):
   """
   for elem in list_or_tuple:
     if isinstance(elem, core.Tensor):
-      return elem.dtype.base_dtype
+      return _base_dtype(elem)
     elif isinstance(elem, (list, tuple)):
       maybe_dtype = _get_dtype_from_nested_lists(elem)
       if maybe_dtype is not None:
@@ -1294,7 +1305,7 @@ def _cast_nested_seqs_to_dtype(dtype):
 
   def _maybe_cast(elem):
     if isinstance(elem, core.Tensor):
-      if dtype != elem.dtype.base_dtype:
+      if dtype != _base_dtype(elem):
         elem = gen_math_ops.cast(elem, dtype)
     return elem
 
