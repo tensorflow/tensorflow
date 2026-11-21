@@ -817,13 +817,18 @@ class UnaryOpTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testRealSignSubnormalFloat32(self):
     """Regression test for #127905: sign must preserve nonzero subnormals."""
+    bits = np.array(
+        [0x00000001, 0x80000001, 0x000116C2, 0x800116C2], dtype=np.uint32
+    )
+    values = bits.view(np.float32)
+    expected = [1.0, -1.0, 1.0, -1.0]
     for device_fn in (test_util.force_cpu, test_util.use_gpu):
       with device_fn():
-        # 1e-40 is a nonzero float32 subnormal. A comparison that flushes it to
-        # zero would make sign return zero instead of the sign of the input.
-        x = constant_op.constant([1e-40, -1e-40], dtype=dtypes_lib.float32)
-        result = self.evaluate(math_ops.sign(x))
-        self.assertAllEqual([1.0, -1.0], result)
+        # Construct inputs from bits so flush-to-zero cannot erase them first.
+        x = constant_op.constant(values, dtype=dtypes_lib.float32)
+        for sign_fn in (math_ops.sign, gen_math_ops.sign):
+          result = self.evaluate(sign_fn(x))
+          self.assertAllEqual(expected, result)
 
   @test_util.run_in_graph_and_eager_modes
   def testDigamma(self):
