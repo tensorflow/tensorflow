@@ -273,7 +273,7 @@ inline void AddElementwise<int32_t>(const int32_t* input1_data,
 template <typename T,
           // For unquantized add for small integers, explicitly set to true.
           bool dummy = false>
-inline typename std::enable_if<!is_small_integer<T>::value || dummy, void>::type
+inline std::enable_if_t<!is_small_integer<T>::value || dummy, void>
 BroadcastAdd6DSlow(const ArithmeticParams& params,
                    const RuntimeShape& input1_shape, const T* input1_data,
                    const RuntimeShape& input2_shape, const T* input2_data,
@@ -292,11 +292,10 @@ BroadcastAdd6DSlow(const ArithmeticParams& params,
 // is 32-bit for both cases. The overflow does not happen due to the
 // choice of the shift (20 or 15, accordingly - see add.cc for more comments).
 template <typename T>
-inline typename std::enable_if<is_small_integer<T>::value, void>::type
-BroadcastAdd6DSlow(const ArithmeticParams& params,
-                   const RuntimeShape& input1_shape, const T* input1_data,
-                   const RuntimeShape& input2_shape, const T* input2_data,
-                   const RuntimeShape& output_shape, T* output_data) {
+inline std::enable_if_t<is_small_integer<T>::value, void> BroadcastAdd6DSlow(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   auto op = [&params](T a, T b) {
     const int32_t input1_val = params.input1_offset + a;
     const int32_t input2_val = params.input2_offset + b;

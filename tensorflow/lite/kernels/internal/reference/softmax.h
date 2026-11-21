@@ -29,8 +29,7 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
-template <typename T,
-          typename std::enable_if<!std::is_integral<T>::value, int>::type = 0>
+template <typename T, std::enable_if_t<!std::is_integral_v<T>, int> = 0>
 inline void Softmax(const SoftmaxParams& params,
                     const RuntimeShape& input_shape, const T* input_data,
                     const RuntimeShape& output_shape, T* output_data) {
