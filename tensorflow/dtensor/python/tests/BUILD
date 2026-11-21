@@ -336,7 +336,7 @@ py_test(
     name = "input_util_test",
     size = "medium",
     srcs = ["input_util_test.py"],
-    shard_count = 8,
+    shard_count = 16,
     strict_deps = True,
     deps = [
         ":test_util",
