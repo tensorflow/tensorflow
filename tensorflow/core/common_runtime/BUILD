@@ -3180,6 +3180,7 @@ tf_cc_test(
     size = "large",
     srcs = ["direct_session_test.cc"],
     features = ["-layering_check"],
+    shard_count = 8,
     deps = [
         ":core",
         ":core_cpu",

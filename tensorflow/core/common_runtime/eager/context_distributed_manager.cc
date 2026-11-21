@@ -76,6 +76,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #endif  // !IS_MOBILE_PLATFORM
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -344,6 +346,39 @@ absl::Status CreatePjRtGpuClientWithDistributedDevices(
   return CreateClientOnce(node_id, num_nodes, coordination_service_agent);
 #else
   return absl::OkStatus();
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+}
+
+// Returns a ServerDef with `populate_pjrt_gpu_client_creation_info` enabled
+// when `EnableCollectiveOps` will subsequently call
+// `CreatePjRtGpuClientWithDistributedDevices` with `num_nodes > 1` to replace
+// the process-global PJRT GPU client; otherwise returns `server_def` unchanged
+// so `BaseGPUDeviceFactory` reuses the existing GPU streams.
+ServerDef MaybePopulatePjRtGpuClientCreationInfo(const ServerDef& server_def) {
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+  if (server_def.default_session_config()
+          .experimental()
+          .coordination_config()
+          .service_type()
+          .empty()) {
+    return server_def;
+  }
+  int num_nodes = 0;
+  for (const JobDef& job : server_def.cluster().job()) {
+    num_nodes += job.tasks().size();
+  }
+  if (num_nodes <= 1) {
+    return server_def;
+  }
+  ServerDef updated_server_def = server_def;
+  updated_server_def.mutable_default_session_config()
+      ->mutable_gpu_options()
+      ->mutable_experimental()
+      ->set_populate_pjrt_gpu_client_creation_info(true);
+  return updated_server_def;
+#else
+  return server_def;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
@@ -1041,7 +1076,8 @@ absl::Status EagerContextDistributedManager::EnableCollectiveOps(
   ServerInterface* server = context_->GetServer();
   if (server == nullptr) {
     std::unique_ptr<ServerInterface> new_server;
-    LOG_AND_RETURN_IF_ERROR(NewServer(server_def, &new_server));
+    LOG_AND_RETURN_IF_ERROR(NewServer(
+        MaybePopulatePjRtGpuClientCreationInfo(server_def), &new_server));
     server = new_server.get();
     if (server == nullptr) {
       LOG_AND_RETURN_IF_ERROR(absl::InternalError(
