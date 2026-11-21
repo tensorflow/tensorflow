@@ -112,7 +112,7 @@ enum class QuantizationFlavor {
 // (only those that need perchannel quantization do).
 template <typename AccumScalar, typename DstScalar,
           QuantizationFlavor quantization_flavor =
-              std::is_floating_point<AccumScalar>::value
+              std::is_floating_point_v<AccumScalar>
                   ? QuantizationFlavor::kFloatingPoint
                   : QuantizationFlavor::kIntegerWithUniformMultiplier>
 struct GemmParams {
@@ -139,11 +139,11 @@ struct GemmParams {
   // The bias vector data, if not null.
   const AccumScalar* bias = nullptr;
   // min clamp bound of destination values.
-  DstScalar clamp_min = std::is_floating_point<DstScalar>::value
+  DstScalar clamp_min = std::is_floating_point_v<DstScalar>
                             ? -std::numeric_limits<DstScalar>::infinity()
                             : std::numeric_limits<DstScalar>::lowest();
   // max clamp bound of destination values.
-  DstScalar clamp_max = std::is_floating_point<DstScalar>::value
+  DstScalar clamp_max = std::is_floating_point_v<DstScalar>
                             ? std::numeric_limits<DstScalar>::infinity()
                             : std::numeric_limits<DstScalar>::max();
 };
@@ -176,14 +176,14 @@ void ValidateGemmParams(
     TFLITE_DCHECK(!params.multiplier_exponent_perchannel);
   } else if (quantization_flavor ==
                  QuantizationFlavor::kIntegerWithUniformMultiplier &&
-             !std::is_same<DstScalar, int32_t>::value) {
+             !std::is_same_v<DstScalar, int32_t>) {
     TFLITE_DCHECK(params.multiplier_fixedpoint);
     // Nothing to check about multiplier_exponent
     TFLITE_DCHECK(!params.multiplier_fixedpoint_perchannel);
     TFLITE_DCHECK(!params.multiplier_exponent_perchannel);
   } else if (quantization_flavor ==
                  QuantizationFlavor::kIntegerWithPerRowMultiplier &&
-             !std::is_same<DstScalar, int32_t>::value) {
+             !std::is_same_v<DstScalar, int32_t>) {
     TFLITE_DCHECK(!params.multiplier_fixedpoint);
     TFLITE_DCHECK(!params.multiplier_exponent);
     TFLITE_DCHECK(params.multiplier_fixedpoint_perchannel);
@@ -205,9 +205,9 @@ template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
 struct ValidateTypes {
   // This generic implementation is for quantized flavors.
   // kFloatingPoint will be a specialization below.
-  static_assert(!std::is_floating_point<LhsScalar>::value, "");
-  static_assert(!std::is_floating_point<RhsScalar>::value, "");
-  static_assert(!std::is_floating_point<AccumScalar>::value, "");
+  static_assert(!std::is_floating_point_v<LhsScalar>, "");
+  static_assert(!std::is_floating_point_v<RhsScalar>, "");
+  static_assert(!std::is_floating_point_v<AccumScalar>, "");
   // No requirement on DstScalar --- we might in the future allow it
   // to be floating point even in a quantized Gemm.
 };
@@ -216,10 +216,10 @@ template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
           typename DstScalar>
 struct ValidateTypes<LhsScalar, RhsScalar, AccumScalar, DstScalar,
                      QuantizationFlavor::kFloatingPoint> {
-  static_assert(std::is_floating_point<LhsScalar>::value, "");
-  static_assert(std::is_floating_point<RhsScalar>::value, "");
-  static_assert(std::is_floating_point<AccumScalar>::value, "");
-  static_assert(std::is_floating_point<DstScalar>::value, "");
+  static_assert(std::is_floating_point_v<LhsScalar>, "");
+  static_assert(std::is_floating_point_v<RhsScalar>, "");
+  static_assert(std::is_floating_point_v<AccumScalar>, "");
+  static_assert(std::is_floating_point_v<DstScalar>, "");
 };
 
 }  // namespace detail

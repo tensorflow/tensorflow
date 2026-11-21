@@ -739,8 +739,8 @@ TYPED_TEST(IntegerAddOpTest, Int32MultiDimBroadcast) {
 }
 
 TYPED_TEST(IntegerAddOpTest, OverflowWrapping) {
-  if (std::is_same<TypeParam, int32_t>::value ||
-      std::is_same<TypeParam, int64_t>::value) {
+  if (std::is_same_v<TypeParam, int32_t> ||
+      std::is_same_v<TypeParam, int64_t>) {
     IntegerAddOpModel m(GetTensorType<TypeParam>(), {1, 2}, {1, 2},
                         ActivationFunctionType_NONE);
     m.PopulateTensor<TypeParam>(m.input1(),
@@ -754,8 +754,8 @@ TYPED_TEST(IntegerAddOpTest, OverflowWrapping) {
 }
 
 TYPED_TEST(IntegerAddOpTest, OverflowWrappingBroadcast) {
-  if (std::is_same<TypeParam, int32_t>::value ||
-      std::is_same<TypeParam, int64_t>::value) {
+  if (std::is_same_v<TypeParam, int32_t> ||
+      std::is_same_v<TypeParam, int64_t>) {
     IntegerAddOpModel m(GetTensorType<TypeParam>(), {1, 2}, {2, 1},
                         ActivationFunctionType_NONE);
     m.PopulateTensor<TypeParam>(m.input1(),
