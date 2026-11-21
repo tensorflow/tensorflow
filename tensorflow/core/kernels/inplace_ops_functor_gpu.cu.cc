@@ -33,7 +33,9 @@ __global__ void DoParallelConcatOpKernel(int nthreads, const int64_t rows,
                                          T* __restrict__ dst) {
   GPU_1D_KERNEL_LOOP(idx, nthreads) {
     int64_t c = idx % cols;
-    int64_t r = (loc % rows + rows) % rows;  // Guard index range.
+    // Guard index range. Avoid `loc % rows + rows`, which can overflow.
+    int64_t r = loc % rows;
+    if (r < 0) r += rows;
     T* p = dst + r * cols + c;
     const T* q = src + idx;
     *p = ldg(q);
