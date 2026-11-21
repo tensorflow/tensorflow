@@ -107,24 +107,31 @@ def get_rbe_amdgpu_pool(is_single_gpu = False):
     return "%{single_gpu_rbe_pool}" if is_single_gpu else "%{multi_gpu_rbe_pool}"
 
 def rocm_lib_import(name, interface_library, data, deps):
+    tags = [
+        "gpu",
+        "rocm-only",
+    ]
     cc_import(
         name = name + "_interface",
         shared_library = interface_library,
+        tags = tags,
         visibility = ["//visibility:private"],
     )
     cc_library(
         name = name + "_libs",
         data = data,
-        deps = deps,
+        tags = tags,
         visibility = ["//visibility:private"],
+        deps = deps,
     )
     cc_library(
         name = name,
+        tags = tags,
+        visibility = ["//visibility:public"],
         deps = [
             ":{}_interface".format(name),
             ":{}_libs".format(name),
             ":rocm_headers_includes",
             ":rocm_rpath",
         ],
-        visibility = ["//visibility:public"],
     )
