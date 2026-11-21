@@ -893,8 +893,9 @@ def walk_v2(top, topdown=True, onerror=None):
     top: string, a Directory name
     topdown: bool, Traverse pre order if True, post order if False.
     onerror: optional handler for errors. Should be a function, it will be
-      called with the error as argument. Rethrowing the error aborts the walk.
-      Errors that happen while listing directories are ignored.
+      called with the error as argument and the directory is then skipped.
+      Rethrowing the error aborts the walk. Without a handler, errors that
+      happen while listing directories are ignored.
 
   Yields:
     Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
@@ -917,8 +918,7 @@ def walk_v2(top, topdown=True, onerror=None):
   except errors.NotFoundError as err:
     if onerror:
       onerror(err)
-    else:
-      return
+    return
 
   files = []
   subdirs = []
