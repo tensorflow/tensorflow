@@ -114,7 +114,7 @@ class HashtableGraph {
     interpreter_ = std::make_unique<Interpreter>(&error_reporter_);
     InitOpRegistrations();
   }
-  ~HashtableGraph() {}
+  ~HashtableGraph() = default;
 
   void BuildDefaultGraph() {
     TfLiteHashtableParams* hashtable_params = GetHashtableParams();
@@ -735,7 +735,7 @@ void InitHashtableResource(resource::ResourceMap* resources, int resource_id,
 // hashtable op node, which takes a hash table resource as an input.
 class BaseHashtableOpModel : public SingleOpModel {
  public:
-  BaseHashtableOpModel() {}
+  BaseHashtableOpModel() = default;
 
   void SetResourceId(int resource_id) {
     auto* tensor = interpreter_->tensor(resource_id_);
