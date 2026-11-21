@@ -624,6 +624,21 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     return kTfLiteError;
   }
 
+  // Per-axis quantization (more than one scale) requires a shape whose
+  // quantized dimension provides one scale per slice. A tensor with no shape
+  // has no such dimension, and the earlier quantized_dimension bound check is
+  // skipped when dims is empty, so the per-channel dequantize/quantize kernels
+  // would index it by quantized_dimension out of bounds. Reject it here instead
+  // of letting it reach the kernels. (The mismatch check below reads
+  // dims[quantized_dimension], which is only safe once dims is known non-empty.)
+  if (num_scales != 1 && dims.empty()) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "num_scales must be 1 for a tensor with no shape, but got %d.",
+        num_scales);
+    return kTfLiteError;
+  }
+
   // Ensure that the number of scales is 1 for per-layer quantization, and
   // matches number of quantization dimensions for per-axis quantization.
   if (num_scales != 1 &&
