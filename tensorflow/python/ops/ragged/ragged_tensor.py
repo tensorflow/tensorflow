@@ -15,6 +15,7 @@
 """Classes for storing ragged tensors and their values."""
 
 import functools
+import numbers
 import operator
 
 import typing
@@ -1654,9 +1655,10 @@ class RaggedTensor(
     row_splits_dtype = dtypes.as_dtype(row_splits_dtype)
     if lengths is not None and padding is not None:
       raise ValueError("Specify argument `lengths` or `padding`, but not both.")
-    if not isinstance(ragged_rank, int):
+    if not isinstance(ragged_rank, numbers.Integral):
       raise TypeError(f"Argument `ragged_rank` must be an int. "
                       f"Received {ragged_rank}.")
+    ragged_rank = int(ragged_rank)
     if ragged_rank <= 0:
       raise ValueError(f"Argument `ragged_rank` must be greater than 0. "
                        f"Received {ragged_rank}.")
@@ -2464,10 +2466,10 @@ class RaggedTensorSpec(
         raise ValueError("Must specify ragged_rank or "
                          "a shape with a known rank.")
       ragged_rank = rank - 1
-    self._ragged_rank = ragged_rank
-    if not isinstance(self._ragged_rank, int):
+    if not isinstance(ragged_rank, numbers.Integral):
       raise TypeError(f"Argument `ragged_rank` must be an int. "
                       f"Received {ragged_rank}.")
+    self._ragged_rank = int(ragged_rank)
 
     if rank is not None:
       if ragged_rank >= rank:

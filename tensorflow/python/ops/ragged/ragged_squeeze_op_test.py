@@ -15,6 +15,7 @@
 """Tests for ragged.squeeze."""
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
@@ -281,6 +282,15 @@ class RaggedSqueezeTest(test_util.TensorFlowTestCase,
       tensor_ranks = constant_op.constant(squeeze_ranks)
       ragged_squeeze_op.squeeze(
           ragged_factory_ops.constant(input_list), tensor_ranks)
+
+  def test_numpy_integer_axis(self):
+    rt = ragged_factory_ops.constant([[[1], [2]], [[3]]])
+    expected = ragged_squeeze_op.squeeze(rt, [2])
+    for axis in (np.int64(2), [np.int64(2)], (np.int32(-1),)):
+      self.assertAllEqual(
+          ragged_conversion_ops.to_tensor(expected),
+          ragged_conversion_ops.to_tensor(
+              ragged_squeeze_op.squeeze(rt, axis)))
 
 
 if __name__ == '__main__':

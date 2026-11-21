@@ -14,6 +14,7 @@
 # ==============================================================================
 """Array operations for RaggedTensors."""
 
+import numbers
 from typing import Optional
 from typing import Union
 
@@ -710,8 +711,10 @@ def reverse(tensor: ragged_tensor.Ragged, axis, name=None):
       if axis is None:
         raise TypeError(type_error_msg)
     elif not (isinstance(axis, (list, tuple)) and
-              all(isinstance(dim, int) for dim in axis)):
+              all(isinstance(dim, numbers.Integral) for dim in axis)):
       raise TypeError(type_error_msg)
+    else:
+      axis = [int(dim) for dim in axis]
 
     tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         tensor, name='tensor')
@@ -959,8 +962,9 @@ def dynamic_partition(data: ragged_tensor.RaggedOrDense,
                       num_partitions,
                       name=None):
   """RaggedTensor dispatch override for tf.dynamic_partition."""
-  if not isinstance(num_partitions, int) or num_partitions < 0:
+  if not isinstance(num_partitions, numbers.Integral) or num_partitions < 0:
     raise TypeError('num_partitions must be a non-negative integer')
+  num_partitions = int(num_partitions)
   result = stack_dynamic_partitions(data, partitions, num_partitions, name)
   return [result[i] for i in range(num_partitions)]
 
@@ -1054,6 +1058,8 @@ def split(value: ragged_tensor.Ragged,
   with ops.name_scope(name, 'RaggedSplit'):
     value = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         value, name='value')
+    if isinstance(num_or_size_splits, numbers.Integral):
+      num_or_size_splits = int(num_or_size_splits)
     if isinstance(num_or_size_splits, int) and num_or_size_splits == 1:
       return [value]
 

@@ -15,6 +15,7 @@
 """Tests for ragged_array_ops.reverse."""
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_array_ops
@@ -79,6 +80,13 @@ class RaggedReverseOpTest(test_util.TensorFlowTestCase,
         TypeError, '`axis` must be a list of int or a constant tensor *',
         ragged_array_ops.reverse,
         ragged_factory_ops.constant([[1], [2, 3]], ragged_rank=1), [0, None])
+
+  def testNumpyIntegerAxis(self):
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    self.assertAllEqual(
+        ragged_array_ops.reverse(rt, [np.int64(1)]), [[2, 1], [3]])
+    self.assertAllEqual(
+        ragged_array_ops.reverse(rt, (np.int32(0),)), [[3], [1, 2]])
 
 
 if __name__ == '__main__':

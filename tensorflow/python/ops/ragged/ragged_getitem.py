@@ -14,6 +14,8 @@
 # ==============================================================================
 """Python-style indexing and slicing for RaggedTensors."""
 
+import numbers
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -281,8 +283,14 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
           _ragged_getitem_inner_dimensions(rt_input.values, key_list[1:]))
     else:
       if not (
-          isinstance(column_key.start, (tensor_lib.Tensor, int, type(None)))
-          and isinstance(column_key.stop, (tensor_lib.Tensor, int, type(None)))
+          isinstance(
+              column_key.start,
+              (tensor_lib.Tensor, numbers.Integral, type(None)),
+          )
+          and isinstance(
+              column_key.stop,
+              (tensor_lib.Tensor, numbers.Integral, type(None)),
+          )
       ):
         raise TypeError("slice offsets must be integers or None")
 

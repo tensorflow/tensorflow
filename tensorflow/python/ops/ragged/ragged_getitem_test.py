@@ -17,6 +17,7 @@
 import re
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -583,6 +584,11 @@ class RaggedGetItemTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         EXAMPLE_RAGGED_TENSOR_3D_ROWLEN)
     self.assertAllEqual(rt, EXAMPLE_RAGGED_TENSOR_3D)
     self._TestGetItemException(rt, slice_spec, expected, message)
+
+  def testNumpyIntegerSliceOffsets(self):
+    rt = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    self.assertAllEqual(rt[:, np.int64(0):np.int64(2)], [[1, 2], [4], [5, 6]])
+    self.assertAllEqual(rt[:, np.int32(-1):], [[3], [4], [6]])
 
 
 if __name__ == '__main__':

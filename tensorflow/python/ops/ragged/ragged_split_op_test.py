@@ -475,6 +475,18 @@ class RaggedSplitOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(exception, message):
       self.evaluate(split_tensors(rt=rt, split_lengths=lengths))
 
+  def testNumpyIntegerNumSplits(self):
+    rt = ragged_tensor.RaggedTensor.from_row_lengths(
+        [1, 2, 3, 4, 5, 6, 7], [2, 1, 3, 1])
+    for num in (np.int64(2), np.int32(2)):
+      result = ragged_array_ops.split(rt, num)
+      self.assertLen(result, 2)
+      self.assertAllEqual(result[0], [[1, 2], [3]])
+      self.assertAllEqual(result[1], [[4, 5, 6], [7]])
+    result = ragged_array_ops.split(rt, np.int64(1))
+    self.assertLen(result, 1)
+    self.assertAllEqual(result[0], rt)
+
 
 if __name__ == '__main__':
   googletest.main()
