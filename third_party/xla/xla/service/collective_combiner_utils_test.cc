@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -136,6 +137,73 @@ TEST(CollectiveCombinerUtilsTest, MergeFrontendAttributesSortedValues) {
 
   // Values are sorted by btree_set.
   EXPECT_EQ(result.map().at("key"), "apple,mango,zebra");
+}
+
+TEST(CollectiveCombinerUtilsTest,
+     MergeFrontendAttributesKeepsLatencyMetadataReadable) {
+  auto module = CreateModule(R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[8,32] parameter(0)
+      p1 = f32[4,64] parameter(1)
+      p2 = f32[16,16] parameter(2)
+      p3 = f32[2,8] parameter(3)
+      ag0 = f32[8,32] all-gather(p0), dimensions={0},
+            replica_groups={}, frontend_attributes={latency_metadata="50000000"}
+      ag1 = f32[4,64] all-gather(p1), dimensions={1},
+            replica_groups={}, frontend_attributes={latency_metadata="25000000"}
+      ag2 = f32[16,16] all-gather(p2), dimensions={1}, replica_groups={}
+      ag3 = f32[2,8] all-gather(p3), dimensions={1},
+            replica_groups={}, frontend_attributes={latency_metadata="9000000"}
+      ROOT result = (f32[8,32], f32[4,64], f32[16,16], f32[2,8])
+          tuple(ag0, ag1, ag2, ag3)
+    }
+  )");
+  ASSERT_NE(module, nullptr);
+
+  HloInstruction* ag0 =
+      module->entry_computation()->GetInstructionWithName("ag0");
+  HloInstruction* ag1 =
+      module->entry_computation()->GetInstructionWithName("ag1");
+  HloInstruction* ag2 =
+      module->entry_computation()->GetInstructionWithName("ag2");
+  HloInstruction* ag3 =
+      module->entry_computation()->GetInstructionWithName("ag3");
+  std::vector<HloInstruction*> instructions = {ag0, ag1, ag2, ag3};
+
+  // The combiners put the merged attributes on the combined collective, where
+  // GetLatencyMetadataNs CHECK fails on anything but one integer. "9000000"
+  // sorts last as a string: the maximum is taken on the numbers.
+  ag2->set_frontend_attributes(MergeFrontendAttributes(instructions));
+  EXPECT_EQ(frontend::GetLatencyMetadataNs(*ag2), 50000000);
+}
+
+TEST(CollectiveCombinerUtilsTest,
+     MergeFrontendAttributesJoinsMalformedLatencyMetadata) {
+  auto module = CreateModule(R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[8,32] parameter(0)
+      p1 = f32[4,64] parameter(1)
+      ag0 = f32[8,32] all-gather(p0), dimensions={0},
+            replica_groups={}, frontend_attributes={latency_metadata="slow"}
+      ag1 = f32[4,64] all-gather(p1), dimensions={1},
+            replica_groups={}, frontend_attributes={latency_metadata="25000000"}
+      ROOT result = (f32[8,32], f32[4,64]) tuple(ag0, ag1)
+    }
+  )");
+  ASSERT_NE(module, nullptr);
+
+  HloInstruction* ag0 =
+      module->entry_computation()->GetInstructionWithName("ag0");
+  HloInstruction* ag1 =
+      module->entry_computation()->GetInstructionWithName("ag1");
+  std::vector<HloInstruction*> instructions = {ag0, ag1};
+
+  FrontendAttributes result = MergeFrontendAttributes(instructions);
+
+  // A value that is no integer is not hidden behind its neighbour.
+  EXPECT_EQ(result.map().at("latency_metadata"), "25000000,slow");
 }
 
 TEST(CollectiveCombinerUtilsTest, MergeMetadataEmpty) {

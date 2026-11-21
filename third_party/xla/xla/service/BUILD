@@ -1955,6 +1955,7 @@ cc_library(
     srcs = ["collective_combiner_utils.cc"],
     hdrs = ["collective_combiner_utils.h"],
     deps = [
+        "//xla:frontend_attributes",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -1980,6 +1981,7 @@ xla_cc_test(
     srcs = ["collective_combiner_utils_test.cc"],
     deps = [
         ":collective_combiner_utils",
+        "//xla:frontend_attributes",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",

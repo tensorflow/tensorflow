@@ -20,16 +20,19 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -72,6 +75,24 @@ FrontendAttributes MergeFrontendAttributes(
   // Build merged FrontendAttributes from the collected values.
   FrontendAttributes merged;
   for (const auto& [key, values] : key_to_values) {
+    // latency_metadata is read back as one integer, so it cannot be a list.
+    // The combined collective is at least as slow as its slowest member.
+    if (key == frontend::kXlaLatencyMetadata) {
+      std::optional<int64_t> max_latency_ns;
+      for (const std::string& value : values) {
+        int64_t latency_ns;
+        if (!absl::SimpleAtoi(value, &latency_ns)) {
+          max_latency_ns.reset();
+          break;
+        }
+        max_latency_ns =
+            std::max(max_latency_ns.value_or(latency_ns), latency_ns);
+      }
+      if (max_latency_ns.has_value()) {
+        (*merged.mutable_map())[key] = absl::StrCat(*max_latency_ns);
+        continue;
+      }
+    }
     (*merged.mutable_map())[key] = absl::StrJoin(values, ",");
   }
   return merged;
