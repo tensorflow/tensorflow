@@ -29,7 +29,7 @@ namespace tflite {
 // Lite operators.
 class TfLiteInternalBackendContext {
  public:
-  virtual ~TfLiteInternalBackendContext() {}
+  virtual ~TfLiteInternalBackendContext() = default;
 
   // Set the maximum number of threads that could be used for parallelizing
   // TfLite computation.
@@ -81,7 +81,7 @@ class TfLiteInternalBackendContext {
 class ExternalCpuBackendContext : public TfLiteExternalContext {
  public:
   ExternalCpuBackendContext();
-  ~ExternalCpuBackendContext() {}
+  ~ExternalCpuBackendContext() = default;
 
   void set_internal_backend_context(
       std::unique_ptr<TfLiteInternalBackendContext> internal_backend_context) {
