@@ -33,7 +33,7 @@ TEST(CompositeDeviceTest, Basic) {
     EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
     EXPECT_TRUE(absl::StrContains(status.message(),
                                   "underlying_devices should not be empty"))
-        << status.ToString();
+        << status;
   }
 
   {
@@ -61,7 +61,7 @@ TEST(CompositeDeviceTest, Basic) {
     EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
     EXPECT_TRUE(absl::StrContains(status.message(),
                                   "Expect device type CPU; but got type GPU"))
-        << status.ToString();
+        << status;
   }
 }
 

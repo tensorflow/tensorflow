@@ -346,7 +346,7 @@ absl::Status WeakTypeInferencePass::Run(
     LOG_FIRST_N(WARNING, 1)
         << "Type inference failed. This indicates an "
            "invalid graph that escaped type checking. Error message: "
-        << pass_status.ToString();
+        << pass_status;
   }
   return absl::OkStatus();
 }
