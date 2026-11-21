@@ -119,7 +119,7 @@ extern const char* const kHeaderEntryKey;
 class BundleWriter {
  public:
   struct Options {
-    Options() {}
+    Options() = default;
     // Alignment, in bytes, for tensor data.
     // Must be >= 1. The default size of 1 densely packs tensors.
     int data_alignment{1};
