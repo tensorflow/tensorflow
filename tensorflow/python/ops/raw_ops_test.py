@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_sdca_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.platform import test
 
@@ -140,6 +141,48 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
               right_pad=" ",
               pad_width=-2**30,
               preserve_short_sequences=False))
+
+  def _sdcaOptimizerV2(self, **kwargs):
+    args = dict(
+        sparse_example_indices=[],
+        sparse_feature_indices=[],
+        sparse_feature_values=[],
+        dense_features=[],
+        example_weights=[1.0],
+        example_labels=[1.0],
+        sparse_indices=[],
+        sparse_weights=[],
+        dense_weights=[],
+        example_state_data=[[0.0, 0.0, 0.0, 0.0]],
+        loss_type="squared_loss",
+        l1=0.0,
+        l2=1.0,
+        num_loss_partitions=1,
+        num_inner_iterations=1)
+    args.update(kwargs)
+    return self.evaluate(gen_sdca_ops.sdca_optimizer_v2(**args))
+
+  def testSdcaOptimizerSparseIndicesWeightsMismatch(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "sparse_indices and sparse_weights at index 0 must have the same "
+        "number of elements"):
+      self._sdcaOptimizerV2(
+          sparse_example_indices=[constant_op.constant([0], dtype="int64")],
+          sparse_feature_indices=[constant_op.constant([8], dtype="int64")],
+          sparse_indices=[constant_op.constant(list(range(9)), dtype="int64")],
+          sparse_weights=[[0.0]])
+
+  def testSdcaOptimizerDenseFeaturesRowMismatch(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Expected 4 rows in dense features at index 0 but got 1"):
+      self._sdcaOptimizerV2(
+          dense_features=[[[1.0]]],
+          example_weights=[1.0] * 4,
+          example_labels=[1.0] * 4,
+          dense_weights=[[1.0]],
+          example_state_data=[[0.0] * 4] * 4)
 
   def testGetSessionHandle(self):
     if context.executing_eagerly():

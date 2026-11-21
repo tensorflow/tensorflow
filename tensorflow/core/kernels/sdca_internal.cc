@@ -126,6 +126,14 @@ absl::Status ModelWeights::Initialize(OpKernelContext* const context) {
         dense_weights_outputs.size(), " and ", dense_weights_inputs.size()));
 
   for (int i = 0; i < sparse_weights_inputs.size(); ++i) {
+    if (sparse_indices_inputs[i].NumElements() !=
+        sparse_weights_inputs[i].NumElements()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("sparse_indices and sparse_weights at index ", i,
+                       " must have the same number of elements, got ",
+                       sparse_indices_inputs[i].NumElements(), " and ",
+                       sparse_weights_inputs[i].NumElements()));
+    }
     Tensor* delta_t;
     TF_RETURN_IF_ERROR(sparse_weights_outputs.allocate(
         i, sparse_weights_inputs[i].shape(), &delta_t));
@@ -394,6 +402,11 @@ absl::Status Examples::Initialize(OpKernelContext* const context,
       return absl::InvalidArgumentError(absl::StrCat(
           "Dense features at index ", i, " must be rank 2 but is rank ",
           dense_features_inputs[i].dims()));
+    }
+    if (dense_features_inputs[i].dim_size(0) != num_examples) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expected ", num_examples, " rows in dense features at index ", i,
+          " but got ", dense_features_inputs[i].dim_size(0)));
     }
   }
 
