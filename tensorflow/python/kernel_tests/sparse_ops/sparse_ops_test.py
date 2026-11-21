@@ -1171,6 +1171,26 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
 
         self.evaluate(res)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseTensorValue(self):
+    sp_val = sparse_tensor.SparseTensorValue(
+        indices=np.array([[0, 0, 0], [0, 0, 1]], dtype=np.int64),
+        values=np.array([0.0, np.log(3.0)], dtype=np.float32),
+        dense_shape=np.array([2, 2, 2], dtype=np.int64),
+    )
+    res = sparse_ops.sparse_softmax(sp_val)
+    self.assertIsInstance(res, sparse_tensor.SparseTensor)
+    self.assertAllEqual(
+        [[0, 0, 0], [0, 0, 1]], self.evaluate(res.indices)
+    )
+    self.assertAllClose([0.25, 0.75], self.evaluate(res.values))
+    self.assertAllEqual([2, 2, 2], self.evaluate(res.dense_shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidInput(self):
+    with self.assertRaisesRegex(TypeError, "Input must be a SparseTensor"):
+      sparse_ops.sparse_softmax([[1.0, 2.0], [3.0, 4.0]])
+
 
 class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
 
