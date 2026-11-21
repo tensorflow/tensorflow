@@ -58,6 +58,9 @@ struct MoeExpertsAttributes {
     kGelu,
     kGeluTanh,
     kSilu,
+    // gpt-oss: (clamp(ff1, -limit, limit) + 1) * g * sigmoid(alpha * g) with
+    // g = min(gate, limit).
+    kSwigluOai,
   };
 
   int num_experts = 0;
@@ -66,6 +69,9 @@ struct MoeExpertsAttributes {
   int hidden_dim = 0;
   WeightType weight_type = WeightType::kFp32;
   Activation activation = Activation::kGelu;
+  // Used by kSwigluOai only; the defaults are gpt-oss's.
+  float swiglu_alpha = 1.702f;
+  float swiglu_limit = 7.0f;
 };
 
 struct MoeExpertsAssignment {
@@ -629,6 +635,20 @@ class MoeExpertsDelegateKernel::Impl {
         attr->activation = MoeExpertsAttributes::Activation::kGeluTanh;
       } else if (act == "silu") {
         attr->activation = MoeExpertsAttributes::Activation::kSilu;
+      } else if (act == "swiglu_oai") {
+        attr->activation = MoeExpertsAttributes::Activation::kSwigluOai;
+        if (!(*map)["swiglu_alpha"].IsNull()) {
+          attr->swiglu_alpha = (*map)["swiglu_alpha"].AsFloat();
+        }
+        if (!(*map)["swiglu_limit"].IsNull()) {
+          attr->swiglu_limit = (*map)["swiglu_limit"].AsFloat();
+        }
+        if (!std::isfinite(attr->swiglu_alpha) ||
+            !(attr->swiglu_limit > 0.0f)) {
+          TF_LITE_KERNEL_LOG(context, "%s node #%d has invalid swiglu options",
+                             kMoeCustomOp, node_index);
+          return false;
+        }
       } else {
         TF_LITE_KERNEL_LOG(context, "%s node #%d unsupported activation='%s'",
                            kMoeCustomOp, node_index, act.c_str());
@@ -700,6 +720,17 @@ class MoeExpertsDelegateKernel::Impl {
     return (attr_.activation == MoeExpertsAttributes::Activation::kGeluTanh)
                ? GeluTanh(x)
                : Gelu(x);
+  }
+
+  // The expert's hidden value from its gate and ff1 projections.
+  float GatedActivation(float gate, float ff1) const {
+    if (attr_.activation == MoeExpertsAttributes::Activation::kSwigluOai) {
+      const float limit = attr_.swiglu_limit;
+      const float g = std::min(gate, limit);
+      const float u = std::clamp(ff1, -limit, limit);
+      return (u + 1.0f) * g / (1.0f + std::exp(-attr_.swiglu_alpha * g));
+    }
+    return Activate(gate) * ff1;
   }
 
   static void* AlignWorkspace(void* ptr) {
@@ -982,7 +1013,7 @@ class MoeExpertsDelegateKernel::Impl {
                     const float ff1_val = DotExpertWeightRow(
                         ff1_weight, ff1_scale, ff1_layout, num_experts, expert,
                         out, model_dim, token_src);
-                    hidden[out] = Activate(gate_val) * ff1_val;
+                    hidden[out] = GatedActivation(gate_val, ff1_val);
                   }
                 });
 
@@ -1063,7 +1094,7 @@ class MoeExpertsDelegateKernel::Impl {
                     const float* ff1 = gate + hidden_dim;
                     float* hidden = scratch->hidden.data() + token * hidden_dim;
                     for (size_t dim = 0; dim < hidden_dim; ++dim) {
-                      hidden[dim] = Activate(gate[dim]) * ff1[dim];
+                      hidden[dim] = GatedActivation(gate[dim], ff1[dim]);
                     }
                   }
                 });
