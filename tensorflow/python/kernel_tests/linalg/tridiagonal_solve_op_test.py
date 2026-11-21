@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
@@ -501,6 +502,32 @@ class TridiagonalSolveOpTest(test.TestCase):
             rhs_placeholder: rhs,
             y_placeholder: y
         })
+
+  def testGradientComplex(self):
+    pivoting = getattr(self, "pivoting", True)
+    if test_util.is_xla_enabled() and pivoting:
+      # Pivoting is not supported by xla backends.
+      return
+    diags = _sample_diags + 1j * np.array([[1, -2, 1, 0], [2, 1, -1, 3],
+                                           [0, -1, 2, 1]])
+    rhs = np.array([[1, 2], [2, 4], [3, 6], [4, 8]]) + 1j * np.array(
+        [[2, -1], [0, 1], [-3, 2], [1, 1]])
+
+    def solve(diags, rhs):
+      return linalg_impl.tridiagonal_solve(
+          diags, rhs, partial_pivoting=pivoting)
+
+    for dtype in dtypes.complex64, dtypes.complex128:
+      tol = 1e-3 if dtype == dtypes.complex64 else 1e-5
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          solve, [
+              constant_op.constant(diags, dtype),
+              constant_op.constant(rhs, dtype)
+          ])
+      for theoretical_jacobian, numerical_jacobian in zip(
+          theoretical, numerical):
+        self.assertAllClose(
+            theoretical_jacobian, numerical_jacobian, atol=tol, rtol=tol)
 
   def _testEmpty(self, diags_shape, rhs_shape):
     for dtype in (
