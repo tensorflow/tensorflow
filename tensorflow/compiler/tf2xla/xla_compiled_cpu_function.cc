@@ -52,7 +52,6 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
     : function_library_symbol_map_(&static_data.function_library_symbol_map_),
       temp_allocation_index_(static_data.temp_allocation_index_),
       thunk_run_impl_(static_data.thunk_run_impl_),
-      legacy_thunk_run_impl_(static_data.legacy_thunk_run_impl_),
       result_index_(GetResultIndex(static_data.result_index_table_,
                                    static_data.num_results_)),
       buffer_table_(new void*[static_data.num_buffers_]),
@@ -108,11 +107,6 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
   }
 
   rng_state_ = std::make_unique<xla::cpu::RngState>();
-  legacy_rng_states_.reserve(static_data.legacy_rng_state_deltas_.size());
-  for (int64_t delta : static_data.legacy_rng_state_deltas_) {
-    legacy_rng_states_.push_back(
-        std::make_unique<xla::cpu::RngState>(delta, rng_state_.get()));
-  }
 }
 
 XlaCompiledCpuFunction::XlaCompiledCpuFunction(
@@ -120,9 +114,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(
     : function_library_symbol_map_(other.function_library_symbol_map_),
       temp_allocation_index_(other.temp_allocation_index_),
       thunk_run_impl_(std::move(other.thunk_run_impl_)),
-      legacy_thunk_run_impl_(std::move(other.legacy_thunk_run_impl_)),
       rng_state_(std::move(other.rng_state_)),
-      legacy_rng_states_(std::move(other.legacy_rng_states_)),
       result_index_(other.result_index_),
       buffer_table_(std::exchange(other.buffer_table_, nullptr)),
       buffer_infos_(other.buffer_infos_),
@@ -145,10 +137,6 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(
       error_msg_(std::move(other.error_msg_)) {}
 
 bool XlaCompiledCpuFunction::Run() {
-  if (legacy_thunk_run_impl_ != nullptr) {
-    return legacy_thunk_run_impl_(buffer_table_, &run_options_,
-                                  legacy_rng_states_);
-  }
   return thunk_run_impl_(buffer_table_, &run_options_, *rng_state_);
 }
 
