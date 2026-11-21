@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"  // IWYU pragma: keep
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -74,14 +75,16 @@ class WritableStringFile : public WritableFile {
   std::string* data_;
 };
 
+// Generates deterministic compressible (~1.85x) or incompressible (~1.0x)
+// test data of `num_bytes` bytes.
 std::string GeneratePayload(size_t num_bytes, bool compressible) {
   std::string payload(num_bytes, '\0');
   uint32_t state = 0x12345678u;
   if (compressible) {
     // Semi-compressible payload (~1.85x compression ratio): mixes a 32-byte
     // structured template with 32 bytes of deterministic pseudo-random data per
-    // 64-byte block so 512 KB uncompressed still exceeds the 256 KB kBufferSize
-    // after compression (spanning 2 chunks).
+    // 64-byte block so 512 KB uncompressed still exceeds 256 KB after
+    // compression.
     constexpr absl::string_view kPattern = "tensorflow_decode_compressed_op_";
     static_assert(kPattern.size() == 32);
     for (size_t i = 0; i < num_bytes; ++i) {
@@ -96,9 +99,8 @@ std::string GeneratePayload(size_t num_bytes, bool compressible) {
     }
   } else {
     // High-entropy pseudo-random payload (~1.0x compression ratio): ensures
-    // compressed size >= uncompressed size so multi-chunk (>256 KB) inputs
-    // exercise repeated MemoryInputStream::ReadNBytes calls with minimal
-    // LZ77 back-reference work.
+    // compressed size >= uncompressed size with minimal LZ77 back-reference
+    // work.
     for (size_t i = 0; i < num_bytes; ++i) {
       state ^= state << 13;
       state ^= state >> 17;
@@ -109,6 +111,7 @@ std::string GeneratePayload(size_t num_bytes, bool compressible) {
   return payload;
 }
 
+// Compresses `raw` using `"ZLIB"` or `"GZIP"` framing.
 std::string CompressZlibOrGzip(absl::string_view raw,
                                absl::string_view compression_type) {
   std::string compressed;
@@ -140,7 +143,33 @@ size_t ComputePoolSize(size_t bytes_per_tensor) {
   return pool_size;
 }
 
-class DecodeCompressedOpTest : public OpsTestBase {};
+class DecodeCompressedOpTest : public OpsTestBase {
+ protected:
+  // Configures `DecodeCompressed` for `compression_type` and runs it on a 1-D
+  // string tensor populated from `input_values`.
+  absl::Status RunDecode(absl::string_view compression_type,
+                         const std::vector<tstring>& input_values) {
+    node_def()->Clear();
+    if (absl::Status s = NodeDefBuilder("decode", "DecodeCompressed")
+                             .Input(FakeInput(DT_STRING))
+                             .Attr("compression_type", compression_type)
+                             .Finalize(node_def());
+        !s.ok()) {
+      return s;
+    }
+    if (absl::Status s = InitOp(); !s.ok()) {
+      return s;
+    }
+    inputs_.clear();
+    for (Tensor* tensor : tensors_) {
+      delete tensor;
+    }
+    tensors_.clear();
+    AddInputFromArray<tstring>(
+        TensorShape({static_cast<int64_t>(input_values.size())}), input_values);
+    return RunOpKernel();
+  }
+};
 
 TEST_F(DecodeCompressedOpTest, UncompressedForwardsInputBuffer) {
   ASSERT_TRUE(NodeDefBuilder("decode_none", "DecodeCompressed")
@@ -171,20 +200,98 @@ TEST_F(DecodeCompressedOpTest, MultiChunkZlibAndGzipRoundTrip) {
     for (absl::string_view comp_type : {"ZLIB", "GZIP"}) {
       const std::string compressed = CompressZlibOrGzip(payload, comp_type);
       ASSERT_GT(compressed.size(), 256 << 10);
-      node_def()->Clear();
-      ASSERT_TRUE(NodeDefBuilder("decode", "DecodeCompressed")
-                      .Input(FakeInput(DT_STRING))
-                      .Attr("compression_type", comp_type)
-                      .Finalize(node_def())
-                      .ok());
-      ASSERT_TRUE(InitOp().ok());
-      inputs_.clear();
-      for (Tensor* tensor : tensors_) delete tensor;
-      tensors_.clear();
-      AddInputFromArray<tstring>(TensorShape({1}), {tstring(compressed)});
-      ASSERT_TRUE(RunOpKernel().ok());
+      TF_ASSERT_OK(RunDecode(comp_type, {tstring(compressed)}));
       EXPECT_EQ(GetOutput(0)->scalar<tstring>()(), payload);
     }
+  }
+}
+
+TEST_F(DecodeCompressedOpTest, EmptyAndBatchZlibAndGzip) {
+  const std::string small = "hello decode_compressed";
+  // High-ratio payload (~850x) exercises repeated 2x output buffer growth and
+  // 32 KiB sliding-window updates across multiple `inflate(..., Z_FINISH)`
+  // iterations; placing `medium` and `small` after it exercises `inflateReset`
+  // both with and without subsequent LZ77 back-references on an allocated
+  // window.
+  const std::string high_ratio(128 << 10, 'a');
+  const std::string medium = GeneratePayload(128 << 10, /*compressible=*/true);
+  const std::string incomp = GeneratePayload(64 << 10, /*compressible=*/false);
+  for (absl::string_view comp_type : {"ZLIB", "GZIP"}) {
+    TF_ASSERT_OK(RunDecode(
+        comp_type, {tstring(""), tstring(CompressZlibOrGzip("", comp_type)),
+                    tstring(CompressZlibOrGzip(high_ratio, comp_type)),
+                    tstring(""), tstring(CompressZlibOrGzip(medium, comp_type)),
+                    tstring(CompressZlibOrGzip(small, comp_type)),
+                    tstring(CompressZlibOrGzip(incomp, comp_type))}));
+    const auto out = GetOutput(0)->flat<tstring>();
+    ASSERT_EQ(out.size(), 7);
+    EXPECT_EQ(out(0), "");
+    EXPECT_EQ(out(1), "");
+    EXPECT_EQ(out(2), high_ratio);
+    EXPECT_EQ(out(3), "");
+    EXPECT_EQ(out(4), medium);
+    EXPECT_EQ(out(5), small);
+    EXPECT_EQ(out(6), incomp);
+  }
+}
+
+TEST_F(DecodeCompressedOpTest, ConcatenatedGzipMembersAndTrailingBytes) {
+  const std::string part1 = GeneratePayload(64 << 10, /*compressible=*/true);
+  const std::string part2 = "second_gzip_member";
+  const std::string concatenated = CompressZlibOrGzip(part1, "GZIP") +
+                                   CompressZlibOrGzip(part2, "GZIP") +
+                                   CompressZlibOrGzip("", "GZIP");
+  TF_ASSERT_OK(RunDecode("GZIP", {tstring(concatenated)}));
+  EXPECT_EQ(GetOutput(0)->flat<tstring>()(0), part1 + part2);
+
+  // Corrupt trailing bytes after a valid GZIP member must fail when reset for
+  // the next member, whereas ZLIB stops at the first `Z_STREAM_END` (matching
+  // `ZlibInputStream`).
+  EXPECT_TRUE(absl::IsDataLoss(RunDecode(
+      "GZIP", {tstring(CompressZlibOrGzip(part2, "GZIP") + "corrupt_tail")})));
+  TF_ASSERT_OK(RunDecode(
+      "ZLIB", {tstring(CompressZlibOrGzip(part2, "ZLIB") + "ignored_tail")}));
+  EXPECT_EQ(GetOutput(0)->flat<tstring>()(0), part2);
+}
+
+TEST_F(DecodeCompressedOpTest,
+       FlushedStreamWithoutTrailerPreservesZlibInputStreamParity) {
+  const std::string payload = "flushed_without_close_trailer";
+  const std::string next_payload = "subsequent_complete_element";
+  for (absl::string_view comp_type : {"ZLIB", "GZIP"}) {
+    std::string flushed;
+    {
+      std::string full_buf;
+      WritableStringFile file(&full_buf);
+      io::ZlibCompressionOptions opts =
+          comp_type == "ZLIB" ? io::ZlibCompressionOptions::DEFAULT()
+                              : io::ZlibCompressionOptions::GZIP();
+      io::ZlibOutputBuffer buffer(&file, opts.input_buffer_size,
+                                  opts.output_buffer_size, opts);
+      CHECK_OK(buffer.Init());
+      CHECK_OK(buffer.Append(payload));
+      CHECK_OK(buffer.Flush());
+      flushed = full_buf;
+      // Close cleanly so ZlibOutputBuffer calls deflateEnd() without leaking.
+      CHECK_OK(buffer.Close());
+    }
+    TF_ASSERT_OK(RunDecode(
+        comp_type, {tstring(flushed),
+                    tstring(CompressZlibOrGzip(next_payload, comp_type))}));
+    const auto out = GetOutput(0)->flat<tstring>();
+    ASSERT_EQ(out.size(), 2);
+    EXPECT_EQ(out(0), payload);
+    EXPECT_EQ(out(1), next_payload);
+  }
+}
+
+TEST_F(DecodeCompressedOpTest, CorruptedZlibAndGzipReturnDataLoss) {
+  for (absl::string_view comp_type : {"ZLIB", "GZIP"}) {
+    EXPECT_TRUE(
+        absl::IsDataLoss(RunDecode(comp_type, {tstring("not compressed")})));
+    EXPECT_TRUE(absl::IsDataLoss(RunDecode(
+        comp_type, {tstring(CompressZlibOrGzip("valid_first", comp_type)),
+                    tstring("corrupt_second")})));
   }
 }
 
@@ -264,8 +371,11 @@ void BM_DecodeCompressed_None(::benchmark::State& state) {
                                  string_bytes, pool_size));
 }
 
+// Measures `DecodeCompressed` throughput on a ring buffer of tensors with
+// `num_elements` compressed strings each.
 void RunCompressedBenchmark(::benchmark::State& state,
-                            absl::string_view compression_type) {
+                            absl::string_view compression_type,
+                            int64_t num_elements = 1) {
   const int64_t uncompressed_bytes = state.range(0);
   const bool compressible = state.range(1) != 0;
 
@@ -276,15 +386,19 @@ void RunCompressedBenchmark(::benchmark::State& state,
       GeneratePayload(static_cast<size_t>(uncompressed_bytes), compressible);
   const std::string compressed = CompressZlibOrGzip(raw, compression_type);
 
-  const size_t pool_size = ComputePoolSize(compressed.size() + sizeof(tstring));
+  const size_t bytes_per_tensor =
+      static_cast<size_t>(num_elements) * (compressed.size() + sizeof(tstring));
+  const size_t pool_size = ComputePoolSize(bytes_per_tensor);
   const size_t pool_mask = pool_size - 1;
 
   std::vector<Tensor> input_pool;
   input_pool.reserve(pool_size);
   for (size_t pool_idx = 0; pool_idx < pool_size; ++pool_idx) {
-    Tensor input_tensor(DT_STRING, TensorShape({1}));
-    tstring& elem = input_tensor.scalar<tstring>()();
-    elem.assign(compressed.data(), compressed.size());
+    Tensor input_tensor(DT_STRING, TensorShape({num_elements}));
+    auto flat = input_tensor.flat<tstring>();
+    for (int64_t i = 0; i < num_elements; ++i) {
+      flat(i).assign(compressed.data(), compressed.size());
+    }
     input_pool.push_back(std::move(input_tensor));
   }
 
@@ -313,7 +427,11 @@ void RunCompressedBenchmark(::benchmark::State& state,
   op->Compute(&ctx);
   CHECK_OK(ctx.status());
   Tensor* warmup_out = ctx.release_output(0).tensor;
-  CHECK_EQ(warmup_out->scalar<tstring>()().size(), raw.size());
+  const auto warmup_flat = warmup_out->flat<tstring>();
+  CHECK_EQ(warmup_flat.size(), num_elements);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    CHECK_EQ(warmup_flat(i).size(), raw.size());
+  }
   delete warmup_out;
 
   size_t iter = 0;
@@ -322,19 +440,17 @@ void RunCompressedBenchmark(::benchmark::State& state,
     op->Compute(&ctx);
     DCHECK_OK(ctx.status());
     Tensor* out = ctx.release_output(0).tensor;
-    const char* out_data = out->scalar<tstring>()().c_str();
+    const char* out_data = out->flat<tstring>()(0).c_str();
     tensorflow::testing::DoNotOptimize(out_data);
     delete out;
   }
 
-  constexpr size_t kChunkSize = 256 << 10;
-  const size_t chunks = (compressed.size() + kChunkSize - 1) / kChunkSize;
   const int64_t total_iters = static_cast<int64_t>(state.iterations());
-  state.SetItemsProcessed(total_iters);
-  state.SetBytesProcessed(uncompressed_bytes * total_iters);
-  state.SetLabel(absl::StrFormat("comp:%s,comp_bytes:%zu,chunks:%zu,pool:%zu",
-                                 compressible ? "semi" : "incomp",
-                                 compressed.size(), chunks, pool_size));
+  state.SetItemsProcessed(num_elements * total_iters);
+  state.SetBytesProcessed(num_elements * uncompressed_bytes * total_iters);
+  state.SetLabel(absl::StrFormat("comp:%s,elems:%d,comp_bytes:%zu,pool:%zu",
+                                 compressible ? "semi" : "incomp", num_elements,
+                                 compressed.size(), pool_size));
 }
 
 BENCHMARK(BM_DecodeCompressed_None)
@@ -368,6 +484,22 @@ BENCHMARK(BM_DecodeCompressed_Gzip)
     ->ArgPair(512 << 10, 0)
     ->ArgPair(4 << 20, 1)
     ->ArgPair(4 << 20, 0);
+
+void BM_DecodeCompressed_Zlib_Batch(::benchmark::State& state) {
+  RunCompressedBenchmark(state, "ZLIB", /*num_elements=*/state.range(2));
+}
+BENCHMARK(BM_DecodeCompressed_Zlib_Batch)
+    ->Args({1 << 10, 1, 64})
+    ->Args({4 << 10, 1, 64})
+    ->Args({64 << 10, 1, 16});
+
+void BM_DecodeCompressed_Gzip_Batch(::benchmark::State& state) {
+  RunCompressedBenchmark(state, "GZIP", /*num_elements=*/state.range(2));
+}
+BENCHMARK(BM_DecodeCompressed_Gzip_Batch)
+    ->Args({1 << 10, 1, 64})
+    ->Args({4 << 10, 1, 64})
+    ->Args({64 << 10, 1, 16});
 // NOLINTEND(misc-include-cleaner)
 
 }  // namespace
