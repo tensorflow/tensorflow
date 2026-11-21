@@ -110,6 +110,8 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
 
   absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() override;
 
+  tsl::AsyncValueRef<ExternalDmaAccess> AcquireExternalDmaAccess() override;
+
   absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
 
   void CopyTo(

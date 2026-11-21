@@ -335,6 +335,12 @@ PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
   return event;
 }
 
+tsl::AsyncValueRef<PjRtRawBufferInterface::ExternalDmaAccess>
+PjRtStreamExecutorRawBuffer::AcquireExternalDmaAccess() {
+  return client_->AcquireExternalDmaAccess(local_device_, memory_space_,
+                                           device_buffer_);
+}
+
 void PjRtStreamExecutorRawBuffer::CopyTo(
     PjRtRawBufferRef dst_raw_buffer,
     PjRtDeviceEventPromiseRef definition_event_promise,

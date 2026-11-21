@@ -40,10 +40,12 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/allocator_config.h"
+#include "xla/pjrt/gpu/gpu_dma_buf_cache.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/pjrt/se/se_raw_buffer.h"
+#include "xla/pjrt/se/tracked_device_buffer.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu_topology.h"
@@ -99,7 +102,8 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
       std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
           nullptr,
-      tsl::RCReference<const GpuMultiSliceConfig> multi_slice_config = {})
+      tsl::RCReference<const GpuMultiSliceConfig> multi_slice_config = {},
+      std::shared_ptr<GpuDmaBufCache> dma_buf_cache = nullptr)
       : PjRtStreamExecutorRawClient(
             platform_id, std::move(local_device_states), std::move(allocator),
             client, std::move(host_memory_allocator),
@@ -109,7 +113,10 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
         kv_store_(std::move(kv_store)),
         cache_fabric_handles_(cache_fabric_handles),
         abort_collectives_on_failure_(abort_collectives_on_failure),
-        memory_registration_(std::move(memory_registration)) {}
+        memory_registration_(std::move(memory_registration)),
+        dma_buf_cache_(dma_buf_cache != nullptr
+                           ? std::move(dma_buf_cache)
+                           : std::make_shared<GpuDmaBufCache>()) {}
 
   void ScheduleRemoteSend(LocalDeviceId local_device_id, int memory_kind_id,
                           PjRtRawBufferRef raw_buffer,
@@ -127,6 +134,11 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
       PjRtDeviceEventRefVector transfer_dependencies,
       std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs)
       override;
+
+  tsl::AsyncValueRef<PjRtRawBufferInterface::ExternalDmaAccess>
+  AcquireExternalDmaAccess(
+      LocalDeviceState* local_device, const PJRT_Memory* memory_space,
+      tsl::AsyncValueRef<RawSEDeviceMemory> device_buffer) override;
 
   void UpdateCompileOptionsTopology(const PjRtTopologyDescription& topology,
                                     CompileOptions* options) const override;
@@ -177,6 +189,9 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
       imported_fabric_handles_ ABSL_GUARDED_BY(mu_);
 
   std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
+
+  // Caches exported Linux dma-buf fds per suballocator chunk.
+  std::shared_ptr<GpuDmaBufCache> dma_buf_cache_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
