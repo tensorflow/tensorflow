@@ -568,6 +568,36 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
+    name = "xla_eig_op_test",
+    size = "medium",
+    srcs = ["xla_eig_op_test.py"],
+    disabled_backends = [
+        "gpu",
+        "gpu_a100",
+        "gpu_h100",
+    ],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:linalg_ops_gen",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_strict_test(
     name = "searchsorted_op_test",
     size = "small",
     timeout = "moderate",

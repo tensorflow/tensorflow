@@ -186,6 +186,7 @@ cc_library(
         ":xla_custom_call_v2_op",
         ":xla_dequantize_op",
         ":xla_dot_op",
+        ":xla_eig_op",
         ":xla_optimization_barrier_op",
         ":xla_pad_op",
         ":xla_reduce_op",
@@ -3149,6 +3150,33 @@ tf_kernel_library(
         "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
+    ],
+)
+
+tf_kernel_library(
+    name = "xla_eig_op",
+    srcs = ["xla_eig_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:denormal",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/service:custom_call_status",
+        "@xla//xla/service:custom_call_target_registry",
     ],
 )
 
