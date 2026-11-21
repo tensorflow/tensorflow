@@ -1962,6 +1962,47 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         )
         self.evaluate(result)
 
+  def testResourceScatterUpdateRejectsVariableOfAnotherDtype(self):
+    # Runs eagerly, since in a graph the handle's shape inference rejects the
+    # dtype before the kernel runs. Float updates take the kernel's shared-lock
+    # branch and string updates its exclusive-lock branch. Before the variable
+    # is in copy-on-read mode, which a gather puts it in,
+    # EnsureSparseVariableAccess rejects it first.
+    with context.eager_mode(), ops.device("/CPU:0"):
+      for var_dtype, updates, message in (
+          (dtypes.bfloat16, [[1.0, 1.0]], "expected float but got bfloat16"),
+          (dtypes.float32, [["a", "b"]], "expected string but got float"),
+      ):
+        for copy_on_read in (False, True):
+          with self.subTest(message=message, copy_on_read=copy_on_read):
+            ref = resource_variable_ops.ResourceVariable(
+                np.zeros((4, 2)), dtype=var_dtype)
+            self.evaluate(ref.initializer)
+            if copy_on_read:
+              self.evaluate(
+                  resource_variable_ops.resource_gather(
+                      ref.handle, [0], dtype=var_dtype))
+            with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                        "dtype mismatch: " + message):
+              self.evaluate(
+                  resource_variable_ops.resource_scatter_update(
+                      ref.handle, [0], constant_op.constant(updates)))
+
+  def testAssignUpdateRejectsVariableOfAnotherDtype(self):
+    # Runs eagerly, like the test above.
+    with context.eager_mode(), ops.device("/CPU:0"):
+      ref = resource_variable_ops.ResourceVariable(
+          np.zeros(2), dtype=dtypes.bfloat16)
+      self.evaluate(ref.initializer)
+      for assign_op in (resource_variable_ops.assign_add_variable_op,
+                        resource_variable_ops.assign_sub_variable_op):
+        with self.subTest(assign_op=assign_op.__name__):
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              "dtype mismatch: expected float but got bfloat16"):
+            self.evaluate(
+                assign_op(ref.handle, constant_op.constant([1.0, 1.0])))
+
 
 if __name__ == "__main__":
   test.main()
