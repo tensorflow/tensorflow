@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
@@ -54,6 +55,25 @@ class Conv1DTransposeTest(test.TestCase):
             if w_in:
               target += 3.0
             self.assertAllClose(target, value[n, w, c])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConv1DTransposeInt64OutputShape(self):
+    x = constant_op.constant(1.0, shape=[2, 4, 3])
+    f = constant_op.constant(1.0, shape=[3, 2, 3])
+    expected = nn_ops.conv1d_transpose(
+        x, f, [2, 8, 2], strides=2, padding="SAME")
+    output = nn_ops.conv1d_transpose(
+        x, f, constant_op.constant([2, 8, 2], dtype=dtypes.int64), strides=2,
+        padding="SAME")
+    self.assertAllEqual(self.evaluate(expected), self.evaluate(output))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConv1DTransposeFloatOutputShapeRaises(self):
+    x = constant_op.constant(1.0, shape=[2, 4, 3])
+    f = constant_op.constant(1.0, shape=[3, 2, 3])
+    with self.assertRaises((TypeError, errors.InvalidArgumentError)):
+      nn_ops.conv1d_transpose(
+          x, f, constant_op.constant([2., 8., 2.]), strides=2, padding="SAME")
 
   def testConv1DTransposeSame(self):
     with self.cached_session():
