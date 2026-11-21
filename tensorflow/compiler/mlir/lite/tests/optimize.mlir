@@ -2788,6 +2788,70 @@ func.func @SoftMaxWithoutNormalizationNegAxis(%arg0: tensor<8x128xf32>) -> tenso
 // CHECK: return %[[RESULT]] : tensor<8x128xf32>
 }
 
+func.func @SoftMaxF16JaxWithCastSum(%arg0: tensor<8x128xf16>) -> tensor<8x128xf16> {
+  %cst_axis = arith.constant dense<1> : tensor<1xi32>
+  %cst_ninf = arith.constant dense<0xFC00> : tensor<f16>
+  %cst_shape = arith.constant dense<[8, 1]> : tensor<2xi32>
+  %0 = "tfl.reduce_max"(%arg0, %cst_axis) {keep_dims = false} : (tensor<8x128xf16>, tensor<1xi32>) -> tensor<8xf16>
+  %1 = "tfl.maximum"(%0, %cst_ninf) : (tensor<8xf16>, tensor<f16>) -> tensor<8xf16>
+  %2 = "tfl.reshape"(%1, %cst_shape) : (tensor<8xf16>, tensor<2xi32>) -> tensor<8x1xf16>
+  %3 = "tfl.sub"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<8x128xf16>, tensor<8x1xf16>) -> tensor<8x128xf16>
+  %4 = "tfl.exp"(%3) : (tensor<8x128xf16>) -> tensor<8x128xf16>
+  %5 = "tfl.cast"(%4) : (tensor<8x128xf16>) -> tensor<8x128xf32>
+  %6 = "tfl.sum"(%5, %cst_axis) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8x1xf32>
+  %7 = "tfl.cast"(%6) : (tensor<8x1xf32>) -> tensor<8x1xf16>
+  %8 = "tfl.div"(%4, %7) {fused_activation_function = "NONE"} : (tensor<8x128xf16>, tensor<8x1xf16>) -> tensor<8x128xf16>
+  func.return %8 : tensor<8x128xf16>
+
+// CHECK-LABEL: SoftMaxF16JaxWithCastSum
+// CHECK: %[[RESULT:.*]] = "tfl.softmax"(%arg0) <{beta = 1.000000e+00 : f32}> : (tensor<8x128xf16>) -> tensor<8x128xf16>
+// CHECK: return %[[RESULT]] : tensor<8x128xf16>
+}
+
+func.func @SoftMaxF16WithCastSumWithoutNormalization(%arg0: tensor<8x128xf16>) -> tensor<8x128xf16> {
+  %cst = arith.constant dense<-1> : tensor<1xi32>
+  %0 = "tfl.exp"(%arg0) : (tensor<8x128xf16>) -> tensor<8x128xf16>
+  %1 = "tfl.cast"(%0) : (tensor<8x128xf16>) -> tensor<8x128xf32>
+  %2 = "tfl.sum"(%1, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8x1xf32>
+  %3 = "tfl.cast"(%2) : (tensor<8x1xf32>) -> tensor<8x1xf16>
+  %4 = "tfl.div"(%0, %3) {fused_activation_function = "NONE"} : (tensor<8x128xf16>, tensor<8x1xf16>) -> tensor<8x128xf16>
+  func.return %4 : tensor<8x128xf16>
+
+// CHECK-LABEL: SoftMaxF16WithCastSumWithoutNormalization
+// CHECK: %[[RESULT:.*]] = "tfl.softmax"(%arg0) <{beta = 1.000000e+00 : f32}> : (tensor<8x128xf16>) -> tensor<8x128xf16>
+// CHECK: return %[[RESULT]] : tensor<8x128xf16>
+}
+
+func.func @DontFuseSoftMaxWithNarrowingCastSum(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32> {
+  %cst = arith.constant dense<1> : tensor<1xi32>
+  %0 = "tfl.exp"(%arg0) : (tensor<8x128xf32>) -> tensor<8x128xf32>
+  %1 = "tfl.cast"(%0) : (tensor<8x128xf32>) -> tensor<8x128xf16>
+  %2 = "tfl.sum"(%1, %cst) {keep_dims = true} : (tensor<8x128xf16>, tensor<1xi32>) -> tensor<8x1xf16>
+  %3 = "tfl.cast"(%2) : (tensor<8x1xf16>) -> tensor<8x1xf32>
+  %4 = "tfl.div"(%0, %3) {fused_activation_function = "NONE"} : (tensor<8x128xf32>, tensor<8x1xf32>) -> tensor<8x128xf32>
+  func.return %4 : tensor<8x128xf32>
+
+// CHECK-LABEL: DontFuseSoftMaxWithNarrowingCastSum
+// CHECK-NOT: "tfl.softmax"
+// CHECK: "tfl.exp"
+// CHECK: tfl.div
+}
+
+func.func @DontFuseSoftMaxF16WithCastSumNonLastAxis(%arg0: tensor<8x128xf16>) -> tensor<8x128xf16> {
+  %cst = arith.constant dense<0> : tensor<1xi32>
+  %0 = "tfl.exp"(%arg0) : (tensor<8x128xf16>) -> tensor<8x128xf16>
+  %1 = "tfl.cast"(%0) : (tensor<8x128xf16>) -> tensor<8x128xf32>
+  %2 = "tfl.sum"(%1, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<1x128xf32>
+  %3 = "tfl.cast"(%2) : (tensor<1x128xf32>) -> tensor<1x128xf16>
+  %4 = "tfl.div"(%0, %3) {fused_activation_function = "NONE"} : (tensor<8x128xf16>, tensor<1x128xf16>) -> tensor<8x128xf16>
+  func.return %4 : tensor<8x128xf16>
+
+// CHECK-LABEL: DontFuseSoftMaxF16WithCastSumNonLastAxis
+// CHECK-NOT: "tfl.softmax"
+// CHECK: "tfl.exp"
+// CHECK: tfl.div
+}
+
 // CHECK-LABEL: fuseScalarAddIntoConv2d
 func.func @fuseScalarAddIntoConv2d(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>) -> tensor<256x8x7x16xf32> {
   %cst = arith.constant dense<1.5> : tensor<f32>

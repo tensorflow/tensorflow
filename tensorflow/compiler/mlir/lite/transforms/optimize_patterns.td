@@ -1119,6 +1119,10 @@ def AxesIsLastDimension : Constraint<CPred<
   "(llvm::cast<DenseIntElementsAttr>($0).getValues<APInt>()[0] == "
   "llvm::cast<ShapedType>($1.getType()).getRank() - 1 || llvm::cast<DenseIntElementsAttr>($0).getValues<int32_t>()[0] == -1)">>;
 
+def IsF16ToF32Cast : Constraint<CPred<
+  "llvm::cast<ShapedType>($0.getType()).getElementType().isF16() && "
+  "llvm::cast<ShapedType>($1.getType()).getElementType().isF32()">>;
+
 // Convert exp(x)/sum(exp(x)) into softmax.
 def OptimizeToSoftmax : Pat<
   (TFL_DivOp (TFL_ExpOp:$exp $input),
@@ -1129,6 +1133,25 @@ def OptimizeToSoftmax : Pat<
    (AxesIsLastDimension $axes, $sum_input),
    (HasTwoUse $exp),
    (HasOneUse $sum)]>;
+
+// Convert exp(x)/cast(sum(cast(exp(x)))) into softmax when sum accumulates in
+// f32 for f16 inputs (e.g. from JAX float16 softmax).
+def OptimizeToSoftmaxWithCastSum : Pat<
+  (TFL_DivOp (TFL_ExpOp:$exp $input),
+             (TFL_CastOp:$out_cast
+               (TFL_SumOp:$sum
+                 (TFL_CastOp:$in_cast $sum_input),
+                 (Arith_ConstantOp I32ElementsAttr: $axes),
+                 ConstBoolAttrTrue)),
+             TFL_AF_None),
+  (TFL_SoftmaxOp $input, ConstF32Attr<"1.0">),
+  [(IsSame $exp, $sum_input),
+   (IsF16ToF32Cast $exp, $in_cast),
+   (AxesIsLastDimension $axes, $sum_input),
+   (HasTwoUse $exp),
+   (HasOneUse $in_cast),
+   (HasOneUse $sum),
+   (HasOneUse $out_cast)]>;
 
 // Convert softmax(x-max(x)) into softmax(x) as the softmax op already deals
 // with the max normalization.
@@ -1154,7 +1177,7 @@ def FoldNormalizationIntoSoftmaxJaxWithAxisMinus1 : Pat<
       (TFL_MaximumOp:$maximum
         (TFL_ReduceMaxOp:$max $max_input, (Arith_ConstantOp I32ElementsAttr: $axes),
                               ConstBoolAttrFalse),
-        (Arith_ConstantOp F32ElementsAttr: $threshold)
+        (Arith_ConstantOp FloatElementsAttr: $threshold)
       ),
       (Arith_ConstantOp I32ElementsAttr: $shape)
     ),
