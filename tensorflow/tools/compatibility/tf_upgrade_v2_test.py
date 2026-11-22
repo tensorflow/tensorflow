@@ -767,6 +767,41 @@ bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
         "tf.nn.dropout(x, rate=1 - (1 - func(3 + 4.)), name=\"foo\")\n",
     )
 
+  @parameterized.parameters(
+      ["tf.zeros_like(x, optimize=True)", "tf.zeros_like(x)"],
+      ["tf.ones_like(x, optimize=True)", "tf.ones_like(x)"],
+      ["tf.zeros_like(x, optimize=False)",
+       "tf.compat.v1.zeros_like(x, optimize=False)"],
+      ["tf.while_loop(c, b, v, return_same_structure=True)",
+       "tf.while_loop(cond=c, body=b, loop_vars=v)"],
+      ["tf.nn.ctc_beam_search_decoder(i, l, merge_repeated=False)",
+       "tf.nn.ctc_beam_search_decoder(inputs=i, sequence_length=l)"],
+  )  # pyformat: disable
+  def test_bool_literal_args(self, text, expected_text):
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def test_fractional_pool_deterministic(self):
+    text = "tf.nn.fractional_max_pool(v, r, deterministic=True)"
+    expected_text = (
+        "tf.nn.fractional_max_pool(value=v, pooling_ratio=r, seed=42)")
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+    self.assertIn("Adding seed=42", report)
+
+    text = "tf.nn.fractional_avg_pool(v, r, deterministic=False)"
+    expected_text = "tf.nn.fractional_avg_pool(value=v, pooling_ratio=r)"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+    self.assertNotIn("Adding seed=42", report)
+
+    text = "tf.nn.fractional_max_pool(v, r, seed=7, deterministic=True)"
+    expected_text = (
+        "tf.nn.fractional_max_pool(value=v, pooling_ratio=r, seed=7)")
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+    self.assertIn("deprecated for tf.nn.fractional_max_pool", report)
+
   def testContribL1(self):
     text = "tf.contrib.layers.l1_regularizer(scale)\n"
     _, unused_report, unused_errors, new_text = self._upgrade(text)

@@ -1553,17 +1553,11 @@ def _is_ast_str(node):
 
 
 def _is_ast_true(node):
-  if hasattr(ast, "NameConstant"):
-    return isinstance(node, ast.Constant) and node.value is True
-  else:
-    return isinstance(node, ast.Name) and node.id == "True"
+  return isinstance(node, ast.Constant) and node.value is True
 
 
 def _is_ast_false(node):
-  if hasattr(ast, "NameConstant"):
-    return isinstance(node, ast.Constant) and node.value is False
-  else:
-    return isinstance(node, ast.Name) and node.id == "False"
+  return isinstance(node, ast.Constant) and node.value is False
 
 
 # Lots of unused arguments below, since these are called in a standard manner.
@@ -1876,18 +1870,19 @@ def _pool_seed_transformer(parent, node, full_name, name, logs):
   if deterministic:
     if seed_arg is None:
       new_keywords.append(ast.keyword(arg="seed", value=ast.Constant(value=42)))
-      logs.add((
+      logs.append((
           ast_edits.INFO, node.lineno, node.col_offset,
           "Adding seed=42 to call to %s since determinism was requested" % (
               full_name or name)
       ))
     else:
-      logs.add((
+      logs.append((
           ast_edits.WARNING, node.lineno, node.col_offset,
           "The deterministic argument is deprecated for %s, pass a "
           "non-zero seed for determinism. The deterministic argument is "
           "present, possibly not False, and the seed is already set. The "
-          "converter cannot determine whether it is nonzero, please check."
+          "converter cannot determine whether it is nonzero, please check." % (
+              full_name or name)
       ))
 
   if modified:
