@@ -41,10 +41,14 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_raw_client.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
@@ -532,6 +536,95 @@ TEST(PjRtOnceCallbackTest, EmptyCallablesProduceNullHandle) {
   EXPECT_EQ(MakeOnceCallback(nullptr), nullptr);
   EXPECT_EQ(MakeOnceCallback(absl::AnyInvocable<void() &&>{}), nullptr);
   EXPECT_EQ(MakeOnceCallback(null_fn), nullptr);
+}
+
+TEST(PjRtFulfillAliasRawBufferCallbackTest,
+     FulfillsErrorAndDestroysAcrossCApi) {
+  absl::Status received_status;
+  auto token = std::make_shared<int>(99);
+  std::weak_ptr<int> weak_token = token;
+
+  PjRtFulfillAliasRawBufferCallbackRef cb = MakeFulfillAliasRawBufferCallback(
+      [&received_status, token = std::move(token)](
+          absl::StatusOr<PjRtRawBufferRef> buf_or) -> absl::Status {
+        EXPECT_EQ(*token, 99);
+        EXPECT_FALSE(buf_or.ok());
+        received_status = buf_or.status();
+        return received_status;
+      });
+  ASSERT_NE(cb, nullptr);
+
+  PJRT_FulfillAliasRawBufferCallback* raw = cb.release();
+  ASSERT_NE(raw, nullptr);
+  EXPECT_FALSE(weak_token.expired());
+
+  PjRtFulfillAliasRawBufferCallbackRef restored(
+      static_cast<PjRtFulfillAliasRawBufferCallbackInterface*>(raw));
+  PjRtFulfillAliasRawBufferCallbackInterface::FulfillError(
+      std::move(restored), absl::AbortedError("channel cancelled"));
+  EXPECT_THAT(received_status,
+              StatusIs(absl::StatusCode::kAborted, "channel cancelled"));
+  EXPECT_TRUE(weak_token.expired());
+}
+
+TEST(PjRtFulfillAliasRawBufferCallbackTest, NullCApiInputsProduceErrors) {
+  absl::Status buf_cb_status;
+  PjRtFulfillAliasRawBufferCallbackRef buf_cb =
+      MakeFulfillAliasRawBufferCallback(
+          [&buf_cb_status](
+              absl::StatusOr<PjRtRawBufferRef> buf_or) -> absl::Status {
+            buf_cb_status = buf_or.status();
+            return buf_cb_status;
+          });
+  PJRT_FulfillAliasRawBufferCallback* raw_buf_cb = buf_cb.release();
+  PJRT_Error* c_err =
+      raw_buf_cb->vtable->fulfill_buffer(raw_buf_cb, /*buffer=*/nullptr);
+  EXPECT_THAT(pjrt::PjrtErrorToStatus(c_err),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(buf_cb_status, StatusIs(absl::StatusCode::kInvalidArgument));
+
+  absl::Status err_cb_status;
+  PjRtFulfillAliasRawBufferCallbackRef err_cb =
+      MakeFulfillAliasRawBufferCallback(
+          [&err_cb_status](
+              absl::StatusOr<PjRtRawBufferRef> buf_or) -> absl::Status {
+            err_cb_status = buf_or.status();
+            return err_cb_status;
+          });
+  PJRT_FulfillAliasRawBufferCallback* raw_err_cb = err_cb.release();
+  raw_err_cb->vtable->fulfill_error(raw_err_cb, /*error=*/nullptr);
+  EXPECT_THAT(err_cb_status, StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(PjRtFulfillAliasRawBufferCallbackTest,
+     DestroysWithoutFulfillingWhenDropped) {
+  bool invoked = false;
+  auto token = std::make_shared<int>(11);
+  std::weak_ptr<int> weak_token = token;
+
+  {
+    PjRtFulfillAliasRawBufferCallbackRef cb = MakeFulfillAliasRawBufferCallback(
+        [&invoked, token = std::move(token)](
+            absl::StatusOr<PjRtRawBufferRef>) -> absl::Status {
+          invoked = true;
+          return absl::OkStatus();
+        });
+    PJRT_FulfillAliasRawBufferCallback* raw = cb.release();
+    PjRtFulfillAliasRawBufferCallbackRef restored(
+        static_cast<PjRtFulfillAliasRawBufferCallbackInterface*>(raw));
+    EXPECT_FALSE(weak_token.expired());
+  }
+
+  EXPECT_FALSE(invoked);
+  EXPECT_TRUE(weak_token.expired());
+}
+
+TEST(PjRtFulfillAliasRawBufferCallbackTest, EmptyCallableProducesNullHandle) {
+  EXPECT_EQ(MakeFulfillAliasRawBufferCallback(nullptr), nullptr);
+  EXPECT_EQ(MakeFulfillAliasRawBufferCallback(
+                absl::AnyInvocable<absl::Status(
+                    absl::StatusOr<PjRtRawBufferRef>) &&>{}),
+            nullptr);
 }
 
 }  // namespace

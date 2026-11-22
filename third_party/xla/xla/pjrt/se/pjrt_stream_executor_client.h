@@ -311,14 +311,14 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
       PJRT_Memory* memory_space, size_t on_device_bytes_count,
-      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
+      bool retry_on_oom, PjRtDeviceEventRef allocate_after) override;
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
       PJRT_Memory* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom) override;
 
-  absl::StatusOr<std::pair<PjRtRawBufferRef,
-                           CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
+  absl::StatusOr<
+      std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallbackRef>>
   CreateRawBufferChannel(PJRT_Memory* memory_space,
                          size_t on_device_bytes_count) override;
 
@@ -375,7 +375,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   absl::Status DmaUnmap(void* data) override;
 
   void LaunchOnDevice(LocalDeviceId device_id,
-                      absl::AnyInvocable<void()> execute_fn) const override;
+                      PjRtOnceCallbackRef execute_fn) const override;
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PJRT_Memory* memory_space, void* device_ptr, size_t size,

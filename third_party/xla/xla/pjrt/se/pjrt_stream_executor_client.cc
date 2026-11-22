@@ -384,8 +384,8 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
 
 absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
     PJRT_Memory* memory_space, size_t on_device_bytes_count, bool retry_on_oom,
-    tsl::AsyncValueRef<bool> allocate_after) {
-  CHECK(allocate_after == nullptr)
+    PjRtDeviceEventRef allocate_after) {
+  CHECK(!allocate_after)
       << "allocate_after is not supported for PjRtStreamExecutorClient.";
   if (memory_space->memory_kind_id == UnpinnedHostMemorySpace::kKindId) {
     return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count,
@@ -455,8 +455,8 @@ PjRtStreamExecutorRawClient::AllocateRawBufferForExecute(
       this, memory_space, local_device, std::move(mem), on_device_bytes_count);
 }
 
-absl::StatusOr<std::pair<PjRtRawBufferRef,
-                         CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
+absl::StatusOr<
+    std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallbackRef>>
 PjRtStreamExecutorRawClient::CreateRawBufferChannel(
     PJRT_Memory* memory_space, size_t on_device_bytes_count) {
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
@@ -493,7 +493,9 @@ PjRtStreamExecutorRawClient::CreateRawBufferChannel(
     return absl::OkStatus();
   };
 
-  return std::make_pair(std::move(raw_buffer), std::move(buffer_promise_cb));
+  return std::make_pair(
+      std::move(raw_buffer),
+      MakeFulfillAliasRawBufferCallback(std::move(buffer_promise_cb)));
 }
 
 absl::Status PjRtStreamExecutorRawClient::WaitForAllocation(
@@ -1795,9 +1797,9 @@ void PjRtStreamExecutorRawClient::RecordMemoryStats() {
 }
 
 void PjRtStreamExecutorRawClient::LaunchOnDevice(
-    LocalDeviceId device_id, absl::AnyInvocable<void()> execute_fn) const {
+    LocalDeviceId device_id, PjRtOnceCallbackRef execute_fn) const {
   device_state(device_id)->execute_thread()->Schedule(
-      tsl::WithCurrentContext(std::move(execute_fn)));
+      tsl::WithCurrentContext(ToAnyInvocable(std::move(execute_fn))));
 }
 
 namespace {

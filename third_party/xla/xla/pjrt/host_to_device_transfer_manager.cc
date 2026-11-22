@@ -155,10 +155,11 @@ class CommonAsyncHostToDeviceTransferManager
                 raw_buffer->GetOnDeviceSizeInBytes(), on_device_bytes_count);
           }
         } else {
-          ABSL_ASSIGN_OR_RETURN(raw_buffer,
-                           client->AllocateRawBuffer(
-                               memory_space, on_device_bytes_count,
-                               /*retry_on_oom=*/true, allocation_event));
+          ABSL_ASSIGN_OR_RETURN(
+              raw_buffer,
+              client->AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                        /*retry_on_oom=*/true,
+                                        PjRtDeviceEventRef(allocation_event)));
         }
 
         // We make an event that will become available when the final transfer

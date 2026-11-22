@@ -217,6 +217,7 @@ class PjRtDeviceEventPtr {
 class PjRtDeviceEventRef {
  public:
   PjRtDeviceEventRef() = default;
+  PjRtDeviceEventRef(std::nullptr_t) {}  // NOLINT(runtime/explicit)
 
   ~PjRtDeviceEventRef() { reset(); }
 
@@ -244,8 +245,10 @@ class PjRtDeviceEventRef {
 
   template <typename T>
   explicit PjRtDeviceEventRef(tsl::AsyncValueRef<T> value)
-      : ptr_({internal::GetBuiltinDeviceEventCApiFunctionTable<T>(),
-              value.ReleaseRCRef().release()}) {}
+      : ptr_(value ? PjRtDeviceEventPtr(
+                         {internal::GetBuiltinDeviceEventCApiFunctionTable<T>(),
+                          value.ReleaseRCRef().release()})
+                   : PjRtDeviceEventPtr()) {}
 
   PjRtDeviceEventPtr ptr() const { return ptr_; }
   explicit operator PjRtDeviceEventPtr() const { return ptr_; }

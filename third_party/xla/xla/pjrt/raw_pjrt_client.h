@@ -182,6 +182,30 @@ class PjRtOnceCallbackInterface : public PJRT_OnceCallback {
 PjRtOnceCallbackRef MakeOnceCallback(absl::AnyInvocable<void() &&> cb);
 absl::AnyInvocable<void() &&> ToAnyInvocable(PjRtOnceCallbackRef cb);
 
+class PjRtFulfillAliasRawBufferCallbackInterface;
+
+struct PjRtFulfillAliasRawBufferCallbackDeleter {
+  PjRtFulfillAliasRawBufferCallbackDeleter() = default;
+  template <typename T>
+  PjRtFulfillAliasRawBufferCallbackDeleter(std::default_delete<T>) {}
+  void operator()(PjRtFulfillAliasRawBufferCallbackInterface* cb) const;
+};
+using PjRtFulfillAliasRawBufferCallbackRef =
+    std::unique_ptr<PjRtFulfillAliasRawBufferCallbackInterface,
+                    PjRtFulfillAliasRawBufferCallbackDeleter>;
+
+class PjRtFulfillAliasRawBufferCallbackInterface
+    : public PJRT_FulfillAliasRawBufferCallback {
+ public:
+  static absl::Status FulfillBuffer(PjRtFulfillAliasRawBufferCallbackRef cb,
+                                    PjRtRawBufferRef buffer);
+  static void FulfillError(PjRtFulfillAliasRawBufferCallbackRef cb,
+                           absl::Status error);
+};
+
+PjRtFulfillAliasRawBufferCallbackRef MakeFulfillAliasRawBufferCallback(
+    absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&> cb);
+
 class PjRtRawClientInterface;
 
 struct PjRtRawClientDeleter {
@@ -195,8 +219,6 @@ using PjRtRawClientRef =
 
 class PjRtRawClientInterface : public PJRT_RawClient {
  public:
-  using PjRtFulfillAliasRawBufferCallback =
-      absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&>;
   using PjRtFulfillAsyncExecutableCallback = absl::AnyInvocable<void(
       absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>>) &&>;
 
@@ -222,7 +244,7 @@ class PjRtRawClientInterface : public PJRT_RawClient {
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
       PJRT_Memory* memory_space, size_t on_device_bytes_count,
-      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after);
+      bool retry_on_oom, PjRtDeviceEventRef allocate_after);
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
       PJRT_Memory* memory_space, size_t on_device_bytes_count,
@@ -233,7 +255,8 @@ class PjRtRawClientInterface : public PJRT_RawClient {
                                absl::Span<const size_t> on_device_bytes_counts,
                                bool retry_on_oom);
 
-  absl::StatusOr<std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallback>>
+  absl::StatusOr<
+      std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallbackRef>>
   CreateRawBufferChannel(PJRT_Memory* memory_space,
                          size_t on_device_bytes_count);
 
@@ -264,7 +287,7 @@ class PjRtRawClientInterface : public PJRT_RawClient {
   std::optional<size_t> GetDmaSizeAlignment() const;
 
   void LaunchOnDevice(LocalDeviceId device_id,
-                      absl::AnyInvocable<void()> execute_fn) const;
+                      PjRtOnceCallbackRef execute_fn) const;
 
   void CallOomHandlers() const;
 
@@ -372,15 +395,12 @@ class PjRtRawClient : public PjRtRawClientInterface {
     return false;
   }
 
-  using PjRtFulfillAliasRawBufferCallback =
-      PjRtRawClientInterface::PjRtFulfillAliasRawBufferCallback;
-
   // Allocates a raw buffer of a particular size after an optional
   // allocate_after. Backends may support retrying allocation on oom which
   // can be controlled via retry_on_oom.
   virtual absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
       PJRT_Memory* memory_space, size_t on_device_bytes_count,
-      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) = 0;
+      bool retry_on_oom, PjRtDeviceEventRef allocate_after) = 0;
 
   // Allocates a raw buffer of a particular size. Backends may support retrying
   // allocation on oom which can be controlled via retry_on_oom.
@@ -405,9 +425,9 @@ class PjRtRawClient : public PjRtRawClientInterface {
   // Creates a raw buffer channel. Returns a tuple containing:
   // 1.  A PjRtRawBufferRef which is an alias for a future
   //     raw buffer.
-  // 2.  A PjRtFulfillAliasRawBufferCallback to fulfill the alias.
+  // 2.  A PjRtFulfillAliasRawBufferCallbackRef to fulfill the alias.
   virtual absl::StatusOr<
-      std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallback>>
+      std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallbackRef>>
   CreateRawBufferChannel(PJRT_Memory* memory_space,
                          size_t on_device_bytes_count) {
     return absl::UnimplementedError("CreateRawBufferChannel is not supported");
@@ -477,8 +497,8 @@ class PjRtRawClient : public PjRtRawClientInterface {
   virtual std::optional<size_t> GetDmaSizeAlignment() const { return 1; }
 
   virtual void LaunchOnDevice(LocalDeviceId device_id,
-                              absl::AnyInvocable<void()> execute_fn) const {
-    async_work_runner()->Execute(std::move(execute_fn));
+                              PjRtOnceCallbackRef execute_fn) const {
+    async_work_runner()->Execute(ToAnyInvocable(std::move(execute_fn)));
   }
 
   // Backend specific handlers for when an oom is detected during execute.

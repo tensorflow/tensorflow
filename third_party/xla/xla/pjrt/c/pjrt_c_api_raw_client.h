@@ -47,6 +47,32 @@ struct PJRT_OnceCallback {
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_OnceCallback_FunctionTable, destroy);
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_OnceCallback, vtable);
 
+typedef struct PJRT_FulfillAliasRawBufferCallback
+    PJRT_FulfillAliasRawBufferCallback;
+
+typedef struct PJRT_FulfillAliasRawBufferCallback_FunctionTable {
+  size_t struct_size;
+  size_t instance_size;
+  PJRT_Extension_Base* extension_start;
+  // Binds the alias to `buffer` (ownership transferred) and frees `callback`.
+  PJRT_NO_DISCARD PJRT_Error* (*fulfill_buffer)(
+      PJRT_FulfillAliasRawBufferCallback* callback, PJRT_RawBuffer* buffer);
+  // Sets non-null `error` (ownership transferred) on the alias and frees
+  // `callback`.
+  void (*fulfill_error)(PJRT_FulfillAliasRawBufferCallback* callback,
+                        PJRT_Error* error);
+  // Frees `callback` without fulfilling it.
+  void (*destroy)(PJRT_FulfillAliasRawBufferCallback* callback);
+} PJRT_FulfillAliasRawBufferCallback_FunctionTable;
+
+struct PJRT_FulfillAliasRawBufferCallback {
+  const PJRT_FulfillAliasRawBufferCallback_FunctionTable* vtable;
+};
+
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_FulfillAliasRawBufferCallback_FunctionTable,
+                          destroy);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_FulfillAliasRawBufferCallback, vtable);
+
 typedef struct PJRT_RawClient PJRT_RawClient;
 
 typedef struct PJRT_RawClient_FunctionTable {
@@ -150,13 +176,29 @@ typedef struct PJRT_RawClient_FunctionTable {
       PJRT_RawClient* client, PJRT_Memory* memory_space, void* device_ptr,
       size_t size, PJRT_OnceCallback* on_delete_callback, bool is_mutable,
       PJRT_RawBuffer** out_buffer);
+  // Allocates a caller-owned raw buffer in `memory_space` after optional
+  // `allocate_after` (ownership transferred; `{nullptr, nullptr}` if none).
+  PJRT_NO_DISCARD PJRT_Error* (*allocate_raw_buffer)(
+      PJRT_RawClient* client, PJRT_Memory* memory_space,
+      size_t on_device_bytes_count, bool retry_on_oom,
+      PJRT_DeviceEvent allocate_after, PJRT_RawBuffer** out_buffer);
+  // Enqueues `execute_fn` (ownership transferred) to run on `local_device_id`.
+  void (*launch_on_device)(const PJRT_RawClient* client,
+                           int32_t local_device_id,
+                           PJRT_OnceCallback* execute_fn);
+  // Creates a caller-owned raw buffer alias and one-shot fulfillment callback.
+  PJRT_NO_DISCARD PJRT_Error* (*create_raw_buffer_channel)(
+      PJRT_RawClient* client, PJRT_Memory* memory_space,
+      size_t on_device_bytes_count, PJRT_RawBuffer** out_buffer,
+      PJRT_FulfillAliasRawBufferCallback** out_fulfill_callback);
 } PJRT_RawClient_FunctionTable;
 
 struct PJRT_RawClient {
   const PJRT_RawClient_FunctionTable* vtable;
 };
 
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawClient_FunctionTable, import_foreign_memory);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawClient_FunctionTable,
+                          create_raw_buffer_channel);
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawClient, vtable);
 
 #ifdef __cplusplus

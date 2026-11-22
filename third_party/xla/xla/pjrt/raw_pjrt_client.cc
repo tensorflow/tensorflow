@@ -117,6 +117,89 @@ absl::AnyInvocable<void() &&> ToAnyInvocable(PjRtOnceCallbackRef cb) {
   };
 }
 
+void PjRtFulfillAliasRawBufferCallbackDeleter::operator()(
+    PjRtFulfillAliasRawBufferCallbackInterface* cb) const {
+  if (cb != nullptr) {
+    cb->vtable->destroy(cb);
+  }
+}
+
+PjRtFulfillAliasRawBufferCallbackRef MakeFulfillAliasRawBufferCallback(
+    absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&> cb) {
+  if (!cb) {
+    return nullptr;
+  }
+  struct Holder : PjRtFulfillAliasRawBufferCallbackInterface {
+    explicit Holder(
+        absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&>
+            fn)
+        : fn(std::move(fn)) {}
+    absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&> fn;
+  };
+  static constexpr PJRT_FulfillAliasRawBufferCallback_FunctionTable kVtable = {
+      /*struct_size=*/
+      PJRT_FulfillAliasRawBufferCallback_FunctionTable_STRUCT_SIZE,
+      /*instance_size=*/sizeof(Holder),
+      /*extension_start=*/nullptr,
+      /*fulfill_buffer=*/
+      +[](PJRT_FulfillAliasRawBufferCallback* callback,
+          PJRT_RawBuffer* buffer) -> PJRT_Error* {
+        std::unique_ptr<Holder> holder(static_cast<Holder*>(callback));
+        if (buffer == nullptr) {
+          absl::Status status = absl::InvalidArgumentError(
+              "Raw buffer passed to fulfill_buffer is null");
+          std::move(holder->fn)(status).IgnoreError();
+          return pjrt::StatusToPjRtError(status);
+        }
+        return pjrt::StatusToPjRtError(
+            std::move(holder->fn)(RawBufferFromC(buffer)));
+      },
+      /*fulfill_error=*/
+      +[](PJRT_FulfillAliasRawBufferCallback* callback, PJRT_Error* error) {
+        std::unique_ptr<Holder> holder(static_cast<Holder*>(callback));
+        absl::Status status = pjrt::PjrtErrorToStatus(error);
+        if (status.ok()) {
+          status =
+              absl::InternalError("fulfill_error called with null PJRT_Error");
+        }
+        std::move(holder->fn)(std::move(status)).IgnoreError();
+      },
+      /*destroy=*/
+      +[](PJRT_FulfillAliasRawBufferCallback* callback) {
+        delete static_cast<Holder*>(callback);
+      },
+  };
+  auto holder = std::make_unique<Holder>(std::move(cb));
+  holder->vtable = &kVtable;
+  return holder;
+}
+
+absl::Status PjRtFulfillAliasRawBufferCallbackInterface::FulfillBuffer(
+    PjRtFulfillAliasRawBufferCallbackRef cb, PjRtRawBufferRef buffer) {
+  PJRT_FulfillAliasRawBufferCallback* raw = cb.release();
+  if (raw == nullptr) {
+    return absl::InternalError("FulfillAliasRawBufferCallback is null");
+  }
+  if (buffer == nullptr) {
+    auto status = absl::InvalidArgumentError(
+        "Raw buffer passed to FulfillBuffer is null");
+    raw->vtable->fulfill_error(raw, pjrt::StatusToPjRtError(status));
+    return status;
+  }
+  return pjrt::PjrtErrorToStatus(
+      raw->vtable->fulfill_buffer(raw, std::move(buffer).release()));
+}
+
+void PjRtFulfillAliasRawBufferCallbackInterface::FulfillError(
+    PjRtFulfillAliasRawBufferCallbackRef cb, absl::Status error) {
+  if (PJRT_FulfillAliasRawBufferCallback* raw = cb.release()) {
+    if (error.ok()) {
+      error = absl::InternalError("FulfillError called with OK status");
+    }
+    raw->vtable->fulfill_error(raw, pjrt::StatusToPjRtError(error));
+  }
+}
+
 void PjRtRawClientDeleter::operator()(PjRtRawClientInterface* client) const {
   if (client != nullptr) {
     client->vtable->destroy(client);
@@ -344,6 +427,42 @@ const PJRT_RawClient_FunctionTable PjRtRawClient::kRawClientVtable = {
       *out_buffer = std::move(*result).release();
       return nullptr;
     },
+    /*allocate_raw_buffer=*/
+    +[](PJRT_RawClient* client, PJRT_Memory* memory_space,
+        size_t on_device_bytes_count, bool retry_on_oom,
+        PJRT_DeviceEvent allocate_after,
+        PJRT_RawBuffer** out_buffer) -> PJRT_Error* {
+      auto result = static_cast<PjRtRawClient*>(client)->AllocateRawBuffer(
+          memory_space, on_device_bytes_count, retry_on_oom,
+          PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(allocate_after)));
+      if (!result.ok()) {
+        return pjrt::StatusToPjRtError(result.status());
+      }
+      *out_buffer = std::move(*result).release();
+      return nullptr;
+    },
+    /*launch_on_device=*/
+    +[](const PJRT_RawClient* client, int32_t local_device_id,
+        PJRT_OnceCallback* execute_fn) {
+      static_cast<const PjRtRawClient*>(client)->LaunchOnDevice(
+          LocalDeviceId(local_device_id),
+          PjRtOnceCallbackRef(
+              static_cast<PjRtOnceCallbackInterface*>(execute_fn)));
+    },
+    /*create_raw_buffer_channel=*/
+    +[](PJRT_RawClient* client, PJRT_Memory* memory_space,
+        size_t on_device_bytes_count, PJRT_RawBuffer** out_buffer,
+        PJRT_FulfillAliasRawBufferCallback** out_fulfill_callback)
+        -> PJRT_Error* {
+      auto result = static_cast<PjRtRawClient*>(client)->CreateRawBufferChannel(
+          memory_space, on_device_bytes_count);
+      if (!result.ok()) {
+        return pjrt::StatusToPjRtError(result.status());
+      }
+      *out_buffer = std::move(result->first).release();
+      *out_fulfill_callback = result->second.release();
+      return nullptr;
+    },
 };
 
 PjRtRawClient::PjRtRawClient() { vtable = &kRawClientVtable; }
@@ -409,12 +528,15 @@ bool PjRtRawClientInterface::ShouldCreateAsyncAllocationEvent(
 
 absl::StatusOr<PjRtRawBufferRef> PjRtRawClientInterface::AllocateRawBuffer(
     PJRT_Memory* memory_space, size_t on_device_bytes_count, bool retry_on_oom,
-    tsl::AsyncValueRef<bool> allocate_after) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->AllocateRawBuffer(memory_space, on_device_bytes_count,
-                                  retry_on_oom, std::move(allocate_after));
+    PjRtDeviceEventRef allocate_after) {
+  PJRT_RawBuffer* out_buffer = nullptr;
+  PJRT_Error* error = vtable->allocate_raw_buffer(
+      this, memory_space, on_device_bytes_count, retry_on_oom,
+      std::move(allocate_after).release().ToC(), &out_buffer);
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error);
   }
-  return absl::UnimplementedError("AllocateRawBuffer is not supported.");
+  return RawBufferFromC(out_buffer);
 }
 
 absl::StatusOr<PjRtRawBufferRef>
@@ -451,14 +573,22 @@ PjRtRawClientInterface::AllocateRawBuffersForExecute(
 }
 
 absl::StatusOr<
-    std::pair<PjRtRawBufferRef,
-              PjRtRawClientInterface::PjRtFulfillAliasRawBufferCallback>>
+    std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallbackRef>>
 PjRtRawClientInterface::CreateRawBufferChannel(PJRT_Memory* memory_space,
                                                size_t on_device_bytes_count) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->CreateRawBufferChannel(memory_space, on_device_bytes_count);
+  PJRT_RawBuffer* out_buffer = nullptr;
+  PJRT_FulfillAliasRawBufferCallback* out_fulfill_callback = nullptr;
+  PJRT_Error* error = vtable->create_raw_buffer_channel(
+      this, memory_space, on_device_bytes_count, &out_buffer,
+      &out_fulfill_callback);
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error);
   }
-  return absl::UnimplementedError("CreateRawBufferChannel is not supported");
+  return std::make_pair(
+      RawBufferFromC(out_buffer),
+      PjRtFulfillAliasRawBufferCallbackRef(
+          static_cast<PjRtFulfillAliasRawBufferCallbackInterface*>(
+              out_fulfill_callback)));
 }
 
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
@@ -546,14 +676,8 @@ std::optional<size_t> PjRtRawClientInterface::GetDmaSizeAlignment() const {
 }
 
 void PjRtRawClientInterface::LaunchOnDevice(
-    LocalDeviceId device_id, absl::AnyInvocable<void()> execute_fn) const {
-  if (const auto* cpp = down_cast<PjRtRawClient>()) {
-    cpp->LaunchOnDevice(device_id, std::move(execute_fn));
-    return;
-  }
-  if (AsyncWorkRunner* runner = async_work_runner()) {
-    runner->Execute(std::move(execute_fn));
-  }
+    LocalDeviceId device_id, PjRtOnceCallbackRef execute_fn) const {
+  vtable->launch_on_device(this, device_id.value(), execute_fn.release());
 }
 
 void PjRtRawClientInterface::CallOomHandlers() const {
