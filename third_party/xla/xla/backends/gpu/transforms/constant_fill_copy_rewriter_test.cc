@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/backends/gpu/transforms/copy_fusion.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/status_matchers.h"

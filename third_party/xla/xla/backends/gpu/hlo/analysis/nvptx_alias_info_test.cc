@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/nvptx_alias_info.h"
+#include "xla/backends/gpu/hlo/analysis/nvptx_alias_info.h"
 
 #include <memory>
 #include <optional>

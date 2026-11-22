@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/nvptx_alias_info.h"
+#include "xla/backends/gpu/hlo/analysis/nvptx_alias_info.h"
 
 #include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape_util.h"

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/cost_model/gpu_indexing_performance_model.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"

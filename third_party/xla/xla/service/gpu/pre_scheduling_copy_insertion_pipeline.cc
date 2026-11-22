@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/backends/gpu/transforms/alias_passthrough_params.h"
 #include "xla/backends/gpu/transforms/constant_fill_copy_rewriter.h"
 #include "xla/backends/gpu/transforms/copy_fusion.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/transforms/loop_schedule_linearizer.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/device_description.h"
