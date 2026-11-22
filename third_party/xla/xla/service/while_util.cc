@@ -45,9 +45,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/transforms/call_inliner.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
-#include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/tuple_util.h"
@@ -519,7 +519,7 @@ WhileUtil::GetGTEsMapForWhileConditional(
 
 /*static*/
 absl::Status WhileUtil::IncrementWhileLoopTripCount(
-    const HloInstruction& while_instruction, int32_t increment) {
+    const HloInstruction& while_instruction, int64_t increment) {
   CHECK_EQ(while_instruction.opcode(), HloOpcode::kWhile);
   const HloComputation* while_body = while_instruction.while_body();
   HloComputation* while_conditional = while_instruction.while_condition();
@@ -634,9 +634,9 @@ absl::Status WhileUtil::IncrementWhileLoopTripCount(
 
   // Decrementing the induction var is equivalent to incrementing the
   // trip count.
-  HloInstruction* trip_count_increment =
-      while_conditional->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32_t>(-increment)));
+  HloInstruction* trip_count_increment = while_conditional->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(
+          induction_var->shape().element_type(), -increment)));
   HloInstruction* decremented_induction_var = while_conditional->AddInstruction(
       HloInstruction::CreateBinary(induction_var->shape(), HloOpcode::kAdd,
                                    induction_var, trip_count_increment));
@@ -791,7 +791,7 @@ WhileUtil::GetCopyDisabledWhileLoopComputations(const HloModule* module) {
   for (const HloComputation* comp : module->computations()) {
     for (const HloInstruction* instr : comp->instructions()) {
       if (instr->opcode() == HloOpcode::kWhile &&
-          HasDisableWhileLoopCopiesAttr(instr)) {
+          frontend::HasDisableWhileLoopCopiesAttr(instr)) {
         worklist.push_back(instr->while_body());
         worklist.push_back(instr->while_condition());
       }

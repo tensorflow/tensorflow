@@ -22,6 +22,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -83,6 +84,9 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
     for (int i = 0; i < rank; ++i) {
       dense_shape_mutable(i) = dense_tensor_shape.dim_size(i);
     }
+    // Bound the dense_shape dimensions before allocating the batch and row
+    // pointers from them.
+    OP_REQUIRES_OK(ctx, CSRSparseMatrix::ValidateDenseShape(dense_shape));
 
     const int64_t batch_size = (rank == 2) ? 1 : dense_tensor_shape.dim_size(0);
     const int64_t num_rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
@@ -170,6 +174,15 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
             "indices.shape[1] must be equal to the rank of params, but saw: ",
             indices_t.dim_size(1), " vs. ", rank)),
         done);
+    Tensor dense_shape_t(cpu_allocator(), DT_INT64, TensorShape({rank}));
+    auto dense_shape_mutable = dense_shape_t.vec<int64_t>();
+    for (int i = 0; i < rank; ++i) {
+      dense_shape_mutable(i) = dense_tensor_shape.dim_size(i);
+    }
+    // Bound the dense_shape dimensions before allocating the batch and row
+    // pointers from them.
+    OP_REQUIRES_OK_ASYNC(c, CSRSparseMatrix::ValidateDenseShape(dense_shape_t),
+                         done);
     const int64_t batch_size = (rank == 2) ? 1 : dense_tensor_shape.dim_size(0);
     const int64_t rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
     const int64_t cols = dense_tensor_shape.dim_size((rank == 2) ? 1 : 2);
@@ -209,9 +222,9 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     // calculates the batched csr_row_ptr vector, another that fills in
     // the col_ind and values vectors.
     TensorReference nnz_per_batch_device_ref(nnz_per_batch_device_t);
-    auto convert_to_csr = [this, c, rank, batch_size, nnz_per_batch_host,
+    auto convert_to_csr = [this, c, batch_size, nnz_per_batch_host,
                            nnz_per_batch_device_ref, stream, &d, &params_t,
-                           &indices_t, dense_tensor_shape, rows, cols, done]() {
+                           &indices_t, dense_shape_t, rows, cols, done]() {
       // The data has been copied out of the nnz_per_batch_device
       // tensor by the time we get here; we can unreference it.
       nnz_per_batch_device_ref.Unref();
@@ -239,13 +252,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                 values_t.shape().DebugString())),
             done);
 
-        Tensor dense_shape_t(cpu_allocator(), DT_INT64, TensorShape({rank}));
-        auto dense_shape_mutable = dense_shape_t.vec<int64_t>();
-        for (int i = 0; i < rank; ++i) {
-          dense_shape_mutable(i) = dense_tensor_shape.dim_size(i);
-        }
-        auto dense_shape =
-            const_cast<const Tensor&>(dense_shape_t).vec<int64_t>();
+        auto dense_shape = dense_shape_t.vec<int64_t>();
 
         Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
                            TensorShape({batch_size + 1}));

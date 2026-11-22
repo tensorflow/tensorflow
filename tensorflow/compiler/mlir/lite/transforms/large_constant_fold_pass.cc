@@ -21,13 +21,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
@@ -48,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_in_place_transpose.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/resource_constant_fold_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/resource_elementwise_fold.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
@@ -453,6 +452,141 @@ struct PushTransposeThroughBlockwiseDequantize
   }
 };
 
+// Pushes a reshape that only inserts or removes size-1 dimensions through a
+// constant `tfl.blockwise_dequantize`, e.g. when a 3-D batched weight
+// `[K2, K, N]` is expanded to `[1, K2, K, N]` for single-token `BATCH_MATMUL`.
+struct PushUnitDimReshapeThroughBlockwiseDequantize
+    : public OpRewritePattern<ReshapeOp> {
+  explicit PushUnitDimReshapeThroughBlockwiseDequantize(MLIRContext* ctx)
+      : OpRewritePattern<ReshapeOp>(ctx) {}
+
+  LogicalResult matchAndRewrite(ReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto deq = op.getInput().getDefiningOp<BlockwiseDequantizeOp>();
+    if (!deq || !deq.getOutput().hasOneUse()) return failure();
+
+    ElementsAttr input_attr;
+    if (!matchPattern(deq.getInput(), m_Constant(&input_attr))) {
+      if (auto const_op = deq.getInput().getDefiningOp<TFL::ConstOp>()) {
+        input_attr = const_op.getValue();
+      } else {
+        return failure();
+      }
+    }
+
+    auto input_type =
+        mlir::dyn_cast<RankedTensorType>(deq.getInput().getType());
+    auto output_type = mlir::dyn_cast<RankedTensorType>(op.getType());
+    if (!input_type || !output_type || !input_type.hasStaticShape() ||
+        !output_type.hasStaticShape()) {
+      return failure();
+    }
+
+    ArrayAttr block_shape_attr = deq.getBlockShapeAttr();
+    if (!block_shape_attr ||
+        static_cast<int64_t>(block_shape_attr.size()) != input_type.getRank()) {
+      return failure();
+    }
+
+    auto scales_type =
+        mlir::dyn_cast<RankedTensorType>(deq.getScales().getType());
+    if (!scales_type || !scales_type.hasStaticShape() ||
+        scales_type.getRank() != input_type.getRank()) {
+      return failure();
+    }
+
+    Value zp = deq.getZeroPoints();
+    bool has_zp =
+        zp && !mlir::isa<NoneType>(zp.getType()) &&
+        !(zp.getDefiningOp() && mlir::isa<TFL::NoValueOp>(zp.getDefiningOp()));
+    RankedTensorType zp_type;
+    if (has_zp) {
+      zp_type = mlir::dyn_cast<RankedTensorType>(zp.getType());
+      if (!zp_type || !zp_type.hasStaticShape() ||
+          zp_type.getRank() != input_type.getRank()) {
+        return failure();
+      }
+    }
+
+    ArrayRef<int64_t> in_shape = input_type.getShape();
+    ArrayRef<int64_t> out_shape = output_type.getShape();
+    SmallVector<int64_t, 4> new_block_shape;
+    SmallVector<int64_t, 4> new_scales_shape;
+    SmallVector<int64_t, 4> new_zp_shape;
+
+    size_t in_idx = 0;
+    size_t out_idx = 0;
+    while (in_idx < in_shape.size() || out_idx < out_shape.size()) {
+      if (in_idx < in_shape.size() && out_idx < out_shape.size() &&
+          in_shape[in_idx] == out_shape[out_idx]) {
+        new_block_shape.push_back(
+            mlir::cast<IntegerAttr>(block_shape_attr[in_idx]).getInt());
+        new_scales_shape.push_back(scales_type.getDimSize(in_idx));
+        if (has_zp) new_zp_shape.push_back(zp_type.getDimSize(in_idx));
+        ++in_idx;
+        ++out_idx;
+      } else if (out_idx < out_shape.size() && out_shape[out_idx] == 1) {
+        new_block_shape.push_back(1);
+        new_scales_shape.push_back(1);
+        if (has_zp) new_zp_shape.push_back(1);
+        ++out_idx;
+      } else if (in_idx < in_shape.size() && in_shape[in_idx] == 1 &&
+                 scales_type.getDimSize(in_idx) == 1 &&
+                 (!has_zp || zp_type.getDimSize(in_idx) == 1)) {
+        ++in_idx;
+      } else {
+        return failure();
+      }
+    }
+
+    auto reshape_operand = [&](Value val, RankedTensorType new_type) -> Value {
+      ElementsAttr attr;
+      if (!matchPattern(val, m_Constant(&attr))) {
+        if (auto const_op = val.getDefiningOp<TFL::ConstOp>()) {
+          attr = const_op.getValue();
+        }
+      }
+      if (attr) {
+        if (auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(attr)) {
+          return rewriter.create<arith::ConstantOp>(
+              op.getLoc(), dense_attr.reshape(new_type));
+        }
+        if (auto resource_attr =
+                mlir::dyn_cast<DenseResourceElementsAttr>(attr)) {
+          auto reshaped_resource = DenseResourceElementsAttr::get(
+              new_type, resource_attr.getRawHandle());
+          return rewriter.create<arith::ConstantOp>(op.getLoc(), new_type,
+                                                    reshaped_resource);
+        }
+      }
+      SmallVector<int32_t, 4> shape_i32(new_type.getShape().begin(),
+                                        new_type.getShape().end());
+      auto shape_const = rewriter.create<arith::ConstantOp>(
+          op.getLoc(), rewriter.getI32TensorAttr(shape_i32));
+      return rewriter.create<ReshapeOp>(op.getLoc(), new_type, val,
+                                        shape_const);
+    };
+
+    auto new_input_type =
+        RankedTensorType::get(out_shape, input_type.getElementType());
+    Value new_input = reshape_operand(deq.getInput(), new_input_type);
+    Value new_scales = reshape_operand(
+        deq.getScales(),
+        RankedTensorType::get(new_scales_shape, scales_type.getElementType()));
+    Value new_zp = zp;
+    if (has_zp) {
+      new_zp = reshape_operand(
+          zp, RankedTensorType::get(new_zp_shape, zp_type.getElementType()));
+    }
+
+    auto new_deq = rewriter.create<BlockwiseDequantizeOp>(
+        op.getLoc(), output_type, new_input, new_scales, new_zp,
+        rewriter.getI64ArrayAttr(new_block_shape), deq.getSymmetricAttr());
+    rewriter.replaceOp(op, new_deq.getOutput());
+    return success();
+  }
+};
+
 }  // namespace
 
 void LargeConstantFoldPass::runOnOperation() {
@@ -460,7 +594,8 @@ void LargeConstantFoldPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
 
   RewritePatternSet patterns(ctx);
-  patterns.add<PushTransposeThroughBlockwiseDequantize>(ctx);
+  patterns.add<PushTransposeThroughBlockwiseDequantize,
+               PushUnitDimReshapeThroughBlockwiseDequantize>(ctx);
   GreedyRewriteConfig config;
   config.enableFolding(false);
   if (failed(applyPatternsGreedily(module, std::move(patterns), config))) {
@@ -476,6 +611,11 @@ void LargeConstantFoldPass::runOnOperation() {
     if (failed(
             FoldResourceOpPattern<TFL::CastOp, ResourceOpFolder<TFL::CastOp>>(
                 module))) {
+      signalPassFailure();
+    }
+  }
+  if (GetOptions().fold_elementwise_ops) {
+    if (failed(FoldResourceElementwiseOps(module))) {
       signalPassFailure();
     }
   }

@@ -30,8 +30,17 @@ namespace profiler {
 // If filter_mask is not passed in the profile request, filter will not be
 // applied. Lowest 32 bit are reserved for 3P so this enum should only have
 // values in the range [0, 31].
+//
+// TraceMe events that do not pass a filter_mask carry only the kTraceDefault
+// bit. A session with a filter mask therefore records untagged events only if
+// its mask includes kTraceDefault, so each new filter is exclusive by default.
+// Sessions without a filter mask record all events.
 enum class TraceMeFilter {
   kTraceMemory = 0,
+  kTraceHostEnqueueCallback = 1,
+  // Carried by every TraceMe event that does not pass a filter_mask. Keep in
+  // sync with kTraceMeDefaultFilter in traceme.h.
+  kTraceDefault = 2,
 };
 
 static uint64_t TraceMeFiltersToMask(

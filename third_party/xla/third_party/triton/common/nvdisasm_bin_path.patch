@@ -1,3 +1,23 @@
+--- a/python/test/unit/tools/test_disasm.py
++++ b/python/test/unit/tools/test_disasm.py
+@@ -26,7 +26,7 @@ def test_extract_handles_large_instruction_offsets(monkeypatch):
+     # cuobjdump widens instruction offsets to 5+ hex digits past 64 KiB.
+     # Make sure the parser keeps consuming instructions instead of stopping at
+     # /*10000*/.
+-    def fake_check_output(cmd):
++    def fake_check_output(cmd, env=None):
+         assert cmd == ["/fake/cuobjdump", "-sass", "fake.cubin"]
+         return b"""Function : test_kernel
+ .headerflags    @"EF_CUDA_SM103 EF_CUDA_PTX_SM(EF_CUDA_SM103)"
+@@ -37,6 +37,7 @@ def test_extract_handles_large_instruction_offsets(monkeypatch):
+ """
+ 
+     monkeypatch.setattr(disasm, "path_to_cuobjdump", lambda: "/fake/cuobjdump")
++    monkeypatch.setattr(disasm, "path_to_nvdisasm", lambda: "/fake/nvdisasm")
+     monkeypatch.setattr(disasm.subprocess, "check_output", fake_check_output)
+ 
+     sass = disasm.extract("fake.cubin", None)
+
 --- a/python/triton/tools/disasm.py
 +++ b/python/triton/tools/disasm.py
 @@ -79,13 +79,19 @@ def path_to_cuobjdump():

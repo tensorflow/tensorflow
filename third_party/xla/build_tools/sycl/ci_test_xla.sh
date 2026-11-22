@@ -48,8 +48,9 @@ os_id="$(. /etc/os-release && echo "${ID:-}")"
 os_version="$(. /etc/os-release && echo "${VERSION_ID:-}")"
 if [[ "${os_id}" == "ubuntu" && "${os_version%%.*}" -le 22 ]]; then
   echo "Detected Ubuntu ${os_version}: excluding tests that need higher version."
-  EXTRA_TEST_FLAGS="--test_filter=-GemmSyclTest.MatmulWithBias"
+  EXTRA_TEST_FLAGS="--test_filter=-GemmSyclTest.MatmulWithBias:*ConvSyclTest*/BF16"
   TEST_TARGETS+="\
+    -//xla/backends/gpu/codegen/emitters/tests:concatenate/multiple_roots_shared_hero.hlo.test \
     -//xla/backends/gpu/codegen/emitters/tests:transpose/multiple_roots_mixed_rank.hlo.test \
     -//xla/backends/gpu/codegen/emitters/tests:transpose/multiple_roots_one_shmem_transpose.hlo.test \
     -//xla/backends/gpu/codegen/emitters/tests:transpose/packed_transpose_bf16.hlo.test \

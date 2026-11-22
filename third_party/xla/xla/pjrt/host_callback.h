@@ -35,7 +35,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
+#include "tsl/platform/denormal.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/setround.h"
 
 // The following provides an API for implementing host callbacks on top of
 // PjRT's send/recv interface (see xla::SendCallback and xla::RecvCallback).
@@ -57,6 +59,10 @@ class HostCallbackScope {
   ~HostCallbackScope();
   HostCallbackScope(const HostCallbackScope& o) = delete;
   HostCallbackScope& operator=(const HostCallbackScope& o) = delete;
+
+ private:
+  tsl::port::ScopedDontFlushDenormal dont_flush_denormal_;
+  tsl::port::ScopedSetRound set_round_;
 };
 
 // A thread-safe queue for passing PjRtChunk objects for e.g. from Send ops to

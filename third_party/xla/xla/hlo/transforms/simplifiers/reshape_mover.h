@@ -44,6 +44,11 @@ struct ReshapeMoverOptions {
   // not expensive.  In such cases it can be beneficial for us to create these
   // reshapes eagerly, allowing us to get rid of more expensive ones.
   bool reshape_of_1d_broadcast_is_cheap = false;
+
+  // If true, do not sink data reordering reshapes or transposes across
+  // widening converts unless the source comes from a contraction or every user
+  // of the convert is itself a rearrange.
+  bool keep_rearrange_before_widening_convert = false;
 };
 
 class ReshapeMover : public HloModulePass {

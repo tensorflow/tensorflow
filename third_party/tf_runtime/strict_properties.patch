@@ -1,44 +1,75 @@
-diff --git a/include/tfrt/basic_kernels/opdefs/tfrt_base.td b/include/tfrt/basic_kernels/opdefs/tfrt_base.td
---- a/include/tfrt/basic_kernels/opdefs/tfrt_base.td
-+++ b/include/tfrt/basic_kernels/opdefs/tfrt_base.td
-@@ -35,6 +35,7 @@
-   }];
-
-   let cppNamespace = "::tfrt::compiler";
-+  let useStrictPropertiesInAssemblyFormat = 0;
+diff --git a/include/tfrt/basic_kernels/opdefs/basic_kernels.td b/include/tfrt/basic_kernels/opdefs/basic_kernels.td
+--- a/include/tfrt/basic_kernels/opdefs/basic_kernels.td
++++ b/include/tfrt/basic_kernels/opdefs/basic_kernels.td
+@@ -607,7 +607,7 @@ def GetDeviceOp : TFRT_Op<"get_device"> {
+     StrAttr:$device_name
+   );
+   let results = (outs TFRT_DeviceType:$result);
+-  let assemblyFormat = "operands attr-dict";
++  let assemblyFormat = "operands prop-dict attr-dict";
+   let hasVerifier = 0;
  }
-
- def TFRT_ChainType :
-diff --git a/include/tfrt/core_runtime/opdefs/corert_base.td b/include/tfrt/core_runtime/opdefs/corert_base.td
---- a/include/tfrt/core_runtime/opdefs/corert_base.td
-+++ b/include/tfrt/core_runtime/opdefs/corert_base.td
-@@ -30,6 +30,7 @@
-   }];
-
-   let cppNamespace = "::tfrt::corert";
-+  let useStrictPropertiesInAssemblyFormat = 0;
+ 
+diff --git a/include/tfrt/core_runtime/opdefs/core_runtime.td b/include/tfrt/core_runtime/opdefs/core_runtime.td
+--- a/include/tfrt/core_runtime/opdefs/core_runtime.td
++++ b/include/tfrt/core_runtime/opdefs/core_runtime.td
+@@ -45,7 +45,7 @@ class CreateDenseTensorOp<string dtype>
+     CoreRT_TensorHandleType:$result
+   );
+ 
+-  let assemblyFormat = "attr-dict";
++  let assemblyFormat = "prop-dict attr-dict";
+ 
+   let hasVerifier = 0;
  }
-
- // Deivce is an aggregate of Core Runtime ops. It is passed to corert.executeop
+@@ -109,7 +109,7 @@ def ConstStringTensorOp : CoreRT_Op<"const_string_tensor",
+     CoreRT_TensorHandleType:$result
+   );
+ 
+-  let assemblyFormat = "attr-dict";
++  let assemblyFormat = "prop-dict attr-dict";
+ 
+   let hasVerifier = 0;
+ }
 diff --git a/include/tfrt/core_runtime/opdefs/sync/core_runtime.td b/include/tfrt/core_runtime/opdefs/sync/core_runtime.td
 --- a/include/tfrt/core_runtime/opdefs/sync/core_runtime.td
 +++ b/include/tfrt/core_runtime/opdefs/sync/core_runtime.td
-@@ -35,6 +35,7 @@
-   }];
-
-   let cppNamespace = "::tfrt::corert_sync";
-+  let useStrictPropertiesInAssemblyFormat = 0;
+@@ -60,7 +60,7 @@ class CreateDenseTensorOp<string dtype>
+     CoreRT_TensorHandleType:$result
+   );
+ 
+-  let assemblyFormat = "attr-dict";
++  let assemblyFormat = "prop-dict attr-dict";
+ 
+   let hasVerifier = 0;
  }
-
- // Base class for corert dialect ops.
 diff --git a/include/tfrt/test_kernels/opdefs/test_kernels.td b/include/tfrt/test_kernels/opdefs/test_kernels.td
 --- a/include/tfrt/test_kernels/opdefs/test_kernels.td
 +++ b/include/tfrt/test_kernels/opdefs/test_kernels.td
-@@ -35,6 +35,7 @@
-   }];
-
-   let cppNamespace = "::tfrt::test";
-+  let useStrictPropertiesInAssemblyFormat = 0;
+@@ -272,7 +272,7 @@ def GetStringOp : Test_Op<"get_string"> {
+ 
+   let arguments = (ins StrAttr:$value);
+   let results = (outs TFRT_StringType);
+-  let assemblyFormat = "attr-dict";
++  let assemblyFormat = "prop-dict attr-dict";
+   let hasVerifier = 0;
  }
-
- def ProtoExampleType : OpaqueType<"proto", "example", "!proto.example type">;
+ 
+@@ -284,7 +284,7 @@ def GetStringSyncOp : Test_Op<"get_string_sync"> {
+ 
+   let arguments = (ins StrAttr:$value);
+   let results = (outs TFRT_StringType);
+-  let assemblyFormat = "attr-dict";
++  let assemblyFormat = "prop-dict attr-dict";
+   let hasVerifier = 0;
+ }
+ 
+@@ -301,7 +301,7 @@ def TestCostOp : Test_Op<"test_cost", [TFRT_CostFunctionInterface,
+ 
+   let results = (outs I32:$result);
+ 
+-  let assemblyFormat = "$args attr-dict `:` type($args)";
++  let assemblyFormat = "$args prop-dict attr-dict `:` type($args)";
+ 
+   let hasVerifier = 0;
+ }

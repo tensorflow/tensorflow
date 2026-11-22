@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/elemental_ir_emitter.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/types.h"
 #include "tsl/platform/logging.h"
 
@@ -58,6 +58,26 @@ int64_t UserCount(const HloInstruction* hlo) {
   }
   return cnt;
 }
+
+// Returns which ops invalidate the cache of emitted instructions by creating
+// a new BasicBlock and setting the insertion point to the newly created
+// BasicBlock. We can only reuse cached values if they were emitted in the
+// same BasicBlock as the current BasicBlock.
+bool OpInvalidatesCache(const HloInstruction* hlo) {
+  switch (hlo->opcode()) {
+    // This list of ops was created by inspecting the code. There is no
+    // guarantee that it is complete.
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kDot:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kPad:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+      return true;
+    default:
+      return false;
+  }
+}
 }  // namespace
 
 bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
@@ -72,14 +92,14 @@ bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
   }
   int64_t emitted_instructions = EvaluateEmittedInstructions(producer);
   return emitted_instructions > kAllowedCodeDuplication ||
-         (ElementalIrEmitter::OpInvalidatesCache(producer) &&
+         (OpInvalidatesCache(producer) &&
           (emitted_instructions > 1 || UserCount(producer) > 1));
 }
 
 bool FusionNodeIndexingEvaluation::MaxCodeDuplicationTooHigh() const {
   for (const auto& entry : index_usage_count_) {
     if (entry.second > kAllowedCodeDuplication ||
-        (ElementalIrEmitter::OpInvalidatesCache(entry.first) &&
+        (OpInvalidatesCache(entry.first) &&
          (entry.second > 1 || UserCount(entry.first) > 1))) {
       return true;
     }

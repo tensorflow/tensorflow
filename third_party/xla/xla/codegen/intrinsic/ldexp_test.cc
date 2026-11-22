@@ -106,7 +106,7 @@ TEST(LdexpTest, EmitLdexpF64) {
 TEST(LdexpTest, ClampsExponent) {
   Type type = Type::S(F64);
   JitRunner runner = CreateJitRunnerWithLdexpF64(type);
-  auto* run = runner.GetScalarFn<double(double, int)>(
+  auto run = runner.GetScalarFn<double(double, int)>(
       Ldexp::Name({type, Type::S(S32)}));
 
   EXPECT_THAT(run(2.0, 1e9), Eq(std::numeric_limits<double>::infinity()));

@@ -116,8 +116,8 @@ absl::StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
             cp->mutable_operand(2), cp->mutable_operand(3),
             cp->source_target_pairs(), cp->dynamic_slice_sizes_list(),
             cp->channel_id()));
-    if (HasDisjointReadWriteRegionsAttr(cp)) {
-      SetDisjointReadWriteRegionsAttr(start);
+    if (frontend::HasDisjointReadWriteRegionsAttr(cp)) {
+      frontend::SetDisjointReadWriteRegionsAttr(start);
     }
   }
   HloInstruction* done =

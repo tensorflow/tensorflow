@@ -35,6 +35,24 @@ struct ProfileOptions {
   // Whether to initialize the buffers with random data or leave them
   // uninitialized.
   bool should_init_buffers = false;
+  // Maximum number of timed runs of each executable. The reported duration is
+  // the mean over the executed timed runs, which reduces run-to-run noise and
+  // the quantization error of the device timer. When
+  // `adaptive_early_stopping` is enabled, profiler implementations may stop
+  // after the first timed run when additional passes cannot plausibly change
+  // candidate ranking.
+  int num_timed_runs = 1;
+  // Whether to allow stopping after the first timed run when a candidate
+  // cannot plausibly beat the fastest candidate seen so far on the same
+  // `InputBuffers`, or when the kernel is long enough that transient timing
+  // noise is negligible. Set to false to run all `num_timed_runs` passes
+  // unconditionally.
+  bool adaptive_early_stopping = true;
+  // Whether to flush the device caches before every timed run, so that the
+  // executable reads its inputs from device memory. This matches production
+  // workloads, where large operands such as weights are usually not cached
+  // when a kernel starts.
+  bool flush_caches = false;
 };
 
 struct ProfileResult {
@@ -82,6 +100,15 @@ class Profiler {
   // The buffers are refreshed if needed, so that the buffers can be reused
   // for subsequent profiling.
   virtual absl::Status CheckInputBuffers(InputBuffers& buffers) = 0;
+
+  // Notifies the profiler that a candidate profiled with `buffers` passed all
+  // correctness checks and is eligible for selection, with the given measured
+  // `duration`. Profilers may use this as the competitive baseline for
+  // `ProfileOptions::adaptive_early_stopping`. Candidates that fail
+  // validation or are excluded from selection are never reported, so they
+  // cannot cause slower valid candidates to be under-sampled.
+  virtual void RecordValidatedCandidate(const InputBuffers& buffers,
+                                        absl::Duration duration) {}
 
   // Compare the on device output buffer against the reference output buffer.
   // Returns ok if the buffers have the same content, otherwise returns an

@@ -17,13 +17,13 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_CLIENT_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -43,6 +43,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -99,26 +101,25 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // The runtime may not hold references to `data` after the call to
   // `MakeArrayFromHostBuffer` completes. The caller promises that `data` is
   // immutable and will not be freed only for the duration of the
-  // `MakeArrayFromHostBuffer` call. `on_done_with_host_buffer` will be called
-  // before `MakeArrayFromHostBuffer` returns.
+  // `MakeArrayFromHostBuffer` call. `host_buffer_hold` is released before
+  // `MakeArrayFromHostBuffer` returns.
 
   // kImmutableUntilTransferCompletes:
   // The runtime may hold onto `data` after the call to
   // `MakeArrayFromHostBuffer` returns while the runtime completes transfers to
   // devices. The caller promises not to mutate or free `data` until the
-  // transfer completes, at which point the runtime will call
-  // `on_done_with_host_buffer`. It is also correct to wait (directly or
-  // indirectly) for the `Array`'s ready event. The runtime does not promise a
-  // certain ordering between an `on_done_with_host_buffer` call and the
-  // `Array`'s ready event.
+  // transfer completes, at which point the runtime releases `host_buffer_hold`.
+  // It is also correct to wait (directly or indirectly) for the `Array`'s ready
+  // event. The runtime does not promise a certain ordering between releasing
+  // `host_buffer_hold` and the `Array`'s ready event.
 
   // kZeroCopy:
   // The `Array` may alias `data` internally and the runtime may use the `data`
   // contents as long as the buffer is alive. The caller promises to keep `data`
   // alive and not to mutate its contents as long as the buffer is alive; to
-  // notify the caller that the buffer may be freed, the runtime will call
-  // `on_done_with_host_buffer` when the `Array` is freed. The implementation is
-  // free to make a copy and downgrade the semantics to
+  // notify the caller that the buffer may be freed, the runtime releases
+  // `host_buffer_hold` when the `Array` is freed. The implementation is free to
+  // make a copy and downgrade the semantics to
   // `kImmutableUntilTransferCompletes`. Many non-CPU runtimes will make a copy
   // by default.
   using HostBufferSemantics = ::xla::PjRtClient::HostBufferSemantics;
@@ -133,25 +134,27 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // in major-to-minor order. The runtime may return `UNIMPLEMENTED` if
   // `byte_strides` does not equate to a reordering of the dimensions.
   //
-  // `layout` specifies the layout of the array. If `layout` is nullptr, the a
-  // device-default layout used.
+  // `layout` specifies the layout of the array. If `layout` is nullptr, a
+  // device-default layout is used.
   //
-  // `on_done_with_host_buffer` is optional and may be null.
-  // `on_done_with_host_buffer` will be called iff OK is returned.
-  //
-  // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
-  // returned `tsl::Future<>` for consistency with other IFRT APIs.
+  // `host_buffer_hold` is optional and may be null. Ownership transfers
+  // unconditionally to `MakeArrayFromHostBuffer`, which releases its reference
+  // once the runtime no longer accesses `data` on both success and failure. See
+  // `MakeSharedCleanup` in `cleanup.h` to wrap a zero-argument cleanup callback
+  // when needed.
   virtual absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) = 0;
+      std::shared_ptr<const void> host_buffer_hold) = 0;
 
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
   // available in IFRT.
   struct HostBuffer {
+    using ByteStrides = std::vector<int64_t>;
+
     // `data` points to the backing array of the host buffer. Caution:
     // `byte_strides` are allowed to be negative, in which case `data` may need
     // to point to the interior of the buffer, not necessarily its start.
@@ -168,20 +171,19 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
     //
     // TODO(hyeontaek): Consider generalizing `byte_strides` to a more general
     // layout representation.
-    using ByteStrides = std::vector<int64_t>;
     std::optional<ByteStrides> byte_strides;
 
-    // `on_done` is optional and may be null. `on_done` will be called when the
-    // host buffer is no longer used by the runtime. It will not be called if
-    // the API processing the host buffer has returned an error. For simple and
-    // robust cleanup, it is strongly recommended to capture RAII objects in the
-    // closure of the callback and leave the callback's function body empty.
+    // `hold` is optional and may be null. APIs that consume `HostBuffer` take
+    // ownership of `hold` unconditionally and release it once the host buffer
+    // is no longer used by the runtime on both success and failure. See
+    // `MakeSharedCleanup` in `cleanup.h` to wrap a zero-argument cleanup
+    // callback when needed.
     //
-    // If a host buffer is used with a zero-copy semantics, the host buffer data
-    // should not be accessed by the user until `on_done` is called; the data
+    // If a host buffer is used with zero-copy semantics, the host buffer data
+    // should not be accessed by the user until `hold` is released; the data
     // may be read by the runtime throughout the life of the array created with
-    // the host buffer, and it may be even mutated.
-    std::function<void()> on_done;
+    // the host buffer, and it may even be mutated.
+    std::shared_ptr<const void> hold;
   };
 
   // Represents the specification of creating an array following an array spec
@@ -206,7 +208,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // created from a host buffer shard. The resulting array will match the array
   // spec.
   //
-  // `specs` may be consumed by the implementation.
+  // `specs` is consumed by the call on both success and failure.
   //
   // All resulting arrays should use the same device list and memory kind. i.e.,
   // `specs[i].sharding->devices()` and `specs[i].sharding->memory_kind()` must
@@ -270,9 +272,10 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // devices without altering their physical layout.
   //
   // This API should be used only with arrays that have the same source device
-  // list and memory kind. Every IFRT implementation must enforce this by
-  // returning an `INVALID_ARGUMENT` error if `arrays` contains different device
-  // lists or memory kinds.
+  // list (when `devices` is specified) and memory kind. Every IFRT
+  // implementation must enforce this by returning an `INVALID_ARGUMENT` error
+  // if `arrays` contains different device lists (when `devices` is specified)
+  // or memory kinds.
   //
   // Implementations may return `UNIMPLEMENTED` if they do not know how to copy
   // the data as instructed.
@@ -378,6 +381,36 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) = 0;
 
+  // Copies a slice of each array in `arrays` specified by the corresponding
+  // `IndexDomain` in `index_domains` into a new array.
+  //
+  // For each `i`, `index_domains[i]` must be within the bounds of
+  // `arrays[i]->shape()` and intersect with at least one shard of `arrays[i]`,
+  // and all intersecting shards must have the same sliced shard shape. The
+  // output array has the same dtype, memory kind, and layout as `arrays[i]`,
+  // shape `index_domains[i].shape()`, and a sharding formed by the shards of
+  // `arrays[i]` that intersect with `index_domains[i]` (with non-intersecting
+  // shards omitted).
+  virtual absl::StatusOr<std::vector<ArrayRef>> CopyArraySlices(
+      absl::Span<const ArrayRef> arrays,
+      absl::Span<const IndexDomain> index_domains) = 0;
+
+  // Updates a slice of each array in `arrays` with the corresponding array in
+  // `slices` at the specified `origin` in `origins`.
+  //
+  // For each `i`, the slice region `IndexDomain(origins[i],
+  // slices[i]->shape())` must be within the bounds of `arrays[i]->shape()`, and
+  // `slices[i]` must have the same dtype, memory kind, layout, and sharding on
+  // the slice region as a slice copied from `arrays[i]` at that region.
+  //
+  // `arrays` are updated in place and the original arrays in `arrays` are
+  // deleted (equivalent to `ArrayCopySemantics::kDonateInput`). `slices` are
+  // copied without being donated (equivalent to
+  // `ArrayCopySemantics::kAlwaysCopy`).
+  virtual absl::StatusOr<std::vector<ArrayRef>> UpdateArraySlices(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArrayRef> slices,
+      absl::Span<const Index> origins) = 0;
+
   // Returns a future that becomes ready once all of the values become ready.
   //
   // Timing and error semantics:
@@ -473,7 +506,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
 
   // Creates a device list from the given list of devices.
   virtual absl::StatusOr<DeviceListRef> MakeDeviceList(
-      absl::Span<Device* const> devices) const = 0;
+      absl::Span<Device* absl_nonnull const> devices) const = 0;
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
@@ -486,7 +519,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // sets of devices.
   virtual absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> Load(
       absl::Span<const ExecutableRef> executables,
-      absl::Span<std::unique_ptr<LoadOptions>> options) = 0;
+      absl::Span<absl_nonnull std::unique_ptr<LoadOptions>> options) = 0;
 
   // Returns a topology that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
@@ -496,7 +529,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // `dtype` and single-shard dimensions `dims`.
   virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
   GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
-                       Device* device,
+                       Device* absl_nonnull device,
                        xla::ifrt::MemoryKind memory_kind) const = 0;
 
   // Returns the default layout for an array with `dtype`, `shape`, and
@@ -506,8 +539,8 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // Helper method for `GetDefaultLayout` for when shard shape dims are known.
   // TODO(hyeontaek): Remove this sugar API once the transition is complete.
   absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
-      DType dtype, absl::Span<const int64_t> shard_dims, Device* device,
-      xla::ifrt::MemoryKind memory_kind) const;
+      DType dtype, absl::Span<const int64_t> shard_dims,
+      Device* absl_nonnull device, xla::ifrt::MemoryKind memory_kind) const;
 
   // Subscribe to attribute changes to selected devices.
   //
@@ -527,7 +560,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // destroyed, no more callbacks will be issued for attribute changes.
   virtual absl::StatusOr<std::unique_ptr<ifrt::DeviceAttributeSubscription>>
   SubscribeToAttributeChanges(
-      absl::Span<Device* const> devices,
+      absl::Span<Device* absl_nonnull const> devices,
       std::optional<absl::Span<const std::string>> attribute_names,
       OnDeviceAttributeChangeCallback callback) = 0;
 

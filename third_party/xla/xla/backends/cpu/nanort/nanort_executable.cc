@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -211,6 +212,13 @@ NanoRtExecutable::ExecuteOptions&
 NanoRtExecutable::ExecuteOptions::set_ffi_context(
     const ffi::ExecutionContext* ffi_context) {
   ffi_context_ = ffi_context;
+  return *this;
+}
+
+NanoRtExecutable::ExecuteOptions&
+NanoRtExecutable::ExecuteOptions::set_custom_options(
+    std::shared_ptr<const CustomOptions> custom_options) {
+  custom_options_ = std::move(custom_options);
   return *this;
 }
 
@@ -406,6 +414,7 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
                      FunctionLibrary* function_library,
                      const ExecuteOptions& options)
         : allocations(std::move(buffers)),
+          custom_options(options.custom_options()),
           execute_params(Thunk::ExecuteParams{function_library, &allocations,
                                               /*xfeed=*/nullptr,
                                               options.intra_op_thread_pool(),
@@ -420,9 +429,11 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
               options.intra_op_thread_pool(), options.ffi_context()) {
       execute_params.collective_params = &collective_execute_params;
       execute_params.custom_call_params = &custom_call_execute_params;
+      execute_params.custom_options = custom_options.get();
     }
 
     cpu::BufferAllocations allocations;
+    std::shared_ptr<const CustomOptions> custom_options;
     Thunk::ExecuteParams execute_params;
     Thunk::CollectiveExecuteParams collective_execute_params;
     Thunk::CustomCallExecuteParams custom_call_execute_params;
@@ -433,7 +444,7 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   // execution context alive as long as we need it, but also to skip a dynamic
   // allocation when it is not required.
   if (options.intra_op_thread_pool() || options.ffi_context() ||
-      options.device_assignment()) {
+      options.custom_options() || options.device_assignment()) {
     auto execution_context = std::make_unique<ExecutionContext>(
         std::move(buffers), executable->function_library(), options);
 
@@ -450,9 +461,13 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   // ExecuteParams on the stack as thunks are guaranteed to be executed
   // synchronously in the current thread.
   cpu::BufferAllocations allocations(std::move(buffers));
+  Thunk::CustomCallExecuteParams custom_call_execute_params(
+      RunId(options.launch_id()), options.local_device_id().value(),
+      /*intra_op_thread_pool=*/nullptr, /*ffi_execution_context=*/nullptr);
   Thunk::ExecuteParams execute_params{
       executable->function_library(), &allocations,
       /*xfeed=*/nullptr, options.intra_op_thread_pool(), options.task_runner()};
+  execute_params.custom_call_params = &custom_call_execute_params;
   return executable->thunks().Execute(execute_params);
 }
 

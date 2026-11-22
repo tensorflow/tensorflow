@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_emitter_context.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_registry.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -214,9 +216,10 @@ absl::StatusOr<ThunkSequence> MakeCustomKernelThunkSequence(
     }
   }
 
-  CustomKernel custom_kernel(std::move(spec.name), std::move(spec.kernel_spec),
-                             spec.block_dims, spec.thread_dims,
-                             spec.shared_memory_bytes);
+  GpuKernelSpec gpu_spec{
+      spec.name, LaunchDimensions{spec.block_dims, spec.thread_dims},
+      kernel_arguments, spec.shared_memory_bytes, spec.use_pdl};
+  CustomKernel custom_kernel(gpu_spec, std::move(spec.kernel_spec));
 
   return ThunkSequence::Of<CustomKernelThunk>(
       ctx.GenerateThunkInfo(), std::move(custom_kernel), kernel_arguments,

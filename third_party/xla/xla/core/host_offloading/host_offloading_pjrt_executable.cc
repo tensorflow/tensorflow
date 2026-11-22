@@ -259,7 +259,8 @@ HostOffloadingPjRtExecutable::Execute(
       .context = execute_options.context,
       // Host offloading executables dispatched into async work runner, and
       // there is no need to introduce another level of asynchronicity.
-      .execution_mode = ::xla::ExecuteOptions::ExecutionMode::kSynchronous};
+      .execution_mode = ::xla::ExecuteOptions::ExecutionMode::kSynchronous,
+      .custom_options = execute_options.custom_options};
 
   // We immediately throw away result buffers because all of them must be
   // aliased with parameters or result buffers passed in arguments.

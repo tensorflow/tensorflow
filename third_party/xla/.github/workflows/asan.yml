@@ -51,10 +51,10 @@ on:
         type: choice
         default: "3.14"
         options:
+          - "3.15"
           - "3.14"
           - "3.13"
           - "3.12"
-          - "3.11"
       extra_bazel_args:
         description: "Optional extra space-separated Bazel test flags (e.g. --nocache_test_results)"
         required: false

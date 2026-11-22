@@ -27,10 +27,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -151,7 +151,8 @@ TEST_P(TritonFusionNumericsVerifierTest, Softmax) {
 
 TEST_P(TritonFusionNumericsVerifierTest, DotAlgorithms) {
   if (GetParam() == F64) {
-    // 'Algorithm not supported by the ElementalIrEmitter: ALG_DOT_F64_F64_F64'.
+    // 'Algorithm not supported by the ElementalDotEmitter:
+    // ALG_DOT_F64_F64_F64'.
     GTEST_SKIP() << "Skipping test for F64.";
   }
   constexpr absl::string_view kHlo = R"hlo(
@@ -302,10 +303,9 @@ TEST_F(TritonFusionNumericsVerifierTest, DetectMismatch) {
   ASSERT_OK(f32_result);
 
   // Compare the fusions from the different modules, triggering a mismatch.
-  EXPECT_THAT(
-      profile_util->CheckOutputBuffer(
-          *f64_result, *f32_result, debug_options.xla_gpu_autotune_gemm_rtol()),
-      absl_testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(profile_util->CheckOutputBuffer(
+                  *f64_result, *f32_result, debug_options.xla_autotune_rtol()),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 // By default, AutotunerCompileUtil filters out kernels that cause registers to

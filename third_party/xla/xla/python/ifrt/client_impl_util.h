@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
@@ -37,7 +38,7 @@ namespace ifrt {
 // TODO(hyeontaek): Remove this adapter once all major IFRT implementations
 // natively support `MakeArraysFromHostBufferShards`.
 absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
-    Client* client,
+    Client* absl_nonnull client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
     Client::HostBufferSemantics semantics);
 
@@ -48,7 +49,8 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
 // TODO(spetrovic): Remove this adapter once all major IFRT implementations
 // natively support `CopyArraysToHostBufferShards`.
 absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
-    Client* client, absl::Span<Client::CopyArraysToHostBufferShardsSpec> specs,
+    Client* absl_nonnull client,
+    absl::Span<Client::CopyArraysToHostBufferShardsSpec> specs,
     ArrayCopySemantics semantics);
 
 // Portable adapter of `LoadedExecutable::ExecuteBundle` that unpacks bundles,
@@ -59,7 +61,7 @@ absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
 // natively support `LoadedExecutable::ExecuteBundle`.
 absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
 LoadedExecutableExecuteBundle(
-    LoadedExecutable* executable, absl::Span<BundleRef> args,
+    LoadedExecutable* absl_nonnull executable, absl::Span<BundleRef> args,
     const ExecuteOptions& options,
     const std::optional<std::vector<int>>& outputs_bundle_slice_sizes);
 

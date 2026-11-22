@@ -40,6 +40,59 @@ constexpr HloCallBoundaryOptions kFusionBoundaryOptions(
     /*include_calls_in=*/false, /*include_control_flow_in=*/false,
     /*include_fusions_in=*/true);
 
+bool HasMismatchedNonFusionCallerOperand(const HloInstruction* inst,
+                                         ShapeIndexView index,
+                                         const Shape& src_shape) {
+  if (inst->opcode() != HloOpcode::kParameter) {
+    return false;
+  }
+  bool mismatch = false;
+  const std::optional<SplitConfig> src_split_config =
+      LayoutUtil::GetSplitConfig(src_shape);
+  HloDataflowPropagation::ForEachCallerBoundary(
+      inst->parent(),
+      [&](const HloCallBoundary& boundary) {
+        if (mismatch || inst->parameter_number() >= boundary.num_parameters()) {
+          return;
+        }
+        const HloInstruction* caller_operand =
+            boundary.caller_operand(inst->parameter_number());
+        if (!boundary.callsite->parent()->IsFusionComputation()) {
+          const Shape& operand_subshape =
+              ShapeUtil::GetSubshape(caller_operand->shape(), index);
+          if (operand_subshape.has_layout() &&
+              (operand_subshape.layout().memory_space() !=
+                   src_shape.layout().memory_space() ||
+               LayoutUtil::GetSplitConfig(operand_subshape) !=
+                   src_split_config)) {
+            mismatch = true;
+          }
+          return;
+        }
+        if (HasMismatchedNonFusionCallerOperand(caller_operand, index,
+                                                src_shape)) {
+          mismatch = true;
+        }
+      },
+      kFusionBoundaryOptions);
+  return mismatch;
+}
+
+bool CanPropagateDusResultOntoBase(const HloDataflowAnalysis& dataflow,
+                                   const HloInstruction* base,
+                                   ShapeIndexView index,
+                                   const Shape& src_shape) {
+  const HloValue& base_value =
+      dataflow.GetUniqueValueAt(base, ShapeIndex(index));
+  for (const HloPosition& base_pos : base_value.positions()) {
+    if (HasMismatchedNonFusionCallerOperand(base_pos.instruction,
+                                            base_pos.index, src_shape)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 bool MemorySpacePropagation::RunOnComputation(HloComputation* computation) {
@@ -148,7 +201,10 @@ bool MemorySpacePropagation::Propagate(
       modified = true;
     }
 
-    if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        CanPropagateDusResultOntoBase(*dataflow_analysis_,
+                                      instruction->operand(0), position.index,
+                                      src_shape)) {
       modified |= Propagate(position.index, instruction->operand(0), src_shape,
                             visited);
     }

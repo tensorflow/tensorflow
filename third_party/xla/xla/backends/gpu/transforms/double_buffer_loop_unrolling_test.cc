@@ -1238,6 +1238,97 @@ ENTRY main {
   EXPECT_EQ(while_loops_callees.size(), 6);
 }
 
+// A loop that is not unrolled after one that is must not hide the change,
+// otherwise FlattenCallGraph is skipped and the nested loop's computations are
+// left with several callers.
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       AutoUnrollFlattensWhenLastLoopIsNotUnrolled) {
+  const char* const kModuleString = R"(
+HloModule loop_unrolling_last_loop_not_unrolled
+
+condition_nested {
+  input_tuple = (s32[], f32[8]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(4)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body_nested {
+  input_tuple = (s32[], f32[8]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  x = f32[8] get-tuple-element(input_tuple), index=1
+  one = s32[] constant(1)
+  cond_plus_1 = s32[] add(cond, one)
+  y = f32[8] sine(x)
+  ROOT output = (s32[], f32[8]) tuple(cond_plus_1, y)
+}
+
+condition {
+  input_tuple = (s32[], f32[8]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(3)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body {
+  input_tuple = (s32[], f32[8]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  x = f32[8] get-tuple-element(input_tuple), index=1
+  collective-permute = f32[8] collective-permute(x), channel_id=1, source_target_pairs={{0,1},{1,0}}
+  zero = s32[] constant(0)
+  nested_init = (s32[], f32[8]) tuple(zero, collective-permute)
+  nested_while = (s32[], f32[8]) while(nested_init), condition=condition_nested, body=body_nested, backend_config={"known_trip_count":{"n":"4"}}
+  y = f32[8] get-tuple-element(nested_while), index=1
+  one = s32[] constant(1)
+  cond_plus_1 = s32[] add(cond, one)
+  ROOT output = (s32[], f32[8]) tuple(cond_plus_1, y)
+}
+
+condition_tail {
+  input_tuple = (s32[], f32[8]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(5)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body_tail {
+  input_tuple = (s32[], f32[8]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  x = f32[8] get-tuple-element(input_tuple), index=1
+  one = s32[] constant(1)
+  cond_plus_1 = s32[] add(cond, one)
+  y = f32[8] cosine(x)
+  ROOT output = (s32[], f32[8]) tuple(cond_plus_1, y)
+}
+
+ENTRY main {
+  param_0 = f32[8] parameter(0)
+  zero = s32[] constant(0)
+  init = (s32[], f32[8]) tuple(zero, param_0)
+  while = (s32[], f32[8]) while(init), condition=condition, body=body, backend_config={"known_trip_count":{"n":"3"}}
+  x = f32[8] get-tuple-element(while), index=1
+  tail_init = (s32[], f32[8]) tuple(zero, x)
+  ROOT tail_while = (s32[], f32[8]) while(tail_init), condition=condition_tail, body=body_tail, backend_config={"known_trip_count":{"n":"5"}}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling double_buffer(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kAuto);
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  absl::flat_hash_set<const HloComputation*> while_loops_callees;
+
+  hlo_query::ForEachInstructionWithOpcode(
+      *module, HloOpcode::kWhile,
+      [&while_loops_callees](HloInstruction* instr) {
+        EXPECT_TRUE(
+            while_loops_callees.insert(instr->while_condition()).second);
+        EXPECT_TRUE(while_loops_callees.insert(instr->while_body()).second);
+      });
+}
+
 TEST_F(GpuLoopDoubleBufferTransformerTest,
        NestedWhileLoopRemainsFlattenedOddTripCount) {
   const char* const kModuleString = R"(

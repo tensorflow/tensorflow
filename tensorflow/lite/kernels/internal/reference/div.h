@@ -63,14 +63,17 @@ inline void DivElementwise(int size, const ArithmeticParams& params,
     int recip_shift;
     const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
     const int headroom = CountLeadingSignBits(input1_val);
-    const int32_t unscaled_quotient =
-        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
-                                                    headroom);
     const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32_t unclamped_result =
-        params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            unscaled_quotient, params.output_multiplier, total_shift);
+    int32_t scaled_quotient = 0;
+    // For shifts below -31, the scaled quotient rounds to zero.
+    if (total_shift >= -31) {
+      const int32_t unscaled_quotient =
+          MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
+                                                      headroom);
+      scaled_quotient = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          unscaled_quotient, params.output_multiplier, total_shift);
+    }
+    const int32_t unclamped_result = params.output_offset + scaled_quotient;
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -133,14 +136,17 @@ inline void BroadcastDivSlowQuantized(
     int recip_shift;
     const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
     const int headroom = CountLeadingSignBits(input1_val);
-    const int32_t unscaled_quotient =
-        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
-                                                    headroom);
     const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32_t unclamped_result =
-        params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            unscaled_quotient, params.output_multiplier, total_shift);
+    int32_t scaled_quotient = 0;
+    // For shifts below -31, the scaled quotient rounds to zero.
+    if (total_shift >= -31) {
+      const int32_t unscaled_quotient =
+          MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
+                                                      headroom);
+      scaled_quotient = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          unscaled_quotient, params.output_multiplier, total_shift);
+    }
+    const int32_t unclamped_result = params.output_offset + scaled_quotient;
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));

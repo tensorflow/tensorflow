@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -43,10 +44,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/call_inliner.h"
 #include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/mlir_to_hlo.h"
-#include "xla/service/call_inliner.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/tsl/platform/errors.h"
@@ -85,6 +86,17 @@ absl::StatusOr<HloInstruction*> InlineHloComputation(
       }
       auto* new_inst = builder->AddInstruction(
           inst->CloneWithNewOperands(inst->shape(), new_operands, &context));
+      if (inst->is_composite()) {
+        // SpmdBuilder::AddInstruction derived the clone from the partitioned
+        // custom call, replacing its frontend attributes. Restore only the
+        // composite's identity; the other attributes are filtered on purpose.
+        for (absl::string_view key :
+             {"composite.name", "composite.attributes", "composite.version"}) {
+          if (auto value = inst->get_frontend_attribute(key)) {
+            new_inst->set_frontend_attribute(key, *value);
+          }
+        }
+      }
       HloChannelInstruction* channel_instr =
           DynCast<HloChannelInstruction>(inst);
       if (channel_instr && channel_instr->channel_id().has_value()) {
@@ -143,9 +155,14 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
     }
 
     // The custom call module does not go through the main compiler pipeline,
-    // so inline all calls here explicitly, since some targets require it.
+    // so inline calls here explicitly, since some targets require it. Preserve
+    // scaled-dot composites for the GPU compiler's post-SPMD rewrite; otherwise
+    // they are expanded before the backend can select a native implementation.
     HloPassPipeline pipeline("custom-call-inliner");
-    pipeline.AddPass<CallInliner>();
+    pipeline.AddPass<CallInliner>(
+        /*single_call_site=*/false,
+        /*composites_to_preserve=*/
+        absl::flat_hash_set<std::string>{"xla.scaled_dot"});
     ABSL_RETURN_IF_ERROR(pipeline.Run(hlo_module.get(), {}).status());
 
     ABSL_ASSIGN_OR_RETURN(auto* partitioned_hlo,

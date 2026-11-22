@@ -405,8 +405,7 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
       XlaCompiler::Argument weights_arg;
       weights_arg.kind = XlaCompiler::Argument::kParameter;
       weights_arg.type = DT_FLOAT;
-      weights_arg.shape =
-          xla::ShapeUtil::MakeShape(xla::F32, {input_size_, num_weights_});
+      weights_arg.shape = xla::ShapeUtil::MakeShape(xla::F32, {num_weights_});
       weights_arg.name = "weights";
       arguments.push_back(weights_arg);
     }
@@ -501,8 +500,7 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
 
     std::vector<xla::XlaOp> tc_combiner_args = {valencies, vectors};
     if (num_weights_ > 0) {
-      xla::XlaOp weights = ctx->Input("weights");
-      tc_combiner_args.push_back(xla::Broadcast(weights, {input_size_}));
+      tc_combiner_args.push_back(ctx->Input("weights"));
     }
 
     xla::XlaOp tc_activations =
@@ -1306,7 +1304,6 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
 
     XlaCompiler::Argument valencies_arg;
     XlaCompiler::Argument vectors_arg;
-    XlaCompiler::Argument weights_arg;
     XlaCompiler::Argument activation_gradients_arg;
 
     valencies_arg.kind = XlaCompiler::Argument::kParameter;
@@ -1320,26 +1317,23 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
         xla::F32, {input_size, max_valency_, feature_width});
     vectors_arg.name = "vectors";
 
-    weights_arg.kind = XlaCompiler::Argument::kParameter;
-    weights_arg.type = DT_FLOAT;
-    weights_arg.shape =
-        xla::ShapeUtil::MakeShape(xla::F32, {input_size, num_weights_});
-    weights_arg.name = "weights";
-    arguments.push_back(weights_arg);
-
     activation_gradients_arg.kind = XlaCompiler::Argument::kParameter;
     activation_gradients_arg.type = DT_FLOAT;
     activation_gradients_arg.shape =
         xla::ShapeUtil::MakeShape(xla::F32, {input_size, feature_width});
     activation_gradients_arg.name = "activation_gradients";
-    arguments.push_back(activation_gradients_arg);
 
     if (num_weights_ > 0) {
+      XlaCompiler::Argument weights_arg;
+      weights_arg.kind = XlaCompiler::Argument::kParameter;
+      weights_arg.type = DT_FLOAT;
+      weights_arg.shape = xla::ShapeUtil::MakeShape(xla::F32, {num_weights_});
+      weights_arg.name = "weights";
       arguments = {valencies_arg, vectors_arg, weights_arg,
                    activation_gradients_arg};
     } else {
-      // Don't add the weights argument if it's not needed. This helps avoid
-      // issues of passing around zero-sized tensors and Xla values.
+      // Do not add the weights argument if it is not needed. This helps avoid
+      // issues of passing around zero sized tensors and XLA values.
       arguments = {valencies_arg, vectors_arg, activation_gradients_arg};
     }
 
@@ -1437,10 +1431,7 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
     // Build the arguments of the VJP computations.
     std::vector<xla::XlaOp> vjp_args;
     if (num_weights_ > 0) {
-      xla::XlaOp broadcasted_preserved_weights =
-          xla::Broadcast(preserved_weights, {input_size});
-      vjp_args = {valencies, vectors, broadcasted_preserved_weights,
-                  activation_gradients};
+      vjp_args = {valencies, vectors, preserved_weights, activation_gradients};
     } else {
       vjp_args = {valencies, vectors, activation_gradients};
     }

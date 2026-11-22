@@ -47,17 +47,16 @@ struct DenseUpdate<CPUDevice, std::string, ASSIGN> {
     } else {
       auto work = [&params, &update](int64_t start, int64_t end) {
         for (int i = start; i < end; ++i) {
-          params.data()[i].resize(update.data()[i].size());
-          memmove(const_cast<char*>(params.data()[i].data()),
-                  update.data()[i].data(), update.data()[i].size());
+          params(i).resize(update(i).size());
+          memmove(const_cast<char*>(params(i).data()), update(i).data(),
+                  update(i).size());
         }
       };
       int64_t estimated_string_size;
       if (update.size() > 0) {
         // first element of the tensor seems as good a guess as any of the sizes
         // of the strings contained within...
-        estimated_string_size =
-            std::max(update.data()[0].size(), sizeof(tstring));
+        estimated_string_size = std::max(update(0).size(), sizeof(tstring));
       } else {
         estimated_string_size = sizeof(tstring);
       }

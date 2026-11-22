@@ -70,24 +70,6 @@ def MHLO_CustomCallScheduleAttr : EnumAttr<MHLO_Dialect, MHLO_CustomCallSchedule
 }
 
 //===----------------------------------------------------------------------===//
-// Domain Metadata Kind  enum definitions.
-//===----------------------------------------------------------------------===//
-
-// These mirror the XLA FftType proto enum.
-def MHLO_DOMAIN_KIND_SHARDING : I32EnumAttrCase<"sharding", 0>;
-
-def MHLO_DomainKind : I32EnumAttr<"DomainKind",
-    "Kind of domain metatdata attached to an HLO domain.",
-    [MHLO_DOMAIN_KIND_SHARDING]> {
-  let genSpecializedAttr = 0;
-  let cppNamespace = "::mlir::mhlo";
-}
-
-def MHLO_DomainKindAttr : EnumAttr<MHLO_Dialect, MHLO_DomainKind, "kind"> {
-  let assemblyFormat = "$value";
-}
-
-//===----------------------------------------------------------------------===//
 // Fast Fourier Transform Type enum definitions.
 //===----------------------------------------------------------------------===//
 

@@ -16,13 +16,17 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 
 #include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -36,24 +40,36 @@ using tsl::proto_testing::ParseTextProtoOrDie;
 void SomeKernel(int* x) { *x = 42; }
 
 TEST(CustomKernelTest, ToProto) {
-  CustomKernel custom_kernel(
+  GpuKernelSpec spec{
       "kernel_name",
+      LaunchDimensions{stream_executor::BlockDim(1, 2, 3),
+                       stream_executor::ThreadDim(4, 5, 6)},
+      emitters::KernelArguments{std::vector<emitters::KernelArgument>{}}, 7};
+  CustomKernel custom_kernel(
+      spec,
       stream_executor::KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(
           "persistent_kernel_name",
           /*symbol=*/absl::bit_cast<void*>(&SomeKernel), "kernel_name",
-          /*arity=*/42),
-      stream_executor::BlockDim(1, 2, 3), stream_executor::ThreadDim(4, 5, 6),
-      /*shared_memory_bytes=*/7);
+          /*arity=*/42));
   ASSERT_OK_AND_ASSIGN(CustomKernelProto proto, custom_kernel.ToProto());
 
   EXPECT_THAT(
       proto, tsl::proto_testing::EqualsProto(R"pb(
-        name: "kernel_name"
         kernel_spec {
-          in_process_symbol { persistent_name: "persistent_kernel_name" }
-          kernel_name: "kernel_name"
           arity: 42
+          kernel_name: "kernel_name"
+          in_process_symbol { persistent_name: "persistent_kernel_name" }
         }
+        spec {
+          name: "kernel_name"
+          launch_dimensions {
+            block_counts { coordinates { x: 1 y: 2 z: 3 } }
+            thread_counts_per_block { coordinates { x: 4 y: 5 z: 6 } }
+          }
+          kernel_arguments {}
+          scratch_bytes: 7
+        }
+        name: "kernel_name"
         block_dims { coordinates { x: 1 y: 2 z: 3 } }
         thread_dims { coordinates { x: 4 y: 5 z: 6 } }
         shared_memory_bytes: 7
@@ -61,25 +77,38 @@ TEST(CustomKernelTest, ToProto) {
 }
 
 TEST(CustomKernelTest, ToProtoWithClusterDims) {
-  CustomKernel custom_kernel(
+  GpuKernelSpec spec{
       "kernel_name",
+      LaunchDimensions{stream_executor::BlockDim(1, 2, 3),
+                       stream_executor::ThreadDim(4, 5, 6),
+                       stream_executor::ClusterDim(7, 8, 9)},
+      emitters::KernelArguments{std::vector<emitters::KernelArgument>{}}, 10};
+  CustomKernel custom_kernel(
+      spec,
       stream_executor::KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(
           "persistent_kernel_name",
           /*symbol=*/absl::bit_cast<void*>(&SomeKernel), "kernel_name_in_spec",
-          /*arity=*/42),
-      stream_executor::BlockDim(1, 2, 3), stream_executor::ThreadDim(4, 5, 6),
-      stream_executor::ClusterDim(7, 8, 9),
-      /*shared_memory_bytes=*/10);
+          /*arity=*/42));
   ASSERT_OK_AND_ASSIGN(CustomKernelProto proto, custom_kernel.ToProto());
 
   EXPECT_THAT(
       proto, tsl::proto_testing::EqualsProto(R"pb(
-        name: "kernel_name"
         kernel_spec {
-          in_process_symbol { persistent_name: "persistent_kernel_name" }
-          kernel_name: "kernel_name_in_spec"
           arity: 42
+          kernel_name: "kernel_name_in_spec"
+          in_process_symbol { persistent_name: "persistent_kernel_name" }
         }
+        spec {
+          name: "kernel_name"
+          launch_dimensions {
+            block_counts { coordinates { x: 1 y: 2 z: 3 } }
+            thread_counts_per_block { coordinates { x: 4 y: 5 z: 6 } }
+            cluster_dims { coordinates { x: 7 y: 8 z: 9 } }
+          }
+          kernel_arguments {}
+          scratch_bytes: 10
+        }
+        name: "kernel_name"
         block_dims { coordinates { x: 1 y: 2 z: 3 } }
         thread_dims { coordinates { x: 4 y: 5 z: 6 } }
         cluster_dim { coordinates { x: 7 y: 8 z: 9 } }
@@ -105,8 +134,9 @@ TEST(CustomKernelTest, FromProto) {
     thread_dims { coordinates { x: 4 y: 5 z: 6 } }
     shared_memory_bytes: 7
   )pb");
-  ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
-                       CustomKernel::FromProto(proto, StaticSymbolResolver));
+  ASSERT_OK_AND_ASSIGN(
+      CustomKernel custom_kernel,
+      CustomKernel::FromProto(proto, {}, StaticSymbolResolver));
   EXPECT_EQ(custom_kernel.name(), "kernel_name");
   EXPECT_EQ(custom_kernel.kernel_spec().kernel_name(), "kernel_name_in_spec");
   EXPECT_EQ(custom_kernel.kernel_spec().arity(), 42);
@@ -135,8 +165,9 @@ TEST(CustomKernelTest, FromProtoWithClusterDims) {
     cluster_dim { coordinates { x: 7 y: 8 z: 9 } }
     shared_memory_bytes: 10
   )pb");
-  ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
-                       CustomKernel::FromProto(proto, StaticSymbolResolver));
+  ASSERT_OK_AND_ASSIGN(
+      CustomKernel custom_kernel,
+      CustomKernel::FromProto(proto, {}, StaticSymbolResolver));
   EXPECT_EQ(custom_kernel.name(), "kernel_name");
   EXPECT_EQ(custom_kernel.kernel_spec().kernel_name(), "kernel_name_in_spec");
   EXPECT_EQ(custom_kernel.kernel_spec().arity(), 42);

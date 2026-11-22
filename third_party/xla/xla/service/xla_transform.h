@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -121,7 +122,9 @@ class ApplyXlaTransforms : public HloModulePass {
 };
 
 // Replaces the contents of `module` with the HloModule described by
-// `transformed_proto`.
+// `transformed_proto`. Retained temporarily for a phased cross-repo removal
+// while JAX (`jaxlib`) still depends on it.
+ABSL_DEPRECATED("Use HloModule::UpdateFromProto instead.")
 absl::Status UpdateHloModuleFromProto(HloModule* module,
                                       const HloModuleProto& transformed_proto);
 

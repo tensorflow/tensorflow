@@ -16,6 +16,7 @@
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 
 
@@ -28,7 +29,8 @@ class _TensorDataset(dataset_ops.DatasetSource):
 
   def __init__(self, element, name=None):
     """See `tf.data.Dataset.from_tensors` for details."""
-    element = structure.normalize_element(element)
+    with ops.device("/device:CPU:0"):
+      element = structure.normalize_element(element)
     self._structure = structure.type_spec_from_value(element)
     self._tensors = structure.to_tensor_list(self._structure, element)
     self._name = name

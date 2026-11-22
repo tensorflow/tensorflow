@@ -327,6 +327,8 @@ class DynamicUpdateSliceTest : public ClientLibraryTestRunnerMixin<
     // Disable algebraic simplifier, otherwise the op will be replaced by a
     // constant.
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
+    mutable_debug_options()->add_xla_disable_hlo_passes(
+        "gpu-algebraic-simplifier");
     RunR0<IndexT, DataT>(0, 123, {}, 123);
   }
 

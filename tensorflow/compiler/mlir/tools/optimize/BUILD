@@ -31,8 +31,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tools:safe_cast",
-        "//tensorflow/core/framework:tensor_shape",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
     ],
 )

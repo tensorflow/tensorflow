@@ -71,6 +71,13 @@ class AliasInfo {
     return std::nullopt;
   }
 
+  // Returns whether `instruction` can be ignored when tracing fusion in-place
+  // aliases because it does not change the underlying buffer. Backends may
+  // override this to add target-specific no-op wrappers.
+  virtual bool IsNoOpForAliasAnalysis(const HloInstruction* instruction) const {
+    return instruction->opcode() == HloOpcode::kBitcast;
+  }
+
  protected:
   // Backend-specific hook that allows to deviate from the default must-alias
   // rules in GetInPlaceInputOutputPairs(). If an empty optional is returned,
@@ -79,13 +86,6 @@ class AliasInfo {
   virtual std::optional<std::vector<std::pair<HloOperandIndex, ShapeIndex>>>
   GetNonDefaultInPlaceInputOutputPairs(const HloInstruction* user) const {
     return std::nullopt;
-  }
-
-  // Returns whether `instruction` can be ignored when tracing fusion in-place
-  // aliases because it does not change the underlying buffer. Backends may
-  // override this to add target-specific no-op wrappers.
-  virtual bool IsNoOpForAliasAnalysis(const HloInstruction* instruction) const {
-    return instruction->opcode() == HloOpcode::kBitcast;
   }
 
  private:
@@ -137,6 +137,17 @@ inline bool IsDefaultInPlaceOperation(const HloInstruction* hlo) {
   return opcode == HloOpcode::kDynamicUpdateSlice ||
          opcode == HloOpcode::kScatter || opcode == HloOpcode::kAllReduceStart;
 }
+
+// Returns true if `slice` (a kSlice or kDynamicSlice reading `base_inst` once
+// at operand 0) reads the exact slice region that `dus`
+// (a kDynamicUpdateSlice) overwrites, so evaluating `dus` in place on the base
+// buffer does not overwrite elements before `slice` reads them. When
+// `ignore_layout` is true, layout differences on the base and slice shapes
+// (such as tiling from nested change tiling copy fusions) are ignored.
+bool IsMatchingInPlaceDusReadSlice(const HloInstruction* slice,
+                                   const HloInstruction* base_inst,
+                                   const HloInstruction* dus,
+                                   bool ignore_layout = false);
 
 }  // namespace xla
 

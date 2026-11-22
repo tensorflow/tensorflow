@@ -106,7 +106,7 @@ func.func @callee(%arg0: tensor<i32>) -> tensor<i32> {
 func.func @call_requires_in_ifrt_function(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>) {
-  // expected-error@+1 {{'ifrt.Call' op must be in a FuncOp with attr `ifrt.function`}}
+  // expected-error@+1 {{'ifrt.Call' op must be in a FuncOp with attr `ifrt.function` or attr `ifrt.reshard_function`}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                    [0,1]>)
@@ -117,6 +117,40 @@ func.func @call_requires_in_ifrt_function(
 
 func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
   return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+module @call_directly_in_module {
+  func.func private @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %arg0 : tensor<2x2xi32>
+  }
+  %arg = "builtin.unrealized_conversion_cast"() : () -> !array
+  // expected-error@+1 {{'ifrt.Call' op must be in a FuncOp with attr `ifrt.function` or attr `ifrt.reshard_function`}}
+  %0, %ctrl = ifrt.Call @callee(%arg) on devices [0,1] : (!array) -> !array
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+module @call_in_nested_region {
+  func.func private @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %arg0 : tensor<2x2xi32>
+  }
+  func.func @main(%arg0: !array) attributes {ifrt.function} {
+    %cond = stablehlo.constant dense<true> : tensor<i1>
+    "stablehlo.if"(%cond) ({
+      // expected-error@+1 {{'ifrt.Call' op must be in a FuncOp with attr `ifrt.function` or attr `ifrt.reshard_function`}}
+      %0, %ctrl = ifrt.Call @callee(%arg0) on devices [0,1] : (!array) -> !array
+      stablehlo.return
+    }, {
+      stablehlo.return
+    }) : (tensor<i1>) -> ()
+    return
+  }
 }
 
 // -----
@@ -334,6 +368,26 @@ func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
 
 // -----
 
+func.func @io_aliases_should_not_have_negative_input_index(
+    %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                       [0,1]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op can't alias input #-1 to output #0 as only having 1 inputs}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    <io_aliases=[array<i32: -1, 0>]>
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
 func.func @io_aliases_should_only_alias_input_once(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
@@ -364,6 +418,26 @@ func.func @io_aliases_should_have_valid_output_index(
   // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #1 as only having 1 outputs}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
     <io_aliases=[array<i32: 0, 1>]>
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+func.func @io_aliases_should_not_have_negative_output_index(
+    %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                       [0,1]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #-1 as only having 1 outputs}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    <io_aliases=[array<i32: 0, -1>]>
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                    [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
@@ -527,5 +601,56 @@ func.func @should_not_both_donate_and_alias_the_same_arg(
 
 func.func @callee(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>)
     -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @good_call_with_arg_and_res_attrs(%arg0: !array, %arg1: !array)
+    attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0, %arg1) on devices [0,1]
+    <arg_attrs = [{test.arg = "a"}, {}], res_attrs = [{test.res = "r"}]>
+    : (!array, !array) -> !array
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>)
+    -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @call_requires_matching_arg_attrs_arity(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires `arg_attrs` to have the same size as `inputs` (2 vs. 1)}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    <arg_attrs = [{}, {}]>
+    : (!array) -> !array
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @call_requires_matching_res_attrs_arity(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires `res_attrs` to have the same size as `outputs` (2 vs. 1)}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    <res_attrs = [{}, {}]>
+    : (!array) -> !array
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
   return %arg0 : tensor<2x2xi32>
 }

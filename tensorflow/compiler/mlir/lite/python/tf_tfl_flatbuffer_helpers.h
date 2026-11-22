@@ -22,8 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -63,18 +61,6 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
     const std::unordered_set<std::string>& saved_model_tags,
     std::string* result,
     const quantization::PyFunctionLibrary* quantization_py_function_lib);
-
-// Convert slim model in directory to TfLite flatbuffer streamed directly to an
-// output stream.
-absl::Status ConvertMlirBytecodeToTFLite(
-    tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
-    llvm::raw_pwrite_stream& export_stream);
-
-// Convert slim model in directory to TfLite flatbuffer streamed directly to a
-// file.
-absl::Status ConvertMlirBytecodeToTFLite(
-    tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
-    absl::string_view output_file_path);
 
 // Give a warning for any unused flags that have been specified.
 void WarningUnusedFlags(const tflite::ModelFlags& model_flags,

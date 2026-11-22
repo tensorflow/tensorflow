@@ -68,7 +68,6 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
-using ::testing::AnyOf;
 using ::testing::HasSubstr;
 using ::testing::Not;
 using ::xla::ifrt::test_util::AssertPerShardData;
@@ -1501,11 +1500,8 @@ module {
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, UsingPartiallyDonatedArgThrowsError) {
-  if (client_->platform_id() != xla::TpuId()) {
-    GTEST_SKIP() << "Test CHECK fails in pjrt_stream_executor_client.h.";
-  }
-  // Verifies that an error is thrown if a shard of an array is first aliased
-  // and then donated, followed by usage of the initial array is used.
+  // Verifies that compilation fails if a shard of an array is first aliased
+  // and then donated, followed by usage of the initial array.
   std::string source = R"mlir(
 !array = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
@@ -1539,36 +1535,9 @@ module {
   )mlir";
 
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(auto ifrt_ir_executable,
-                       CompileProgram(source, devices));
-
-  std::vector<int> data_shard0 = {0, 1};
-  std::vector<int> data_shard1 = {2, 3};
-  Shape shard_shape({1, 2});
-  ASSERT_OK_AND_ASSIGN(
-      ArrayRef input,
-      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
-                  shard_shape, DType(DType::kS32), devices));
-
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
-                                  ExecuteOptionsWithFillStatus(), devices));
-  EXPECT_THAT(
-      result.status.Await(),
-      AnyOf(StatusIs(
-                absl::StatusCode::kInvalidArgument,
-                HasSubstr("Invalid buffer passed to Execute() as argument 0")),
-            StatusIs(absl::StatusCode::kInvalidArgument,
-                     HasSubstr("donates or deletes twice an array"))));
-  ASSERT_EQ(result.outputs.size(), 1);
-  EXPECT_THAT(
-      result.outputs[0]->GetReadyFuture().Await(),
-      AnyOf(StatusIs(
-                absl::StatusCode::kInvalidArgument,
-                HasSubstr("Invalid buffer passed to Execute() as argument 0")),
-            StatusIs(absl::StatusCode::kInvalidArgument,
-                     HasSubstr("donates or deletes twice an array"))));
+  EXPECT_THAT(CompileProgram(source, devices),
+              StatusIs(absl::StatusCode::kUnknown,
+                       HasSubstr("input #0 of @add_one was already donated")));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, DonatingTwiceAliasedBufferThrowsError) {
@@ -1602,46 +1571,11 @@ module {
   )mlir";
 
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(auto ifrt_ir_executable,
-                       CompileProgram(source, devices));
-
-  std::vector<int> data_shard0 = {0, 1};
-  std::vector<int> data_shard1 = {2, 3};
-  Shape shard_shape({1, 2});
-  ASSERT_OK_AND_ASSIGN(
-      ArrayRef input,
-      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
-                  shard_shape, DType(DType::kS32), devices));
-
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
-                                  ExecuteOptionsWithFillStatus(), devices));
   EXPECT_THAT(
-      result.status.Await(),
-      AnyOf(
-          StatusIs(absl::StatusCode::kInvalidArgument,
-                   HasSubstr(
-                       "Attempt to donate the same buffer twice in Execute()")),
-          StatusIs(absl::StatusCode::kInvalidArgument,
-                   HasSubstr("donates or deletes twice an array")),
-          StatusIs(
-              absl::StatusCode::kNotFound,
-              HasSubstr(
-                  "The buffer was likely previously donated or deleted"))));
-  ASSERT_EQ(result.outputs.size(), 2);
-  EXPECT_THAT(
-      result.outputs[0]->GetReadyFuture().Await(),
-      AnyOf(
-          StatusIs(absl::StatusCode::kInvalidArgument,
-                   HasSubstr(
-                       "Attempt to donate the same buffer twice in Execute()")),
-          StatusIs(absl::StatusCode::kInvalidArgument,
-                   HasSubstr("donates or deletes twice an array")),
-          StatusIs(
-              absl::StatusCode::kNotFound,
-              HasSubstr(
-                  "The buffer was likely previously donated or deleted"))));
+      CompileProgram(source, devices),
+      StatusIs(
+          absl::StatusCode::kUnknown,
+          HasSubstr("input #1 of @callee was already donated or aliased")));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, RemapFromTwoToOneArray) {

@@ -539,24 +539,6 @@ bool HloValueTracing::UpdateOptimizationBarrierValueSet(
   return changed;
 }
 
-bool HloValueTracing::UpdateDomainValueSet(HloInstruction* domain) {
-  // Domain instructions just forward their operand. Given that domains can have
-  // a tuple operand, we iterate through its indexes, like for copies.
-  // Unlike copies though we also propagate the top-level value.
-  CHECK_EQ(domain->opcode(), HloOpcode::kDomain);
-  bool changed = false;
-  for (auto& pair : GetInstructionValueSet(domain)) {
-    const ShapeIndex& index = pair.first;
-    HloValueSet& value_set = pair.second;
-    HloValueSet& operand_value_set = GetValueSet(domain->operand(0), index);
-    if (value_set != operand_value_set) {
-      value_set = operand_value_set;
-      changed = true;
-    }
-  }
-  return changed;
-}
-
 bool HloValueTracing::UpdateAddDependencyValueSet(
     HloInstruction* add_dependency) {
   // AddDependency just forwards the value of its zero-th operand.
@@ -917,10 +899,6 @@ bool HloValueTracing::UpdateInstructionValueSet(HloInstruction* instruction) {
       changed = UpdateAsyncDoneValueSet(instruction);
       break;
     }
-    case HloOpcode::kDomain: {
-      changed = UpdateDomainValueSet(instruction);
-      break;
-    }
     case HloOpcode::kCopy: {
       changed = UpdateCopyValueSet(instruction);
       break;
@@ -1168,7 +1146,6 @@ absl::Status HloValueTracing::InitializeInstructionValueSets() {
         case HloOpcode::kCall:
         case HloOpcode::kConditional:
         case HloOpcode::kGetTupleElement:
-        case HloOpcode::kDomain:
         case HloOpcode::kOptimizationBarrier:
         case HloOpcode::kCopy:
         case HloOpcode::kFusion:

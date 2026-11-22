@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/gpu/locality_domain_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/memory_space.h"
@@ -49,6 +51,19 @@ namespace stream_executor {
 namespace {
 
 thread_local const xla::DeviceAssignment* current_device_assignment = nullptr;
+
+// Locality-domain memory is served by dedicated BFC pools. This allocator has
+// no domain placement, so it must not hand out ordinary memory for those
+// colors.
+absl::Status RejectLocalityDomainMemorySpace(int64_t memory_space) {
+  if (gpu::IsLocalityDomainMemorySpace(memory_space)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "The VMM allocator does not support locality-domain memory space %d; "
+        "use the BFC allocator with locality_domain_memory_size",
+        memory_space));
+  }
+  return absl::OkStatus();
+}
 
 // Bounds on how much deferred teardown may accumulate in a single open batch
 // before it is flushed with a stream timeline write.
@@ -213,10 +228,12 @@ static bool AddressRangesOverlap(DeviceAddressBase lhs, DeviceAddressBase rhs) {
 DeviceAddressVmmAllocator::DeviceAddressVmmAllocator(
     const Platform* platform,
     std::optional<int64_t> reclaim_exempt_memory_space,
-    std::unique_ptr<DeviceAddressAllocator> host_allocator)
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors)
     : DeviceAddressAllocator(platform),
       reclaim_exempt_memory_space_(reclaim_exempt_memory_space),
-      host_allocator_(std::move(host_allocator)) {}
+      host_allocator_(std::move(host_allocator)),
+      free_visitors_(std::move(free_visitors)) {}
 
 absl::Status DeviceAddressVmmAllocator::PopulateDevices(
     DeviceAddressVmmAllocator* allocator,
@@ -280,6 +297,19 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
       while (state->pending_head != nullptr) {
         CompletePendingDeallocation(*state, *state->pending_head);
       }
+      for (const auto& [_, record] : state->records_by_allocator_address) {
+        if (record->has_reservation_alias()) {
+          const DeviceAddressBase mapped_addr = record->reservation_address();
+          VisitFree(mapped_addr.opaque(), state->executor->device_ordinal(),
+                    mapped_addr.size());
+        }
+        const DeviceAddressBase mapped_addr =
+            record->mapped_allocator_address();
+        VisitFree(mapped_addr.opaque(), state->executor->device_ordinal(),
+                  mapped_addr.size());
+      }
+      state->reservation_records.clear();
+      state->records_by_allocator_address.clear();
     }
 
     // Free platform-specific per-device resources (e.g. pinned timeline).
@@ -657,6 +687,7 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
                                     bool retry_on_failure,
                                     int64_t memory_space) {
+  ABSL_RETURN_IF_ERROR(RejectLocalityDomainMemorySpace(memory_space));
   if (size == 0) {
     return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(), device_ordinal,
                                         this);
@@ -664,8 +695,12 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
 
   ABSL_ASSIGN_OR_RETURN(auto state, GetPerDeviceState(device_ordinal));
 
-  if (memory_space == static_cast<int64_t>(MemorySpace::kHost) &&
-      host_allocator_ != nullptr) {
+  if (memory_space == static_cast<int64_t>(MemorySpace::kHost)) {
+    if (host_allocator_ == nullptr) {
+      return absl::FailedPreconditionError(
+          "DeviceAddressVmmAllocator has no host memory allocator for "
+          "MemorySpace::kHost");
+    }
     ABSL_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> host_mem,
                      host_allocator_->Allocate(device_ordinal, size,
                                                retry_on_failure, memory_space));
@@ -767,6 +802,7 @@ DeviceAddressVmmAllocator::Allocate(
     int device_ordinal, uint64_t allocation_size, bool /*retry_on_failure*/,
     int64_t memory_space, MemoryReservation* reservation,
     uint64_t reservation_offset, uint64_t mapping_size) {
+  ABSL_RETURN_IF_ERROR(RejectLocalityDomainMemorySpace(memory_space));
   if (allocation_size != mapping_size) {
     return absl::InvalidArgumentError(
         "allocation_size must equal mapping_size for mapped Allocate");
@@ -1370,6 +1406,13 @@ void DeviceAddressVmmAllocator::CompletePendingDeallocationByKey(
   }
 }
 
+void DeviceAddressVmmAllocator::VisitFree(void* ptr, int device_ordinal,
+                                          size_t num_bytes) const {
+  for (int i = static_cast<int>(free_visitors_.size()) - 1; i >= 0; --i) {
+    free_visitors_[i](ptr, device_ordinal, num_bytes);
+  }
+}
+
 void DeviceAddressVmmAllocator::CompletePendingDeallocation(
     PerDeviceState& state, PendingDeallocationNode& node) {
   const PendingDeallocation pending = node.pending;
@@ -1382,6 +1425,9 @@ void DeviceAddressVmmAllocator::CompletePendingDeallocation(
     CHECK_EQ(record.reservation_stale_seqno(), pending.seqno);
     CHECK(record.has_reservation_alias());
     CHECK_EQ(record.reservation_key(), pending.addr.opaque());
+    const DeviceAddressBase mapped_addr = record.reservation_address();
+    VisitFree(mapped_addr.opaque(), state.executor->device_ordinal(),
+              mapped_addr.size());
     state.reservation_records.erase(record_it);
     record.CompleteStaleReservation();
     return;
@@ -1413,6 +1459,9 @@ void DeviceAddressVmmAllocator::CompletePendingDeallocation(
                                      record.reservation_deallocation().key());
     CHECK(!record.has_reservation_alias());
   }
+  const DeviceAddressBase mapped_addr = record.mapped_allocator_address();
+  VisitFree(mapped_addr.opaque(), state.executor->device_ordinal(),
+            mapped_addr.size());
   uint64_t physical_size = record.raw_allocation()->address().size();
   CHECK_GT(physical_size, 0);
   CHECK_GE(state.pa_allocated, physical_size);

@@ -12,31 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef XLA_SERVICE_BATCHED_GATHER_SCATTER_NORMALIZER_H_
 #define XLA_SERVICE_BATCHED_GATHER_SCATTER_NORMALIZER_H_
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
-
-namespace xla {
-
-// This pass rewrites normalize batch gather and scatter operations into a
-// non-batch version.
-class BatchedGatherScatterNormalizer : public OpExpanderPass {
- public:
-  absl::string_view name() const override {
-    return "batched_gather_scatter_normalizer";
-  }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/expanders/batched_gather_scatter_normalizer.h"
+#include "xla/hlo/transforms/expanders/batched_gather_scatter_normalizer.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_BATCHED_GATHER_SCATTER_NORMALIZER_H_

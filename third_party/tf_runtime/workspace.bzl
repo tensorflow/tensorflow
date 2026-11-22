@@ -33,6 +33,7 @@ def repo():
         # The job that bumps the TFRT_COMMIT also resets patch_file to 'None'.
         patch_file = [
             "//third_party/tf_runtime:f16_attr.patch",
+            "//third_party/tf_runtime:invoke_result.patch",
             "//third_party/tf_runtime:pointer_union.patch",
             "//third_party/tf_runtime:strict_properties.patch",
         ],

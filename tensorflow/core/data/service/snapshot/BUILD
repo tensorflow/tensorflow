@@ -236,6 +236,7 @@ cc_library(
 tf_cc_test(
     name = "prefetched_split_provider_test",
     srcs = ["prefetched_split_provider_test.cc"],
+    shard_count = 8,
     deps = [
         ":prefetched_split_provider",
         "//tensorflow/core:framework",

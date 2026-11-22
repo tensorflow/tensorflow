@@ -34,7 +34,10 @@ limitations under the License.
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/lockable.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
@@ -44,13 +47,13 @@ GpuClique::GpuClique(
     GpuCliqueKey key, std::optional<CliqueIds> ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
     bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
-    const GpuClique* parent)
+    std::optional<GpuCliqueKey> parent_key)
     : Clique(std::move(communicators)),
       key_(key),
       ids_(ids),
       peer_access_enabled_(peer_access_enabled),
       cancel_(std::move(cancel)),
-      parent_(parent) {}
+      parent_key_(std::move(parent_key)) {}
 
 std::optional<GpuDeviceCommunicator*> GpuClique::device_comm(
     RankId rank, const GpuDeviceCommunicator::Requirements& reqs) const {
@@ -122,6 +125,21 @@ void GpuClique::Cancel() {
 
 bool GpuClique::IsCancelled() const { return cancel_->IsCancelled(); }
 
+void GpuClique::ReleaseSymmetricMemory(LocalDeviceId device_id,
+                                       se::DeviceAddressBase addr) {
+  ForEachComm([&](RankId rank, Communicator* comm) {
+    auto* gpu_comm = dynamic_cast<GpuCommunicator*>(comm);
+    if (gpu_comm == nullptr) {
+      return;
+    }
+    se::StreamExecutor* executor = gpu_comm->stream_executor();
+    if (executor != nullptr &&
+        executor->device_ordinal() == device_id.value()) {
+      gpu_comm->ReleaseSymmetricMemory(addr);
+    }
+  });
+}
+
 std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
   return absl::StrFormat("lockable clique %v", clique.key());
 }
@@ -130,9 +148,9 @@ LockableGpuClique::LockableGpuClique(
     GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
     bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
-    const GpuClique* parent)
+    std::optional<GpuCliqueKey> parent_key)
     : Lockable(std::move(clique_key), clique_ids, std::move(communicators),
-               peer_access_enabled, std::move(cancel), parent) {}
+               peer_access_enabled, std::move(cancel), std::move(parent_key)) {}
 
 absl::Status LockableGpuClique::HealthCheck() const {
   return value().HealthCheck();
@@ -144,9 +162,9 @@ void LockableGpuClique::Cancel() { mutable_value().Cancel(); }
 
 bool LockableGpuClique::IsParentSupersetOf(
     const GpuCliqueKey& clique_key) const {
-  const GpuClique* p = this->value().parent();
-  if (p == nullptr) return false;
-  return clique_key.IsSubsetOf(p->key());
+  const std::optional<GpuCliqueKey>& parent_key = this->value().parent_key();
+  if (!parent_key.has_value()) return false;
+  return clique_key.IsSubsetOf(*parent_key);
 }
 
 std::string LockableGpuClique::DebugString() const {

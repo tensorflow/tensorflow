@@ -35,6 +35,7 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/LibraryOptionsContext.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
@@ -63,8 +64,6 @@ namespace tensorflow {
 namespace kernel_gen {
 namespace {
 
-static llvm::codegen::RegisterCodeGenFlags CGF;
-
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     llvm::StringRef host_triple, llvm::Module* module) {
   llvm::Triple triple(module->getTargetTriple());
@@ -84,11 +83,27 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     return nullptr;
   }
 
-  llvm::TargetOptions target_options =
-      llvm::codegen::InitTargetOptionsFromCodeGenFlags(llvm::Triple());
+  llvm::TargetOptions target_options = llvm::codegen::getTargetOptions(
+      llvm::cl::LibraryOptionsContext(), llvm::Triple());
+  // getTargetOptions() stores the address of its (temporary) context in
+  // MCOptions.LibraryOptions. Reset it so that LLVM reads the global options
+  // instead of a dangling pointer.
+  target_options.MCOptions.LibraryOptions = nullptr;
   return std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
       triple, "generic", "", target_options, llvm::Reloc::Model::PIC_));
 }
+
+// Makes the global command-line parser accept the CodeGen tool options, which
+// LLVM declares in TableGen instead of registering them as cl::opt.
+struct RegisterCodeGenToolOptions {
+  RegisterCodeGenToolOptions() {
+    for (const llvm::cl::LibraryOptions* options :
+         llvm::codegen::getToolOptions()) {
+      llvm::cl::addLibraryOptions(*options);
+    }
+  }
+};
+static RegisterCodeGenToolOptions CGTO;
 
 // Compiles the given MLIR module via LLVM into an executable binary format.
 absl::StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,

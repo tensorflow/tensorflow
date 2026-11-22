@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/backends/autotuner/in_memory_store.h"
+#include "xla/backends/gpu/autotuner/autotuner_cache.h"
 #include "xla/backends/gpu/tests/multi_process_gpu_test_base.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -362,10 +362,10 @@ TEST_P(InterProcessCollectiveInitTest, EagerInit) {
   ASSERT_EQ(custom_client->addressable_device_count(), 1);
   ASSERT_EQ(custom_client->device_count(), num_ranks());
 
-  auto* se_client = absl::down_cast<CommonPjRtClientImpl*>(custom_client.get());
+  auto* se_client = absl::down_cast<CommonPjRtClient*>(custom_client.get());
   ASSERT_NE(se_client, nullptr);
   auto* raw_client =
-      absl::down_cast<PjRtStreamExecutorRawClient*>(se_client->raw_client());
+      se_client->raw_client()->down_cast<PjRtStreamExecutorRawClient>();
   ASSERT_OK_AND_ASSIGN(
       LocalDeviceState * local_device_state,
       raw_client->GetLocalDeviceState(
@@ -488,9 +488,9 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
     debug_options.set_xla_gpu_cublas_fallback(false);
 
     if (rank() < param.num_nodes_using_cache) {
-      debug_options.set_xla_gpu_experimental_autotune_cache_mode(
+      debug_options.set_xla_autotune_cache_mode(
           DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
-      debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir);
+      debug_options.set_xla_autotune_cache_dir(cache_dir);
     }
 
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,

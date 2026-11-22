@@ -110,14 +110,14 @@ mkdir -p "$TFCI_OUTPUT_DIR"
 exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 
 # Setup tfrun, a helper function for executing steps that can either be run
-# locally or run under Docker. setup_docker.sh, below, redefines it as "docker
-# exec".
+# locally or run under Docker. setup_docker.sh, below, redefines _tfrun_exec as
+# "docker exec".
 # Important: "tfrun foo | bar" is "( tfrun foo ) | bar", not "tfrun (foo | bar)".
 # Therefore, "tfrun" commands cannot include pipes -- which is
 # probably for the better. If a pipe is necessary for something, it is probably
 # complex. Write a well-documented script under utilities/ to encapsulate the
 # functionality instead.
-tfrun() { "$@"; }
+_tfrun_exec() { "$@"; }
 
 if [[ $(uname -s) = MSYS_NT* ]]; then
   source ./ci/official/utilities/windows.sh
@@ -134,6 +134,21 @@ if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
     source ./ci/official/utilities/setup_docker.sh
   fi
 fi
+tfrun() {
+  if [[ "${1:-}" == "bazel" && ( "${*:2}" =~ (^|[[:space:]])(build|test)([[:space:]]|$) ) ]]; then
+    local attempt rc=0 max_attempts=$(( ${TFCI_BAZEL_COMMAND_RETRIES:-0} + 1 ))
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+      _tfrun_exec "$@" && return 0 || rc=$?
+      # Do not retry non-transient exit codes: 2 (CLI error), 3 (tests failed),
+      # 4 (no tests found), or 8 (interrupted).
+      if (( attempt >= max_attempts || rc == 2 || rc == 3 || rc == 4 || rc == 8 )); then
+        return "$rc"
+      fi
+      echo "==TFCI==: Bazel failed (exit ${rc}, attempt ${attempt}/${max_attempts}); retrying..." >&2
+    done
+  fi
+  _tfrun_exec "$@"
+}
 
 # Generate an overview page describing the build
 if [[ "$TFCI_INDEX_HTML_ENABLE" == 1 ]]; then

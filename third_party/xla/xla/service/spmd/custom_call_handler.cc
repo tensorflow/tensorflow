@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -469,18 +470,22 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
 
   HloInstruction* rotated1 = rotate_with_padding(
       (amount + right_padding) % (shard_size * participating_shards));
+  PrimitiveType offset_type = (shard_size * hlo->sharding().dimension(dim) >=
+                               std::numeric_limits<int32_t>::max())
+                                  ? S64
+                                  : S32;
   HloInstruction* shard_offset = MakePartitionOffsets(
       hlo->shape(), hlo->sharding(), MakePartitioningState().partition_id, &b_,
-      {dim})[dim];
+      offset_type, {dim})[dim];
   HloInstruction* iota = b_.AddInstruction(HloInstruction::CreateIota(
-      ShapeUtil::ChangeElementType(rotated0->shape(), S32), dim));
+      ShapeUtil::ChangeElementType(rotated0->shape(), offset_type), dim));
   HloInstruction* selection_boundary =
       b_.AddInstruction(HloInstruction::CreateBroadcast(
           iota->shape(),
           b_.AddInstruction(HloInstruction::CreateBinary(
               shard_offset->shape(), HloOpcode::kSubtract,
               b_.AddInstruction(HloInstruction::CreateConstant(
-                  LiteralUtil::CreateR0<int32_t>(amount))),
+                  LiteralUtil::CreateR0(offset_type, amount))),
               shard_offset)),
           {}));
   HloInstruction* pred = b_.AddInstruction(HloInstruction::CreateCompare(
@@ -682,10 +687,15 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
   single_element_per_device_shape.set_dimensions(dim, participating_shards);
   HloInstruction* shard_offset = MakePartitionOffsets(
       single_element_per_device_shape, element_sharding,
-      MakePartitioningState().partition_id, &b_, {dim})[dim];
+      MakePartitioningState().partition_id, &b_, S32, {dim})[dim];
 
+  PrimitiveType offset_type =
+      (full_pre_wrap_size >= std::numeric_limits<int32_t>::max() ||
+       shard_size >= std::numeric_limits<int32_t>::max())
+          ? S64
+          : S32;
   HloInstruction* zero_offset = b_.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(offset_type, 0)));
 
   HloInstruction* left_halo = nullptr;
   HloInstruction* participating_shards_minus_one_op =
@@ -733,15 +743,16 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
     } else {
       HloInstruction* other_offset =
           b_.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int32_t>(shard_size - left_amount)));
+              LiteralUtil::CreateR0(offset_type, shard_size - left_amount)));
       HloInstruction* last_offset = b_.AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0(
+              offset_type,
               (full_pre_wrap_size - shard_size * (participating_shards - 1)) -
-              left_amount)));
+                  left_amount)));
       HloInstruction* start_idx =
           b_.AddInstruction(HloInstruction::CreateTernary(
-              shard_offset->shape(), HloOpcode::kSelect, is_last, last_offset,
-              other_offset));
+              ShapeUtil::MakeShape(offset_type, {}), HloOpcode::kSelect,
+              is_last, last_offset, other_offset));
 
       std::vector<HloInstruction*> start_indices(
           pre_wrap_shape.dimensions().size(), zero_offset);
@@ -789,16 +800,21 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
       TF_RET_CHECK(pad_value != nullptr);
       int64_t leftover_offset =
           full_pre_wrap_size - (participating_shards - 1) * shard_size;
+      PrimitiveType index_type =
+          (full_pre_wrap_size >= std::numeric_limits<int32_t>::max() ||
+           shard_size >= std::numeric_limits<int32_t>::max())
+              ? S64
+              : S32;
       Shape index_shape =
-          ShapeUtil::ChangeElementType(local_input->shape(), S32);
+          ShapeUtil::ChangeElementType(local_input->shape(), index_type);
       HloInstruction* iota =
           b_.AddInstruction(HloInstruction::CreateIota(index_shape, dim));
       HloInstruction* limit_index =
           b_.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int32_t>(leftover_offset)));
+              LiteralUtil::CreateR0(index_type, leftover_offset)));
       HloInstruction* shard_size_const =
           b_.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int32_t>(shard_size)));
+              LiteralUtil::CreateR0(index_type, shard_size)));
       HloInstruction* true_limit_index =
           b_.AddInstruction(HloInstruction::CreateTernary(
               limit_index->shape(), HloOpcode::kSelect, is_last, limit_index,
@@ -851,17 +867,18 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
           pre_wrap_shape.dimensions().size(), zero_offset);
 
       HloInstruction* last_offset = b_.AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
-              left_amount +
-              (full_pre_wrap_size - (participating_shards - 1) * shard_size))));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0(
+              offset_type,
+              left_amount + (full_pre_wrap_size -
+                             (participating_shards - 1) * shard_size))));
       HloInstruction* other_offset =
           b_.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int32_t>(left_amount + shard_size)));
+              LiteralUtil::CreateR0(offset_type, left_amount + shard_size)));
 
       HloInstruction* start_idx =
           b_.AddInstruction(HloInstruction::CreateTernary(
-              shard_offset->shape(), HloOpcode::kSelect, is_last, last_offset,
-              other_offset));
+              ShapeUtil::MakeShape(offset_type, {}), HloOpcode::kSelect,
+              is_last, last_offset, other_offset));
 
       start_indices[dim] = start_idx;
 

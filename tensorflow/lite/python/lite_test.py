@@ -2903,6 +2903,77 @@ class QuantizationModeTest(LiteTest, parameterized.TestCase):
     self.assertIn(warning_message, log.getvalue())
     logging.root.removeHandler(handler)
 
+  @parameterized.named_parameters(
+      dict(testcase_name='dynamic_range', expect_warning=True),
+      dict(
+          testcase_name='full_integer',
+          expect_warning=True,
+          use_representative_dataset=True,
+      ),
+      dict(
+          testcase_name='float16',
+          expect_warning=True,
+          supported_types=[dtypes.float16],
+      ),
+      dict(testcase_name='float', expect_warning=False, optimizations=[]),
+      dict(
+          testcase_name='float32_target',
+          expect_warning=False,
+          supported_types=[dtypes.float32],
+      ),
+      dict(
+          testcase_name='quantization_aware_trained_model',
+          expect_warning=False,
+          quantization_aware_trained=True,
+      ),
+      dict(
+          testcase_name='quantization_aware_trained_model_with_dataset',
+          expect_warning=False,
+          quantization_aware_trained=True,
+          use_representative_dataset=True,
+      ),
+  )
+  def testPostTrainingQuantizationDeprecationWarning(
+      self,
+      expect_warning,
+      optimizations=(lite.Optimize.DEFAULT,),
+      supported_types=None,
+      use_representative_dataset=False,
+      quantization_aware_trained=False,
+  ):
+    """Test if the post-training quantization deprecation warning is logged."""
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      if quantization_aware_trained:
+        out_tensor = array_ops.fake_quant_with_min_max_args(
+            out_tensor, min=0., max=1.)
+      sess = session.Session()
+
+    def representative_dataset():
+      for _ in range(2):
+        yield [np.random.uniform(size=(1, 16, 16, 3)).astype(np.float32)]
+
+    converter = lite.TFLiteConverter.from_session(
+        sess, [in_tensor], [out_tensor])
+    converter.optimizations = list(optimizations)
+    if supported_types is not None:
+      converter.target_spec.supported_types = supported_types
+    if use_representative_dataset:
+      converter.representative_dataset = representative_dataset
+
+    log = io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    try:
+      self.assertIsNotNone(converter.convert())
+    finally:
+      logging.root.removeHandler(handler)
+    # pylint: disable=protected-access
+    warning = lite._POST_TRAINING_QUANTIZATION_DEPRECATION_WARNING
+    self.assertEqual(log.getvalue().count(warning), 1 if expect_warning else 0)
+
 
 class FlatbufferMlirTranslationTest(TestModels):
 

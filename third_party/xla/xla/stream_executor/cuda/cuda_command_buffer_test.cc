@@ -43,6 +43,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/command_buffer_kernels.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/device_address.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor::cuda {
 namespace {
@@ -67,6 +70,7 @@ namespace {
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::Each;
+using ::testing::NotNull;
 
 static Platform* CudaPlatform() {
   auto name = absl::AsciiStrToUpper(
@@ -319,6 +323,37 @@ TEST_F(CudaCommandBufferTest, LaunchClusterKernelWithClusterDimsSucceeds) {
   ASSERT_OK(stream->BlockHostUntilDone());
 }
 
+TEST_F(CudaCommandBufferTest, LaunchWithNonPortableClusterSizeSucceeds) {
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Requires at least a Hopper GPU.";
+  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+  KernelLoaderSpec spec = stream_executor::gpu::GetMinimalClusterKernelSpec();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                       executor->LoadKernel(spec));
+  DeviceAddress<uint8_t> dummy = executor->AllocateArray<uint8_t>(256);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+  // Clusters larger than 8 blocks need the non-portable cluster attribute.
+  ASSERT_OK_AND_ASSIGN(
+      const CommandBuffer::Command* cmd,
+      cmd_buffer->CreateLaunch(ThreadDim(128, 1, 1), BlockDim(16, 1, 1),
+                               ClusterDim{16, 1, 1}, *kernel,
+                               *stream_executor::PackKernelArgs(
+                                   /*shmem_bytes=*/0, dummy),
+                               {}));
+  ASSERT_NE(cmd, nullptr);
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+}
+
 TEST_F(CudaCommandBufferTest, LaunchHostCallback) {
   Platform* platform = CudaPlatform();
   ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
@@ -346,61 +381,6 @@ TEST_F(CudaCommandBufferTest, LaunchHostCallback) {
   ASSERT_OK(cmd_buffer->Submit(stream.get()));
   ASSERT_OK(stream->BlockHostUntilDone());
   EXPECT_EQ(counter, 2);
-}
-
-TEST_F(CudaCommandBufferTest, MemcpyH2D2H) {
-  Platform* platform = CudaPlatform();
-  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                       platform->ExecutorForDevice(0));
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
-                       executor->CreateStream());
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
-                       executor->CreateCommandBuffer(primary));
-  DeviceAddress<int32_t> device_buf = executor->AllocateArray<int32_t>(1);
-
-  int32_t src = 123;
-  ASSERT_OK_AND_ASSIGN(
-      const CommandBuffer::Command* h2d_cmd,
-      cmd_buffer->CreateMemcpyH2D(&device_buf, &src, sizeof(int32_t), {}));
-  ASSERT_NE(h2d_cmd, nullptr);
-
-  int32_t dst = 0;
-  ASSERT_OK_AND_ASSIGN(const CommandBuffer::Command* d2h_cmd,
-                       cmd_buffer->CreateMemcpyD2H(&dst, device_buf,
-                                                   sizeof(int32_t), {h2d_cmd}));
-  ASSERT_NE(d2h_cmd, nullptr);
-
-  ASSERT_OK(cmd_buffer->Finalize());
-  ASSERT_OK(cmd_buffer->Submit(stream.get()));
-  ASSERT_OK(stream->BlockHostUntilDone());
-  EXPECT_EQ(dst, 123);
-
-  int32_t src2 = 456;
-  int32_t dst2 = 0;
-  ASSERT_OK(cmd_buffer->Update());
-  ASSERT_OK(cmd_buffer->UpdateMemcpyH2D(h2d_cmd, &device_buf, &src2,
-                                        sizeof(int32_t)));
-  ASSERT_OK(
-      cmd_buffer->UpdateMemcpyD2H(d2h_cmd, &dst2, device_buf, sizeof(int32_t)));
-  ASSERT_OK(cmd_buffer->Finalize());
-  ASSERT_OK(cmd_buffer->Submit(stream.get()));
-  ASSERT_OK(stream->BlockHostUntilDone());
-  EXPECT_EQ(dst, 123);
-  EXPECT_EQ(dst2, 456);
-
-  DeviceAddress<int32_t> device_buf2 = executor->AllocateArray<int32_t>(1);
-  int32_t src3 = 789;
-  int32_t dst3 = 0;
-  ASSERT_OK(cmd_buffer->Update());
-  ASSERT_OK(cmd_buffer->UpdateMemcpyH2D(h2d_cmd, &device_buf2, &src3,
-                                        sizeof(int32_t)));
-  ASSERT_OK(cmd_buffer->UpdateMemcpyD2H(d2h_cmd, &dst3, device_buf2,
-                                        sizeof(int32_t)));
-  ASSERT_OK(cmd_buffer->Finalize());
-  ASSERT_OK(cmd_buffer->Submit(stream.get()));
-  ASSERT_OK(stream->BlockHostUntilDone());
-  EXPECT_EQ(dst2, 456);
-  EXPECT_EQ(dst3, 789);
 }
 
 TEST_F(CudaCommandBufferTest,
@@ -585,6 +565,50 @@ TEST_F(CudaCommandBufferTest,
   dealloc_thread.join();
   absl::RemoveLogSink(&sink);
   EXPECT_EQ(sink.capture_errors.load(), 0);
+}
+
+TEST_F(CudaCommandBufferTest, HelperKernelLoaderSpecsAreCubinsInMemory) {
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec case_spec,
+                       GetSetCaseConditionKernelLoaderSpec());
+  EXPECT_TRUE(case_spec.has_cuda_cubin_in_memory());
+  EXPECT_FALSE(case_spec.has_cuda_ptx_in_memory());
+  EXPECT_FALSE(case_spec.has_in_process_symbol());
+  EXPECT_EQ(case_spec.arity(), 13);
+
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec while_spec,
+                       GetSetWhileConditionKernelLoaderSpec());
+  EXPECT_TRUE(while_spec.has_cuda_cubin_in_memory());
+  EXPECT_FALSE(while_spec.has_cuda_ptx_in_memory());
+  EXPECT_FALSE(while_spec.has_in_process_symbol());
+  EXPECT_EQ(while_spec.arity(), 2);
+
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec noop_spec, GetNoOpKernelLoaderSpec());
+  EXPECT_TRUE(noop_spec.has_cuda_cubin_in_memory());
+  EXPECT_FALSE(noop_spec.has_cuda_ptx_in_memory());
+  EXPECT_FALSE(noop_spec.has_in_process_symbol());
+  EXPECT_EQ(noop_spec.arity(), 0);
+
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  EXPECT_THAT(executor->LoadKernel(case_spec), IsOkAndHolds(NotNull()));
+  EXPECT_THAT(executor->LoadKernel(while_spec), IsOkAndHolds(NotNull()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> noop_kernel,
+                       executor->LoadKernel(noop_spec));
+  ASSERT_NE(noop_kernel, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+  ASSERT_OK(cmd_buffer
+                ->CreateLaunch(ThreadDim(), BlockDim(), std::nullopt,
+                               *noop_kernel,
+                               *stream_executor::PackKernelArgs(0), {})
+                .status());
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 }  // namespace
 }  // namespace stream_executor::cuda

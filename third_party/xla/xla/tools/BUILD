@@ -20,7 +20,7 @@ load(
     "xla_py_proto_library",
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_cuda_or_rocm",
@@ -53,6 +53,14 @@ package(
 )
 
 exports_files(["data/hlo_isolation_cli_test.hlo"])
+
+exports_files(
+    [
+        "benchmarks/hlo/hlo_gemma4_2b_bf16.hlo",
+        "benchmarks/hlo/nv_maxtext_1n1g_jit_train_step_before_optimization.hlo",
+    ],
+    visibility = ["//xla/pjrt/gpu:__pkg__"],
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -171,6 +179,7 @@ xla_cc_binary(
         "//xla/client:executable_build_options",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
         "//xla/hlo/ir:hlo",
         "//xla/service",
         "//xla/service:hlo_proto_cc",
@@ -212,10 +221,11 @@ cc_library(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms:call_inliner",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
-        "//xla/service:call_inliner",
         "//xla/service:compilation_environments",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
@@ -279,15 +289,15 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/transforms:sharding_propagation",
+        "//xla/hlo/transforms/expanders:batchnorm_expander",
         "//xla/hlo/transforms/expanders:cholesky_expander",
         "//xla/hlo/transforms/expanders:rng_bit_generator_expander",
         "//xla/hlo/transforms/expanders:rng_expander",
-        "//xla/service:batchnorm_expander",
+        "//xla/hlo/transforms/expanders:triangular_solve_expander",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_verifier",
-        "//xla/service:sharding_propagation",
-        "//xla/service:triangular_solve_expander",
-        "//xla/service/spmd:stateful_rng_spmd_partitioner",
+        "//xla/service/spmd:spmd_partitioner",
         "//xla/tsl/util:command_line_flags",
     ],
 )
@@ -520,15 +530,20 @@ cc_library(
     hdrs = ["hlo_decomposer.h"],
     deps = [
         "//xla/hlo/ir:hlo",
-        "//xla/service:call_graph",
+        "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/service:compilation_environments",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@tsl//tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -720,15 +735,6 @@ xla_cc_test(
     ],
 )
 
-# This target is used to reproduce miscompiles in OSS outside of TF, and it can
-# not have any dependencies apart from the standard library.
-cc_library(
-    name = "driver",
-    srcs = ["driver.cc"],
-    tags = if_google(["nofixdeps"]),
-    deps = [],
-)
-
 cc_library(
     name = "matmul_perf_table_gen",
     srcs = ["matmul_perf_table_gen.cc"],
@@ -739,6 +745,10 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profile_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profiler_lib",
+        "//xla/backends/gpu/cost_model:hlo_op_profiles",
+        "//xla/backends/gpu/cost_model:matmul_interpolator_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/utils:hlo_query",
@@ -746,10 +756,6 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner_interface",
-        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
-        "//xla/service/gpu/model:hlo_op_profiler_lib",
-        "//xla/service/gpu/model:hlo_op_profiles",
-        "//xla/service/gpu/model:matmul_interpolator_utils",
         "//xla/stream_executor:device_description",
         "//xla/tests:test_utils",
         "//xla/tsl/platform:env",
@@ -787,9 +793,9 @@ xla_test(
     deps = [
         ":matmul_perf_table_gen",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profile_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profiler_lib",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
-        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
-        "//xla/service/gpu/model:hlo_op_profiler_lib",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
@@ -809,6 +815,7 @@ cc_library(
     deps = [
         ":matmul_perf_table_gen",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profile_proto_cc",
         "//xla/backends/gpu/target_config",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
@@ -818,7 +825,6 @@ cc_library(
         "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_runner_pjrt",
         "//xla/service:pjrt_gpu_utils",
-        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:env",
         "//xla/tsl/util:command_line_flags",
@@ -833,6 +839,7 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//xla/stream_executor:rocm_platform",  # buildcleaner: keep
     ]),
+    alwayslink = True,
 )
 
 cc_library(
@@ -843,6 +850,8 @@ cc_library(
         "//xla:comparison_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profile_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profiles",
         "//xla/backends/gpu/target_config",
         "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
         "//xla/hlo/ir:hlo",
@@ -854,8 +863,6 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:pjrt_gpu_utils",
-        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
-        "//xla/service/gpu/model:hlo_op_profiles",
         "//xla/tools/multihost_hlo_runner:create_client",
         "//xla/tools/multihost_hlo_runner:functional_hlo_runner",
         "//xla/tsl/platform:env",
@@ -884,7 +891,7 @@ xla_cc_binary(
         ":collective_perf_table_gen",
         "//xla:comparison_util",
         "//xla:xla_data_proto_cc",
-        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profile_proto_cc",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -958,9 +965,9 @@ xla_test(
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":collective_perf_table_gen",
+        "//xla/backends/gpu/cost_model:hlo_op_profile_proto_cc",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
-        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
@@ -985,7 +992,7 @@ xla_test(
     backends = [
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     tags = [
         "gpu",
@@ -996,6 +1003,8 @@ xla_test(
         ":matmul_perf_table_gen",
         ":matmul_perf_table_gen_main_lib",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profile_proto_cc",
+        "//xla/backends/gpu/cost_model:hlo_op_profiles",
         "//xla/backends/gpu/target_config",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
@@ -1004,8 +1013,6 @@ xla_test(
         "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_runner_pjrt",
         "//xla/service:pjrt_gpu_utils",
-        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
-        "//xla/service/gpu/model:hlo_op_profiles",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -1027,9 +1034,9 @@ xla_cc_binary(
     deps = [
         ":hlo_module_loader",
         "//xla:debug_options_flags",
+        "//xla/backends/gpu/cost_model:gpu_hlo_cost_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -1137,7 +1144,10 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:export_hlo",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/gpu:export_hlo",
+        "//xla/backends/gpu/autotuner:autotuner_cache",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:mlir_to_hlo",
@@ -1156,10 +1166,7 @@ cc_library(
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_symbol_repository",
-        "//xla/service/cpu:export_hlo",
-        "//xla/service/gpu:export_hlo",
         "//xla/service/gpu:gpu_symbol_repository",
-        "//xla/service/gpu/autotuning:autotuner_cache",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -1250,6 +1257,7 @@ xla_test(
         "//xla:autotune_results_proto_cc",
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/autotuner:autotuner_cache",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:hlo_module_config",
@@ -1258,7 +1266,6 @@ xla_test(
         "//xla/service:xla_compile_result_proto_cc",
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/gpu:gpu_symbol_repository",
-        "//xla/service/gpu/autotuning:autotuner_cache",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -1317,10 +1324,16 @@ xla_test(
     deps = [
         ":hlo_decomposer_lib",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:hlo_verifier",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1395,9 +1408,9 @@ xla_cc_binary(
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/cost_model:gpu_hlo_cost_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",

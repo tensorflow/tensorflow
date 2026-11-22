@@ -315,15 +315,6 @@ static absl::StatusOr<Offset::Expr> BuildOffsetExpr(
   }
 }
 
-static std::optional<DynamicSliceConfig> ExtractDynamicSliceConfig(
-    const HloInstruction* instr) {
-  auto config = instr->backend_config<GpuBackendConfig>();
-  if (!config.ok() || !config->has_dynamic_slice_config()) {
-    return std::nullopt;
-  }
-  return config->dynamic_slice_config();
-}
-
 static absl::Status VerifyArgCount(const Offset::Expr& expr,
                                    absl::Span<const Offset::Expr> args,
                                    size_t expected) {
@@ -524,20 +515,31 @@ const HloInstruction* DynamicSliceFusion::FindHero(const HloComputation* body) {
   return nullptr;
 }
 
-static std::optional<DynamicSliceConfig> ComputeStaticSliceConfig(
-    const HloSliceInstruction* slice) {
-  auto byte_strides = ShapeUtil::ByteStrides(slice->operand(0)->shape());
-  if (!byte_strides.has_value()) {
+std::optional<DynamicSliceConfig> DynamicSliceFusion::ResolveSliceConfig(
+    const HloInstruction* instr) {
+  if (const auto* slice = DynCast<HloSliceInstruction>(instr)) {
+    auto byte_strides = ShapeUtil::ByteStrides(slice->operand(0)->shape());
+    if (!byte_strides.has_value()) {
+      return std::nullopt;
+    }
+    int64_t byte_offset = 0;
+    for (int64_t dim = 0; dim < slice->shape().dimensions().size(); ++dim) {
+      byte_offset += slice->slice_starts(dim) * (*byte_strides)[dim];
+    }
+    DynamicSliceConfig config;
+    config.mutable_linear()->set_byte_offset(byte_offset);
+    config.mutable_linear()->set_byte_stride(0);
+    return config;
+  }
+  if (!HloPredicateIsOp<HloOpcode::kDynamicSlice,
+                        HloOpcode::kDynamicUpdateSlice>(instr)) {
     return std::nullopt;
   }
-  int64_t byte_offset = 0;
-  for (int64_t dim = 0; dim < slice->shape().dimensions().size(); ++dim) {
-    byte_offset += slice->slice_starts(dim) * (*byte_strides)[dim];
+  auto config = instr->backend_config<GpuBackendConfig>();
+  if (!config.ok() || !config->has_dynamic_slice_config()) {
+    return std::nullopt;
   }
-  DynamicSliceConfig config;
-  config.mutable_linear()->set_byte_offset(byte_offset);
-  config.mutable_linear()->set_byte_stride(0);
-  return config;
+  return config->dynamic_slice_config();
 }
 
 // Resolves per-dimension offset expressions of a DS/DUS. Returns one
@@ -583,7 +585,8 @@ ResolveOneResultChain(const HloInstruction* start, const Shape& hero_shape,
     return std::nullopt;
   }
 
-  std::optional<DynamicSliceConfig> config = ExtractDynamicSliceConfig(dus);
+  std::optional<DynamicSliceConfig> config =
+      DynamicSliceFusion::ResolveSliceConfig(dus);
 
   const HloInstruction* target = WalkThroughBitcasts(dus->operand(0));
   auto* target_param = DynCast<HloParameterInstruction>(target);
@@ -640,12 +643,12 @@ DynamicSliceFusion::ResolveParameter(const HloInstruction* operand,
   Shape slice_shape = operand->shape();
 
   if (auto* ds = DynCast<HloDynamicSliceInstruction>(walk)) {
-    config = ExtractDynamicSliceConfig(ds);
+    config = ResolveSliceConfig(ds);
     ABSL_ASSIGN_OR_RETURN(offsets, ResolveOffsets(ds, offset_resolution));
     slice_shape = ds->shape();
     source = ds->operand(0);
   } else if (auto* slice = DynCast<HloSliceInstruction>(walk)) {
-    config = ComputeStaticSliceConfig(slice);
+    config = ResolveSliceConfig(slice);
     slice_shape = slice->shape();
     source = slice->operand(0);
   }

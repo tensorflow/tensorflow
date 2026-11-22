@@ -44,3 +44,45 @@ func.func private @add(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK:  ENTRY
 // CHECK:       %[[CALL:.*]] = f32[] call
 // CHECK-SAME:  frontend_attributes={_xla_compute_type="dense"}
+
+// -----
+
+// Tests that the get-tuple-elements unpacking a multi-result call do not
+// inherit the call-boundary stream annotation,
+// while other frontend attributes are still propagated to them.
+
+func.func @main(%arg0: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+  %0:2 = call @two_results(%arg0) {mhlo.frontend_attributes = {_xla_stream_annotation = "locality_domain:0", inlineable = "false", _xla_compute_type = "dense"}} : (tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>)
+  func.return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
+}
+func.func private @two_results(%arg0: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+  %0 = mhlo.add %arg0, %arg0 : tensor<4xf32>
+  %1 = mhlo.multiply %arg0, %arg0 : tensor<4xf32>
+  return %0, %1 : tensor<4xf32>, tensor<4xf32>
+}
+
+// CHECK:      ENTRY
+// CHECK:      %[[CALL:.*]] = (f32[4], f32[4]) call
+// CHECK-SAME: frontend_attributes={_xla_compute_type="dense",_xla_stream_annotation="locality_domain:0",inlineable="false"}
+// CHECK-DAG:  get-tuple-element(%[[CALL]]), index=0, frontend_attributes={_xla_compute_type="dense",inlineable="false"}
+// CHECK-DAG:  get-tuple-element(%[[CALL]]), index=1, frontend_attributes={_xla_compute_type="dense",inlineable="false"}
+
+// -----
+
+// Tests that a regular stream annotation is also kept only on the call.
+
+func.func @main(%arg0: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+  %0:2 = call @two_results(%arg0) {mhlo.frontend_attributes = {_xla_stream_annotation = "1", inlineable = "false"}} : (tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>)
+  func.return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
+}
+func.func private @two_results(%arg0: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+  %0 = mhlo.add %arg0, %arg0 : tensor<4xf32>
+  %1 = mhlo.multiply %arg0, %arg0 : tensor<4xf32>
+  return %0, %1 : tensor<4xf32>, tensor<4xf32>
+}
+
+// CHECK:      ENTRY
+// CHECK:      %[[CALL:.*]] = (f32[4], f32[4]) call
+// CHECK-SAME: frontend_attributes={_xla_stream_annotation="1",inlineable="false"}
+// CHECK-DAG:  get-tuple-element(%[[CALL]]), index=0, frontend_attributes={inlineable="false"}
+// CHECK-DAG:  get-tuple-element(%[[CALL]]), index=1, frontend_attributes={inlineable="false"}

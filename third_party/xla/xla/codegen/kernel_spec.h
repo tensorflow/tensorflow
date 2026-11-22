@@ -20,16 +20,15 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 
 namespace xla {
@@ -51,6 +50,8 @@ class KernelSpec {
              Buffers argument_buffers, Buffers result_buffers,
              absl::flat_hash_set<int64_t> invariant_arguments,
              std::optional<size_t> scratch_bytes = std::nullopt);
+
+  virtual ~KernelSpec() = default;
 
   // Get the backend specific name of the kernel. This may be used to identify
   // the kernel in the backend specific runtime.

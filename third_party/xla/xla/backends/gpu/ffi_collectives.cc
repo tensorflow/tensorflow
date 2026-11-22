@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -35,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/collectives_c_api.h"
@@ -182,9 +185,15 @@ absl::Status CommunicatorGetImpl(const XLA_FFI_Collectives_Extension* self,
   if (args == nullptr) {
     return InvalidArgument("XLA_FFI_Communicator_Get_Args is null");
   }
+  constexpr size_t kV02ArgSize =
+      XLA_FFI_STRUCT_SIZE(XLA_FFI_Communicator_Get_Args, communicator);
+  constexpr size_t kV03ArgSize =
+      XLA_FFI_STRUCT_SIZE(XLA_FFI_Communicator_Get_Args, size);
+  const size_t required_size =
+      args->struct_size <= kV02ArgSize ? kV02ArgSize : kV03ArgSize;
   ABSL_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "XLA_FFI_Communicator_Get_Args",
-      XLA_FFI_Communicator_Get_Args_STRUCT_SIZE, args->struct_size));
+      "XLA_FFI_Communicator_Get_Args", required_size, args->struct_size));
+  const bool has_rank_info = args->struct_size >= kV03ArgSize;
 
   GpuCollectivesState* state = AsState(self);
   if (state == nullptr || state->collective_params == nullptr) {
@@ -200,17 +209,30 @@ absl::Status CommunicatorGetImpl(const XLA_FFI_Collectives_Extension* self,
   ABSL_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
                    GetCliqueKey(*state->collective_params, args->group_mode,
                                 replica_groups, args->communication_id));
+  GlobalDeviceId device_id = state->collective_params->global_device_id;
+  std::optional<RankId> rank = clique_key.rank(device_id);
+  if (!rank.has_value()) {
+    return InvalidArgument("Rank not found for device %v", device_id);
+  }
   ABSL_ASSIGN_OR_RETURN(GpuCommunicator * comm,
-                   state->collective_cliques->GetComm(
-                       clique_key, state->collective_params->global_device_id));
+                   state->collective_cliques->GetComm(clique_key, *rank));
 
   PlatformCommunicatorHandle platform_comm = comm->platform_comm();
   if (platform_comm.handle == nullptr) {
     return Unimplemented("Platform communicator handle is not available");
   }
+  if (has_rank_info &&
+      clique_key.num_devices() >
+          static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    return absl::OutOfRangeError("Communicator size exceeds int32 range");
+  }
 
   args->communicator =
       reinterpret_cast<XLA_FFI_Communicator*>(platform_comm.handle);
+  if (has_rank_info) {
+    args->rank = static_cast<int32_t>(rank->value());
+    args->size = static_cast<int32_t>(clique_key.num_devices());
+  }
   return absl::OkStatus();
 }
 

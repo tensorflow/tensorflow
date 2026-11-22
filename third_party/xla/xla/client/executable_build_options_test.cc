@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/client/executable_build_options.h"
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -43,6 +45,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::HasSubstr;
 using ::tsl::proto_testing::EqualsProto;
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
@@ -146,6 +149,18 @@ TEST(ExecutableBuildOptionsTest, GpuTopologyOption) {
                        ExecutableBuildOptionsFromProto(proto));
   ASSERT_TRUE(options_from_proto.gpu_topology().has_value());
   EXPECT_EQ(*options_from_proto.gpu_topology(), topology);
+}
+
+TEST(ExecutableBuildOptionsTest, InvalidDeviceOrdinal) {
+  for (int64_t bad_ordinal :
+       {int64_t{-2},
+        static_cast<int64_t>(std::numeric_limits<int>::max()) + 1}) {
+    ExecutableBuildOptionsProto p;
+    p.set_device_ordinal(bad_ordinal);
+    EXPECT_THAT(ExecutableBuildOptionsFromProto(p),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                         HasSubstr("device_ordinal")));
+  }
 }
 
 }  // namespace

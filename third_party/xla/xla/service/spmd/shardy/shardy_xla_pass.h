@@ -34,11 +34,9 @@ class ShardyXLA : public xla::HloModulePass {
  public:
   explicit ShardyXLA(bool runSdyShardingPropagation = true,
                      mlir::sdy::PropagationOptions propagationOptions =
-                         mlir::sdy::PropagationOptions{},
-                     bool enableNativeNonFlatSupport = false)
+                         mlir::sdy::PropagationOptions{})
       : runSdyShardingPropagation(runSdyShardingPropagation),
-        propagationOptions(propagationOptions),
-        enableNativeNonFlatSupport(enableNativeNonFlatSupport) {}
+        propagationOptions(propagationOptions) {}
 
   absl::string_view name() const override { return "shardy-xla"; }
 
@@ -50,10 +48,6 @@ class ShardyXLA : public xla::HloModulePass {
  private:
   bool runSdyShardingPropagation;
   mlir::sdy::PropagationOptions propagationOptions;
-  // Whether to propagate shardings directly on a non-flat graph without
-  // flattening it. The default is false, meaning it will flatten the graph and
-  // then propagate.
-  bool enableNativeNonFlatSupport;
   // TODO. Run other SDY passes with flags.
 };
 

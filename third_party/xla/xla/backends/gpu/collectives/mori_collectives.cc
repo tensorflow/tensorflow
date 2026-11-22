@@ -145,8 +145,7 @@ absl::Status MoriCollectives::InitPe(size_t rank, size_t nranks,
   // With the sizes validated above, the facade for this device owns `comm` by
   // the time Create can fail, so `comm` must not be destroyed here.
   XLA_MORI_RETURN_IF_ERROR(
-      CollectivesFacade::Create(comm, rank, nranks, pool_size_bytes,
-                                max_staging_bytes),
+      CollectivesFacade::Create(comm, pool_size_bytes, max_staging_bytes),
       "Failed to create CollectivesFacade");
 
   VLOG(1) << "Initialized MORI PE rank " << rank << " of " << nranks;
@@ -218,14 +217,14 @@ MoriCollectives::CreateCommunicatorsWithCancel(
     }
 
     // Map each collective rank to its global MORI PE. In the single-process
-    // eager-init path the MORI PE equals the global device ordinal.
+    // eager-init path the MORI PE equals the global device ordinal. Only
+    // contiguous PE ranges are supported (see MoriCommunicator::Create).
     std::vector<int> rank_to_pe;
     rank_to_pe.reserve(clique_key.devices().size());
     for (GlobalDeviceId d : clique_key.devices()) {
       rank_to_pe.push_back(static_cast<int>(d.value()));
     }
-    return MoriCommunicator::Create(this, cancel, ranks[i].rank.value(),
-                                    rank_to_pe);
+    return MoriCommunicator::Create(cancel, ranks[i].rank.value(), rank_to_pe);
   };
 
   // Create all communicators. Each communicator is created on its own thread.

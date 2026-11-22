@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 
 namespace tensorflow {
@@ -29,9 +30,25 @@ IfrtServingCoreSelector::IfrtServingCoreSelector(
     : device_selector_(device_selector), num_cores_(num_cores) {}
 
 tsl::DeviceReservation IfrtServingCoreSelector::ReserveDevice(
-    int64_t program_id) {
+    int64_t program_id, absl::Span<const int> candidate_cores) {
   absl::MutexLock lock(mu_);
   int64_t run_count = run_counter_[program_id]++;
+
+  if (!candidate_cores.empty()) {
+    // If run_count is less than the number of candidate cores, we use run_count
+    // as index to iterate through all the candidate cores, so that the
+    // program can get warmed up on all the candidate cores when there are
+    // enough warmup requests. The selector is set to nullptr, since this
+    // `DeviceReservation` isn't made through the selector.
+    if (run_count < candidate_cores.size()) {
+      return tsl::DeviceReservation(candidate_cores[run_count],
+                                    /*selector=*/nullptr);
+    }
+
+    return device_selector_->ReserveDevice(absl::StrCat(program_id),
+                                           candidate_cores);
+  }
+
   if (run_count < num_cores_) {
     // If run_count is less than the number of TPU cores, we use run_count
     // as device index to iterate through all the TPU cores for the given

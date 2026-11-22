@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
@@ -216,6 +217,9 @@ Status ModularFileSystem::GetMatchingPaths(const std::string& pattern,
       plugin_memory_free_(matches[i]);
     }
     plugin_memory_free_(matches);
+    // Plugins can return matches in any order, so sort them like the other
+    // file systems do.
+    absl::c_sort(*result);
   }
 
   return StatusFromTF_Status(plugin_status.get());

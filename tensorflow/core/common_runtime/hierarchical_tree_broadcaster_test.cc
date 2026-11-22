@@ -48,7 +48,7 @@ namespace {
 // need the heavy-weight HierarchicalTreeBroadcasterTest fixture.
 class TrivialTest : public ::testing::Test {
  protected:
-  TrivialTest() {}
+  TrivialTest() = default;
 };
 
 // Tests of static TreeSendTo() and TreeRecvFrom() functions.

@@ -1,0 +1,30 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: gpu_test_correctness %s
+
+keep_current {
+  ROOT %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+}
+scatter {
+  %operand = f32[10,5]  parameter(0)
+  %indices = s32[3,1] constant({{1}, {3}, {5}})
+  %update = f32[3,2,3] parameter(1)
+
+  ROOT %scatter = f32[10,5] scatter(
+      f32[10,5] %operand,
+      s32[3,1] %indices,
+      f32[3,2,3] %update
+    ),
+    update_window_dims={1,2},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0},
+    index_vector_dim=1,
+    unique_indices=false,
+    to_apply=keep_current
+}
+// The combiner returns the current element, so nothing may be stored.
+// CHECK-LABEL: func.func @main(
+// CHECK-NOT: xla.atomic_store
+// CHECK-NOT: xla.atomic_rmw
+// CHECK: return

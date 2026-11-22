@@ -72,6 +72,19 @@ alias(
 )
 
 tf_cc_test(
+    name = "webp_io_test",
+    srcs = ["webp_io_test.cc"],
+    data = ["//tensorflow/core/lib/webp/testdata:webp_testdata"],
+    deps = [
+        ":webp_io",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/platform:test",
+    ],
+)
+
+tf_cc_test(
     name = "webp_io_benchmark",
     srcs = ["webp_io_benchmark.cc"],
     data = ["//tensorflow/core/lib/webp/testdata:webp_testdata"],

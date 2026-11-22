@@ -16,14 +16,28 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSLATE_HLO_TO_MHLO_STACK_LOCATION_UTILS_H_
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_STACK_LOCATION_UTILS_H_
 
+#include <cstdint>
+
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 
 namespace mlir {
 namespace hlo {
+
+// Returns a FileLineColRange when `end_line` and `end_column` specify a
+// non-empty range distinct from (`start_line`, `start_column`), or a single
+// FileLineColLoc at (`start_line`, `start_column`) otherwise.
+mlir::Location GetFileLineColLocOrRange(mlir::MLIRContext* context,
+                                        llvm::StringRef file_name,
+                                        int32_t start_line,
+                                        int32_t start_column, int32_t end_line,
+                                        int32_t end_column);
+
 // Construct MLIR location from frame index.
 // Returns unknown location if frame is not presented.
 // frame_locations, when given, memoizes the location of every frame of

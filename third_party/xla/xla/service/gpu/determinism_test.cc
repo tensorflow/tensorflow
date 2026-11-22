@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/gpu/autotuner/autotuner_cache.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/literal.h"
-#include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/mock_stream_executor.h"
@@ -173,7 +173,7 @@ class DeterminismTest : public HloPjRtGpuTestBase {
 };
 
 TEST_F(DeterminismTest, CublasLtDot) {
-  debug_options_.clear_xla_gpu_experimental_autotune_backends();
+  debug_options_.clear_xla_config_assigner_backends();
   if (IsRocm()) {
     if (!HasHipblasLt()) {
       GTEST_SKIP() << "No hipblas-lt support on this architecture!";
@@ -181,7 +181,7 @@ TEST_F(DeterminismTest, CublasLtDot) {
   }
   auto backend =
       IsRocm() ? autotuner::Backend::HIPBLASLT : autotuner::Backend::CUBLASLT;
-  debug_options_.add_xla_gpu_experimental_autotune_backends(backend);
+  debug_options_.add_xla_config_assigner_backends(backend);
 
   constexpr absl::string_view kHloText = R"hlo(
 ENTRY e {

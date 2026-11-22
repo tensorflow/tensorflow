@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -41,6 +43,11 @@ limitations under the License.
 #include "xla/shape.h"
 
 namespace xla::gpu {
+
+// Scan dimensions up to this size are covered by a single row-local tile
+// without a sequential loop; PriorityFusion relies on this invariant to fuse
+// arbitrary row-wise producers (such as a softmax) into the scan fusion.
+inline constexpr int64_t kMaxRowLocalScanDimSize = 128;
 
 // TilingSpace holds information about all tiling parameters of a fusion.
 //
@@ -64,6 +71,19 @@ class TilingSpace {
   TilingSpace& operator=(const TilingSpace&) = delete;
 
   enum class DimensionSemantics { kParallel, kSequential, kReplica };
+  enum class PeerIndexing {
+    // Each peer owns a contiguous shard of the root dimension; the root tile
+    // offset strides across shards (`tid * ts * R + rid * ts`), e.g.
+    // reduce-scatter.
+    kStridedWithinShard,
+    // Each peer owns a separate output buffer; the root tile covers a single
+    // shard (`[0, dim_size / R)`), e.g. two-shot all-gather.
+    kPerPeerBuffer,
+  };
+  struct PeerDimInfo {
+    TiledDimId dim_id;
+    PeerIndexing mode;
+  };
   struct DimensionInfo {
     // Unique ID for the dimension within the tiling space.
     TiledDimId id;
@@ -91,12 +111,9 @@ class TilingSpace {
     // Tile size for the dimension.
     std::optional<int64_t> tile_size;
 
-    // If this dimension is partitioned across peers (e.g. the scatter
-    // dimension of a reduce-scatter), the ID of the associated `kReplica`
-    // dimension. When set, the root tile offset along this dimension is split
-    // into an intra-shard tile index (`id`, with `dimension_size / (tile_size
-    // * R)` tiles) and a peer index (`*replica_dim`, with `R` values).
-    std::optional<TiledDimId> replica_dim;
+    // If this dimension is partitioned across peers, the associated `kReplica`
+    // dimension and how peers index into the root.
+    std::optional<PeerDimInfo> peer_dim;
 
     std::string ToString() const;
   };
@@ -167,8 +184,12 @@ class TilingSpace {
   const DimensionInfo& GetDimensionInfo(const HloInstruction& hlo,
                                         int64_t dim_position) const;
 
+  // Returns true if (`hlo`, `dim_position`) has a linked `kReplica` dimension
+  // with `PeerIndexing::kPerPeerBuffer`.
+  bool HasPerPeerBuffer(const HloInstruction& hlo, int64_t dim_position) const;
+
   // Returns the number of tiles along `dim` after tile sizes have been
-  // assigned. For a dimension associated with a `replica_dim`, this is the
+  // assigned. For a dimension associated with a `peer_dim`, this is the
   // number of intra-peer tiles (`CeilOfRatio(dimension_size, tile_size * R)`).
   int64_t GetNumTiles(const DimensionInfo& dim) const;
 
@@ -244,12 +265,19 @@ class TilingSpace {
       const llvm::SmallVector<SymbolicExpr>& expressions,
       llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {}) const;
 
-  // Returns the list of valid tilings for the tiling space. If
-  // `tile_reduction_dimensions` is set, tile sizes for the sequential
-  // dimensions of reduces are enumerated too; otherwise each of them is covered
-  // by a single tile of the dimension size.
+  using TileSizesForDimFn =
+      absl::FunctionRef<absl::StatusOr<std::vector<int64_t>>(
+          const DimensionInfo&)>;
+
+  // Returns the list of valid tilings for the tiling space, using
+  // `get_valid_tile_sizes_for_dim` to obtain the candidate tile sizes for each
+  // dimension.
   absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings(
-      bool tile_reduction_dimensions = false);
+      TileSizesForDimFn get_valid_tile_sizes_for_dim);
+
+  // Overload of `GetValidTilings` that enumerates all power-of-two tile sizes
+  // up to the dimension size for each dimension.
+  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
 
  private:
   absl::Status InitializeDimensions(
@@ -259,10 +287,13 @@ class TilingSpace {
 
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
-  void ProcessReduceScatter(const HloInstruction& hlo);
+  // Registers a `kReplica` dimension per output and links it to `peer_dim`.
+  absl::Status AddReplicaDimensions(const HloInstruction& hlo, int64_t peer_dim,
+                                    PeerIndexing mode);
   // Marks the scan dimension as sequential; fails if it cannot be located.
   absl::Status ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
+  absl::Status ProcessGather(const HloInstruction& hlo);
   void ProcessGetTupleElement(const HloInstruction& hlo);
   // Propagates dimensions to the operands of an elementwise instruction, also
   // across the producer-consumer fusion boundary, so that a scan in the
@@ -341,30 +372,21 @@ int64_t GetResultDimensionOffset(const HloInstruction& hlo,
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
     const TilingSpace& tiling_space);
 
-}  // namespace xla::gpu
+// Returns the power-of-two tile sizes in `[min_tile_size, dim_size)` that are
+// at most `max_tile_size`, plus `dim_size` itself.
+absl::StatusOr<std::vector<int64_t>> GetPowerOf2TileSizesInRange(
+    int64_t dim_size, int64_t min_tile_size = 1,
+    int64_t max_tile_size = std::numeric_limits<int64_t>::max());
 
-namespace xla::gpu::experimental {
-using ::xla::gpu::GetFirstShape;
-using ::xla::gpu::GetResultDimensionOffset;
-using ::xla::gpu::GetTileSizeReplacementMap;
-using ::xla::gpu::IsIndexWiseVariadic;
-using ::xla::gpu::TilingSpace;
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu
 
 namespace xla {
 using ::xla::gpu::GetFirstShape;
+using ::xla::gpu::GetPowerOf2TileSizesInRange;
 using ::xla::gpu::GetResultDimensionOffset;
 using ::xla::gpu::GetTileSizeReplacementMap;
 using ::xla::gpu::IsIndexWiseVariadic;
 using ::xla::gpu::TilingSpace;
 }  // namespace xla
-
-namespace xla::experimental {
-using ::xla::gpu::GetFirstShape;
-using ::xla::gpu::GetResultDimensionOffset;
-using ::xla::gpu::GetTileSizeReplacementMap;
-using ::xla::gpu::IsIndexWiseVariadic;
-using ::xla::gpu::TilingSpace;
-}  // namespace xla::experimental
 
 #endif  // XLA_CODEGEN_TILING_TILING_SPACE_H_

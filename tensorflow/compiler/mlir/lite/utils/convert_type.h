@@ -16,30 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONVERT_TYPE_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONVERT_TYPE_H_
 
-#include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 class Builder;
 }  // namespace mlir
 
 namespace tflite {
-// Convert the MLIR type to the corresponding TFLite tensor.
+// Convert the MLIR type to the corresponding TFLite tensor. Accepts both the
+// TFLite element types (e.g. `!tfl.string`) and the matching `tf_type` types
+// (e.g. `!tf_type.string`).
 tflite::TensorType ConvertTypeToTensorType(mlir::Type type);
 
 // Convert the scalar type of a TFlite tensor to the corresponding MLIR type.
+// STRING, RESOURCE and VARIANT map to the TFLite element types (`!tfl.string`,
+// `!tfl.resource` and `!tfl.variant`), which requires the TFLite dialect to be
+// loaded. See `ConvertElementTypeToTfType` in tf_convert_type.h for the
+// version that produces the `tf_type` types.
 mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder);
-
-// Convert the scalar type of a TFLite tensor to the corresponding
-// Tensorflow type
-tensorflow::DataType TflTypeToTfType(tflite::TensorType type);
-
-// Convert the Tensorflow scalar type to the corresponding TFLite type
-absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type);
 
 // Returns element type from attribute Type 'type_attr'.
 mlir::Type GetShapeStrippedType(mlir::TypeAttr type_attr);

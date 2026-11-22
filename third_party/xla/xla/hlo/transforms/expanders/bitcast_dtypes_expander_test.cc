@@ -278,6 +278,70 @@ ENTRY main {
 )"));
 }
 
+TEST_F(BitcastDtypesExpanderTest, BF16toS32) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_bf16_to_larger
+
+ENTRY main {
+  p = bf16[10,2] parameter(0)
+  ROOT out = s32[10] bitcast-convert(p)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  BitcastDtypesExpander expander;
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: ENTRY %main (p: bf16[10,2]) -> s32[10] {
+// CHECK:   %[[P:.*]] = bf16[10,2]{1,0} parameter(0)
+// CHECK:   %[[BC_IN:.*]] = u16[10,2]{1,0} bitcast-convert(%[[P]])
+// CHECK:   %[[RESHAPE:.*]] = u16[20]{0} reshape(%[[BC_IN]])
+// CHECK:   %[[SLICE_0:.*]] = u16[10]{0} slice(%[[RESHAPE]]), slice={[0:19:2]}
+// CHECK:   %[[CONV_0:.*]] = u32[10]{0} convert(%[[SLICE_0]])
+// CHECK:   %[[SLICE_1:.*]] = u16[10]{0} slice(%[[RESHAPE]]), slice={[1:20:2]}
+// CHECK:   %[[CONV_1:.*]] = u32[10]{0} convert(%[[SLICE_1]])
+// CHECK:   %[[C_16:.*]] = u32[] constant(16)
+// CHECK:   %[[BCAST_16:.*]] = u32[10]{0} broadcast(%[[C_16]]), dimensions={}
+// CHECK:   %[[SHL:.*]] = u32[10]{0} shift-left(%[[CONV_1]], %[[BCAST_16]])
+// CHECK:   %[[OR:.*]] = u32[10]{0} or(%[[CONV_0]], %[[SHL]])
+// CHECK:   ROOT %[[OUT:.*]] = s32[10]{0} bitcast-convert(%[[OR]])
+// CHECK: }
+)"));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(BitcastDtypesExpanderTest, BF16toS8) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_bf16_to_smaller
+
+ENTRY main {
+  p = bf16[10] parameter(0)
+  ROOT out = s8[10,2] bitcast-convert(p)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  BitcastDtypesExpander expander;
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: ENTRY %main (p: bf16[10]) -> s8[10,2] {
+// CHECK:   %[[P:.*]] = bf16[10]{0} parameter(0)
+// CHECK:   %[[BC_IN:.*]] = u16[10]{0} bitcast-convert(%[[P]])
+// CHECK:   %[[BCAST:.*]] = u16[10,2]{1,0} broadcast(%[[BC_IN]]), dimensions={0}
+// CHECK:   ROOT %[[OUT:.*]] = s8[10,2]{1,0} bitcast-convert(%{{.*}})
+// CHECK: }
+)"));
+  EXPECT_TRUE(filecheck_matched);
+}
+
 TEST_F(BitcastDtypesExpanderTest, RewriteInsideWhileTest) {
   absl::string_view hlo_string = R"(
 HloModule module

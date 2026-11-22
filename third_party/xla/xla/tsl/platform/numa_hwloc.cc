@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cerrno>
 #include <cstddef>
 #include <memory>
 #include <type_traits>
@@ -26,7 +27,6 @@ limitations under the License.
 namespace tsl {
 namespace port {
 
-namespace {
 hwloc_topology_t GetHWLocTopology() {
   static absl::once_flag init_once;
   static hwloc_topology_t hwloc_topology_handle = nullptr;
@@ -40,6 +40,27 @@ hwloc_topology_t GetHWLocTopology() {
       LOG_FIRST_N(ERROR, 1) << "Call to hwloc_topology_set_flags() failed";
       return;
     }
+    if (hwloc_topology_set_all_types_filter(hwloc_topology_handle,
+                                            HWLOC_TYPE_FILTER_KEEP_NONE)) {
+      LOG_FIRST_N(ERROR, 1)
+          << "Call to hwloc_topology_set_all_types_filter() failed";
+      return;
+    }
+    if (hwloc_topology_set_components(hwloc_topology_handle,
+                                      HWLOC_TOPOLOGY_COMPONENTS_FLAG_BLACKLIST,
+                                      "linuxio")) {
+      LOG_FIRST_N(ERROR, 1)
+          << "Call to hwloc_topology_set_components(linuxio) failed";
+      return;
+    }
+    if (hwloc_topology_set_components(hwloc_topology_handle,
+                                      HWLOC_TOPOLOGY_COMPONENTS_FLAG_BLACKLIST,
+                                      "x86") &&
+        errno != EINVAL) {
+      LOG_FIRST_N(ERROR, 1)
+          << "Call to hwloc_topology_set_components(x86) failed";
+      return;
+    }
     if (hwloc_topology_load(hwloc_topology_handle)) {
       LOG_FIRST_N(ERROR, 1) << "Call to hwloc_topology_load() failed";
       return;
@@ -47,6 +68,8 @@ hwloc_topology_t GetHWLocTopology() {
   });
   return hwloc_topology_handle;
 }
+
+namespace {
 
 // Return the first hwloc object of the given type whose os_index
 // matches 'index'.

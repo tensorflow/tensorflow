@@ -14,16 +14,19 @@
 
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_bfs.h"
@@ -38,6 +41,168 @@ bool IsChangedInstruction(const HloInstructionNode* left_node,
                           const HloInstructionNode* right_node) {
   return left_node->props.canonical_fingerprint !=
          right_node->props.canonical_fingerprint;
+}
+
+// Returns true if the order of the operands of `node` doesn't matter, e.g. for
+// add(a, b) vs. add(b, a).
+bool IsOperandOrderInsensitive(const HloInstructionNode* node) {
+  if (node->is_root || node->instruction == nullptr) {
+    return false;
+  }
+  return node->children.size() == 2 &&
+         HloOpcodeIsBinaryCommutative(node->instruction->opcode());
+}
+
+// Returns true if the mapping was made by a similarity-based matcher, which can
+// pick the wrong one of several look-alike candidates.
+bool IsHeuristicMapping(
+    const std::optional<HloInstructionNodeMappingProps>& props) {
+  if (!props.has_value()) {
+    return false;
+  }
+  switch (props->matcher_type) {
+    case MatcherType::kGreedyLimitedCandidatesBottomUpMatcher:
+    case MatcherType::kStrictGreedyTopDownMatcher:
+    case MatcherType::kGreedyTopDownMatcher:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// An operand slot of a node: a user and the operand index of the node in it,
+// or -1 if the user's operand order doesn't matter.
+using OperandSlot = std::pair<const HloInstructionNode*, int>;
+
+// Returns the operand slots of `node`. Users are expressed as nodes of the
+// right graph: left users are translated through the mapping. Unmatched users
+// are skipped, as they are already reported as unmatched.
+std::vector<OperandSlot> GetOperandSlots(const HloInstructionNode* node,
+                                         bool is_left,
+                                         const HloGumgraphMappings& mappings) {
+  std::vector<OperandSlot> slots;
+  for (const HloInstructionNode* user : node->parents) {
+    const HloInstructionNode* right_user = user;
+    if (is_left) {
+      std::optional<const HloInstructionNode*> mapped =
+          mappings.left_to_right_instruction_map.GetRight(user);
+      if (!mapped.has_value()) {
+        continue;
+      }
+      right_user = *mapped;
+    } else if (!mappings.InstructionMapContainsRight(user)) {
+      continue;
+    }
+    const bool order_insensitive = IsOperandOrderInsensitive(user);
+    for (int i = 0; i < user->children.size(); ++i) {
+      if (user->children[i] == node) {
+        slots.push_back({right_user, order_insensitive ? -1 : i});
+      }
+    }
+  }
+  absl::c_sort(slots);
+  return slots;
+}
+
+// Returns true if `other`, the node at an operand slot that `node` occupies on
+// one side only, explains the difference: it is unmatched (already reported),
+// it computes the same value as `node`, or it looks like `node` and one of the
+// mappings is heuristic (the matcher likely picked the wrong one of two
+// look-alikes). `node` and `other` are on different sides.
+bool IsSlotDifferenceExplained(const HloInstructionNode* node,
+                               const HloInstructionNode* other,
+                               bool node_is_left, bool is_permutation,
+                               const HloGumgraphMappings& mappings) {
+  // `other` is unmatched and already reported as such, e.g. for sine and
+  // cosine in sine(x) - cosine(x) vs. sine(x) - tanh(x), cosine isn't moved
+  // since tanh is reported as unmatched.
+  const bool other_matched = node_is_left
+                                 ? mappings.InstructionMapContainsRight(other)
+                                 : mappings.InstructionMapContainsLeft(other);
+  if (!other_matched) {
+    return true;
+  }
+  // `node` and `other` compute the same value, i.e. identical subgraphs were
+  // cross-matched, e.g. two identical sine(x) whose mappings are swapped.
+  if (node->props.canonical_subgraph_fingerprint ==
+      other->props.canonical_subgraph_fingerprint) {
+    return true;
+  }
+  // `node` and `other` look alike but compute different values. A permutation
+  // of the same user's operands is a real swap, e.g. sine(x) - sine(y) vs.
+  // sine(y) - sine(x).
+  if (is_permutation ||
+      node->props.canonical_fingerprint != other->props.canonical_fingerprint) {
+    return false;
+  }
+  // A similarity-based matcher may have picked the wrong one of two
+  // look-alikes, e.g. sine(x) and sine(y) used by different users.
+  const auto& map = mappings.left_to_right_instruction_map;
+  return node_is_left ? IsHeuristicMapping(map.GetPropsByLeft(node)) ||
+                            IsHeuristicMapping(map.GetPropsByRight(other))
+                      : IsHeuristicMapping(map.GetPropsByRight(node)) ||
+                            IsHeuristicMapping(map.GetPropsByLeft(other));
+}
+
+// Returns true if `user` (a node of the other side than `node`) has `node`'s
+// counterpart among its operands, i.e. the slot difference is a permutation of
+// the user's operands.
+bool HasOperand(const HloInstructionNode* user,
+                const HloInstructionNode* operand) {
+  return absl::c_linear_search(user->children, operand);
+}
+
+// Returns true if the matched nodes `left_node` and `right_node` are used
+// differently: they are operands of users that don't correspond, or at
+// different operand positions of corresponding users, e.g. sine and cosine in
+// sine(x) - cosine(x) vs. cosine(x) - sine(x).
+bool IsMovedInstruction(const HloInstructionNode* left_node,
+                        const HloInstructionNode* right_node,
+                        const HloGumgraphMappings& mappings) {
+  std::vector<OperandSlot> left_slots =
+      GetOperandSlots(left_node, /*is_left=*/true, mappings);
+  std::vector<OperandSlot> right_slots =
+      GetOperandSlots(right_node, /*is_left=*/false, mappings);
+  if (left_slots == right_slots) {
+    return false;
+  }
+  std::vector<OperandSlot> left_only, right_only;
+  absl::c_set_difference(left_slots, right_slots,
+                         std::back_inserter(left_only));
+  absl::c_set_difference(right_slots, left_slots,
+                         std::back_inserter(right_only));
+  // Left node is at a slot of a right user where the right node isn't.
+  for (const auto& [right_user, index] : left_only) {
+    // Commutative users (index -1) are conservatively treated as moved when
+    // the multisets of operand slots differ: we don't try to explain the
+    // difference by examining all their operands. An index out of range means
+    // that the user's operand count changed.
+    if (index < 0 || index >= right_user->children.size()) {
+      return true;
+    }
+    if (!IsSlotDifferenceExplained(
+            left_node, right_user->children[index], /*node_is_left=*/true,
+            /*is_permutation=*/HasOperand(right_user, right_node), mappings)) {
+      return true;
+    }
+  }
+  // Right node is at a slot of a right user where the left node isn't.
+  for (const auto& [right_user, index] : right_only) {
+    std::optional<const HloInstructionNode*> left_user =
+        mappings.left_to_right_instruction_map.GetLeft(right_user);
+    // As above, commutative users and changed operand counts are treated as
+    // moved.
+    if (index < 0 || !left_user.has_value() ||
+        index >= (*left_user)->children.size()) {
+      return true;
+    }
+    if (!IsSlotDifferenceExplained(
+            right_node, (*left_user)->children[index], /*node_is_left=*/false,
+            /*is_permutation=*/HasOperand(*left_user, left_node), mappings)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -120,13 +285,11 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
                                          right_node->instruction);
       continue;
     }
-    // If node position is unchanged, add to unchanged instructions.
-    if (mapping_props->unchanged) {
-      diff_result->AddUnchangedInstruction(left_node->instruction,
-                                           right_node->instruction);
+    if (IsMovedInstruction(left_node, right_node, mappings)) {
+      diff_result->AddMovedInstruction(left_node->instruction,
+                                       right_node->instruction);
       continue;
     }
-    // TODO(b/369851244): Add moved instructions to diff result.
     diff_result->AddUnchangedInstruction(left_node->instruction,
                                          right_node->instruction);
   }

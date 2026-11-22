@@ -437,7 +437,7 @@ class LiteralBase {
       absl::Span<const int64_t> minor_to_major =
           subshape.layout().minor_to_major();
       DimensionVector elem_index(subshape.dimensions().size());
-      absl::Span<int64_t> elem_index_span(elem_index.data(), elem_index.size());
+      absl::Span<int64_t> elem_index_span = absl::MakeSpan(elem_index);
       int64_t bytes_hashed = 0;
       while (bytes_hashed < bytes_to_hash) {
         int64_t offset =
@@ -475,6 +475,11 @@ class LiteralBase {
   // Converts this literal to another primitive type. Returns an error if the
   // conversion is not possible. This literal must be array-shaped.
   absl::StatusOr<Literal> Convert(PrimitiveType primitive_dest_type) const;
+
+  // Returns whether this literal can be converted to `primitive_dest_type` and
+  // back to its original type without losing any information. Returns false for
+  // non-array literals.
+  bool IsLosslesslyConvertibleTo(PrimitiveType primitive_dest_type) const;
 
   // Clones the underlying buffers into a new Literal.
   Literal Clone() const;

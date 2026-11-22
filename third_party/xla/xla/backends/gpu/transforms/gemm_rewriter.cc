@@ -23,10 +23,12 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <initializer_list>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
@@ -34,13 +36,16 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -54,6 +59,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -68,6 +74,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -517,11 +524,11 @@ auto BcastConstScalarNear(double value) {
         double epsilon;
         switch (instr->shape().element_type()) {
           case F16:
-            epsilon = 128 * std::numeric_limits<Eigen::half>::epsilon();
-            break;
+            return *actual ==
+                   static_cast<double>(static_cast<Eigen::half>(expected));
           case BF16:
-            epsilon = 128 * std::numeric_limits<bfloat16>::epsilon();
-            break;
+            return *actual ==
+                   static_cast<double>(static_cast<bfloat16>(expected));
           case F32:
             epsilon = 128 * std::numeric_limits<float>::epsilon();
             break;
@@ -684,6 +691,72 @@ absl::StatusOr<HloInstruction*> NormalizeBatchDimensions(HloInstruction* dot) {
   return MakeReshapeHlo(dot->shape(), new_dot);
 }
 
+// Classifies a ragged-dot by the role its lhs ragged dimension plays in the dot
+// dimension numbers. Requires `lhs_ragged_dimensions` to be non-empty; only the
+// first ragged dimension is considered.
+se::gpu::RaggedDotMode GetRaggedDotMode(
+    const RaggedDotDimensionNumbers& ragged_dims) {
+  const DotDimensionNumbers& dot_dims = ragged_dims.dot_dimension_numbers();
+  const int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+  if (absl::c_linear_search(dot_dims.lhs_batch_dimensions(), lhs_ragged_dim)) {
+    return se::gpu::RaggedDotMode::kRaggedBatch;
+  }
+  if (absl::c_linear_search(dot_dims.lhs_contracting_dimensions(),
+                            lhs_ragged_dim)) {
+    return se::gpu::RaggedDotMode::kRaggedContracting;
+  }
+  return se::gpu::RaggedDotMode::kRaggedNonContracting;
+}
+
+// Default XTile tile sizes for a ragged-dot fusion; an autotuner may later
+// override them.
+constexpr int64_t kDefaultRaggedDotBlockM = 32;
+constexpr int64_t kDefaultRaggedDotBlockN = 32;
+constexpr int64_t kDefaultRaggedDotBlockK = 32;
+
+// Builds the sequential-dimension tile sizes carried by the ragged-dot inside
+// an XTile fusion computation.
+xtile::Tile BuildRaggedDotSequentialTile(const DotDimensionNumbers& dot_dims,
+                                         se::gpu::RaggedDotMode ragged_mode) {
+  xtile::Tile tile;
+  switch (ragged_mode) {
+    case se::gpu::RaggedDotMode::kRaggedBatch:
+      // A plain batched GEMM: only the contraction is sequential.
+      for (int i = 0; i < dot_dims.lhs_contracting_dimensions_size(); ++i) {
+        tile.add_sizes(kDefaultRaggedDotBlockK);
+      }
+      break;
+    case se::gpu::RaggedDotMode::kRaggedNonContracting:
+      tile.add_sizes(1);                        // G sequential dim
+      tile.add_sizes(kDefaultRaggedDotBlockK);  // K sequential dim
+      break;
+    case se::gpu::RaggedDotMode::kRaggedContracting:
+      tile.add_sizes(kDefaultRaggedDotBlockM);  // M sequential dim
+      break;
+  }
+  return tile;
+}
+
+// Builds the parallel output tile sizes carried by an XTile ragged-dot fusion
+// instruction.
+xtile::Tile BuildRaggedDotOutputTile(const DotDimensionNumbers& dot_dims,
+                                     se::gpu::RaggedDotMode ragged_mode) {
+  xtile::Tile tile;
+  if (ragged_mode == se::gpu::RaggedDotMode::kRaggedContracting) {
+    tile.add_sizes(1);  // G dim tile size = 1
+  }
+  for (int i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
+    tile.add_sizes(1);  // one batch element per tile
+  }
+  if (ragged_mode == se::gpu::RaggedDotMode::kRaggedContracting) {
+    tile.add_sizes(kDefaultRaggedDotBlockK);  // K output tile
+  } else {
+    tile.add_sizes(kDefaultRaggedDotBlockM);  // M output tile
+  }
+  tile.add_sizes(kDefaultRaggedDotBlockN);  // N output tile
+  return tile;
+}
+
 // The rewriting proceeds in a bottom-up way:
 //
 // (kDot A B) is rewritten into a (kCustomCall:gemm A B)
@@ -718,12 +791,17 @@ absl::StatusOr<HloInstruction*> NormalizeBatchDimensions(HloInstruction* dot) {
 // when the output of the GEMM is requested in FP8 format.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterVisitor(const se::GpuComputeCapability& gpu_version,
-                               se::SemanticVersion toolkit_version,
-                               const GemmRewriterOptions options)
+  explicit GemmRewriterVisitor(
+      const se::GpuComputeCapability& gpu_version,
+      se::SemanticVersion toolkit_version, const GemmRewriterOptions options,
+      se::dnn::VersionInfo cudnn_version,
+      const std::function<Decision(const HloInstruction*)>&
+          is_supported_by_cudnn_fusion)
       : gpu_version_(gpu_version),
         toolkit_version_(toolkit_version),
-        options_(options) {}
+        options_(options),
+        cudnn_version_(cudnn_version),
+        is_supported_by_cudnn_fusion_(is_supported_by_cudnn_fusion) {}
 
   absl::Status HandleDot(HloInstruction* instr) override {
     ABSL_ASSIGN_OR_RETURN(
@@ -769,9 +847,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     HloInstruction* lhs = instr->mutable_operand(0);
     HloInstruction* rhs = instr->mutable_operand(1);
-    auto attributes = instr->frontend_attributes().map();
-    gemm_backend_config.set_grad_x(attributes["grad_x"] == "true");
-    gemm_backend_config.set_grad_y(attributes["grad_y"] == "true");
+    gemm_backend_config.set_grad_x(instr->get_frontend_attribute("grad_x") ==
+                                   "true");
+    gemm_backend_config.set_grad_y(instr->get_frontend_attribute("grad_y") ==
+                                   "true");
 
     int64_t lhs_batch_dims_size =
         instr->dot_dimension_numbers().lhs_batch_dimensions_size();
@@ -843,57 +922,54 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   absl::Status HandleRaggedDot(HloInstruction* instr) override {
-    // The cuDNN ragged dot fusion is only available on NVIDIA/CUDA devices.
-    // On AMD ROCm, use hipBLASLt GroupedMatMul when
-    // xla_gpu_experimental_use_ragged_dot_grouped_gemm is enabled.
-    const DebugOptions& debug_options =
-        instr->GetModule()->config().debug_options();
-    bool ragged_dot_fusion_enabled =
-        gpu_version_.IsCuda() &&
-        debug_options.xla_gpu_experimental_use_ragged_dot_fusion();
-    bool grouped_gemm_enabled =
-        debug_options.xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
-        // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
-        debug_options.xla_gpu_enable_cublaslt();
-    if (ragged_dot_fusion_enabled || !grouped_gemm_enabled ||
-        !IsGpublasLtSupportedGroupedMatMul(*instr)) {
+    HloRaggedDotInstruction* ragged_dot = Cast<HloRaggedDotInstruction>(instr);
+    absl::InlinedVector<RaggedDotBackend, 3> backends = SelectRaggedDotBackends(
+        *ragged_dot, gpu_version_, cudnn_version_, toolkit_version_,
+        instr->GetModule()->config().debug_options());
+    // Only probe cuDNN when a lower-priority backend could take over: with
+    // kCuDnn alone there is nothing to rewrite either way, and
+    // RaggedDotRewriter has already expanded the ragged-dot if cuDNN refused
+    // it.
+    if (backends.size() > 1 && backends.front() == RaggedDotBackend::kCuDnn &&
+        (is_supported_by_cudnn_fusion_ == nullptr ||
+         !is_supported_by_cudnn_fusion_(ragged_dot).IsAllowed())) {
+      backends.erase(backends.begin());
+    }
+    if (backends.empty()) {
+      // Expanded into a regular dot by RaggedDotRewriter, which runs earlier.
       return absl::OkStatus();
     }
-    HloRaggedDotInstruction* ragged_dot =
-        DynCast<HloRaggedDotInstruction>(instr);
-    if (ragged_dot == nullptr) {
-      return absl::OkStatus();
+    switch (backends.front()) {
+      case RaggedDotBackend::kGpuBlasLt:
+        return RewriteRaggedDotAsGroupedGemmCustomCall(ragged_dot);
+      case RaggedDotBackend::kTriton:
+        return RewriteRaggedDotAsTritonFusion(ragged_dot);
+      case RaggedDotBackend::kCuDnn:
+        // Rewritten by RaggedDotFusionRewriter, which runs later in the fusion
+        // pipeline.  Leave it alone.
+        break;
     }
-    const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
-    const auto& dot_dims = ragged_dims.dot_dimension_numbers();
+    return absl::OkStatus();
+  }
+
+  absl::Status RewriteRaggedDotAsGroupedGemmCustomCall(
+      HloRaggedDotInstruction* ragged_dot) {
+    const RaggedDotDimensionNumbers& ragged_dims =
+        ragged_dot->ragged_dot_dimension_numbers();
+    const DotDimensionNumbers& dot_dims = ragged_dims.dot_dimension_numbers();
     if (ragged_dims.lhs_ragged_dimensions().size() != 1) {
       return absl::UnimplementedError("lhs_ragged_dimensions must have size 1");
     }
-    int lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
-
-    auto isLhsRaggedDimInContractingDim = [](int lhs_ragged_dim,
-                                             const DotDimensionNumbers& dnums) {
-      return std::any_of(dnums.lhs_contracting_dimensions().begin(),
-                         dnums.lhs_contracting_dimensions().end(),
-                         [&](auto dim) { return dim == lhs_ragged_dim; });
-    };
-
-    auto isLhsRaggedDimInBatchDim = [](int lhs_ragged_dim,
-                                       const DotDimensionNumbers& dnums) {
-      return std::any_of(dnums.lhs_batch_dimensions().begin(),
-                         dnums.lhs_batch_dimensions().end(),
-                         [&](auto dim) { return dim == lhs_ragged_dim; });
-    };
-
-    if (!isLhsRaggedDimInContractingDim(lhs_ragged_dim, dot_dims) &&
-        !isLhsRaggedDimInBatchDim(lhs_ragged_dim, dot_dims) &&
+    if (GetRaggedDotMode(ragged_dims) ==
+            se::gpu::RaggedDotMode::kRaggedNonContracting &&
         ragged_dims.rhs_group_dimensions().size() != 1) {
       return absl::UnimplementedError(
           "rhs_group_dimensions must have size equal to 1 when lhs ragged "
           "dimension is a non-contracting dimension");
     }
+
     HloInstruction* grouped_gemm_call =
-        instr->AddInstruction(HloInstruction::CreateCustomCall(
+        ragged_dot->AddInstruction(HloInstruction::CreateCustomCall(
             ragged_dot->shape(), ragged_dot->mutable_operands(),
             gpu::kCublasLtGroupedMatmulCallTarget));
 
@@ -903,9 +979,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         grouped_gemm_call->backend_config<gpu::GpuBackendConfig>());
     GroupedGemmBackendConfig& grouped_gemm_backend_config =
         *gpu_backend_config.mutable_grouped_gemm_backend_config();
-    RaggedDotDimensionNumbers& ragged_dot_dimension_numbers =
-        *grouped_gemm_backend_config.mutable_ragged_dot_dimension_numbers();
-    ragged_dot_dimension_numbers = ragged_dot->ragged_dot_dimension_numbers();
+    *grouped_gemm_backend_config.mutable_ragged_dot_dimension_numbers() =
+        ragged_dims;
 
     // Create a GemmBackendConfig based on the instruction.
     GemmBackendConfig& gemm_backend_config =
@@ -915,14 +990,74 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     gemm_backend_config.set_beta(0.0);
     *gemm_backend_config.mutable_dot_dimension_numbers() = dot_dims;
 
-    auto attributes = instr->frontend_attributes().map();
-    gemm_backend_config.set_grad_x(attributes["grad_x"] == "true");
-    gemm_backend_config.set_grad_y(attributes["grad_y"] == "true");
+    gemm_backend_config.set_grad_x(
+        ragged_dot->get_frontend_attribute("grad_x") == "true");
+    gemm_backend_config.set_grad_y(
+        ragged_dot->get_frontend_attribute("grad_y") == "true");
 
     ABSL_RETURN_IF_ERROR(grouped_gemm_call->set_backend_config(gpu_backend_config));
+    return ReplaceInstruction(ragged_dot, grouped_gemm_call);
+  }
 
-    ABSL_RETURN_IF_ERROR(ReplaceInstruction(instr, grouped_gemm_call));
-    return absl::OkStatus();
+  // Carries default tile sizes that an autotuner may later override.
+  absl::Status RewriteRaggedDotAsTritonFusion(
+      HloRaggedDotInstruction* ragged_dot) {
+    VLOG(2) << "HandleRaggedDot Triton: " << ragged_dot->name()
+            << " operand_count=" << ragged_dot->operand_count()
+            << " gs_shape=" << ragged_dot->operand(2)->shape().ToString();
+
+    // The ragged mode drives both the inner Tile (set on fused_ragged_dot
+    // before the fused computation is finalised) and the outer
+    // BlockLevelFusionConfig (set on the fusion instruction).
+    const RaggedDotDimensionNumbers& ragged_dims =
+        ragged_dot->ragged_dot_dimension_numbers();
+    const DotDimensionNumbers& dot_dims = ragged_dims.dot_dimension_numbers();
+    se::gpu::RaggedDotMode ragged_mode = GetRaggedDotMode(ragged_dims);
+
+    xtile::Tile inner_tile_config =
+        BuildRaggedDotSequentialTile(dot_dims, ragged_mode);
+
+    HloComputation::Builder builder(absl::StrCat(
+        "triton_ragged_dot_fusion_", ragged_dot->name(), "_computation"));
+    std::vector<HloInstruction*> param_instrs;
+    param_instrs.reserve(ragged_dot->operand_count());
+    for (int i = 0; i < ragged_dot->operand_count(); ++i) {
+      const HloInstruction* operand = ragged_dot->operand(i);
+      param_instrs.push_back(
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              i, operand->shape(), operand->name())));
+    }
+    HloInstruction* fused_ragged_dot = builder.AddInstruction(
+        ragged_dot->CloneWithNewOperands(ragged_dot->shape(), param_instrs));
+    ABSL_RETURN_IF_ERROR(fused_ragged_dot->set_backend_config(inner_tile_config));
+
+    HloComputation* new_computation =
+        ragged_dot->GetModule()->AddComputationAndUnifyNamesAndIds(
+            builder.Build(fused_ragged_dot), /*is_entry=*/false);
+
+    // The XTile emitter compiles a generic Triton fusion through the
+    // TileAndEmitXTileModule path when it carries a block_level_fusion_config.
+    std::unique_ptr<HloInstruction> fusion_instr = HloInstruction::CreateFusion(
+        ragged_dot->shape(), HloInstruction::FusionKind::kCustom,
+        ragged_dot->operands(), new_computation);
+
+    GpuBackendConfig gpu_backend_config;
+    FusionBackendConfig* fusion_config =
+        gpu_backend_config.mutable_fusion_backend_config();
+    fusion_config->set_kind(kTritonFusionKind);
+    xtile::BlockLevelFusionConfig* blk_cfg =
+        fusion_config->mutable_block_level_fusion_config();
+
+    *blk_cfg->add_output_tiles() =
+        BuildRaggedDotOutputTile(dot_dims, ragged_mode);
+
+    blk_cfg->set_num_warps(4);
+    blk_cfg->set_num_ctas(1);
+    blk_cfg->set_num_stages(1);
+    ABSL_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_backend_config));
+    fusion_instr->set_metadata(ragged_dot->metadata());
+
+    return ReplaceWithNewInstruction(ragged_dot, std::move(fusion_instr));
   }
 
   absl::Status TurnDotIntoConvertAndDotForBF16BF16F32(
@@ -2532,6 +2667,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   se::GpuComputeCapability gpu_version_;
   stream_executor::SemanticVersion toolkit_version_;
   GemmRewriterOptions options_;
+  se::dnn::VersionInfo cudnn_version_;
+  const std::function<Decision(const HloInstruction*)>&
+      is_supported_by_cudnn_fusion_;
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
   // be rewritten into.
@@ -3102,11 +3240,14 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
   se::GpuComputeCapability gpu_version_;
 };
 
-absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                      se::GpuComputeCapability gpu_version,
-                                      se::SemanticVersion toolkit_version,
-                                      GemmRewriterOptions options) {
-  GemmRewriterVisitor visitor(gpu_version, toolkit_version, options);
+absl::StatusOr<bool> RunOnComputation(
+    HloComputation* computation, se::GpuComputeCapability gpu_version,
+    se::SemanticVersion toolkit_version, GemmRewriterOptions options,
+    se::dnn::VersionInfo cudnn_version,
+    const std::function<Decision(const HloInstruction*)>&
+        is_supported_by_cudnn_fusion) {
+  GemmRewriterVisitor visitor(gpu_version, toolkit_version, options,
+                              cudnn_version, is_supported_by_cudnn_fusion);
   ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
   GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
   ABSL_RETURN_IF_ERROR(computation->Accept(&workspace_visitor));
@@ -3115,12 +3256,15 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
 
 }  // anonymous namespace
 
-GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version,
-                           se::SemanticVersion toolkit_version,
-                           GemmRewriterOptions options)
+GemmRewriter::GemmRewriter(
+    se::GpuComputeCapability gpu_version, se::SemanticVersion toolkit_version,
+    GemmRewriterOptions options, se::dnn::VersionInfo cudnn_version,
+    std::function<Decision(const HloInstruction*)> is_supported_by_cudnn_fusion)
     : gpu_version_(gpu_version),
       toolkit_version_(toolkit_version),
-      options_(options) {}
+      options_(options),
+      cudnn_version_(cudnn_version),
+      is_supported_by_cudnn_fusion_(std::move(is_supported_by_cudnn_fusion)) {}
 
 absl::StatusOr<bool> GemmRewriter::RunImpl(
     HloModule* module,
@@ -3128,8 +3272,10 @@ absl::StatusOr<bool> GemmRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        GetFusibleComputations(*module, execution_threads)) {
-    ABSL_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation, gpu_version_,
-                                                   toolkit_version_, options_));
+    ABSL_ASSIGN_OR_RETURN(
+        bool result,
+        RunOnComputation(computation, gpu_version_, toolkit_version_, options_,
+                         cudnn_version_, is_supported_by_cudnn_fusion_));
     changed |= result;
   }
   return changed;

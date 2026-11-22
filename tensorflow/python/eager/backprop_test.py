@@ -55,6 +55,31 @@ from tensorflow.python.ops import while_loop
 from tensorflow.python.training import training
 
 
+class VariableWithStringDtype:
+  _should_act_as_resource_variable = True
+
+  def __init__(self, variable, dtype_name=None):
+    self.variable = variable
+    self.dtype_name = dtype_name
+
+  @property
+  def dtype(self):
+    if self.dtype_name is None:
+      return self.variable.dtype.name
+    return self.dtype_name
+
+  @property
+  def handle(self):
+    return self.variable.handle
+
+  @property
+  def shape(self):
+    return self.variable.shape
+
+  def __tf_tensor__(self, dtype=None, name=None):
+    return ops.convert_to_tensor(self.variable, dtype=dtype, name=name)
+
+
 class BackpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -1108,30 +1133,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
   )
   @test_util.run_in_graph_and_eager_modes
   def testUnconnectedGradientsVariableWithStringDtype(self, dtype, shape):
-    class VariableWithStringDtype:
-      _should_act_as_resource_variable = True
-
-      def __init__(self, variable, dtype_name=None):
-        self.variable = variable
-        self.dtype_name = dtype_name
-
-      @property
-      def dtype(self):
-        if self.dtype_name is None:
-          return self.variable.dtype.name
-        return self.dtype_name
-
-      @property
-      def handle(self):
-        return self.variable.handle
-
-      @property
-      def shape(self):
-        return self.variable.shape
-
-      def __tf_tensor__(self, dtype=None, name=None):
-        return ops.convert_to_tensor(self.variable, dtype=dtype, name=name)
-
     x = resource_variable_ops.ResourceVariable(
         constant_op.constant(1.0, shape=shape, dtype=dtype)
     )
@@ -1840,7 +1841,60 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     memory_checker.assert_no_leak_if_all_possibly_except_one()
 
 
-class JacobianTest(test.TestCase):
+class JacobianTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.product(
+      source_dtype=(dtypes.float32, dtypes.float64), use_function=(True, False)
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_mixed_dtype_variable_with_string_dtype(
+      self, source_dtype, use_function
+  ):
+    target_dtype = (
+        dtypes.float64 if source_dtype == dtypes.float32 else dtypes.float32
+    )
+    variable = resource_variable_ops.ResourceVariable(
+        [[1.0, 2.0], [3.0, 4.0]], dtype=source_dtype
+    )
+    self.evaluate(variable.initializer)
+    source = VariableWithStringDtype(variable)
+
+    def f():
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(variable)
+        target = math_ops.square(math_ops.cast(source, target_dtype))
+      return tape.jacobian(target, source, experimental_use_pfor=False)
+
+    if use_function:
+      f = def_function.function(f)
+    jacobian = f()
+    self.assertEqual(source_dtype, jacobian.dtype)
+    self.assertAllEqual(
+        np.diag([2.0, 4.0, 6.0, 8.0]).reshape([2, 2, 2, 2]), jacobian
+    )
+
+  @parameterized.product(use_function=(True, False), use_pfor=(True, False))
+  @test_util.run_in_graph_and_eager_modes
+  def test_mixed_dtype_sources(self, use_function, use_pfor):
+
+    def f(x, y):
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch([x, y])
+        z = math_ops.square(math_ops.cast(x, y.dtype)) * y
+      return tape.jacobian(
+          z, {'x': x, 'y': (y,)}, experimental_use_pfor=use_pfor
+      )
+
+    if use_function:
+      f = def_function.function(f)
+    jacobian = f(
+        constant_op.constant([1.0, 2.0], dtypes.float32),
+        constant_op.constant([3.0, 4.0], dtypes.float64),
+    )
+    self.assertEqual(dtypes.float32, jacobian['x'].dtype)
+    self.assertEqual(dtypes.float64, jacobian['y'][0].dtype)
+    self.assertAllEqual([[6.0, 0.0], [0.0, 16.0]], jacobian['x'])
+    self.assertAllEqual([[1.0, 0.0], [0.0, 4.0]], jacobian['y'][0])
 
   def _jacobian(self, experimental_use_pfor):
     persistent = context.executing_eagerly and not experimental_use_pfor
@@ -2075,6 +2129,59 @@ class JacobianTest(test.TestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class BatchJacobianTest(test.TestCase, parameterized.TestCase):
 
+  @parameterized.product(
+      source_dtype=(dtypes.float32, dtypes.float64), use_function=(True, False)
+  )
+  def test_mixed_dtype_variable_with_string_dtype(
+      self, source_dtype, use_function
+  ):
+    target_dtype = (
+        dtypes.float64 if source_dtype == dtypes.float32 else dtypes.float32
+    )
+    variable = resource_variable_ops.ResourceVariable(
+        [[1.0, 2.0], [3.0, 4.0]], dtype=source_dtype
+    )
+    self.evaluate(variable.initializer)
+    source = VariableWithStringDtype(variable)
+
+    def f():
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(variable)
+        target = math_ops.square(math_ops.cast(source, target_dtype))
+      return tape.batch_jacobian(target, source, experimental_use_pfor=False)
+
+    if use_function:
+      f = def_function.function(f)
+    jacobian = f()
+    self.assertEqual(source_dtype, jacobian.dtype)
+    self.assertAllEqual(
+        [[[2.0, 0.0], [0.0, 4.0]], [[6.0, 0.0], [0.0, 8.0]]], jacobian
+    )
+
+  @parameterized.product(
+      source_dtype=(dtypes.float32, dtypes.float64),
+      use_function=(True, False),
+      use_pfor=(True, False),
+  )
+  def test_mixed_dtype(self, source_dtype, use_function, use_pfor):
+    target_dtype = (
+        dtypes.float64 if source_dtype == dtypes.float32 else dtypes.float32
+    )
+
+    def f(x):
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x)
+        y = math_ops.square(math_ops.cast(x, target_dtype))
+      return tape.batch_jacobian(y, x, experimental_use_pfor=use_pfor)
+
+    if use_function:
+      f = def_function.function(f)
+    jacobian = f(constant_op.constant([[1.0, 2.0], [3.0, 4.0]], source_dtype))
+    self.assertEqual(source_dtype, jacobian.dtype)
+    self.assertAllEqual(
+        [[[2.0, 0.0], [0.0, 4.0]], [[6.0, 0.0], [0.0, 8.0]]], jacobian
+    )
+
   def _batch_jacobian(self, experimental_use_pfor):
     persistent = context.executing_eagerly and not experimental_use_pfor
     with backprop.GradientTape(persistent=persistent) as g:
@@ -2170,30 +2277,34 @@ class BatchJacobianTest(test.TestCase, parameterized.TestCase):
       f = def_function.function(f)
     self.assertAllEqual([1, 0, 0], array_ops.shape(f(array_ops.zeros([1, 0]))))
 
-  @parameterized.parameters((True,), (False))
-  def test_zeros_type_correct(self, use_pfor):
-    for dtype in [dtypes.float32, dtypes.float64]:
-      @def_function.function
-      def f(x):
-        del x
-        return constant_op.constant([[1.]], dtype=dtype)  # pylint: disable=cell-var-from-loop
+  @parameterized.product(
+      source_dtype=(dtypes.float32, dtypes.float64),
+      target_dtype=(dtypes.float32, dtypes.float64),
+      use_pfor=(True, False),
+  )
+  def test_zeros_type_correct(self, source_dtype, target_dtype, use_pfor):
+    @def_function.function
+    def f(x):
+      del x
+      return constant_op.constant([[1.0]], dtype=target_dtype)
 
-      with backprop.GradientTape(persistent=True) as tape:
-        x = constant_op.constant([[2.]], dtype=dtype)
-        tape.watch(x)
-        y = f(x)
-      jac = tape.batch_jacobian(y, x, experimental_use_pfor=use_pfor)
-      self.assertEqual(dtype, jac.dtype)
-      self.assertAllClose([[[0.]]], jac)
+    with backprop.GradientTape(persistent=True) as tape:
+      x = constant_op.constant([[2.0]], dtype=source_dtype)
+      tape.watch(x)
+      y = f(x)
+    jac = tape.batch_jacobian(y, x, experimental_use_pfor=use_pfor)
+    self.assertEqual(source_dtype, jac.dtype)
+    self.assertAllClose([[[0.0]]], jac)
 
-      with backprop.GradientTape(persistent=True) as tape:
-        x = constant_op.constant([[2.]], dtype=dtype)
-        tape.watch(x)
-        y = f(x)
-      jac = tape.batch_jacobian(y, x, unconnected_gradients='zero',
-                                experimental_use_pfor=use_pfor)
-      self.assertEqual(dtype, jac.dtype)
-      self.assertAllClose([[[0.]]], jac)
+    with backprop.GradientTape(persistent=True) as tape:
+      x = constant_op.constant([[2.0]], dtype=source_dtype)
+      tape.watch(x)
+      y = f(x)
+    jac = tape.batch_jacobian(
+        y, x, unconnected_gradients='zero', experimental_use_pfor=use_pfor
+    )
+    self.assertEqual(source_dtype, jac.dtype)
+    self.assertAllClose([[[0.0]]], jac)
 
   def test_strided_slice(self):
     x = array_ops.ones([2, 4, 2])

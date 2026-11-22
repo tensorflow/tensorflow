@@ -155,6 +155,28 @@ ifrt.LoadedExecutable @callee on devices [0,1]
 
 // -----
 
+func.func @io_aliases_should_not_have_negative_input_index(
+    %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                       [0,1]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias input #-1 to output #0 as only having 1 inputs}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0)
+    <io_aliases=[array<i32: -1, 0>]>
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>
+  return
+}
+
+ifrt.LoadedExecutable @callee on devices [0,1]
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>
+
+// -----
+
 func.func @io_aliases_should_only_alias_input_once(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
@@ -186,6 +208,28 @@ func.func @io_aliases_should_have_valid_output_index(
   // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias input #0 to output #1 as only having 1 outputs}}
   %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0)
     <io_aliases=[array<i32: 0, 1>]>
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>
+  return
+}
+
+ifrt.LoadedExecutable @callee on devices [0,1]
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>
+
+// -----
+
+func.func @io_aliases_should_not_have_negative_output_index(
+    %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                       [0,1]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias input #0 to output #-1 as only having 1 outputs}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0)
+    <io_aliases=[array<i32: 0, -1>]>
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                    [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
@@ -289,3 +333,47 @@ func.func @should_not_both_donate_and_alias_the_same_arg(
 }
 
 ifrt.LoadedExecutable @callee on devices [0,1] : (!array, !array) -> !array
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @good_call_loaded_executable_with_arg_and_res_attrs(
+    %arg0: !array, %arg1: !array) attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0, %arg1)
+    <arg_attrs = [{test.arg = "a"}, {}], res_attrs = [{test.res = "r"}]>
+    : (!array, !array) -> !array
+  return
+}
+
+ifrt.LoadedExecutable @callee on devices [0,1] : (!array, !array) -> !array
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @call_loaded_executable_requires_matching_arg_attrs_arity(
+    %arg0: !array) attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op requires `arg_attrs` to have the same size as `inputs` (2 vs. 1)}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0)
+    <arg_attrs = [{}, {}]>
+    : (!array) -> !array
+  return
+}
+
+ifrt.LoadedExecutable @callee on devices [0,1] : (!array) -> !array
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @call_loaded_executable_requires_matching_res_attrs_arity(
+    %arg0: !array) attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op requires `res_attrs` to have the same size as `outputs` (2 vs. 1)}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0)
+    <res_attrs = [{}, {}]>
+    : (!array) -> !array
+  return
+}
+
+ifrt.LoadedExecutable @callee on devices [0,1] : (!array) -> !array

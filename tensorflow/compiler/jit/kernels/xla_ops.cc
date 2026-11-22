@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -376,9 +377,9 @@ GetXlaCompilerArgsAndSnapshotVariables(
   std::pair<std::vector<XlaCompiler::Argument>, ResourceVarsSnapshot> result;
 
   std::vector<VariableInfo> variable_infos;
-  TF_RETURN_IF_ERROR(
-      GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(), inputs,
-                                 variable_indices, &variable_infos));
+  TF_RETURN_IF_ERROR(GetVariableInfosFromInputs(
+      ctx->resource_manager(), ctx->device(), inputs, variable_indices,
+      /*variables_updated=*/nullptr, ctx, &variable_infos));
   TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
 
   TF_RETURN_IF_ERROR(SnapshotResourceVariables(ctx, variable_indices,
@@ -445,7 +446,7 @@ absl::Status CompileToLocalExecutable(
 }
 
 absl::Status GetUpdatedVariables(
-    const OpKernelContext* ctx, absl::Span<const Tensor* const> inputs,
+    OpKernelContext* ctx, absl::Span<const Tensor* const> inputs,
     absl::Span<const int> variable_indices,
     const XlaCompiler::CompilationResult& compilation_result,
     std::vector<VariableInfo>* variable_infos) {
@@ -457,7 +458,7 @@ absl::Status GetUpdatedVariables(
   }
   return GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
                                     inputs, variable_indices,
-                                    &variables_updated, variable_infos);
+                                    &variables_updated, ctx, variable_infos);
 }
 
 // Get-or-create thread pool for a given collective.
@@ -536,7 +537,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     // variables_updated set here.
     absl::Status status = GetVariableInfosFromInputs(
         ctx->resource_manager(), ctx->device(), inputs, resources_,
-        &variables_updated, &variable_infos);
+        &variables_updated, ctx, &variable_infos);
     OP_REQUIRES_OK_ASYNC(ctx, status, done);
     status = LockVariables(absl::MakeSpan(variable_infos));
     OP_REQUIRES_OK_ASYNC(ctx, status, done);
@@ -578,8 +579,18 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
             GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
                                 &variable_infos),
             done);
-        OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
-                             done);
+        const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+            ctx->device()->tensorflow_accelerator_device_info();
+        const bool use_pjrt_tensor_buffer =
+            (accelerator_device_info == nullptr)
+                ? true
+                : accelerator_device_info->use_pjrt_tensor_buffer;
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            LockVariables(absl::MakeSpan(variable_infos),
+                          /*upgrade_read_only_for_pjrt_tensor_buffer=*/
+                          use_pjrt_tensor_buffer),
+            done);
         OP_REQUIRES_OK_ASYNC(
             ctx,
             RunPjRtExecutable(inputs, variable_infos, *compilation_result,

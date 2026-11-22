@@ -62,7 +62,7 @@ REGISTER_OP("StringWithoutInt32").Output("a: string");
 ////////////////////////////////////////////////////////////////////////////////
 class Int32FulltypeTest : public ::testing::Test {
  protected:
-  Int32FulltypeTest() {}
+  Int32FulltypeTest() = default;
 
   // Builds the given graph, and (if successful) indexes the node
   // names for use in placement, and later lookup.

@@ -30,9 +30,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/optional_ref.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -41,8 +44,8 @@ limitations under the License.
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/decision.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/mlir_context_pool.h"
@@ -103,11 +106,10 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
       Executable* executable) override;
 
-  absl::Status RunPostSchedulingPipelines(
-      HloModule* module, int64_t scheduler_mem_limit,
-      const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info,
-      mlir::MLIRContext* mlir_context,
-      tsl::thread::ThreadPool* thread_pool = nullptr);
+  absl::Status RunPostSchedulingPipelines(HloModule* module,
+                                          int64_t scheduler_mem_limit,
+                                          const GpuTopology& gpu_topology,
+                                          const GpuAliasInfo* alias_info);
 
   std::string target_triple() const { return target_triple_; }
   std::string data_layout() const { return data_layout_; }
@@ -130,22 +132,15 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
-  virtual bool IsScaledDotSupportedByBackend(
-      const HloInstruction* instr,
-      const GpuTargetConfig& gpu_target_config) const;
-
-  enum class AlgebraicSimplifierMode {
-    kLayoutInsensitive,
-    kPostFusionSimplification,
-    kLayoutNormalization,
-    kPostLayoutAssignment,
-    kAfterSimplifyFPConversions,
-    kGpuConvoluationCanonicalization,
-  };
-
-  static AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
-      AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
-      bool is_rocm);
+  // Whether a ragged dot that RaggedDotRewriter would leave for the cuDNN
+  // fusion can actually be lowered by cuDNN on the target. `stream_exec` is
+  // null for deviceless (AOT) compilation. Backends without a cuDNN probe
+  // cannot verify cuDNN support and therefore reject every ragged dot.
+  virtual Decision IsRaggedDotSupportedByCuDnn(
+      const HloInstruction* instr, const GpuTargetConfig& gpu_target_config,
+      se::StreamExecutor* absl_nullable stream_exec) const {
+    return Decision::Forbid("backend has no cuDNN ragged dot probe");
+  }
 
   // Returns the LLVM command line options that we use for compilation.
   // THey need to be set globally whenever we call into LLVM.
@@ -221,7 +216,9 @@ class GpuCompiler : public LLVMCompiler {
       const HloModuleConfig& module_config,
       const stream_executor::DeviceDescription& device_description,
       const HloModule* debug_module, llvm::Module* llvm_module,
-      bool relocatable, std::optional<int> shard_number);
+      absl::optional_ref<const GpuKernelSpec> spec,
+      absl::string_view kernel_fingerprint, bool relocatable,
+      std::optional<int> shard_number);
 
   absl::Status LoadAutotuneResultsFromFile(const DebugOptions& debug_options);
   absl::Status SerializeAutotuneResultsToFile(
@@ -250,10 +247,16 @@ class GpuCompiler : public LLVMCompiler {
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) = 0;
 
+  // Returns the backend-specific file extension for asm files.
+  virtual absl::StatusOr<absl::string_view> AsmFileExtension() const {
+    return absl::UnimplementedError("AsmFileExtension is not implemented.");
+  }
+
   // TODO(timshen): Replace `debug_module` with some portable debug information
   // that accommodates both HLO and MLIR.
   virtual absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      absl::string_view kernel_fingerprint,
       const stream_executor::DeviceDescription& device_description,
       bool relocatable, const HloModule* debug_module,
       std::optional<int> shard_number) = 0;

@@ -17,11 +17,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -33,11 +35,16 @@ absl::StatusOr<std::unique_ptr<DeviceAddressVmmAllocator>>
 DeviceAddressVmmAllocator::Create(
     const Platform* platform, double memory_fraction,
     std::optional<int64_t> gpu_system_memory_size,
-    absl::Span<const std::pair<StreamExecutor*, Stream*>> devices) {
+    absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
+    std::optional<int64_t> reclaim_exempt_memory_space,
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors) {
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<gpu::CudaDeviceAddressVmmAllocator> allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(
-          platform, memory_fraction, gpu_system_memory_size, devices));
+          platform, memory_fraction, gpu_system_memory_size, devices,
+          reclaim_exempt_memory_space, std::move(host_allocator),
+          std::move(free_visitors)));
   return std::unique_ptr<DeviceAddressVmmAllocator>(std::move(allocator));
 }
 

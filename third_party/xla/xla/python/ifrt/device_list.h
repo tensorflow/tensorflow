@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -33,6 +34,10 @@ limitations under the License.
 
 namespace xla {
 namespace ifrt {
+
+class DeviceList;
+
+using DeviceListRef = absl_nonnull RCReferenceWrapper<DeviceList>;
 
 // Ordered immutable list of devices.
 class DeviceList : public tsl::ReferenceCounted<DeviceList>,
@@ -48,8 +53,8 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   // Constructs `DeviceList` from `DeviceListProto`. Devices are looked up using
   // `client`. Device ids in the proto must be consistent with the devices
   // returned by `client`.
-  static absl::StatusOr<RCReferenceWrapper<DeviceList>> FromProto(
-      xla::ifrt::Client* client, const DeviceListProto& proto);
+  static absl::StatusOr<DeviceListRef> FromProto(
+      xla::ifrt::Client* absl_nonnull client, const DeviceListProto& proto);
 
   // Converts the device list to a protobuf.
   void ToProto(
@@ -114,8 +119,6 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
 
   virtual std::string ToString() const = 0;
 };
-
-using DeviceListRef = ::xla::ifrt::RCReferenceWrapper<DeviceList>;
 
 // Returns the id of each device in `device_list`.
 std::vector<DeviceId> GetDeviceIds(const DeviceListRef& device_list);

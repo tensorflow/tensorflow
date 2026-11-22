@@ -2,12 +2,22 @@
 
 HloModule TestModule, is_scheduled=true
 
-// CHECK-LABEL: entry:
-// CHECK:         %[[VAL_0:.*]] = load i128, ptr addrspace(1) @rng_state, align {{.*}}
-// CHECK:         %[[VAL_1:.*]] = add i128 %[[VAL_0]], 131072
-// CHECK:         store i128 %[[VAL_1]], ptr addrspace(1) @rng_state, align {{.*}}
-// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i64, ptr %[[VAL_3:.*]], i64 0
-// CHECK:         store i128 %[[VAL_0]], ptr %[[VAL_2]], align {{.*}}
+// CHECK:         @rng_state = private addrspace(1) global <2 x i64> <i64 117515157, i64 0>, align 16
+// CHECK-LABEL: @rng_get_and_update_state(
+// CHECK-SAME:    ptr noalias align 256 dereferenceable(16) %[[OUT:.*]])
+// CHECK:         %[[OLD:.*]] = load <2 x i64>, ptr addrspace(1) @rng_state, align 16
+// CHECK:         %[[LO:.*]] = extractelement <2 x i64> %[[OLD]], i64 0
+// CHECK:         %[[HI:.*]] = extractelement <2 x i64> %[[OLD]], i64 1
+// CHECK:         %[[ADD_RES:.*]] = call { i64, i1 } @llvm.uadd.with.overflow.i64(i64 %[[LO]], i64 131072)
+// CHECK:         %[[NEW_LO:.*]] = extractvalue { i64, i1 } %[[ADD_RES]], 0
+// CHECK:         %[[CARRY_I1:.*]] = extractvalue { i64, i1 } %[[ADD_RES]], 1
+// CHECK:         %[[CARRY:.*]] = zext i1 %[[CARRY_I1]] to i64
+// CHECK:         %[[NEW_HI:.*]] = add i64 %[[HI]], %[[CARRY]]
+// CHECK:         %[[V0:.*]] = insertelement <2 x i64> poison, i64 %[[NEW_LO]], i32 0
+// CHECK:         %[[NEW:.*]] = insertelement <2 x i64> %[[V0]], i64 %[[NEW_HI]], i32 1
+// CHECK:         store <2 x i64> %[[NEW]], ptr addrspace(1) @rng_state, align 16
+// CHECK:         %[[OUT_PTR:.*]] = getelementptr inbounds [2 x i64], ptr %[[OUT]], i32 0, i32 0
+// CHECK:         store <2 x i64> %[[OLD]], ptr %[[OUT_PTR]], align 256
 // CHECK:         ret void
 ENTRY Test {
   ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=131072

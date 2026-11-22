@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -186,38 +185,6 @@ DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
         kDefaultWorkerMaxConcurrentSnapshots);
   }
   return new_config;
-}
-
-// Validates that the dataset ID is valid to use to construct a file path.
-// It returns INVALID_ARGUMENT if the dataset_id is empty, '.', '..', or
-// contains path separators (e.g. '/' everywhere, and '\\' or ':' on Windows).
-absl::Status ValidateDatasetId(const std::string& dataset_id) {
-  if (dataset_id.empty()) {
-    return absl::InvalidArgumentError("Dataset ID must not be empty.");
-  }
-  if (dataset_id == "." || dataset_id == "..") {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Invalid dataset ID: ", dataset_id,
-                     ". Dataset IDs must not be '.' or '..'."));
-  }
-  if (absl::StrContains(dataset_id, '/')) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Invalid dataset ID: ", dataset_id,
-                     ". Dataset IDs must not contain '/'."));
-  }
-  if (absl::StrContains(dataset_id, '\\')) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Invalid dataset ID: ", dataset_id,
-                     ". Dataset IDs must not contain '\\'."));
-  }
-#if defined(_WIN32)
-  if (absl::StrContains(dataset_id, ':')) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Invalid dataset ID: ", dataset_id,
-                     ". Dataset IDs must not contain ':'."));
-  }
-#endif
-  return absl::OkStatus();
 }
 }  // namespace
 

@@ -44,6 +44,29 @@ limitations under the License.
 
 namespace xla::ifrt {
 
+namespace {
+
+// Enables thread-safe locking for `context` if the MLIR version provides
+// `mlir::MLIRContext::enableThreadSafeLocking()` (added in
+// llvm/llvm-project#236551); otherwise it does nothing. Older MLIR versions do
+// not need it: there, `Threading::DISABLED` contexts still keep the uniquer
+// locks enabled.
+// TODO(hyeontaek): Replace with a direct call to
+// `context.enableThreadSafeLocking()` once
+// the LLVM version in use includes llvm/llvm-project#236551.
+template <typename Context>
+auto EnableThreadSafeLockingIfSupported(Context& context, int)
+    -> decltype(context.enableThreadSafeLocking()) {
+  context.enableThreadSafeLocking();
+}
+template <typename Context>
+void EnableThreadSafeLockingIfSupported(Context& /*context*/, ...) {}
+void EnableThreadSafeLockingIfSupported(mlir::MLIRContext& context) {
+  EnableThreadSafeLockingIfSupported(context, 0);
+}
+
+}  // namespace
+
 char HloProgram::ID = 0;
 
 absl::StatusOr<std::string> HloProgram::ToBytes() const {
@@ -67,6 +90,7 @@ absl::StatusOr<std::unique_ptr<HloProgram>> HloProgram::FromBytes(
   if (context == nullptr) {
     context = std::make_shared<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
+    EnableThreadSafeLockingIfSupported(*context);
     mlir::DialectRegistry registry;
     xla::RegisterAllHloDialects(registry);
     context->appendDialectRegistry(registry);

@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/change_op_data_type.h"
+#include "xla/hlo/transforms/change_op_data_type.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

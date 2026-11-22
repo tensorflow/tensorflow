@@ -15,11 +15,15 @@ ENTRY A {
   // CHECK: loc(#[[LOC1:.*]])
   %add1 = f32[4] add(f32[4] %add0, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_0"}
   // CHECK: loc(#[[LOC4:.*]])
-  ROOT %add2 = f32[4] add(f32[4] %add1, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_1", source_file="source.txt", source_line=17}
+  %add2 = f32[4] add(f32[4] %add1, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_1", source_file="source.txt", source_line=17}
+  // CHECK: loc(#[[LOC4]])
+  ROOT %add3 = f32[4] add(f32[4] %add2, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_1", source_file="source.txt", source_line=17, source_end_line=17}
 
-  // CHECK: #[[LOC0]] = loc("add0")
-  // CHECK: #[[LOC1]] = loc("embedded_inference/Add_0")
-  // CHECK: #[[LOC2:.*]] = loc("embedded_inference/Add_1")
-  // CHECK: #[[LOC3:.*]] = loc("source.txt":17:0)
+  // CHECK-DAG: #[[ADD0_NAME:.*]] = loc("embedded_inference/Add_0")
+  // CHECK-DAG: #[[ADD1_NAME:.*]] = loc("embedded_inference/Add_1")
+  // CHECK-DAG: #[[LOC0]] = loc("add0")
+  // CHECK-DAG: #[[LOC1]] = loc("Add:"(#[[ADD0_NAME]]))
+  // CHECK-DAG: #[[LOC2:.*]] = loc("Add:"(#[[ADD1_NAME]]))
+  // CHECK-DAG: #[[LOC3:.*]] = loc("source.txt":17:0)
   // CHECK: #[[LOC4]] = loc(fused[#[[LOC2]], #[[LOC3]]])
 }

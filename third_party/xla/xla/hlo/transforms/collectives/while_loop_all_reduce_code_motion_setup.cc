@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -48,12 +50,21 @@ bool ReorderReduceTranspose::InstructionMatchesPattern(
   HloInstruction* operand = instruction->mutable_operand(0);
 
   // Check if the operand is a convert instruction
-  if (operand->opcode() == HloOpcode::kConvert) {
+  bool has_convert = operand->opcode() == HloOpcode::kConvert;
+  if (has_convert) {
     operand = operand->mutable_operand(0);
   }
 
   // Transpose operand is ReduceScatter
   if (operand->opcode() != HloOpcode::kReduceScatter) {
+    return false;
+  }
+  // If moving the convert before the reduce-scatter changes its element type,
+  // we must be able to rebuild the reduction computation for the new type.
+  if (has_convert &&
+      operand->to_apply()->root_instruction()->shape().element_type() !=
+          instruction->shape().element_type() &&
+      !MatchReductionComputation(operand->to_apply())) {
     return false;
   }
 
@@ -150,10 +161,20 @@ absl::StatusOr<HloInstruction*> ReorderReduceTranspose::ExpandInstruction(
     }
   }
 
+  HloComputation* to_apply = reduce_scatter->to_apply();
+  if (has_convert && to_apply->root_instruction()->shape().element_type() !=
+                         transpose->shape().element_type()) {
+    std::optional<ReductionKind> reduction_kind =
+        MatchReductionComputation(to_apply);
+    TF_RET_CHECK(reduction_kind.has_value());
+    to_apply = instruction->GetModule()->AddEmbeddedComputation(
+        MakeReductionComputation(*reduction_kind,
+                                 transpose->shape().element_type()));
+  }
+
   return instruction->parent()->AddInstruction(
       HloInstruction::CreateReduceScatter(
-          transpose->shape(), {new_transpose},
-          reduce_scatter->called_computations()[0],
+          transpose->shape(), {new_transpose}, to_apply,
           reduce_scatter->replica_groups(), reduce_scatter->constrain_layout(),
           reduce_scatter->channel_id(), reduce_scatter->use_global_device_ids(),
           new_scatter_dim));

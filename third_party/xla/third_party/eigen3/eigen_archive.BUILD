@@ -89,14 +89,18 @@ filegroup(
 
 cc_library(
     name = "blas",
-    srcs = glob([
-        "blas/*.cpp",
-        "blas/*.h",
-    ]) + [
-        "Eigen/src/Core/util/blas.h",
-    ],
+    srcs = glob(
+        [
+            "blas/*.cpp",
+            "blas/*.h",
+        ],
+        exclude = ["blas/blas.h"],
+    ),
     hdrs = ["blas/blas.h"],
-    copts = ["-O3"],
+    copts = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["-O3"],
+    }),
     includes = [
         "blas",
     ],
@@ -104,4 +108,28 @@ cc_library(
     deps = [
         ":eigen3",
     ],
+)
+
+alias(
+    name = "single",
+    actual = ":blas",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "double",
+    actual = ":blas",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "complex",
+    actual = ":blas",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "complex16",
+    actual = ":blas",
+    visibility = ["//visibility:public"],
 )

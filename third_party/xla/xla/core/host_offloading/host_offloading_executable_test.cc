@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/core/host_offloading/host_offloading_nanort_executable.h"
 #include "xla/core/host_offloading/host_offloading_pjrt_executable.h"
+#include "xla/custom_options.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -430,6 +431,67 @@ TEST_P(HostOffloadingRuntimeExecutableTest, FfiWithThreadpool) {
   EXPECT_FALSE(execute_event.IsError());
   EXPECT_THAT(result_literal.data<int32_t>(),
               ElementsAreArray({kDummyFFIResult}));
+}
+
+absl::Status CustomCallUsingCustomOptions(
+    ffi::Dictionary custom_options,
+    ffi::Result<ffi::BufferR0<PrimitiveType::S64>> out) {
+  if (custom_options.empty()) {
+    out->typed_data()[0] = -1;
+    return absl::OkStatus();
+  }
+  ABSL_ASSIGN_OR_RETURN(int64_t step, custom_options.get<int64_t>("step"));
+  ABSL_ASSIGN_OR_RETURN(absl::string_view tag,
+                   custom_options.get<absl::string_view>("tag"));
+  out->typed_data()[0] = step + static_cast<int64_t>(tag.size());
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kCustomCallUsingCustomOptions,
+                       CustomCallUsingCustomOptions,
+                       xla::ffi::Ffi::Bind()
+                           .Ctx<xla::ffi::CustomOptions>()
+                           .Ret<ffi::BufferR0<PrimitiveType::S64>>());
+
+XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(),
+                         "CustomCallUsingCustomOptions", "Host",
+                         kCustomCallUsingCustomOptions);
+
+TEST_P(HostOffloadingRuntimeExecutableTest, FfiWithCustomOptions) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule module
+
+    ENTRY custom_call {
+      ROOT custom-call = s64[] custom-call(),
+        custom_call_target="CustomCallUsingCustomOptions",
+        api_version=API_VERSION_TYPED_FFI
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HostOffloadingExecutable> computation,
+                       CompileFromString(kHlo, GetParam()));
+
+  Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::S64, {});
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Literal::Make(shape));
+  ShapeTree<HostOffloadingBuffer> result(
+      shape, HostOffloadingBuffer(result_literal.data<int64_t>()));
+
+  auto unset_event = computation->Execute({}, result, EmptyExecuteOptions());
+  tsl::BlockUntilReady(unset_event);
+  EXPECT_FALSE(unset_event.IsError());
+  EXPECT_THAT(result_literal.data<int64_t>(), ElementsAreArray({-1}));
+
+  tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent> set_event;
+  {
+    HostOffloadingExecutable::ExecuteOptions options;
+    options.launch_id = 7;
+    options.custom_options = std::make_shared<CustomOptions>(CustomOptions::Map{
+        {"step", int64_t{100}}, {"tag", std::string("tpu")}});
+    set_event = computation->Execute({}, result, options);
+  }
+  tsl::BlockUntilReady(set_event);
+  EXPECT_FALSE(set_event.IsError());
+  EXPECT_THAT(result_literal.data<int64_t>(), ElementsAreArray({103}));
 }
 
 TEST_P(HostOffloadingRuntimeExecutableTest, Int4) {

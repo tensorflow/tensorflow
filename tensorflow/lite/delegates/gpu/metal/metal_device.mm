@@ -70,7 +70,15 @@ GpuInfo CreateGpuInfoFromMetalDevice(id<MTLDevice> device) {
     gpu_info.metal_info.buffer_max_size = 256 * 1024 * 1024;
   }
 
-  if (@available(macOS 11.0, iOS 14.0, tvOS 14.0, *)) {
+  if (@available(macOS 15.0, iOS 18.0, tvOS 18.0, *)) {
+    gpu_info.metal_info.language_version = MetalLanguageVersion::kMetal3_2;
+  } else if (@available(macOS 14.0, iOS 17.0, tvOS 17.0, *)) {
+    gpu_info.metal_info.language_version = MetalLanguageVersion::kMetal3_1;
+  } else if (@available(macOS 13.0, iOS 16.0, tvOS 16.0, *)) {
+    gpu_info.metal_info.language_version = MetalLanguageVersion::kMetal3_0;
+  } else if (@available(macOS 12.0, iOS 15.0, tvOS 15.0, *)) {
+    gpu_info.metal_info.language_version = MetalLanguageVersion::kMetal2_4;
+  } else if (@available(macOS 11.0, iOS 14.0, tvOS 14.0, *)) {
     gpu_info.metal_info.language_version = MetalLanguageVersion::kMetal2_3;
   } else if (@available(macOS 10.15, iOS 13.0, tvOS 13.0, *)) {
     gpu_info.metal_info.language_version = MetalLanguageVersion::kMetal2_2;

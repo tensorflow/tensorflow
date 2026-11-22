@@ -14,6 +14,7 @@
 
 #include "xla/python/ifrt_proxy/client/client.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -41,6 +42,7 @@
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
@@ -578,6 +580,56 @@ TEST_P(ClientTest, CancelExecutionSuccess) {
 
   client_->CancelExecution(std::move(cancellation_handle),
                            absl::CancelledError("cancelled"));
+}
+
+TEST_P(ClientTest, HashValues) {
+  constexpr uint64_t kHandle0 = 1234;
+  constexpr uint64_t kHandle1 = 5678;
+  constexpr uint64_t kHash0 = 111;
+  constexpr uint64_t kHash1 = 222;
+
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
+
+  ShardingRef sharding =
+      xla::ifrt::SingleDeviceSharding::Create(device_, xla::ifrt::MemoryKind());
+  auto array0 = tsl::MakeRef<Array>(
+      client_.get(), rpc_helper_, DType(DType::kF64), Shape({1, 2, 3}),
+      sharding, ArrayHandle{kHandle0}, /*layout=*/nullptr);
+  auto array1 = tsl::MakeRef<Array>(
+      client_.get(), rpc_helper_, DType(DType::kF64), Shape({1, 2, 3}),
+      sharding, ArrayHandle{kHandle1}, /*layout=*/nullptr);
+  std::vector<ValueRef> values = {array0, array1};
+
+  if (Version().protocol_version() < protocol_version::kClientHashValues) {
+    EXPECT_THAT(client_
+                    ->HashValues(absl::MakeSpan(values),
+                                 xla::ifrt::Client::HashMode::kLogical)
+                    .Await(),
+                absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+    return;
+  }
+
+  IfrtResponse response;
+  response.mutable_hash_values_response()->add_hashes(kHash0);
+  response.mutable_hash_values_response()->add_hashes(kHash1);
+
+  EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
+                             R"pb(
+                               hash_values_request {
+                                 value_handles: [ 1234, 5678 ]
+                                 hash_mode: HASH_MODE_LOGICAL
+                               }
+                             )pb")))))
+      .WillOnce(MockClientSessionReturnResponse(response));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<uint64_t> hashes,
+                       client_
+                           ->HashValues(absl::MakeSpan(values),
+                                        xla::ifrt::Client::HashMode::kLogical)
+                           .Await());
+  EXPECT_THAT(hashes, ElementsAre(kHash0, kHash1));
 }
 
 INSTANTIATE_TEST_SUITE_P(

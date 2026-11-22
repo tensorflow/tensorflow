@@ -380,13 +380,13 @@ void EventNode::PropagateGroupId(int64_t group_id,
     EventNode* node = nodes.front();
     nodes.pop();
     std::optional<int64_t> node_group_id = node->GetGroupId();
-    if (node_group_id.has_value()) {
-      if (*node_group_id != group_id) {
-        (*group_metadata_map)[group_id].children.insert(*node_group_id);
-        (*group_metadata_map)[*node_group_id].parents.insert(group_id);
-      }
+    if (node_group_id.has_value() && *node_group_id != group_id) {
+      (*group_metadata_map)[group_id].children.insert(*node_group_id);
+      (*group_metadata_map)[*node_group_id].parents.insert(group_id);
     } else {
-      node->SetGroupId(group_id);
+      if (!node_group_id.has_value()) {
+        node->SetGroupId(group_id);
+      }
       for (EventNode* child : node->GetChildren()) {
         if (seen.contains(child)) {
           continue;
@@ -580,7 +580,13 @@ void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
             EventNode* parent_node = parent_nodes.back();
             if (parent_node->GetEventVisitor().GetTimespan().Includes(
                     cur_node->GetEventVisitor().GetTimespan())) {
-              parent_node->AddChild(cur_node);
+              // Batch execution roots connect to their constituent requests via
+              // explicit scheduler context stats rather than the enclosing
+              // threadpool closure or caller that triggered scheduling.
+              if (event_type != HostEventType::kProcessBatch &&
+                  event_type != HostEventType::kOrbaxProcessBatch) {
+                parent_node->AddChild(cur_node);
+              }
               break;
             }
             parent_nodes.pop_back();
@@ -664,6 +670,7 @@ void EventForest::CreateEventGroups() {
   int64_t group_id = 0;
   if (!tf_loop_root_events_.empty()) {
     for (EventNode* root_event : tf_loop_root_events_) {
+      DCHECK(root_event->GetGroupId() == group_id);
       ProcessRootEvent(group_id++, root_event, &group_metadata_map_);
     }
   } else {
@@ -819,15 +826,20 @@ void EventForest::ProcessTensorFlowLoop() {
 
   // Register the first event of each iteration as a root event. Also, add the
   // other events of the iteration as child to the root event.
+  int64_t group_id = 0;
   for (const TensorFlowLoopIteration* iter : iters) {
     EventNode* root_event = iter->first_event;
     tf_loop_root_events_.push_back(root_event);
     for (EventNode* event : iter->events) {
+      // Set group_id for all entry events in the TF loop iteration so they are
+      // not grouped with the previous TF loop iteration.
+      event->SetGroupId(group_id);
       if (event == root_event) {
         continue;
       }
       root_event->AddChild(event);
     }
+    ++group_id;
   }
 }
 

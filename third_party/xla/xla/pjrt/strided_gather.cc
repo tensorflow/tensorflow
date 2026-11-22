@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/strided_gather.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <numeric>
@@ -26,6 +27,8 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/util.h"
@@ -103,6 +106,42 @@ StridedGather::StridedGather(Spec spec)
 
 int64_t StridedGather::num_chunks() const {
   return absl::c_accumulate(spec_.counts, int64_t{1}, std::multiplies<>());
+}
+
+absl::Status StridedGather::ValidateBounds(int64_t buffer_size) const {
+  if (spec_.src_byte_size > buffer_size) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("StridedGather src_byte_size (%d bytes) exceeds buffer "
+                        "size (%d bytes).",
+                        spec_.src_byte_size, buffer_size));
+  }
+  if (num_chunks() == 0) {
+    return absl::OkStatus();
+  }
+  if (spec_.src_byte_offset < 0 || chunk_size() < 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "StridedGather has negative offset (%d) or chunk size (%d).",
+        spec_.src_byte_offset, chunk_size()));
+  }
+  int64_t max_end_offset = spec_.src_byte_offset + chunk_size();
+  for (size_t i = 0; i < spec_.counts.size(); ++i) {
+    if (spec_.counts[i] < 0 || spec_.src_byte_strides[i] < 0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "StridedGather has negative count (%d) or byte stride (%d) at "
+          "dimension %d.",
+          spec_.counts[i], spec_.src_byte_strides[i], i));
+    }
+    if (spec_.counts[i] > 1) {
+      max_end_offset += (spec_.counts[i] - 1) * spec_.src_byte_strides[i];
+    }
+  }
+  if (max_end_offset > buffer_size) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "StridedGather max accessed byte offset (%d bytes) exceeds buffer "
+        "size (%d bytes).",
+        max_end_offset, buffer_size));
+  }
+  return absl::OkStatus();
 }
 
 void StridedGather::CreateTransposePlan(

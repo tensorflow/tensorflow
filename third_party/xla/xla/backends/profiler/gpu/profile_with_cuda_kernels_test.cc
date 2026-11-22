@@ -168,9 +168,11 @@ void SimpleAddSubWithProfilerTest(bool enable_activity_hardware_tracing,
   }
   auto err = tracer.Enable(tracer_options, collector.get(), xplanes);
 
-  if (absl::IsPermissionDenied(err)) {
-    GTEST_SKIP() << "PM Sampling requires root access";
+  if (absl::IsPermissionDenied(err) || absl::IsUnimplemented(err)) {
+    GTEST_SKIP() << "PM Sampling is not supported or requires root access: "
+                 << err;
   }
+  ASSERT_OK(err);
 
   // SimpleAddSub does num_elements * 4 integer add / subs
   std::vector<double> vec = SimpleAddSubWithProfiler(kNumElements);
@@ -187,7 +189,7 @@ void SimpleAddSubWithProfilerTest(bool enable_activity_hardware_tracing,
   for (int i = 0; i < collector_options.num_gpus; ++i) {
     xplanes.push_back(std::make_unique<tensorflow::profiler::XPlane>());
   }
-  err = tracer.Enable(tracer_options, collector.get(), xplanes);
+  ASSERT_OK(tracer.Enable(tracer_options, collector.get(), xplanes));
 
   vec = SimpleAddSubWithProfiler(kNumElements);
 

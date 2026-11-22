@@ -17,11 +17,17 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
+
+// Validates that `dataset_id` is a valid dataset ID. Rejects empty IDs, exact
+// '.' or '..', NUL bytes, '/' or '\', and ':' on Windows.
+absl::Status ValidateDatasetId(absl::string_view dataset_id);
 
 // Verifies the datasets with the same ID have the same metadata. If the
 // metadata differs, returns an invalid argument error.

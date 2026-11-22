@@ -2306,21 +2306,6 @@ ENTRY %main.2 () -> u32[] {
 // -----
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
-// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<ui32>) -> tensor<ui32> {
-// CHECK:           %[[VAL_1:.*]] = "mhlo.domain"(%[[VAL_0]]) <{entry_metadata = "{maximal device=1}", exit_metadata = "{}", kind = #mhlo<kind sharding>}> : (tensor<ui32>) -> tensor<ui32>
-// CHECK:           return %[[VAL_1]] : tensor<ui32>
-// CHECK:         }
-// CHECK:       }
-HloModule main, entry_computation_layout={(u32[])->u32[]}
-
-ENTRY %main.3 (Arg_0.1: u32[]) -> u32[] {
-  %Arg_0.1 = u32[] parameter(0)
-  ROOT %domain.2 = u32[] domain(%Arg_0.1), domain={kind="sharding", entry={maximal device=1}, exit={}}
-}
-
-// -----
-
-// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<4x4xf32>, %[[VAL_1:.*]]: tensor<3x4xf32>) -> tensor<3x4xf32> {
 // CHECK:           %[[VAL_2:.*]] = "stablehlo.triangular_solve"(%[[VAL_0]], %[[VAL_1]]) <{left_side = false, lower = true, transpose_a = #stablehlo<transpose NO_TRANSPOSE>, unit_diagonal = false}> : (tensor<4x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
 // CHECK:           return %[[VAL_2]] : tensor<3x4xf32>
@@ -2813,4 +2798,24 @@ ENTRY %main.3 (data: f32[4], source_ids: s32[1]) -> f32[4] {
   %data = f32[4]{0} parameter(0)
   %source_ids = s32[1]{0} parameter(1)
   ROOT %collective-broadcast.1 = f32[4]{0} collective-broadcast(%data, %source_ids), channel_id=1, replica_groups={{0,1}}, has_dynamic_root=true
+}
+
+// -----
+
+// CHECK-LABEL: module @mulhi attributes
+// CHECK:         func.func @main(%[[LHS_S:.*]]: tensor<4xi32>, %[[RHS_S:.*]]: tensor<4xi32>, %[[LHS_U:.*]]: tensor<4xui32>, %[[RHS_U:.*]]: tensor<4xui32>) -> tuple<tensor<4xi32>, tensor<4xui32>> {
+// CHECK:           %[[MULHI_S:.*]] = mhlo.mulhi %[[LHS_S]], %[[RHS_S]] : tensor<4xi32>
+// CHECK:           %[[MULHI_U:.*]] = mhlo.mulhi %[[LHS_U]], %[[RHS_U]] : tensor<4xui32>
+// CHECK:           %[[TUPLE:.*]] = stablehlo.tuple %[[MULHI_S]], %[[MULHI_U]]
+// CHECK:           return %[[TUPLE]] : tuple<tensor<4xi32>, tensor<4xui32>>
+HloModule mulhi
+
+ENTRY %main (lhs_s: s32[4], rhs_s: s32[4], lhs_u: u32[4], rhs_u: u32[4]) -> (s32[4], u32[4]) {
+  %lhs_s = s32[4] parameter(0)
+  %rhs_s = s32[4] parameter(1)
+  %lhs_u = u32[4] parameter(2)
+  %rhs_u = u32[4] parameter(3)
+  %s = s32[4] mulhi(%lhs_s, %rhs_s)
+  %u = u32[4] mulhi(%lhs_u, %rhs_u)
+  ROOT %t = (s32[4], u32[4]) tuple(%s, %u)
 }

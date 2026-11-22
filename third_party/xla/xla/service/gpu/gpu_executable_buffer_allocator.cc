@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -29,7 +32,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -42,10 +47,15 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -54,12 +64,12 @@ namespace xla::gpu {
 namespace {
 
 // True for allocations that GenerateBufferAllocations obtains from the device
-// memory allocator: everything that is not a parameter, a constant, or a
-// thread-local buffer.
+// memory allocator: everything that is not a parameter, a constant, a
+// persistent buffer, or a thread-local buffer.
 bool IsTransientAllocation(const BufferAllocation& allocation) {
   return !allocation.is_thread_local() &&
          !allocation.is_entry_computation_parameter() &&
-         !allocation.is_constant();
+         !allocation.is_constant() && !allocation.is_persistent();
 }
 
 // True for allocations in the collective memory space S(1).
@@ -104,8 +114,8 @@ GpuExecutableBufferAllocator::Create(
   switch (update_mode) {
     case DebugOptions::ALWAYS_UPDATE:
       return std::make_unique<GpuExecutableBufferAllocator>(
-          module_name, allocations, result_shape, debug_options,
-          thunk_executor);
+          module_name, allocations, result_shape, debug_options, thunk_executor,
+          num_devices);
     case DebugOptions::SKIP_TEMP:
     case DebugOptions::SKIP_PROFILED:
       return std::make_unique<GpuExecutableVaRemapAllocator>(
@@ -150,34 +160,139 @@ GpuExecutableBufferAllocator::GpuExecutableBufferAllocator(
     absl::string_view module_name,
     absl::Span<const BufferAllocation* const> allocations,
     const Shape& result_shape, const DebugOptions* debug_options,
-    ThunkExecutor* thunk_executor)
+    ThunkExecutor* thunk_executor, int num_devices)
     : module_name_(module_name),
       allocations_(allocations.begin(), allocations.end()),
       result_shape_(result_shape),
-      debug_options_(debug_options) {
-  AllocationIndexSet constants;
+      debug_options_(debug_options),
+      persistent_allocations_(num_devices) {
+  for (const BufferAllocation* allocation : allocations_) {
+    if (allocation != nullptr && allocation->is_persistent()) {
+      has_persistent_allocations_ = true;
+      break;
+    }
+  }
+  AllocationIndexSet fixed;
   ForEachCommandBufferAllocation(
       allocations_, thunk_executor,
       [&](BufferAllocation::Index index, const BufferAllocation& allocation) {
-        if (allocation.is_constant()) {
-          constants.insert(index);
+        if (allocation.is_constant() || allocation.is_persistent()) {
+          fixed.insert(index);
         }
       });
-  constant_alloc_indices_.assign(constants.begin(), constants.end());
-  persistent_alloc_indices_ = constant_alloc_indices_;
+  fixed_alloc_indices_.assign(fixed.begin(), fixed.end());
+  persistent_alloc_indices_ = fixed_alloc_indices_;
 
   VLOG(3) << "Command buffer allocation policy: collected "
-          << constant_alloc_indices_.size()
-          << " constant allocation indices for module " << module_name_;
+          << fixed_alloc_indices_.size()
+          << " constant/persistent allocation indices for module "
+          << module_name_;
+}
+
+absl::StatusOr<const GpuExecutableBufferAllocator::PersistentBufferState*>
+GpuExecutableBufferAllocator::EnsurePersistentAllocations(
+    se::Stream* stream) const {
+  TF_RET_CHECK(stream != nullptr);
+  se::StreamExecutor* executor = stream->parent();
+  TF_RET_CHECK(executor != nullptr);
+  const int physical_device_ordinal = executor->device_ordinal();
+  ABSL_ASSIGN_OR_RETURN(
+      PersistentBufferState * state,
+      persistent_allocations_.GetOrCreate(physical_device_ordinal));
+  if (state->initialized.load(std::memory_order_acquire)) {
+    TF_RET_CHECK(state->executor == executor)
+        << "StreamExecutor mismatch for physical device ordinal "
+        << physical_device_ordinal;
+    return state;
+  }
+  absl::MutexLock lock(state->mu);
+  if (state->initialized.load(std::memory_order_relaxed)) {
+    TF_RET_CHECK(state->executor == executor)
+        << "StreamExecutor mismatch for physical device ordinal "
+        << physical_device_ordinal;
+    return state;
+  }
+
+  static_assert(
+      kXlaAllocatedBufferAlignBytes <= se::gpu::kDeviceMemoryAlignBytes,
+      "GpuExecutor::Allocate alignment must satisfy "
+      "kXlaAllocatedBufferAlignBytes");
+
+  // Buffers are published only once all of them are allocated and initialized,
+  // so a failed attempt frees what it allocated and the next execution retries.
+  std::vector<std::pair<const BufferAllocation*, se::DeviceAddressHandle>>
+      buffers;
+  for (const BufferAllocation* allocation : allocations_) {
+    if (allocation == nullptr || !allocation->is_persistent() ||
+        allocation->size() == 0) {
+      continue;
+    }
+    // XLA colors and StreamExecutor memory spaces are different enumerations.
+    TF_RET_CHECK(allocation->color() ==
+                 static_cast<int64_t>(MemorySpaceColor::kDefault))
+        << "Unsupported memory space color " << allocation->color()
+        << " for persistent buffer allocation " << allocation->index();
+    TF_RET_CHECK(allocation->initial_data().empty() ||
+                 allocation->initial_data().size() ==
+                     static_cast<size_t>(allocation->size()));
+    // Allocate from StreamExecutor rather than run_options->allocator()
+    // because callers such as TF XLA pass a per step TfAllocatorAdapter whose
+    // lifetime ends before ~GpuExecutable(). GpuExecutor guarantees at least
+    // se::gpu::kDeviceMemoryAlignBytes alignment on device allocations.
+    const uint64_t alloc_size = static_cast<uint64_t>(allocation->size());
+    se::DeviceAddressBase raw_buffer = executor->Allocate(
+        alloc_size, static_cast<int64_t>(se::MemorySpace::kDevice));
+    if (raw_buffer.is_null()) {
+      return absl::ResourceExhaustedError(absl::StrFormat(
+          "Failed to allocate %d bytes for persistent buffer allocation %d",
+          allocation->size(), allocation->index()));
+    }
+    se::DeviceAddressHandle handle(executor, raw_buffer);
+    TF_RET_CHECK(reinterpret_cast<uintptr_t>(raw_buffer.opaque()) %
+                     kXlaAllocatedBufferAlignBytes ==
+                 0)
+        << "Persistent buffer allocation " << allocation->index() << " address "
+        << raw_buffer.opaque() << " is not aligned to "
+        << kXlaAllocatedBufferAlignBytes << " bytes";
+    buffers.emplace_back(allocation, std::move(handle));
+  }
+
+  absl::Status init_status = [&]() -> absl::Status {
+    for (const auto& [allocation, buffer] : buffers) {
+      se::DeviceAddressBase dst = buffer.address();
+      if (allocation->initial_data().empty()) {
+        ABSL_RETURN_IF_ERROR(stream->MemZero(&dst, allocation->size()));
+      } else {
+        ABSL_RETURN_IF_ERROR(stream->Memcpy(&dst, allocation->initial_data().data(),
+                                       allocation->initial_data().size()));
+      }
+    }
+    return absl::OkStatus();
+  }();
+  // Synchronize even after a failed submission so no copy is still in flight
+  // when the buffers are freed. Synchronizing also keeps concurrent
+  // executions on other streams of the device from seeing uninitialized
+  // bytes.
+  if (!buffers.empty()) {
+    init_status.Update(stream->BlockHostUntilDone());
+  }
+  ABSL_RETURN_IF_ERROR(init_status);
+
+  state->executor = executor;
+  for (auto& [allocation, buffer] : buffers) {
+    state->buffers.emplace(allocation->index(), std::move(buffer));
+  }
+  state->initialized.store(true, std::memory_order_release);
+  return state;
 }
 
 absl::StatusOr<se::DeviceAddressBase>
 GpuExecutableBufferAllocator::ExecutionScope::AllocateTransientBuffer(
-    int device_ordinal, const BufferAllocation& allocation, int64_t buffer_size,
+    const BufferAllocation& allocation, int64_t buffer_size,
     se::DeviceAddressAllocator* memory_allocator) {
   ABSL_ASSIGN_OR_RETURN(
       se::ScopedDeviceAddress<uint8_t> buffer,
-      memory_allocator->Allocate(device_ordinal, buffer_size,
+      memory_allocator->Allocate(device_ordinal_, buffer_size,
                                  /*retry_on_failure=*/true,
                                  /*memory_space=*/allocation.color()));
   return buffer.Release();
@@ -187,9 +302,9 @@ absl::StatusOr<se::DeviceAddressBase>
 GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
     ParameterBufferResolver get_parameter_buffer,
     const BufferAllocToDeviceMemoryMap* globals,
+    const PersistentBufferState* persistent_state,
     const BufferAllocation& allocation,
-    se::DeviceAddressAllocator* const memory_allocator, int device_ordinal,
-    int64_t arg_idx) {
+    se::DeviceAddressAllocator* const memory_allocator, int64_t arg_idx) {
   if (allocation.is_thread_local()) {
     return se::DeviceAddressBase{};
   }
@@ -216,14 +331,24 @@ GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
     }
     return it->second;
   }
+  if (allocation.is_persistent()) {
+    if (allocation.size() == 0) {
+      return se::DeviceAddressBase();
+    }
+    TF_RET_CHECK(persistent_state != nullptr &&
+                 persistent_state->initialized.load(std::memory_order_acquire));
+    auto it = persistent_state->buffers.find(arg_idx);
+    TF_RET_CHECK(it != persistent_state->buffers.end());
+    return it->second.address();
+  }
 
   // Allocate each allocation that might escape, or is the temp buffer.
   int64_t buffer_size = allocation.size();
   se::DeviceAddressBase buffer_address;
   if (buffer_size > 0) {
-    ABSL_ASSIGN_OR_RETURN(buffer_address,
-                     AllocateTransientBuffer(device_ordinal, allocation,
-                                             buffer_size, memory_allocator));
+    ABSL_ASSIGN_OR_RETURN(
+        buffer_address,
+        AllocateTransientBuffer(allocation, buffer_size, memory_allocator));
   }
   return buffer_address;
 }
@@ -233,7 +358,7 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
     const ServiceExecutableRunOptions* run_options,
     ParameterBufferResolver get_parameter_buffer,
     const BufferAllocToDeviceMemoryMap* globals,
-    se::DeviceAddressAllocator* const memory_allocator, int device_ordinal) {
+    se::DeviceAddressAllocator* const memory_allocator) {
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
@@ -244,7 +369,12 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
           run_options->run_options().device_assignment());
 
   const int64_t num_buffers = owner_->allocations_.size();
-  ABSL_RETURN_IF_ERROR(Prepare(run_options, device_ordinal));
+  ABSL_RETURN_IF_ERROR(Prepare(run_options));
+  const PersistentBufferState* persistent_state = nullptr;
+  if (owner_->has_persistent_allocations_) {
+    ABSL_ASSIGN_OR_RETURN(persistent_state, owner_->EnsurePersistentAllocations(
+                                           run_options->stream()));
+  }
 
   // Resolve allocations in two passes so that every collective memory (S(1))
   // buffer of this execution is allocated before any default memory (S(0))
@@ -258,9 +388,10 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
   std::vector<se::DeviceAddressBase> buffers(num_buffers);
   auto resolve = [&](int64_t i) -> absl::Status {
     const BufferAllocation& allocation = *owner_->allocations_[i];
-    ABSL_ASSIGN_OR_RETURN(buffers[i], BufferForAllocation(
-                                     get_parameter_buffer, globals, allocation,
-                                     memory_allocator, device_ordinal, i));
+    ABSL_ASSIGN_OR_RETURN(
+        buffers[i],
+        BufferForAllocation(get_parameter_buffer, globals, persistent_state,
+                            allocation, memory_allocator, i));
     return CheckAlignment(allocation, buffers[i], i);
   };
 
@@ -277,25 +408,25 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
   for (int64_t i : deferred_indices) {
     ABSL_RETURN_IF_ERROR(resolve(i));
   }
-  return BufferAllocations(buffers, device_ordinal, memory_allocator);
+  return BufferAllocations(buffers, device_ordinal_, memory_allocator);
 }
 
 absl::StatusOr<se::DeviceAddressBase>
 GpuExecutableBufferAllocator::ExecutionScope::AllocateCopyProtectedOutputBuffer(
     const ServiceExecutableRunOptions* run_options,
     BufferAllocations& buffer_allocations, const ShapeIndex& index,
-    const BufferAllocation& allocation, int device_ordinal,
+    const BufferAllocation& allocation,
     se::DeviceAddressAllocator* const memory_allocator,
     absl::FunctionRef<absl::Status(absl::Status)> allocation_error) {
   // The caller guards this against aliasing pass-through params, as we do not
   // need to write into the output buffer in that case.
-  XLA_VLOG_DEVICE(3, device_ordinal)
+  XLA_VLOG_DEVICE(3, device_ordinal_)
       << "Using copy-protection: aliasing is specified, but the "
          "buffer is not donated; allocating a fresh buffer";
   int64_t allocation_size = ShapeUtil::ByteSizeOf(
       ShapeUtil::GetSubshape(owner_->result_shape_, index));
   absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> allocated_buffer =
-      memory_allocator->Allocate(device_ordinal, allocation_size,
+      memory_allocator->Allocate(device_ordinal_, allocation_size,
                                  /*retry_on_failure=*/true,
                                  /*memory_space=*/allocation.color());
   if (!allocated_buffer.ok()) {
@@ -313,21 +444,28 @@ GpuExecutableBufferAllocator::ExecutionScope::AllocateCopyProtectedOutputBuffer(
 
 absl::Status
 GpuExecutableBufferAllocator::ExecutionScope::ExecuteWithBufferAllocations(
-    const BufferAllocations& owning_buffer_allocations, int device_ordinal,
+    const BufferAllocations& owning_buffer_allocations,
     absl::FunctionRef<
         absl::Status(const BufferAllocations&,
                      std::optional<absl::Span<const BufferAllocation::Index>>
                          persistent_alloc_indices)>
         execute) {
   return execute(owning_buffer_allocations,
-                 absl::MakeConstSpan(owner_->constant_alloc_indices_));
+                 absl::MakeConstSpan(owner_->fixed_alloc_indices_));
+}
+
+absl::Status GpuExecutableBufferAllocator::ExecutionScope::TearDown(
+    const std::set<se::DeviceAddressBase>& live_addresses,
+    BufferAllocations& buffer_allocations) {
+  return buffer_allocations.TearDown(live_addresses, owner_->allocations());
 }
 
 absl::StatusOr<std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope>>
 GpuExecutableBufferAllocator::CreateExecutionScope(
     const ServiceExecutableRunOptions* run_options,
     se::DeviceAddressAllocator* memory_allocator, int device_ordinal) {
-  return std::unique_ptr<ExecutionScope>(new ExecutionScope(this));
+  return std::unique_ptr<ExecutionScope>(
+      new ExecutionScope(this, device_ordinal));
 }
 
 }  // namespace xla::gpu

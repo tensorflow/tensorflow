@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 namespace tensorflow {
 namespace ifrt_serving {
@@ -33,8 +34,11 @@ class IfrtServingCoreSelector {
                                    int num_cores);
   // Reserves a device for the given `program_id`. The `program_id` is used to
   // identify an IFRT executable and should be the key of
-  // `tensorflow::ifrt_serving::ServingExecutableRegistry `.
-  tsl::DeviceReservation ReserveDevice(int64_t program_id);
+  // `tensorflow::ifrt_serving::ServingExecutableRegistry `. If
+  // `candidate_cores` is non-empty, warmup and selection are restricted to
+  // those cores.
+  tsl::DeviceReservation ReserveDevice(
+      int64_t program_id, absl::Span<const int> candidate_cores = {});
 
  private:
   tsl::ServingDeviceSelector* device_selector_;

@@ -27,7 +27,7 @@ TEST(XlaCpuPjrtClientTest, GetXlaPjrtGpuClient) {
   auto* common_client = dynamic_cast<CommonPjRtClient*>(client.get());
   ASSERT_NE(common_client, nullptr);
   ASSERT_NE(
-      dynamic_cast<StreamExecutorGpuRawClient*>(common_client->raw_client()),
+      common_client->raw_client()->down_cast<StreamExecutorGpuRawClient>(),
       nullptr);
 }
 

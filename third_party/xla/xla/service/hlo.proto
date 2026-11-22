@@ -148,6 +148,8 @@ message HloInstructionProto {
   // Use backend_config instead for all_reduce_barrier.
   reserved 46;
   reserved "all_reduce_barrier";
+  reserved 54, 55;
+  reserved "domain_entry_sharding", "domain_exit_sharding";
 
   string name = 1;
   string opcode = 2;
@@ -301,10 +303,6 @@ message HloInstructionProto {
 
   // Collective permute field.
   repeated SourceTarget source_target_pairs = 52;
-
-  // Sharding for kDomain instructions.
-  xla.OpSharding domain_entry_sharding = 54;
-  xla.OpSharding domain_exit_sharding = 55;
 
   // For custom call this indicates that the layouts are constrained. If
   // constrain_layout is true then the 'shape' field must contain a layout, and
@@ -749,6 +747,8 @@ message BufferAllocationProto {
   bool is_tuple = 11;
   bool is_entry_computation_parameter = 5;
   bool is_constant = 12;
+  bool is_persistent = 14;
+  bytes initial_data = 15;
   int64 parameter_number = 6;
   repeated int64 parameter_shape_index = 10;
   bool is_parameter_aliased_with_output = 13;

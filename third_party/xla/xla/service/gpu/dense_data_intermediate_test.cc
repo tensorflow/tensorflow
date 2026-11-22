@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -83,6 +84,24 @@ TEST(DenseDataIntermediateTest, BorrowedDataToProto) {
   DenseDataIntermediate constant = DenseDataIntermediate::Alias(kData);
   DenseDataIntermediateProto proto = constant.ToProto();
   EXPECT_THAT(proto.data(), ElementsAreArray(kData));
+}
+
+TEST(DenseDataIntermediateTest, AliasedDataToOwnedCopiesData) {
+  std::vector<uint8_t> data = {1, 2, 3, 4};
+  DenseDataIntermediate owned = DenseDataIntermediate::Alias(data).ToOwned();
+  EXPECT_NE(owned.span().data(), data.data());
+
+  // The owned copy must not depend on the original data.
+  data = {5, 6, 7, 8};
+  EXPECT_THAT(owned.span(), ElementsAreArray({1, 2, 3, 4}));
+}
+
+TEST(DenseDataIntermediateTest, OwnedDataToOwnedDoesNotCopyData) {
+  DenseDataIntermediate constant = DenseDataIntermediate::Own({1, 2, 3, 4});
+  const uint8_t* data = constant.span().data();
+  DenseDataIntermediate owned = std::move(constant).ToOwned();
+  EXPECT_EQ(owned.span().data(), data);
+  EXPECT_THAT(owned.span(), ElementsAreArray({1, 2, 3, 4}));
 }
 
 TEST(DenseDataIntermediateTest, FromProto) {

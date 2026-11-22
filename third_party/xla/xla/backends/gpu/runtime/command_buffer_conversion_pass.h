@@ -37,9 +37,13 @@ namespace gpu {
 // Converts compatible sequences of Thunks into CommandBufferThunks.
 class CommandBufferConversionPass : public ThunkPassInterface {
  public:
+  // `slice_size` is the number of devices in a fast-interconnect domain (see
+  // `GpuTopology::slice_size`), or 0 if unknown.
   CommandBufferConversionPass(absl::string_view module_name,
-                              int devices_in_process)
-      : module_name_(module_name), devices_in_process_(devices_in_process) {}
+                              int devices_in_process, int64_t slice_size)
+      : module_name_(module_name),
+        devices_in_process_(devices_in_process),
+        slice_size_(slice_size) {}
 
   absl::string_view name() const override {
     return "command-buffer-conversion";
@@ -81,6 +85,7 @@ class CommandBufferConversionPass : public ThunkPassInterface {
 
   std::string module_name_;
   int devices_in_process_;
+  int64_t slice_size_;
 };
 
 }  // namespace gpu

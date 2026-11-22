@@ -25,7 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
@@ -40,6 +44,8 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::FieldsAre;
@@ -60,11 +66,126 @@ class HloShardingSpecTest : public testing::Test {
   test_util::DeviceTestFixture fixture_;
 };
 
-TEST_F(HloShardingSpecTest, CreateWithNumShardsMismatch) {
-  auto xla_hlo_sharding = xla::HloSharding::IotaTile({2, 3});
+TEST_F(HloShardingSpecTest, CreateWithInvalidNumShards) {
+  const xla::HloSharding replicated = xla::HloSharding::Replicate();
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(/*num_shards=*/0, replicated),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires at least 1 shard")));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(/*num_shards=*/-1, replicated),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires at least 1 shard")));
+  EXPECT_DEATH((void)HloShardingSpec::Create(/*num_shards=*/0, replicated),
+               "requires at least 1 shard");
+
+  const xla::HloSharding xla_hlo_sharding = xla::HloSharding::IotaTile({2, 3});
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(/*num_shards=*/5, xla_hlo_sharding),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("`num_shards` and `xla_hlo_sharding`'s `num_devices` "
+                         "does not match")));
   EXPECT_DEATH(
       HloShardingSpec::Create(/*num_shards=*/5, xla_hlo_sharding),
       "`num_shards` and `xla_hlo_sharding`'s `num_devices` does not match");
+}
+
+TEST_F(HloShardingSpecTest, CreateIfValidRejectsInvalidHloSharding) {
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/2,
+                  xla::HloSharding::Tile(xla::Array<int64_t>({2}, {1, 0}))),
+              IsOk());
+
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/2,
+                  xla::HloSharding::Tile(xla::Array<int64_t>({2}, {0, 2}))),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device 2 must be in [0, 2)")));
+
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/2,
+                  xla::HloSharding::FlatTuple({xla::HloSharding::Manual(),
+                                               xla::HloSharding::Manual()})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support tuple sharding")));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/2, xla::HloSharding::FlatTuple(
+                                        {xla::HloSharding::Replicate(),
+                                         xla::HloSharding::IotaTile({2})})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support tuple sharding")));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(/*num_shards=*/2,
+                                             xla::HloSharding::Unknown()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support unknown sharding")));
+  xla::HloSharding shard_group = xla::HloSharding::Replicate();
+  shard_group.SetShardGroup(xla::HloSharding::ShardAs(/*shard_group_id=*/0));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(/*num_shards=*/2, shard_group),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support shard-group sharding")));
+  xla::HloSharding negative_shard_as = xla::HloSharding::Replicate();
+  negative_shard_as.SetShardGroup(
+      xla::HloSharding::ShardAs(/*shard_group_id=*/-1));
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(/*num_shards=*/2, negative_shard_as),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support shard-group sharding")));
+  xla::HloSharding negative_shard_like = xla::HloSharding::Replicate();
+  negative_shard_like.SetShardGroup(
+      xla::HloSharding::ShardLike(/*shard_group_id=*/-1));
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(/*num_shards=*/2, negative_shard_like),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support shard-group sharding")));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/2, xla::HloSharding::ToV3Sharding(
+                                        xla::HloSharding::Replicate())),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support XLA HloShardingV3")));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/4,
+                  xla::HloSharding::ToV3Sharding(xla::HloSharding::PartialTile(
+                      xla::TileAssignment({2, 1, 2})))),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support XLA HloShardingV3")));
+  const xla::Mesh mesh_2(/*axes_sizes=*/{2}, /*axes_names=*/{"x"});
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(
+          /*num_shards=*/2, xla::HloSharding(xla::NamedSharding(mesh_2))),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support XLA HloShardingV3")));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/1,
+                  xla::HloSharding(xla::NamedSharding(xla::Mesh(-1)))),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support XLA HloShardingV3")));
+  xla::HloSharding v3_with_shard_group =
+      xla::HloSharding::ToV3Sharding(xla::HloSharding::Replicate());
+  v3_with_shard_group.SetShardGroup(
+      xla::HloSharding::ShardAs(/*shard_group_id=*/0));
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(/*num_shards=*/2, v3_with_shard_group),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support XLA HloShardingV3")));
+  EXPECT_DEATH((void)HloShardingSpec::Create(
+                   /*num_shards=*/2, xla::HloSharding::ToV3Sharding(
+                                         xla::HloSharding::Replicate())),
+               "does not support XLA HloShardingV3");
+  EXPECT_DEATH((void)HloShardingSpec::Create(/*num_shards=*/2,
+                                             xla::HloSharding::Unknown()),
+               "does not support unknown sharding");
+}
+
+TEST_F(HloShardingSpecTest, CreateValidatesSingleDeviceIds) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloShardingSpec> portable_single_device,
+      HloShardingSpec::CreateIfValid(
+          /*num_shards=*/1, xla::HloSharding::SingleDevice(/*device_id=*/5)));
+  EXPECT_TRUE(portable_single_device->IsFullyReplicated());
+
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(
+          /*num_shards=*/2, xla::HloSharding::SingleDevice(/*device_id=*/-1)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("SingleDevice index -1 must be non-negative")));
 }
 
 TEST_F(HloShardingSpecTest, IsFullyReplicated) {
@@ -128,13 +249,6 @@ TEST_F(HloShardingSpecTest, IsFullyReplicated) {
   {
     // Manual HloSharding is not fully replicated.
     auto xla_hlo_sharding = xla::HloSharding::Manual();
-    std::shared_ptr<const HloShardingSpec> spec =
-        HloShardingSpec::Create(num_shards, xla_hlo_sharding);
-    EXPECT_FALSE(spec->IsFullyReplicated());
-  }
-  {
-    // Unknown HloSharding is not fully replicated.
-    auto xla_hlo_sharding = xla::HloSharding::Unknown();
     std::shared_ptr<const HloShardingSpec> spec =
         HloShardingSpec::Create(num_shards, xla_hlo_sharding);
     EXPECT_FALSE(spec->IsFullyReplicated());
@@ -508,6 +622,19 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithSubgroupMaximalSlowPath) {
   EXPECT_THAT(
       index_domains,
       ElementsAreArray(TEST_HloShardingSpecIndexDomainsSlowPath(*spec, shape)));
+}
+
+TEST_F(HloShardingSpecTest,
+       IndexDomainsWithSubgroupRejectsMismatchingShapeRank) {
+  std::shared_ptr<const HloShardingSpec> spec = HloShardingSpec::Create(
+      /*num_shards=*/6,
+      xla::HloSharding::Subgroup(xla::TileAssignment({2, 1, 3}),
+                                 {xla::OpSharding::MAXIMAL}));
+  EXPECT_THAT(
+      spec->IndexDomains(Shape({10})),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("shape must have 2 dimensions, but has 1 dimensions")));
 }
 
 TEST_F(HloShardingSpecTest, DisassembleWithSubgroupMaximalSlowPath) {

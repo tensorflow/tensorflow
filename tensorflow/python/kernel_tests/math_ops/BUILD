@@ -70,7 +70,7 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "argmax_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["argmax_op_test.py"],
     tags = [
         "no_cuda_asan",  # times out
@@ -332,10 +332,13 @@ cuda_py_strict_test(
     name = "division_future_test",
     size = "medium",
     srcs = ["division_future_test.py"],
-    tags = ["manual"],
     deps = [
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -346,12 +349,15 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["division_past_test.py"],
     tags = [
-        "manual",
         "no_windows",
     ],
     deps = [
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],

@@ -23,6 +23,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -30,7 +31,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/topk_kernel.h"
 #include "xla/stream_executor/kernel_args_packing_spec.h"
@@ -153,14 +158,25 @@ absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
 
   ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    se::PlatformManager::PlatformWithName(platform_name));
-  ABSL_ASSIGN_OR_RETURN(se::KernelLoaderSpec spec,
+
+  ABSL_ASSIGN_OR_RETURN(se::KernelLoaderSpec loader_spec,
                    GetTopKKernelForKAndPlatformAndN<T>(k, platform->id(),
                                                        num_elements, order));
+  loader_spec.set_kernel_args_packing(CreateTopKArgsPacking(num_elements, k));
 
-  spec.set_kernel_args_packing(CreateTopKArgsPacking(num_elements, k));
-  return CustomKernel(std::move(name), std::move(spec),
-                      se::BlockDim(batch_size, 1, 1),
-                      se::ThreadDim(num_threads, 1, 1), shmem_size);
+  emitters::KernelArguments args{std::vector<emitters::KernelArgument>{
+      emitters::KernelArgument{Shape{primitive_util::NativeToPrimitiveType<T>(),
+                                     {static_cast<int64_t>(num_elements)}}},
+      emitters::KernelArgument{
+          Shape{primitive_util::NativeToPrimitiveType<T>(),
+                {static_cast<int64_t>(batch_size), static_cast<int64_t>(k)}}},
+      emitters::KernelArgument{Shape{
+          U32, {static_cast<int64_t>(batch_size), static_cast<int64_t>(k)}}}}};
+  GpuKernelSpec spec{name,
+                     LaunchDimensions{se::BlockDim(batch_size, 1, 1),
+                                      se::ThreadDim(num_threads, 1, 1)},
+                     args, shmem_size};
+  return CustomKernel(spec, std::move(loader_spec));
 }
 
 }  // namespace

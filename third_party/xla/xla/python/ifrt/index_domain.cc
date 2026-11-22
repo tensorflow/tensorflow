@@ -87,7 +87,9 @@ absl::StatusOr<IndexDomain> IndexDomain::Intersect(
     origin[i] = low;
     shape[i] = high - low;
   }
-  return IndexDomain(Index(origin), Shape(shape));
+  ABSL_ASSIGN_OR_RETURN(Index result_origin, Index::Create(origin));
+  ABSL_ASSIGN_OR_RETURN(Shape result_shape, Shape::Create(shape));
+  return IndexDomain(std::move(result_origin), std::move(result_shape));
 }
 
 absl::StatusOr<bool> IndexDomain::Contains(const IndexDomain& other) const {
@@ -105,14 +107,6 @@ absl::StatusOr<bool> IndexDomain::Contains(const IndexDomain& other) const {
 
   bool contains = true;
   for (int i = 0; i < a_shape.size(); ++i) {
-    if (a_shape[i] < 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "IndexDomain cannot have negative shape dimensions: ", *this));
-    }
-    if (b_shape[i] < 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "IndexDomain cannot have negative shape dimensions: ", other));
-    }
     if (b_origin[i] < a_origin[i] ||
         b_origin[i] + b_shape[i] > a_origin[i] + a_shape[i]) {
       contains = false;

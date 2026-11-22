@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <ostream>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -27,12 +29,13 @@ limitations under the License.
 #include "xla/python/ifrt/index.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace ifrt {
 
-// Multi-dimensional index. Every element must be equal to or greater than 0.
+// Multi-dimensional index. Every element must be non-negative, and the
+// cumulative product of non-zero elements must not exceed
+// `Shape::kMaxNumElements`.
 class Index {
  public:
   // Maximum elements to inline.
@@ -40,11 +43,20 @@ class Index {
 
   using Elements = absl::InlinedVector<int64_t, kInlineElementSize>;
 
-  explicit Index(absl::Span<const int64_t> elements)
-      : elements_(Elements(elements.begin(), elements.end())) {}
+  // Constructs an `Index` from `elements`. Returns `InvalidArgumentError` if
+  // any element value is negative or if the cumulative product of non-zero
+  // elements exceeds `Shape::kMaxNumElements`.
+  static absl::StatusOr<Index> Create(absl::Span<const int64_t> elements);
 
+  // Constructs an `Index` from `elements`. `CHECK`-fails if `Create(elements)`
+  // returns an error.
+  explicit Index(absl::Span<const int64_t> elements);
+
+  // Constructs an `Index` with `num_elements` zero elements. `CHECK`-fails if
+  // `num_elements < 0`.
   static Index Zeros(int num_elements) {
-    return Index(Elements(/*n=*/num_elements));
+    CHECK_GE(num_elements, 0);
+    return Index(UncheckedTag{}, Elements(/*n=*/num_elements));
   }
 
   Index(const Index&) = default;
@@ -80,30 +92,24 @@ class Index {
   template <typename H>
   friend H AbslHashValue(H h, const Index& index);
 
-  Index operator+(const Index& offset) const {
-    CHECK_EQ(elements_.size(), offset.elements_.size());
-    Index result = *this;
-    for (int i = 0; i < elements_.size(); ++i) {
-      result.elements_[i] += offset.elements_[i];
-    }
-    return result;
-  }
-  Index operator-(const Index& offset) const {
-    CHECK_EQ(elements_.size(), offset.elements_.size());
-    Index result = *this;
-    for (int i = 0; i < elements_.size(); ++i) {
-      result.elements_[i] -= offset.elements_[i];
-    }
-    return result;
-  }
-  Index operator*(absl::Span<const int64_t> multiplier) const {
-    CHECK_EQ(elements_.size(), multiplier.size());
-    Index result = *this;
-    for (int i = 0; i < elements_.size(); ++i) {
-      result.elements_[i] *= multiplier[i];
-    }
-    return result;
-  }
+  // Element-wise addition. `CHECK`-fails if `this` and `offset` have different
+  // numbers of dimensions or if the cumulative product of non-zero resulting
+  // elements exceeds `Shape::kMaxNumElements`.
+  Index operator+(const Index& offset) const;
+
+  // Element-wise subtraction. `CHECK`-fails if `this` and `offset` have
+  // different numbers of dimensions or if any resulting element would be
+  // negative.
+  Index operator-(const Index& offset) const;
+
+  // Element-wise multiplication. `CHECK`-fails if `this` and `multiplier` have
+  // different numbers of dimensions, if any `multiplier[i] < 0`, or if the
+  // cumulative product of non-zero resulting elements exceeds
+  // `Shape::kMaxNumElements`.
+  Index operator*(absl::Span<const int64_t> multiplier) const;
+
+  // Compound element-wise arithmetic operators with the same `CHECK`
+  // preconditions as `operator+`, `operator-`, and `operator*`.
   Index& operator+=(const Index& offset) { return *this = *this + offset; }
   Index& operator-=(const Index& offset) { return *this = *this - offset; }
   Index& operator*=(absl::Span<const int64_t> multiplier) {
@@ -116,6 +122,9 @@ class Index {
   }
 
  private:
+  struct UncheckedTag {};
+  Index(UncheckedTag, Elements elements) : elements_(std::move(elements)) {}
+
   Elements elements_;
 };
 

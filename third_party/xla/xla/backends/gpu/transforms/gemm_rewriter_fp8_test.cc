@@ -372,6 +372,44 @@ TEST_F(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
       checks);
 }
 
+// Forces the hipBLASLt config that runs an FP8-output GEMM with a wider output.
+class Fp8GemmRewriteUnfusedOutputTest : public ParameterizedFp8GemmRewriteTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        ParameterizedFp8GemmRewriteTest::GetDebugOptionsForTest();
+    // Autotuning level 0 keeps the forced config away from other fusions.
+    debug_options.set_xla_gpu_autotune_level(0);
+    debug_options.set_xla_force_config(
+        "backend: HIPBLASLT backend_config { gemm { algorithm: 0 "
+        "autotune_workspace_size: 67108864 unfuse_fp8_output: true } }");
+    return debug_options;
+  }
+};
+
+// If hipBLASLt has no algorithm for an FP8 output, the autotuner runs the GEMM
+// with a wider output followed by a loop fusion that converts it to FP8. The
+// config is forced, so the test does not depend on the available kernels.
+TEST_F(Fp8GemmRewriteUnfusedOutputTest, UnscaledABUnscaledDF8) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "ROCm-specific.";
+  }
+  const char* hlo_text = R"(
+    ENTRY test {
+      x = <<F8E4M3>>[16,32] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      ROOT out = <<F8E4M3>>[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)";
+  CheckFp8IfSupported(hlo_text);
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:         (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call(
+; CHECK-SAME:      custom_call_target="__cublas$lt$matmul$f8"
+; CHECK:         <<F8E4M3>>[16,16]{1,0} fusion(
+; CHECK-SAME:      kind=kLoop
+      )");
+}
+
 // Do not fuse FP8 matrix bias.
 TEST_F(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDMatrixBiasF8) {
   const char* hlo_text = R"(

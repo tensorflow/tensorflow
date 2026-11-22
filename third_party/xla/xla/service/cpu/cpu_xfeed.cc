@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape_util.h"

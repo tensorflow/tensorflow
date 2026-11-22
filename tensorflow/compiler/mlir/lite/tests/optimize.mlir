@@ -4014,6 +4014,16 @@ func.func @gelu_erfc(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // CHECK: "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<3xf32>) -> tensor<3xf32>
 }
 
+func.func @legalize_tf_const() -> tensor<2xf32> {
+  %0 = "tf.Const"() <{value = dense<[1.0, 2.0]> : tensor<2xf32>}> : () -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+
+// CHECK-LABEL: func @legalize_tf_const
+// CHECK-NOT: tf.Const
+// CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>}>
+// CHECK-NEXT: return %[[CST]]
+}
+
 func.func @gelu_no_match(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst = arith.constant dense<0.707106769> : tensor<f32>
   %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
@@ -4044,6 +4054,38 @@ func.func @gelu_no_match_not_oneuse(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // CHECK-LABEL:gelu_no_match_not_oneuse
 // CHECK: "tf.Erf"
+}
+
+func.func @gelu_erfc_no_match_not_oneuse(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst = arith.constant dense<0.707106769> : tensor<f32>
+  %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
+  %0 = "tfl.neg"(%arg0) : (tensor<3xf32>) -> tensor<3xf32>
+  %1 = "tfl.mul"(%0, %cst) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %2 = "tf.Erfc"(%1) : (tensor<3xf32>) -> tensor<3xf32>
+  %3 = "tfl.mul"(%arg0, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %4 = "tfl.mul"(%3, %2) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %5 = "tfl.add"(%4, %2) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %5 : tensor<3xf32>
+
+// CHECK-LABEL: func @gelu_erfc_no_match_not_oneuse
+// CHECK: "tf.Erfc"
+// CHECK-NOT: "tfl.gelu"
+}
+
+func.func @gelu_no_match_fused_relu(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst = arith.constant dense<0.707106769> : tensor<f32>
+  %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
+  %cst_1 = arith.constant dense<1.000000e+00> : tensor<f32>
+  %0 = "tfl.mul"(%arg0, %cst_0) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %1 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %2 = "tf.Erf"(%1) : (tensor<3xf32>) -> tensor<3xf32>
+  %3 = "tfl.add"(%2, %cst_1) {fused_activation_function = "RELU"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %4 = "tfl.mul"(%0, %3) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %4 : tensor<3xf32>
+
+// CHECK-LABEL: func @gelu_no_match_fused_relu
+// CHECK: "tf.Erf"
+// CHECK-NOT: "tfl.gelu"
 }
 
 func.func @gelu_approximate(%arg0: tensor<3xf32>) -> tensor<3xf32> {
@@ -4466,6 +4508,123 @@ func.func @fuseSigmoid(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %2 = tfl.add %1, %cst {fused_activation_function = "NONE"} : tensor<10xf32>
   %3 = tfl.div %cst, %2 {fused_activation_function = "NONE"} : tensor<10xf32>
   return %3 : tensor<10xf32>
+}
+
+// CHECK-LABEL:   func @fuseSigmoidF16
+func.func @fuseSigmoidF16(%arg0: tensor<10xf16>) -> tensor<10xf16> {
+  // CHECK: %[[RES:.*]] = "tfl.logistic"(%arg0) : (tensor<10xf16>) -> tensor<10xf16>
+  // CHECK-NEXT: return %[[RES]]
+  %cst = arith.constant dense<1.000000e+00> : tensor<f16>
+  %0 = "tfl.neg"(%arg0) : (tensor<10xf16>) -> tensor<10xf16>
+  %1 = "tfl.exp"(%0) : (tensor<10xf16>) -> tensor<10xf16>
+  %2 = tfl.add(%1, %cst) {fused_activation_function = "NONE"} : (tensor<10xf16>, tensor<f16>) -> tensor<10xf16>
+  %3 = tfl.div(%cst, %2) {fused_activation_function = "NONE"} : (tensor<f16>, tensor<10xf16>) -> tensor<10xf16>
+  return %3 : tensor<10xf16>
+}
+
+// CHECK-LABEL:   func @doNotFuseSigmoidBF16
+func.func @doNotFuseSigmoidBF16(%arg0: tensor<10xbf16>) -> tensor<10xbf16> {
+  // CHECK-NOT: "tfl.logistic"
+  %cst = arith.constant dense<1.000000e+00> : tensor<bf16>
+  %0 = "tfl.neg"(%arg0) : (tensor<10xbf16>) -> tensor<10xbf16>
+  %1 = "tfl.exp"(%0) : (tensor<10xbf16>) -> tensor<10xbf16>
+  %2 = tfl.add(%1, %cst) {fused_activation_function = "NONE"} : (tensor<10xbf16>, tensor<bf16>) -> tensor<10xbf16>
+  %3 = tfl.div(%cst, %2) {fused_activation_function = "NONE"} : (tensor<bf16>, tensor<10xbf16>) -> tensor<10xbf16>
+  return %3 : tensor<10xbf16>
+}
+
+// CHECK-LABEL:   func @fuseNumericallyStableSigmoidF16
+func.func @fuseNumericallyStableSigmoidF16(%arg0: tensor<2x64xf16>) -> tensor<2x64xf16> {
+  // CHECK: %[[RES:.*]] = "tfl.logistic"(%arg0) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  // CHECK-NEXT: return %[[RES]]
+  %zero = arith.constant dense<0.000000e+00> : tensor<f16>
+  %one = arith.constant dense<1.000000e+00> : tensor<f16>
+  %0 = "tfl.abs"(%arg0) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  %1 = "tfl.neg"(%0) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  %2 = "tfl.exp"(%1) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  %3 = tfl.greater_equal(%arg0, %zero) : (tensor<2x64xf16>, tensor<f16>) -> tensor<2x64xi1>
+  %4 = "tfl.select_v2"(%3, %one, %2) : (tensor<2x64xi1>, tensor<f16>, tensor<2x64xf16>) -> tensor<2x64xf16>
+  %5 = tfl.add(%2, %one) {fused_activation_function = "NONE"} : (tensor<2x64xf16>, tensor<f16>) -> tensor<2x64xf16>
+  %6 = tfl.div %4, %5 {fused_activation_function = "NONE"} : tensor<2x64xf16>
+  return %6 : tensor<2x64xf16>
+}
+
+// CHECK-LABEL:   func @fuseNumericallyStableSigmoidF16Select
+func.func @fuseNumericallyStableSigmoidF16Select(%arg0: tensor<64xf16>) -> tensor<64xf16> {
+  // CHECK: %[[RES:.*]] = "tfl.logistic"(%arg0) : (tensor<64xf16>) -> tensor<64xf16>
+  // CHECK-NEXT: return %[[RES]]
+  %zero = arith.constant dense<0.000000e+00> : tensor<64xf16>
+  %one = arith.constant dense<1.000000e+00> : tensor<64xf16>
+  %0 = "tfl.abs"(%arg0) : (tensor<64xf16>) -> tensor<64xf16>
+  %1 = "tfl.neg"(%0) : (tensor<64xf16>) -> tensor<64xf16>
+  %2 = "tfl.exp"(%1) : (tensor<64xf16>) -> tensor<64xf16>
+  %3 = tfl.greater_equal(%arg0, %zero) : (tensor<64xf16>, tensor<64xf16>) -> tensor<64xi1>
+  %4 = "tfl.select"(%3, %one, %2) : (tensor<64xi1>, tensor<64xf16>, tensor<64xf16>) -> tensor<64xf16>
+  %5 = tfl.add %2, %one {fused_activation_function = "NONE"} : tensor<64xf16>
+  %6 = tfl.div %4, %5 {fused_activation_function = "NONE"} : tensor<64xf16>
+  return %6 : tensor<64xf16>
+}
+
+// CHECK-LABEL:   func @fuseNumericallyStableSigmoidF32
+func.func @fuseNumericallyStableSigmoidF32(%arg0: tensor<2x64xf32>) -> tensor<2x64xf32> {
+  // CHECK: %[[RES:.*]] = "tfl.logistic"(%arg0) : (tensor<2x64xf32>) -> tensor<2x64xf32>
+  // CHECK-NEXT: return %[[RES]]
+  %zero = arith.constant dense<0.000000e+00> : tensor<2x64xf32>
+  %one = arith.constant dense<1.000000e+00> : tensor<2x64xf32>
+  %0 = "tfl.abs"(%arg0) : (tensor<2x64xf32>) -> tensor<2x64xf32>
+  %1 = "tfl.neg"(%0) : (tensor<2x64xf32>) -> tensor<2x64xf32>
+  %2 = "tfl.exp"(%1) : (tensor<2x64xf32>) -> tensor<2x64xf32>
+  %3 = tfl.greater_equal(%arg0, %zero) : (tensor<2x64xf32>, tensor<2x64xf32>) -> tensor<2x64xi1>
+  %4 = "tfl.select_v2"(%3, %one, %2) : (tensor<2x64xi1>, tensor<2x64xf32>, tensor<2x64xf32>) -> tensor<2x64xf32>
+  %5 = tfl.add %2, %one {fused_activation_function = "NONE"} : tensor<2x64xf32>
+  %6 = tfl.div %4, %5 {fused_activation_function = "NONE"} : tensor<2x64xf32>
+  return %6 : tensor<2x64xf32>
+}
+
+// CHECK-LABEL:   func @doNotFuseNumericallyStableSigmoidWithBroadcastSelect
+func.func @doNotFuseNumericallyStableSigmoidWithBroadcastSelect(%arg0: tensor<1x64xf16>) -> tensor<2x64xf16> {
+  // CHECK-NOT: "tfl.logistic"
+  %zero = arith.constant dense<0.000000e+00> : tensor<f16>
+  %one = arith.constant dense<1.000000e+00> : tensor<f16>
+  %one_broadcast = arith.constant dense<1.000000e+00> : tensor<2x64xf16>
+  %0 = "tfl.abs"(%arg0) : (tensor<1x64xf16>) -> tensor<1x64xf16>
+  %1 = "tfl.neg"(%0) : (tensor<1x64xf16>) -> tensor<1x64xf16>
+  %2 = "tfl.exp"(%1) : (tensor<1x64xf16>) -> tensor<1x64xf16>
+  %3 = tfl.greater_equal(%arg0, %zero) : (tensor<1x64xf16>, tensor<f16>) -> tensor<1x64xi1>
+  %4 = "tfl.select_v2"(%3, %one_broadcast, %2) : (tensor<1x64xi1>, tensor<2x64xf16>, tensor<1x64xf16>) -> tensor<2x64xf16>
+  %5 = tfl.add(%2, %one) {fused_activation_function = "NONE"} : (tensor<1x64xf16>, tensor<f16>) -> tensor<1x64xf16>
+  %6 = tfl.div(%4, %5) {fused_activation_function = "NONE"} : (tensor<2x64xf16>, tensor<1x64xf16>) -> tensor<2x64xf16>
+  return %6 : tensor<2x64xf16>
+}
+
+// CHECK-LABEL:   func @doNotFuseNumericallyStableSigmoidWithExtraExpUse
+func.func @doNotFuseNumericallyStableSigmoidWithExtraExpUse(%arg0: tensor<2x64xf16>) -> (tensor<2x64xf16>, tensor<2x64xf16>) {
+  // CHECK-NOT: "tfl.logistic"
+  %zero = arith.constant dense<0.000000e+00> : tensor<f16>
+  %one = arith.constant dense<1.000000e+00> : tensor<f16>
+  %0 = "tfl.abs"(%arg0) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  %1 = "tfl.neg"(%0) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  %2 = "tfl.exp"(%1) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  %3 = tfl.greater_equal(%arg0, %zero) : (tensor<2x64xf16>, tensor<f16>) -> tensor<2x64xi1>
+  %4 = "tfl.select_v2"(%3, %one, %2) : (tensor<2x64xi1>, tensor<f16>, tensor<2x64xf16>) -> tensor<2x64xf16>
+  %5 = tfl.add(%2, %one) {fused_activation_function = "NONE"} : (tensor<2x64xf16>, tensor<f16>) -> tensor<2x64xf16>
+  %6 = tfl.div %4, %5 {fused_activation_function = "NONE"} : tensor<2x64xf16>
+  return %6, %2 : tensor<2x64xf16>, tensor<2x64xf16>
+}
+
+// CHECK-LABEL:   func @doNotFuseNumericallyStableSigmoidWithWrongSelectOrder
+func.func @doNotFuseNumericallyStableSigmoidWithWrongSelectOrder(%arg0: tensor<2x64xf16>) -> tensor<2x64xf16> {
+  // CHECK-NOT: "tfl.logistic"
+  %zero = arith.constant dense<0.000000e+00> : tensor<f16>
+  %one = arith.constant dense<1.000000e+00> : tensor<f16>
+  %0 = "tfl.abs"(%arg0) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  %1 = "tfl.neg"(%0) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  %2 = "tfl.exp"(%1) : (tensor<2x64xf16>) -> tensor<2x64xf16>
+  %3 = tfl.greater_equal(%arg0, %zero) : (tensor<2x64xf16>, tensor<f16>) -> tensor<2x64xi1>
+  %4 = "tfl.select_v2"(%3, %2, %one) : (tensor<2x64xi1>, tensor<2x64xf16>, tensor<f16>) -> tensor<2x64xf16>
+  %5 = tfl.add(%2, %one) {fused_activation_function = "NONE"} : (tensor<2x64xf16>, tensor<f16>) -> tensor<2x64xf16>
+  %6 = tfl.div %4, %5 {fused_activation_function = "NONE"} : tensor<2x64xf16>
+  return %6 : tensor<2x64xf16>
 }
 
 // CHECK-LABEL:   func @fuseElu

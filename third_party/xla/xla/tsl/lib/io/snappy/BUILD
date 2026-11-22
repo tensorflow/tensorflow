@@ -127,11 +127,29 @@ tsl_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:tstring",
+    ],
+)
+
+tsl_cc_test(
+    name = "snappy_inputbuffer_test",
+    size = "small",
+    srcs = ["snappy_inputbuffer_test.cc"],
+    deps = [
+        ":snappy_inputbuffer",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:tstring",
     ],
 )

@@ -44,13 +44,7 @@ class FunctionLibrary {
   using Kernel = XLA_CPU_Kernel;
 
   // Comparator functor for `sort` operation.
-  //
-  // TODO(ezhulenev): We rely on legacy IrEmitter to emit comparator
-  // functions, and we use legacy compute function ABI. We should emit a
-  // much simpler comparator function that only takes compared values.
-  using Comparator = void(bool* result, const void* run_options,
-                          const void** params, const void* buffer_table,
-                          const void* status, const void* prof_counters);
+  using Comparator = bool(const void** data);
 
   virtual ~FunctionLibrary() = default;
 

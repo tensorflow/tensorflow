@@ -41,12 +41,12 @@ std::vector<PrimitiveType> SupportedAllGatherTypes(
 // This number is set by picking the max number of blocks for all reduce and
 // scaling it because the outputs are bigger for all-gather.
 // The number is somewhat arbitrary and should be revisited.
-inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 64;
+inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 128;
 
 // Optimal threshold for one-shot all-gather in bytes for the collective kernel,
 // applied to the gathered output buffer size.
 // Base on the experimental results.
-inline constexpr int64_t kMaxAllGatherSizeBytes = 16 * 1024 * 1024;  // 16 MB
+inline constexpr int64_t kMaxAllGatherSizeBytes = 32 * 1024 * 1024;  // 32 MB
 
 // Maximum number of operands supported by the variadic Triton all-gather
 // kernel.
@@ -71,15 +71,14 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
 // all-reduce:
 //   [0, N)      local input buffers (kInputBuffer, index i)
 //   [N, 2N)     output buffers (kOutputBuffer, index i)
-//   [2N]        runtime rank  (kRuntimeRank)
-//   [2N + 1]    invocation count (kInvocationCount)
-//   [2N + 2]    signal flags (kScratchBuffer, index 0)
-//   [2N + 3 + i] remote scratch buffer pointer table of operand i
+//   [2N + i]    remote scratch buffer pointer table of operand i
 //               (kScratchBuffer, index 1 + i)
-// `scratch_memory_type` is used for all scratch buffers.
+//   [3N]        signal flags (kScratchBuffer, index 0)
+//   [3N + 1]    runtime rank (kRuntimeRank)
+// `symmetric_memory_type` is used for all symmetric scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type);
+    SymmetricMemoryType symmetric_memory_type);
 
 }  // namespace xla::gpu
 

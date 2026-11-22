@@ -47,7 +47,9 @@ cuda_py_strict_test(
         "no_cuda_asan",  # TODO(b/190824595)
     ],
     deps = [
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:math_ops",

@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 
+#include "absl/base/attributes.h"
 #include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
@@ -32,10 +33,9 @@ typedef void (*ErrorHandler)(const char*);
 }  // namespace
 
 extern "C" {
-TfLiteDelegate* tflite_plugin_create_delegate(char** options_keys,
-                                              char** options_values,
-                                              size_t num_options,
-                                              ErrorHandler error_handler) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI TfLiteDelegate* tflite_plugin_create_delegate(
+    char** options_keys, char** options_values, size_t num_options,
+    ErrorHandler error_handler) {
   num_delegates_created++;
 
   for (int idx = 0; idx < num_options; idx++) {
@@ -64,7 +64,8 @@ void set_destroy_callback(int (*callback)(const char* s)) {
   destruction_callback = callback;
 }
 
-void tflite_plugin_destroy_delegate(TfLiteDelegate* delegate) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void tflite_plugin_destroy_delegate(
+    TfLiteDelegate* delegate) {
   num_delegates_destroyed++;
   delete delegate;
   if (destruction_callback) {

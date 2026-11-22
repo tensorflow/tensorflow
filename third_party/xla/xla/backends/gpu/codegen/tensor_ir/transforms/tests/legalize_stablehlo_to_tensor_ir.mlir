@@ -225,12 +225,9 @@ func.func @erf(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 
 // -----
 
-// nv_tensor_ir has no expm1, so it is decomposed into exp(x) - 1.
 // CHECK-LABEL: nv_tensor_ir.graph @exponential_minus_one
 // CHECK-SAME: (%[[IN:.*]]: tensor<4xf32>) -> tensor<4xf32>
-// CHECK-NEXT: %[[ONE:.*]] = constant dense<1.000000e+00> : tensor<4xf32>
-// CHECK-NEXT: %[[EXP:.*]] = exp %[[IN]] : tensor<4xf32>
-// CHECK-NEXT: %[[RES:.*]] = sub %[[EXP]], %[[ONE]] : tensor<4xf32>
+// CHECK-NEXT: %[[RES:.*]] = expm1 %[[IN]] : tensor<4xf32>
 // CHECK-NEXT: results %[[RES]] : tensor<4xf32>
 func.func @exponential_minus_one(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   %0 = stablehlo.exponential_minus_one %arg0 : tensor<4xf32>
@@ -239,12 +236,9 @@ func.func @exponential_minus_one(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 
 // -----
 
-// Likewise, log1p is decomposed into log(x + 1).
 // CHECK-LABEL: nv_tensor_ir.graph @log_plus_one
 // CHECK-SAME: (%[[IN:.*]]: tensor<4xf32>) -> tensor<4xf32>
-// CHECK-NEXT: %[[ONE:.*]] = constant dense<1.000000e+00> : tensor<4xf32>
-// CHECK-NEXT: %[[ADD:.*]] = add %[[IN]], %[[ONE]] : tensor<4xf32>
-// CHECK-NEXT: %[[RES:.*]] = log %[[ADD]] : tensor<4xf32>
+// CHECK-NEXT: %[[RES:.*]] = log1p %[[IN]] : tensor<4xf32>
 // CHECK-NEXT: results %[[RES]] : tensor<4xf32>
 func.func @log_plus_one(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   %0 = stablehlo.log_plus_one %arg0 : tensor<4xf32>

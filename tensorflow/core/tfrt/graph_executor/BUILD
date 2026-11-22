@@ -28,6 +28,7 @@ package_group(
     name = "friends",
     # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
     packages = [
+        # copybara:uncomment "//cloud/ml/api/translation/onprem/gdch/model_serving/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
     ],
@@ -100,7 +101,6 @@ cc_library(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/public:version",
@@ -126,7 +126,6 @@ cc_library(
         "//tensorflow/core/tfrt/utils",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
@@ -148,7 +147,6 @@ cc_library(
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
         "@tsl//tsl/platform:refcount",
-        "@tsl//tsl/platform:status",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla/tsl/concurrency:async_value",
         "@xla//xla/tsl/concurrency:ref_count",

@@ -34,7 +34,9 @@ TEST(ScopedActivateContextTest, SetsActiveOnceForSameContextWorks) {
   EXPECT_CALL(context, IsActive).WillRepeatedly(Return(true));
   {
     ScopedActivateContext scoped_activate_context1(&context);
-    { ScopedActivateContext scoped_activate_context2(&context); }
+    {
+      ScopedActivateContext scoped_activate_context2(&context);
+    }
   }
 }
 
@@ -49,7 +51,9 @@ TEST(ScopedActivateContextTest, TwoDifferentContextsWorks) {
   EXPECT_CALL(context2, IsActive).WillRepeatedly(Return(true));
   {
     ScopedActivateContext scoped_activate_context1(&context1);
-    { ScopedActivateContext scoped_activate_context2(&context2); }
+    {
+      ScopedActivateContext scoped_activate_context2(&context2);
+    }
   }
 }
 
@@ -69,6 +73,75 @@ TEST(ScopedActivateContextTest, TwoThreadsBothSetActiveButDontRestore) {
     EXPECT_CALL(context2, IsActive).Times(0);
     ScopedActivateContext scoped_activate_context2(&context2);
   });
+}
+
+TEST(ScopedDeactivateContextTest, DeactivatesAndRestoresActiveContext) {
+  MockContext context;
+  EXPECT_CALL(context, device_ordinal).WillRepeatedly(Return(1));
+  EXPECT_CALL(context, IsActive).WillRepeatedly(Return(true));
+  EXPECT_CALL(context, SetActive).Times(2);  // Activate + restore.
+  EXPECT_CALL(context, SetInactive).Times(1);
+  ScopedActivateContext scoped_activate_context(&context);
+  {
+    ScopedDeactivateContext scoped_deactivate_context;
+  }
+}
+
+TEST(ScopedDeactivateContextTest, NestedScopesDeactivateOnlyOnce) {
+  MockContext context;
+  EXPECT_CALL(context, device_ordinal).WillRepeatedly(Return(1));
+  EXPECT_CALL(context, IsActive).WillRepeatedly(Return(true));
+  EXPECT_CALL(context, SetActive).Times(2);  // Activate + restore.
+  EXPECT_CALL(context, SetInactive).Times(1);
+  ScopedActivateContext scoped_activate_context(&context);
+  {
+    ScopedDeactivateContext outer;
+    // The outer scope cleared the tracked context, so the inner one has
+    // nothing to deactivate or restore.
+    {
+      ScopedDeactivateContext inner;
+    }
+  }
+}
+
+TEST(ScopedDeactivateContextTest,
+     ActivateDevice0InsideDeactivateScopeOnFreshThreadIsUndone) {
+  // Run on a fresh thread so no context is tracked in the thread-local state
+  // left behind by other tests.
+  MockContext context;
+  EXPECT_CALL(context, device_ordinal).WillRepeatedly(Return(0));
+  EXPECT_CALL(context, IsActive).WillRepeatedly(Return(true));
+  // The inner scope must really activate device 0 (not take the "already
+  // active" early return) and deactivate it again on exit.
+  EXPECT_CALL(context, SetActive).Times(1);
+  EXPECT_CALL(context, SetInactive).Times(1);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 1);
+    thread_pool.Schedule([&context] {
+      ScopedDeactivateContext deactivate;
+      {
+        ScopedActivateContext inner(&context);
+      }
+    });
+  }
+}
+
+TEST(ScopedDeactivateContextTest, ActivateInsideDeactivateScopeIsUndone) {
+  MockContext context;
+  EXPECT_CALL(context, device_ordinal).WillRepeatedly(Return(1));
+  EXPECT_CALL(context, IsActive).WillRepeatedly(Return(true));
+  // Deactivate scope clears it, and the inner activation is cleared again when
+  // the inner scope exits.
+  EXPECT_CALL(context, SetInactive).Times(2);
+  // Activate (outer) + inner activation + restore at end of deactivate scope.
+  EXPECT_CALL(context, SetActive).Times(3);
+  ScopedActivateContext outer(&context);
+  {
+    ScopedDeactivateContext deactivate;
+    {
+      ScopedActivateContext inner(&context);
+    }
+  }
 }
 
 }  // namespace

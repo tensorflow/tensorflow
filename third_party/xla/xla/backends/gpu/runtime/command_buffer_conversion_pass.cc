@@ -100,7 +100,7 @@ std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
 
 CommandBufferConfig GetCommandBufferConfig(
     const DebugOptions& debug_options, const se::DeviceDescription& device_info,
-    const HloModule* hlo_module) {
+    int64_t num_local_devices) {
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> commands;
   for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
@@ -119,12 +119,6 @@ CommandBufferConfig GetCommandBufferConfig(
     }
   } else {
     enabled_collectives.set(DebugOptions::ALLCOLLECTIVES);
-  }
-
-  // Extract slice_size (partition_size) from HloModule config if available.
-  int64_t num_local_devices = 0;
-  if (hlo_module != nullptr) {
-    num_local_devices = hlo_module->config().partition_size();
   }
 
   CommandBufferConfig config{
@@ -399,6 +393,9 @@ static bool IsConvertible(
 // operation. This requires that all nested thunks are convertible.
 static bool IsConvertible(const AsyncStartThunk& async_start_thunk,
                           const CommandBufferConfig& config) {
+  if (async_start_thunk.execution_stream_id().is_locality_domain()) {
+    return false;
+  }
   return ThunkSequenceIsConvertible(async_start_thunk.thunks(), config);
 }
 
@@ -636,6 +633,19 @@ absl::StatusOr<CommandExecutor::SynchronizationMode> GetSynchronizationMode(
   }
 }
 
+// The two options are independent: telemetry only records annotations while
+// command buffers are recorded or updated, and graph nodes appear in a profile
+// only if command buffers also stay enabled during profiling.
+CommandBufferThunkOptions CommandBufferThunkOptionsFrom(
+    const DebugOptions& debug_options) {
+  CommandBufferThunkOptions options;
+  options.enable_command_buffers_during_profiling =
+      debug_options.xla_enable_command_buffers_during_profiling();
+  options.enable_command_buffer_telemetry =
+      debug_options.xla_gpu_enable_command_buffer_telemetry();
+  return options;
+}
+
 absl::StatusOr<std::unique_ptr<CommandBufferThunk>>
 ConvertThunksToCommandBuffer(
     ThunkSequence thunks_to_convert,
@@ -678,7 +688,7 @@ ConvertThunksToCommandBuffer(
       std::move(cmd_executor), std::move(thunk_info), devices_in_process,
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
-      debug_options.xla_enable_command_buffers_during_profiling());
+      CommandBufferThunkOptionsFrom(debug_options));
 }
 
 int64_t CountCommandBufferSize(ThunkSequence& thunks) {
@@ -780,7 +790,7 @@ absl::StatusOr<bool> CommandBufferConversionPass::RunImpl(
   tsl::profiler::TraceMe traceme("CommandBufferConversionPass");
 
   CommandBufferConfig config =
-      GetCommandBufferConfig(debug_options, device_info, hlo_module);
+      GetCommandBufferConfig(debug_options, device_info, slice_size_);
   VLOG(1) << "Module " << module_name_
           << " CommandBufferConfig: " << config.ToString();
   ABSL_ASSIGN_OR_RETURN(CommandExecutor::SynchronizationMode synchronization_mode,

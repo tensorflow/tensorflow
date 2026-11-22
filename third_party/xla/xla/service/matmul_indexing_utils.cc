@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -514,13 +515,17 @@ absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::MapForward(
   TF_RET_CHECK(tracker.input_shape().dimensions() == shape_.dimensions());
   DotOperandDims dims = *this;
   for (const ShapeTracker::Step& step : tracker.GetSteps()) {
-    if (step.type == ShapeTracker::Step::Type::kTranspose) {
-      dims.ApplyPermutation(step.dimensions);
+    if (const auto* transpose = std::get_if<ShapeTracker::Transpose>(&step)) {
+      dims.ApplyPermutation(transpose->permutation);
       continue;
+    }
+    const auto* reshape = std::get_if<ShapeTracker::Reshape>(&step);
+    if (reshape == nullptr) {
+      return std::nullopt;  // Broadcasts and reductions are not supported.
     }
     ABSL_ASSIGN_OR_RETURN(std::optional<DotOperandDims> reshaped,
                      dims.Reshape(ShapeUtil::MakeShape(shape_.element_type(),
-                                                       step.dimensions)));
+                                                       reshape->dimensions)));
     if (!reshaped.has_value()) {
       return std::nullopt;
     }

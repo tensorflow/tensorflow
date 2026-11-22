@@ -161,15 +161,6 @@ class KernelSupportLibrary {
       const std::function<absl::Status()>& true_block_generator,
       const std::function<absl::Status()>& false_block_generator = nullptr);
 
-  absl::Status IfWithStatus(
-      llvm::Value* condition,
-      const std::function<absl::Status()>& true_block_generator,
-      const std::function<absl::Status()>& false_block_generator =
-          []() -> absl::Status { return absl::OkStatus(); }) {
-    return IfWithStatus("", condition, true_block_generator,
-                        false_block_generator);
-  }
-
   void If(llvm::Value* condition,
           const std::function<void()>& true_block_generator,
           const std::function<void()>& false_block_generator = nullptr) {

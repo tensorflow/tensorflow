@@ -516,6 +516,521 @@ TEST(AttentionGqaTest, OdmlSdpaTransposedQuantizedKvAndBoolMask) {
   }
 }
 
+TEST(AttentionGqaTest, OdmlSdpaQuantizedQKvAndFloatOutput) {
+  for (bool transpose_io : {false, true}) {
+    for (int t : {1, 4, 12}) {
+      for (int n_kv : {1, 2, 4}) {
+        if (transpose_io && n_kv != 4) continue;
+        for (int32_t zp : {0, -5}) {
+          SCOPED_TRACE(::testing::Message()
+                       << "transpose_io=" << transpose_io << " t=" << t
+                       << " n_kv=" << n_kv << " zp=" << zp);
+          const int b = 1;
+          const int s = 24;
+          const int h = 16;
+          const int n_q = 4;
+          const int s_active = 15;
+          const float scale = 1.0f / std::sqrt(static_cast<float>(h));
+          const float q_scale = 0.02f;
+          const float kv_scale = 0.05f;
+
+          TfLiteYNNPackDelegateOptions options =
+              TfLiteYNNPackDelegateOptionsDefault();
+          options.num_threads = 1;
+          options.static_shape = true;
+
+          std::vector<int8_t> q_qdata(b * n_q * t * h);
+          std::vector<float> q_fdata(b * n_q * t * h);
+          std::vector<int8_t> k_qdata(b * n_kv * s * h);
+          std::vector<float> k_fdata(b * n_kv * s * h);
+          std::vector<int8_t> v_qdata_model(b * n_kv * h * s);
+          std::vector<float> v_fdata_ref(b * n_kv * h * s);
+          std::vector<bool> mask_bdata(b * 1 * t * s);
+          std::vector<float> mask_fdata_ref(b * 1 * t * s);
+
+          for (size_t i = 0; i < q_qdata.size(); ++i) {
+            int val = static_cast<int>(
+                std::round(25.0f * std::sin(static_cast<float>(i + 1))));
+            q_qdata[i] = static_cast<int8_t>(val);
+            q_fdata[i] = static_cast<float>(q_qdata[i] - zp) * q_scale;
+          }
+          for (size_t i = 0; i < k_qdata.size(); ++i) {
+            int val = static_cast<int>(
+                std::round(20.0f * std::cos(static_cast<float>(i + 2))));
+            k_qdata[i] = static_cast<int8_t>(val);
+            k_fdata[i] = static_cast<float>(k_qdata[i] - zp) * kv_scale;
+          }
+          for (size_t i = 0; i < v_fdata_ref.size(); ++i) {
+            int val = static_cast<int>(
+                std::round(20.0f * std::sin(static_cast<float>(i + 3))));
+            int8_t qval = static_cast<int8_t>(val);
+            v_fdata_ref[i] = static_cast<float>(qval - zp) * kv_scale;
+            if (!transpose_io) {
+              v_qdata_model[i] = qval;
+            }
+          }
+          if (transpose_io) {
+            // Ref kOdmlRuntimeBmm with transpose_io=true expects V in
+            // [B, H, N_kv, S], while kOdmlSdpa expects [B, S, N_kv, H].
+            for (int ib = 0; ib < b; ++ib) {
+              for (int is = 0; is < s; ++is) {
+                for (int in = 0; in < n_kv; ++in) {
+                  for (int ih = 0; ih < h; ++ih) {
+                    int attn_idx = ((ib * h + ih) * n_kv + in) * s + is;
+                    int sdpa_idx = ((ib * s + is) * n_kv + in) * h + ih;
+                    int val = static_cast<int>(std::round(
+                        20.0f * std::sin(static_cast<float>(attn_idx + 3))));
+                    v_qdata_model[sdpa_idx] = static_cast<int8_t>(val);
+                  }
+                }
+              }
+            }
+          }
+          for (int i = 0; i < b * t; ++i) {
+            for (int j = 0; j < s; ++j) {
+              bool allow = (j < s_active) && (j <= i + 3);
+              mask_bdata[i * s + j] = allow;
+              mask_fdata_ref[i * s + j] = allow ? 0.0f : -10000.0f;
+            }
+          }
+
+          AttentionModel model_ref(b, t, s, h, n_q, scale, transpose_io,
+                                   /*use_delegate=*/false, options,
+                                   AttentionImpl::kOdmlRuntimeBmm, n_kv);
+          model_ref.PopulateTensor(model_ref.query(), q_fdata);
+          model_ref.PopulateTensor(model_ref.key(), k_fdata);
+          model_ref.PopulateTensor(model_ref.value(), v_fdata_ref);
+          model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+          model_ref.PopulateTensor(model_ref.mask(), mask_fdata_ref);
+          ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
+
+          AttentionModel model(
+              b, t, s, h, n_q, scale, transpose_io,
+              /*use_delegate=*/true, options, AttentionImpl::kOdmlSdpa, n_kv,
+              /*quantize_kv=*/true, /*bool_mask=*/true, /*kv_zero_point=*/zp,
+              /*quantize_q=*/true, /*q_zero_point=*/zp);
+          model.PopulateTensor(model.query(), q_qdata);
+          model.PopulateTensor(model.key(), k_qdata);
+          model.PopulateTensor(model.value(), v_qdata_model);
+          model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+          model.PopulateTensor(model.mask(), mask_bdata);
+          ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+          auto out_delegate = model.ExtractVector<float>(model.output());
+          auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
+          ASSERT_EQ(out_delegate.size(), out_ref.size());
+
+          for (size_t i = 0; i < out_delegate.size(); ++i) {
+            EXPECT_FALSE(std::isnan(out_delegate[i]));
+            EXPECT_FALSE(std::isnan(out_ref[i]));
+            EXPECT_NEAR(out_delegate[i], out_ref[i], 2e-2f);
+          }
+        }
+      }
+    }
+  }
+}
+
+void TestOdmlSdpaFullyQuantizedInt8AndMixedFloatKv(TfLiteType sdpa_dot_type) {
+  for (bool quantize_kv : {true, false}) {
+    for (int t : {1, 6}) {
+      for (int32_t zp : {0, 3}) {
+        const int b = 1;
+        const int s = 16;
+        const int h = 16;
+        const int n_q = 4;
+        const int n_kv = 2;
+        const int s_active = 10;
+        const float scale = 1.0f / std::sqrt(static_cast<float>(h));
+        const float q_scale = 0.02f;
+        const float kv_scale = 0.05f;
+        const float out_scale = 0.02f;
+        const float mask_scale = 100.0f;
+
+        TfLiteYNNPackDelegateOptions options =
+            TfLiteYNNPackDelegateOptionsDefault();
+        options.num_threads = 1;
+        options.static_shape = true;
+        options.sdpa_dot_type = sdpa_dot_type;
+
+        std::vector<int8_t> q_qdata(b * n_q * t * h);
+        std::vector<float> q_fdata(b * n_q * t * h);
+        std::vector<int8_t> k_qdata(b * n_kv * s * h);
+        std::vector<float> k_fdata(b * n_kv * s * h);
+        std::vector<int8_t> v_qdata(b * n_kv * h * s);
+        std::vector<float> v_fdata(b * n_kv * h * s);
+        std::vector<int8_t> mask_qdata(b * 1 * t * s);
+        std::vector<float> mask_fdata(b * 1 * t * s);
+
+        for (size_t i = 0; i < q_qdata.size(); ++i) {
+          int val = static_cast<int>(
+              std::round(25.0f * std::sin(static_cast<float>(i + 1))));
+          q_qdata[i] = static_cast<int8_t>(val);
+          q_fdata[i] = static_cast<float>(q_qdata[i] - zp) * q_scale;
+        }
+        for (size_t i = 0; i < k_qdata.size(); ++i) {
+          int val = static_cast<int>(
+              std::round(18.0f * std::cos(static_cast<float>(i + 2))));
+          k_qdata[i] = static_cast<int8_t>(val);
+          k_fdata[i] = static_cast<float>(k_qdata[i] - zp) * kv_scale;
+        }
+        for (size_t i = 0; i < v_qdata.size(); ++i) {
+          int val = static_cast<int>(
+              std::round(18.0f * std::sin(static_cast<float>(i + 3))));
+          v_qdata[i] = static_cast<int8_t>(val);
+          v_fdata[i] = static_cast<float>(v_qdata[i] - zp) * kv_scale;
+        }
+        for (int i = 0; i < b * t; ++i) {
+          for (int j = 0; j < s; ++j) {
+            bool allow = (j < s_active) && (j <= i + 3);
+            mask_qdata[i * s + j] =
+                allow ? static_cast<int8_t>(zp) : static_cast<int8_t>(zp - 100);
+            mask_fdata[i * s + j] =
+                static_cast<float>(mask_qdata[i * s + j] - zp) * mask_scale;
+          }
+        }
+
+        AttentionModel model_ref(b, t, s, h, n_q, scale, /*transpose_io=*/false,
+                                 /*use_delegate=*/false, options,
+                                 AttentionImpl::kOdmlRuntimeBmm, n_kv);
+        model_ref.PopulateTensor(model_ref.query(), q_fdata);
+        model_ref.PopulateTensor(model_ref.key(), k_fdata);
+        model_ref.PopulateTensor(model_ref.value(), v_fdata);
+        model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+        model_ref.PopulateTensor(model_ref.mask(), mask_fdata);
+        ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
+
+        AttentionModel model(
+            b, t, s, h, n_q, scale, /*transpose_io=*/false,
+            /*use_delegate=*/true, options, AttentionImpl::kOdmlSdpa, n_kv,
+            /*quantize_kv=*/quantize_kv, /*bool_mask=*/false,
+            /*kv_zero_point=*/zp, /*quantize_q=*/true, /*q_zero_point=*/zp,
+            /*quantize_output=*/true, /*output_zero_point=*/zp,
+            /*quantize_mask=*/true, /*mask_zero_point=*/zp);
+        model.PopulateTensor(model.query(), q_qdata);
+        if (quantize_kv) {
+          model.PopulateTensor(model.key(), k_qdata);
+          model.PopulateTensor(model.value(), v_qdata);
+        } else {
+          model.PopulateTensor(model.key(), k_fdata);
+          model.PopulateTensor(model.value(), v_fdata);
+        }
+        model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+        model.PopulateTensor(model.mask(), mask_qdata);
+        ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+        auto out_qdelegate = model.ExtractVector<int8_t>(model.output());
+        auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
+        ASSERT_EQ(out_qdelegate.size(), out_ref.size());
+
+        for (size_t i = 0; i < out_qdelegate.size(); ++i) {
+          float out_delegate =
+              static_cast<float>(out_qdelegate[i] - zp) * out_scale;
+          EXPECT_FALSE(std::isnan(out_ref[i]));
+          EXPECT_NEAR(out_delegate, out_ref[i], 3e-2f);
+        }
+      }
+    }
+  }
+}
+
+TEST(AttentionGqaTest, OdmlSdpaFullyQuantizedInt8AndMixedFloatKv) {
+  for (TfLiteType sdpa_dot_type : {kTfLiteNoType, kTfLiteInt8}) {
+    SCOPED_TRACE(TfLiteTypeGetName(sdpa_dot_type));
+    TestOdmlSdpaFullyQuantizedInt8AndMixedFloatKv(sdpa_dot_type);
+  }
+}
+
+TEST(AttentionGqaTest, OdmlSdpaDotType) {
+  struct DotType {
+    TfLiteType type;
+    float tolerance;
+  };
+  for (const DotType& dot_type :
+       {DotType{kTfLiteNoType, 5e-4f}, DotType{kTfLiteInt8, 1e-2f},
+        DotType{kTfLiteFloat32, 5e-4f}, DotType{kTfLiteFloat16, 2e-3f},
+        DotType{kTfLiteBFloat16, 1e-2f}}) {
+    for (bool transpose_io : {false, true}) {
+      for (bool quantize_q : {false, true}) {
+        for (bool quantize_kv : {false, true}) {
+          for (int t : {1, 12}) {
+            SCOPED_TRACE(::testing::Message()
+                         << "dot_type=" << TfLiteTypeGetName(dot_type.type)
+                         << " transpose_io=" << transpose_io
+                         << " quantize_q=" << quantize_q
+                         << " quantize_kv=" << quantize_kv << " t=" << t);
+            const int b = 1;
+            const int s = 24;
+            const int h = 16;
+            const int n_q = 4;
+            const int n_kv = transpose_io ? 4 : 2;
+            const int s_active = 15;
+            const int32_t zp = -5;
+            const float scale = 1.0f / std::sqrt(static_cast<float>(h));
+            const float q_scale = 0.02f;
+            const float kv_scale = 0.05f;
+
+            TfLiteYNNPackDelegateOptions options =
+                TfLiteYNNPackDelegateOptionsDefault();
+            options.num_threads = 1;
+            options.static_shape = true;
+            options.sdpa_dot_type = dot_type.type;
+
+            std::vector<int8_t> q_qdata(b * n_q * t * h);
+            std::vector<float> q_fdata(b * n_q * t * h);
+            std::vector<int8_t> k_qdata(b * n_kv * s * h);
+            std::vector<float> k_fdata(b * n_kv * s * h);
+            std::vector<int8_t> v_qdata_model(b * n_kv * h * s);
+            std::vector<float> v_fdata_model(b * n_kv * h * s);
+            std::vector<float> v_fdata_ref(b * n_kv * h * s);
+            std::vector<bool> mask_bdata(b * 1 * t * s);
+            std::vector<float> mask_fdata_ref(b * 1 * t * s);
+
+            for (size_t i = 0; i < q_qdata.size(); ++i) {
+              int val = static_cast<int>(
+                  std::round(25.0f * std::sin(static_cast<float>(i + 1))));
+              q_qdata[i] = static_cast<int8_t>(val);
+              q_fdata[i] = static_cast<float>(q_qdata[i] - zp) * q_scale;
+            }
+            for (size_t i = 0; i < k_qdata.size(); ++i) {
+              int val = static_cast<int>(
+                  std::round(20.0f * std::cos(static_cast<float>(i + 2))));
+              k_qdata[i] = static_cast<int8_t>(val);
+              k_fdata[i] = static_cast<float>(k_qdata[i] - zp) * kv_scale;
+            }
+            // The reference kOdmlRuntimeBmm expects V in [B, N_kv, H, S], or
+            // [B, H, N_kv, S] with transpose_io, while kOdmlSdpa with
+            // transpose_io expects [B, S, N_kv, H].
+            for (int ib = 0; ib < b; ++ib) {
+              for (int is = 0; is < s; ++is) {
+                for (int in = 0; in < n_kv; ++in) {
+                  for (int ih = 0; ih < h; ++ih) {
+                    const int ref_idx =
+                        transpose_io ? ((ib * h + ih) * n_kv + in) * s + is
+                                     : ((ib * n_kv + in) * h + ih) * s + is;
+                    const int model_idx =
+                        transpose_io ? ((ib * s + is) * n_kv + in) * h + ih
+                                     : ref_idx;
+                    const int8_t qval = static_cast<int8_t>(std::round(
+                        20.0f * std::sin(static_cast<float>(ref_idx + 3))));
+                    v_fdata_ref[ref_idx] =
+                        static_cast<float>(qval - zp) * kv_scale;
+                    v_qdata_model[model_idx] = qval;
+                    v_fdata_model[model_idx] = v_fdata_ref[ref_idx];
+                  }
+                }
+              }
+            }
+            for (int i = 0; i < b * t; ++i) {
+              for (int j = 0; j < s; ++j) {
+                bool allow = (j < s_active) && (j <= i + 3);
+                mask_bdata[i * s + j] = allow;
+                mask_fdata_ref[i * s + j] = allow ? 0.0f : -10000.0f;
+              }
+            }
+
+            AttentionModel model_ref(b, t, s, h, n_q, scale, transpose_io,
+                                     /*use_delegate=*/false, options,
+                                     AttentionImpl::kOdmlRuntimeBmm, n_kv);
+            model_ref.PopulateTensor(model_ref.query(), q_fdata);
+            model_ref.PopulateTensor(model_ref.key(), k_fdata);
+            model_ref.PopulateTensor(model_ref.value(), v_fdata_ref);
+            model_ref.PopulateTensor(model_ref.runtime_bmm_params(),
+                                     {s_active});
+            model_ref.PopulateTensor(model_ref.mask(), mask_fdata_ref);
+            ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
+
+            AttentionModel model(b, t, s, h, n_q, scale, transpose_io,
+                                 /*use_delegate=*/true, options,
+                                 AttentionImpl::kOdmlSdpa, n_kv, quantize_kv,
+                                 /*bool_mask=*/true, /*kv_zero_point=*/zp,
+                                 quantize_q, /*q_zero_point=*/zp);
+            if (quantize_q) {
+              model.PopulateTensor(model.query(), q_qdata);
+            } else {
+              model.PopulateTensor(model.query(), q_fdata);
+            }
+            if (quantize_kv) {
+              model.PopulateTensor(model.key(), k_qdata);
+              model.PopulateTensor(model.value(), v_qdata_model);
+            } else {
+              model.PopulateTensor(model.key(), k_fdata);
+              model.PopulateTensor(model.value(), v_fdata_model);
+            }
+            model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+            model.PopulateTensor(model.mask(), mask_bdata);
+            ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+            auto out_delegate = model.ExtractVector<float>(model.output());
+            auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
+            ASSERT_EQ(out_delegate.size(), out_ref.size());
+
+            for (size_t i = 0; i < out_delegate.size(); ++i) {
+              EXPECT_FALSE(std::isnan(out_delegate[i]));
+              EXPECT_FALSE(std::isnan(out_ref[i]));
+              EXPECT_NEAR(out_delegate[i], out_ref[i], dot_type.tolerance);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+void TestOdmlSdpaInt4KvAndInt4Inputs(TfLiteType sdpa_dot_type) {
+  for (bool transpose_io : {false, true}) {
+    for (int t : {1, 4, 12}) {
+      for (int s_active : {11, 14}) {
+        for (int n_kv : {1, 2, 4}) {
+          if (transpose_io && n_kv != 4) continue;
+          for (int32_t zp : {0, -2}) {
+            for (int q_mode : {0, 1, 2}) {  // 0=float, 1=int8, 2=int4
+              SCOPED_TRACE(::testing::Message()
+                           << "transpose_io=" << transpose_io << " t=" << t
+                           << " s_active=" << s_active << " n_kv=" << n_kv
+                           << " zp=" << zp << " q_mode=" << q_mode);
+              const int b = 1;
+              const int s = 24;
+              const int h = 16;
+              const int n_q = 4;
+              const float scale = 1.0f / std::sqrt(static_cast<float>(h));
+              const float q_scale = (q_mode == 2) ? 0.1f : 0.02f;
+              const float kv_scale = 0.15f;
+              const bool use_int4_mask = (q_mode == 2);
+              const float mask_scale = 2000.0f;
+
+              TfLiteYNNPackDelegateOptions options =
+                  TfLiteYNNPackDelegateOptionsDefault();
+              options.num_threads = 1;
+              options.static_shape = true;
+              options.sdpa_dot_type = sdpa_dot_type;
+
+              std::vector<int8_t> q_qdata(b * n_q * t * h);
+              std::vector<float> q_fdata(b * n_q * t * h);
+              std::vector<int8_t> k_qdata(b * n_kv * s * h);
+              std::vector<float> k_fdata(b * n_kv * s * h);
+              std::vector<int8_t> v_qdata_model(b * n_kv * h * s);
+              std::vector<float> v_fdata_ref(b * n_kv * h * s);
+              std::vector<bool> mask_bdata(b * 1 * t * s);
+              std::vector<int8_t> mask_qdata(b * 1 * t * s);
+              std::vector<float> mask_fdata_ref(b * 1 * t * s);
+
+              for (size_t i = 0; i < q_qdata.size(); ++i) {
+                if (q_mode == 0) {
+                  q_fdata[i] = 0.5f * std::sin(static_cast<float>(i + 1));
+                } else {
+                  float amp = (q_mode == 2) ? 5.0f : 25.0f;
+                  int val = static_cast<int>(
+                      std::round(amp * std::sin(static_cast<float>(i + 1))));
+                  q_qdata[i] = static_cast<int8_t>(val);
+                  q_fdata[i] = static_cast<float>(q_qdata[i] - zp) * q_scale;
+                }
+              }
+              for (size_t i = 0; i < k_qdata.size(); ++i) {
+                int val = static_cast<int>(
+                    std::round(5.0f * std::cos(static_cast<float>(i + 2))));
+                k_qdata[i] = static_cast<int8_t>(val);
+                k_fdata[i] = static_cast<float>(k_qdata[i] - zp) * kv_scale;
+              }
+              for (size_t i = 0; i < v_fdata_ref.size(); ++i) {
+                int val = static_cast<int>(
+                    std::round(5.0f * std::sin(static_cast<float>(i + 3))));
+                int8_t qval = static_cast<int8_t>(val);
+                v_fdata_ref[i] = static_cast<float>(qval - zp) * kv_scale;
+                if (!transpose_io) {
+                  v_qdata_model[i] = qval;
+                }
+              }
+              if (transpose_io) {
+                for (int ib = 0; ib < b; ++ib) {
+                  for (int is = 0; is < s; ++is) {
+                    for (int in = 0; in < n_kv; ++in) {
+                      for (int ih = 0; ih < h; ++ih) {
+                        int attn_idx = ((ib * h + ih) * n_kv + in) * s + is;
+                        int sdpa_idx = ((ib * s + is) * n_kv + in) * h + ih;
+                        int val = static_cast<int>(std::round(
+                            5.0f * std::sin(static_cast<float>(attn_idx + 3))));
+                        v_qdata_model[sdpa_idx] = static_cast<int8_t>(val);
+                      }
+                    }
+                  }
+                }
+              }
+              for (int i = 0; i < b * t; ++i) {
+                for (int j = 0; j < s; ++j) {
+                  bool allow = (j < s_active) && (j <= i + 3);
+                  mask_bdata[i * s + j] = allow;
+                  mask_qdata[i * s + j] = allow ? static_cast<int8_t>(zp)
+                                                : static_cast<int8_t>(zp - 5);
+                  mask_fdata_ref[i * s + j] =
+                      use_int4_mask
+                          ? static_cast<float>(mask_qdata[i * s + j] - zp) *
+                                mask_scale
+                          : (allow ? 0.0f : -10000.0f);
+                }
+              }
+
+              AttentionModel model_ref(b, t, s, h, n_q, scale, transpose_io,
+                                       /*use_delegate=*/false, options,
+                                       AttentionImpl::kOdmlRuntimeBmm, n_kv);
+              model_ref.PopulateTensor(model_ref.query(), q_fdata);
+              model_ref.PopulateTensor(model_ref.key(), k_fdata);
+              model_ref.PopulateTensor(model_ref.value(), v_fdata_ref);
+              model_ref.PopulateTensor(model_ref.runtime_bmm_params(),
+                                       {s_active});
+              model_ref.PopulateTensor(model_ref.mask(), mask_fdata_ref);
+              ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
+
+              AttentionModel model(
+                  b, t, s, h, n_q, scale, transpose_io,
+                  /*use_delegate=*/true, options, AttentionImpl::kOdmlSdpa,
+                  n_kv, /*quantize_kv=*/false, /*bool_mask=*/!use_int4_mask,
+                  /*kv_zero_point=*/zp, /*quantize_q=*/(q_mode == 1),
+                  /*q_zero_point=*/zp, /*quantize_output=*/false,
+                  /*output_zero_point=*/0, /*quantize_mask=*/false,
+                  /*mask_zero_point=*/zp, /*int4_kv=*/true,
+                  /*int4_q=*/(q_mode == 2), /*int4_mask=*/use_int4_mask);
+              if (q_mode == 0) {
+                model.PopulateTensor(model.query(), q_fdata);
+              } else if (q_mode == 1) {
+                model.PopulateTensor(model.query(), q_qdata);
+              } else {
+                model.PopulateInt4Tensor(model.query(), q_qdata);
+              }
+              model.PopulateInt4Tensor(model.key(), k_qdata);
+              model.PopulateInt4Tensor(model.value(), v_qdata_model);
+              model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+              if (use_int4_mask) {
+                model.PopulateInt4Tensor(model.mask(), mask_qdata);
+              } else {
+                model.PopulateTensor(model.mask(), mask_bdata);
+              }
+              ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+              auto out_delegate = model.ExtractVector<float>(model.output());
+              auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
+              ASSERT_EQ(out_delegate.size(), out_ref.size());
+
+              for (size_t i = 0; i < out_delegate.size(); ++i) {
+                EXPECT_FALSE(std::isnan(out_delegate[i]));
+                EXPECT_FALSE(std::isnan(out_ref[i]));
+                EXPECT_NEAR(out_delegate[i], out_ref[i], 3e-2f);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(AttentionGqaTest, OdmlSdpaInt4KvAndInt4Inputs) {
+  for (TfLiteType sdpa_dot_type : {kTfLiteNoType, kTfLiteInt8}) {
+    SCOPED_TRACE(TfLiteTypeGetName(sdpa_dot_type));
+    TestOdmlSdpaInt4KvAndInt4Inputs(sdpa_dot_type);
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(AttentionTest, AttentionTest,
                          ::testing::Values(AttentionImpl::kFullSequence,
                                            AttentionImpl::kOdmlRuntimeBmm,

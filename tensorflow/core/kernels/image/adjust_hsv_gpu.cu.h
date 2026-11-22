@@ -57,6 +57,11 @@ inline __device__ HsvTuple rgb2hsv_cuda(const float r, const float g,
   } else {
     h = 0.0f;
   }
+  // A hue just below zero can round up to exactly 1, which hsv2rgb_cuda would
+  // place outside every sector.
+  if (h >= 1.0f) {
+    h = 0.0f;
+  }
   // saturation
   if (M > 0.0) {
     s = chroma / M;

@@ -1,7 +1,7 @@
 diff --git a/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir b/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir
 --- a/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir
 +++ b/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir
-@@ -267,7 +267,7 @@
+@@ -268,7 +268,7 @@
  // CHECK: %[[RHS2:.*]] = reshape %[[RHS]] : [[TILE_RHS]] -> tile<2x128x16xf32>
  // CHECK: %[[MMA:.*]] = mmaf %[[LHS2]], %[[RHS2]], %[[ACCUM]]
  // CHECK: %[[RESHAPE:.*]] = reshape %[[MMA]] : tile<2x64x16xf32> -> [[TILE_RS:tile<1x1x2x8x8x4x4xf32>]]

@@ -54,7 +54,7 @@ TEST(SimpleJitRunnerTest, RunJitTest) {
   builder.CreateRet(result);
 
   JitRunner jit(std::move(module), std::move(context));
-  auto* fn = jit.GetScalarFn<double(double)>("test_func");
+  auto fn = jit.GetScalarFn<double(double)>("test_func");
   double actual = fn(3.0);
   EXPECT_DOUBLE_EQ(actual, 6.0);
 }

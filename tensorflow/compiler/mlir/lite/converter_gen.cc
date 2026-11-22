@@ -50,6 +50,7 @@ using llvm::StringRef;
 
 enum ActionType {
   OpConv,
+  OpReaders,
   RuntimeVerify,
 };
 
@@ -58,6 +59,8 @@ llvm::cl::opt<ActionType> action(
     llvm::cl::desc("Action to perform:"),
     llvm::cl::values(clEnumValN(OpConv, "gen-operator-converters",
                                 "Generate operator converters"),
+                     clEnumValN(OpReaders, "gen-operator-readers",
+                                "Generate operator option readers"),
                      clEnumValN(RuntimeVerify, "gen-runtime-verifiers",
                                 "Generate TFLite runtime verifiers")));
 
@@ -507,11 +510,24 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
   os << "\n\n";
   EmitBuildOperator(defs, &os);
   os << "\n\n";
+  EmitOperandNumbers(records, defs, &os);
+
+  return false;
+}
+
+// Emits the readers that convert FlatBuffer operator options into MLIR
+// attributes. They are separate from the writers so that users that only
+// export do not link the importer's type conversions.
+// NOLINTNEXTLINE
+static bool OperatorReadersMain(raw_ostream& os, const RecordKeeper& records) {
+  emitSourceFileHeader("MLIR TFLite FlatBuffer Option Readers", os);
+
+  std::vector<const Record*> defs = records.getAllDerivedDefinitions("TFL_Op");
+  llvm::sort(defs, LessRecord());
+
   EmitBuiltinOptionsToAttributes(records, defs, &os, /*builtin_options_id=*/1);
   os << "\n\n";
   EmitBuiltinOptionsToAttributes(records, defs, &os, /*builtin_options_id=*/2);
-  os << "\n\n";
-  EmitOperandNumbers(records, defs, &os);
 
   return false;
 }
@@ -663,5 +679,7 @@ int main(int argc, char** argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
   if (action == ActionType::OpConv)
     return TableGenMain(argv[0], &OperatorWritersMain);
+  if (action == ActionType::OpReaders)
+    return TableGenMain(argv[0], &OperatorReadersMain);
   return TableGenMain(argv[0], &RuntimeVerifierWriterMain);
 }

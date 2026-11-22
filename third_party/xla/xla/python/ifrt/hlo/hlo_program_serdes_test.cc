@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
@@ -43,6 +47,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::testing::AllOf;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
@@ -165,6 +170,30 @@ module {
   }
 }
 
+// Returns a serialized `HloProgram` whose bytecode payload has been replaced
+// with the result of calling `replace` on it.
+absl::StatusOr<Serialized> SerializeHloWithPayload(
+    SerDesVersion version,
+    absl::FunctionRef<std::string(absl::string_view)> replace) {
+  static constexpr absl::string_view kMlirModuleStr = R"(
+module {
+  func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+    %0 = stablehlo.add %arg0, %arg0 : tensor<2x3xf32>
+    return %0 : tensor<2x3xf32>
+  }
+})";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                   xla::ParseMlirModuleString(kMlirModuleStr, *context));
+  HloProgram program(std::move(context), std::move(module));
+  ABSL_ASSIGN_OR_RETURN(
+      Serialized serialized,
+      Serialize(program, std::make_unique<SerializeOptions>(version)));
+  const std::string bytecode(serialized.data());
+  serialized.set_data(replace(bytecode));
+  return serialized;
+}
+
 TEST_P(HloProgramSerDesTest, DeserializationError) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 module {
@@ -192,6 +221,60 @@ module {
               absl_testing::StatusIs(
                   Not(absl::StatusCode::kOk),
                   HasSubstr("Failed to deserialize StableHLO module")));
+}
+
+TEST_P(HloProgramSerDesTest, TextualStablehloDeserializationError) {
+  static constexpr absl::string_view kTextualModuleStr = R"(
+module {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    return %arg0 : tensor<f32>
+  }
+})";
+  ASSERT_OK_AND_ASSIGN(
+      Serialized serialized,
+      SerializeHloWithPayload(version(), [](absl::string_view) {
+        return std::string(kTextualModuleStr);
+      }));
+
+  EXPECT_THAT(Deserialize<HloProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to deserialize StableHLO module"),
+                        HasSubstr("not MLIR bytecode"))));
+}
+
+// Bytecode `HloProgram` payloads are deserialized directly from a flattened
+// `absl::Cord` without copying to a null-terminated `std::string`, so these
+// tests truncate the bytecode and rely on sanitizers to detect out-of-bounds
+// reads.
+TEST_P(HloProgramSerDesTest, ShortTruncatedBytecodeDeserializationError) {
+  // Short enough for `absl::Cord` to store inline.
+  ASSERT_OK_AND_ASSIGN(
+      Serialized serialized,
+      SerializeHloWithPayload(version(), [](absl::string_view bytecode) {
+        return std::string(bytecode.substr(0, 15));
+      }));
+
+  EXPECT_THAT(Deserialize<HloProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to deserialize StableHLO module"),
+                        Not(HasSubstr("not MLIR bytecode")))));
+}
+
+TEST_P(HloProgramSerDesTest, LongTruncatedBytecodeDeserializationError) {
+  // Too long for `absl::Cord` to store inline.
+  ASSERT_OK_AND_ASSIGN(
+      Serialized serialized,
+      SerializeHloWithPayload(version(), [](absl::string_view bytecode) {
+        return std::string(bytecode.substr(0, bytecode.size() - 1));
+      }));
+
+  EXPECT_THAT(Deserialize<HloProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to deserialize StableHLO module"),
+                        Not(HasSubstr("not MLIR bytecode")))));
 }
 
 INSTANTIATE_TEST_SUITE_P(

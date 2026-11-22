@@ -21,8 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -104,7 +102,7 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
                                 args.transformed_hlo_module.size))) {
         status = absl::InternalError("Failed to parse transformed HLO module");
       } else {
-        status = UpdateHloModuleFromProto(module, transformed_proto);
+        status = module->UpdateFromProto(transformed_proto);
         changed = status.ok();
       }
     }

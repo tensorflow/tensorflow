@@ -16,30 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_MAP_INLINER_H_
 #define XLA_SERVICE_MAP_INLINER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// A pass which performs map inlining. This replaces kMap instructions with
-// their equivalent sequence of array operations. For example:
-//   map({X, Y}, add) -> add(X, Y)).
-class MapInliner : public HloModulePass {
- public:
-  ~MapInliner() override = default;
-  absl::string_view name() const override { return "map-inline"; }
-
- protected:
-  // Run map inlining on the given computation. Returns whether the computation
-  // was changed.
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/expanders/map_inliner.h"
+#include "xla/hlo/transforms/expanders/map_inliner.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_MAP_INLINER_H_

@@ -76,8 +76,8 @@ GetAllGatherTransformations(HloInstruction* all_gather) {
     // all-gather that remains continuous after all-gather. This function
     // finds how much such regions exist before all-gather.
     int64_t all_gather_num_strides = absl::c_accumulate(
-        all_gather_shape.dimensions().subspan(0, all_gather_dimension), 1,
-        [](int64_t product, int64_t dimension_size) {
+        all_gather_shape.dimensions().subspan(0, all_gather_dimension),
+        int64_t{1}, [](int64_t product, int64_t dimension_size) {
           return product * dimension_size;
         });
     // If the reshape is eligible for this transformation, it does not change

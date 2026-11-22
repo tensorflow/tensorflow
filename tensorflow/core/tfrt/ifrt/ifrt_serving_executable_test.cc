@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -25,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/globals.h"
 #include "absl/log/log.h"
@@ -33,6 +35,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -45,23 +49,33 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/monitoring/cell_reader.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -69,9 +83,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_program.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test_util.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
+#include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/platform/tstring.h"
 
 namespace tensorflow {
@@ -509,6 +526,52 @@ TEST_P(IfrtServingExecutableTest, SpmdXlaCallModuleShardy) {
   EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"), 1);
 }
 
+TEST_P(IfrtServingExecutableTest, AssignedDeviceIdsPortableExecution) {
+  ASSERT_GE(helper_->num_cores(), 1);
+  int64_t program_id = 654321;
+  const int pinned_device_id =
+      helper_->client()->addressable_devices()[0]->Id().value();
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id),
+                                       ElementsAre(pinned_device_id)))
+      .WillOnce([pinned_device_id](::testing::Unused, absl::Span<const int>) {
+        return tsl::DeviceReservation(pinned_device_id, /*selector=*/nullptr);
+      });
+
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"),
+                              {pinned_device_id}));
+
+  auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  // Warmup only runs on the single assigned device ID, then the second call
+  // delegates to `selector_.ReserveDevice`.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto warmup_result,
+      Execute(executable.get(), absl::MakeSpan(inputs), {}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, Execute(executable.get(), absl::MakeSpan(inputs), {}));
+  const auto expected_out =
+      AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
+  EXPECT_THAT(warmup_result, ElementsAre(TensorEq(expected_out)));
+  EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
+}
+
+TEST_F(IfrtServingExecutableTest, AssignedDeviceIdsSpmdCountMismatchFails) {
+  ASSERT_GE(helper_->num_cores(), 1);
+  int64_t program_id = 654323;
+  const int dev0 = helper_->client()->addressable_devices()[0]->Id().value();
+  // `spmd_executable.mlir` has num_replicas=1, num_cores_per_replica=2;
+  // passing a single assigned device ID must fail validation.
+  EXPECT_THAT(
+      helper_->MakeExecutable(
+          program_id, GetMlirModulePath("spmd_executable.mlir"), {dev0}),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("expected 2")));
+}
+
 TEST_F(IfrtServingExecutableTest, EncodeLayout) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -888,6 +951,169 @@ INSTANTIATE_TEST_SUITE_P(
             }),
         ::testing::Bool()));
 
+// Registers `value` as a restored variable named `name`, and returns the key
+// tensor that a call site passes in place of the variable.
+absl::StatusOr<tensorflow::Tensor> RegisterVariable(
+    IfrtRestoreTensorRegistry& registry, absl::string_view name,
+    const tensorflow::Tensor& value) {
+  IfrtRestoreTensorRegistry::RestoredTensorInfo restore_tensor_info = {
+      .dtype_and_shape = tsl::Future<DtypeAndShape>(
+          DtypeAndShape{.dtype = value.dtype(), .shape = value.shape()}),
+      .tensor_future = tsl::Future<tensorflow::Tensor>(value)};
+  if (absl::Status status = registry.TryRegister(name, restore_tensor_info);
+      !status.ok()) {
+    return status;
+  }
+  tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
+  key_tensor.scalar<tsl::tstring>()() = std::string(name);
+  return key_tensor;
+}
+
+// Executables over one shared program (e.g. structurally identical TPU
+// clusters of different signatures) compile the program once, but each
+// executes with the variables of its own call site.
+TEST_P(IfrtServingExecutableTest, SharedProgramKeepsVariablesOfEachExecutable) {
+  constexpr int64_t kProgramIdA = 111111;
+  constexpr int64_t kProgramIdB = 222222;
+  constexpr int64_t kProgramIdC = 333333;
+  for (int64_t program_id : {kProgramIdA, kProgramIdB, kProgramIdC}) {
+    SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
+  }
+  auto executable_a = helper_->MakeExecutable(
+      kProgramIdA, GetMlirModulePath("executable.mlir"));
+  auto executable_b =
+      helper_->MakeExecutable(kProgramIdB, executable_a->program());
+
+  // Same shapes, different weights.
+  IfrtRestoreTensorRegistry& registry =
+      *helper_->ifrt_restore_tensor_registry();
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::Tensor key_a,
+      RegisterVariable(registry, "w_a",
+                       AsTensor<int32_t>({1, 2, 3}, TensorShape({3, 1}))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::Tensor key_b,
+      RegisterVariable(registry, "w_b",
+                       AsTensor<int32_t>({4, 5, 6}, TensorShape({3, 1}))));
+  auto x = AsTensor<int32_t>({1, 2, 3}, TensorShape({1, 3}));
+  std::vector<tensorflow::Tensor> inputs_a{x, key_a};
+  std::vector<tensorflow::Tensor> inputs_b{x, key_b};
+  const std::vector<int> variable_arg_indices = {1};
+  // 1*1 + 2*2 + 3*3 = 14 and 1*4 + 2*5 + 3*6 = 32.
+  const auto expected_a = AsTensor<int32_t>({14}, TensorShape({1, 1}));
+  const auto expected_b = AsTensor<int32_t>({32}, TensorShape({1, 1}));
+
+  // Iterate over all cores, interleaving the two executables.
+  for (int i = 0; i < helper_->num_cores() + 1; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result_a, Execute(executable_a.get(), absl::MakeSpan(inputs_a),
+                               variable_arg_indices));
+    EXPECT_THAT(result_a, ElementsAre(TensorEq(expected_a)));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result_b, Execute(executable_b.get(), absl::MakeSpan(inputs_b),
+                               variable_arg_indices));
+    EXPECT_THAT(result_b, ElementsAre(TensorEq(expected_b)));
+  }
+
+  // The program is compiled once for both executables.
+  EXPECT_EQ(executable_a->program()->num_compiled(), 1);
+
+  executable_a->Freeze();
+
+  // An executable created after freeze serves the shapes compiled during
+  // warmup without compiling.
+  auto executable_c =
+      helper_->MakeExecutable(kProgramIdC, executable_a->program());
+  TF_ASSERT_OK_AND_ASSIGN(auto result_c,
+                          Execute(executable_c.get(), absl::MakeSpan(inputs_b),
+                                  variable_arg_indices));
+  EXPECT_THAT(result_c, ElementsAre(TensorEq(expected_b)));
+  EXPECT_EQ(executable_a->program()->num_compiled(), 1);
+
+  // But it cannot compile for new shapes.
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::Tensor key_c,
+      RegisterVariable(registry, "w_c",
+                       AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({4, 1}))));
+  auto x2 = AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({1, 4}));
+  std::vector<tensorflow::Tensor> inputs_c{x2, key_c};
+  EXPECT_THAT(Execute(executable_c.get(), absl::MakeSpan(inputs_c),
+                      variable_arg_indices),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_EQ(executable_a->program()->num_compiled(), 1);
+}
+
+TEST_P(IfrtServingExecutableTest,
+       SharedProgramSelectsCoreAmongAssignedDeviceIdsForEachExecutable) {
+  ASSERT_GE(helper_->num_cores(), 1);
+  constexpr int64_t kProgramIdA = 444444;
+  constexpr int64_t kProgramIdB = 555555;
+  // Pin to the last core, so that selecting a core among all cores (which
+  // starts warmup from core 0) does not pass by accident.
+  const int pinned_device_id =
+      helper_->client()->addressable_devices().back()->Id().value();
+  // After its warmup run, each executable must ask the selector for a core
+  // among the assigned device IDs of the program it shares.
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(kProgramIdA),
+                                       ElementsAre(pinned_device_id)))
+      .WillOnce([pinned_device_id](::testing::Unused, absl::Span<const int>) {
+        return tsl::DeviceReservation(pinned_device_id, /*selector=*/nullptr);
+      });
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(kProgramIdB),
+                                       ElementsAre(pinned_device_id)))
+      .WillOnce([pinned_device_id](::testing::Unused, absl::Span<const int>) {
+        return tsl::DeviceReservation(pinned_device_id, /*selector=*/nullptr);
+      });
+
+  ASSERT_OK_AND_ASSIGN(
+      auto executable_a,
+      helper_->MakeExecutable(kProgramIdA, GetMlirModulePath("executable.mlir"),
+                              {pinned_device_id}));
+  auto executable_b =
+      helper_->MakeExecutable(kProgramIdB, executable_a->program());
+
+  // Same shapes, different weights.
+  IfrtRestoreTensorRegistry& registry =
+      *helper_->ifrt_restore_tensor_registry();
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::Tensor key_a,
+      RegisterVariable(registry, "pinned_w_a",
+                       AsTensor<int32_t>({1, 2, 3}, TensorShape({3, 1}))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::Tensor key_b,
+      RegisterVariable(registry, "pinned_w_b",
+                       AsTensor<int32_t>({4, 5, 6}, TensorShape({3, 1}))));
+  auto x = AsTensor<int32_t>({1, 2, 3}, TensorShape({1, 3}));
+  std::vector<tensorflow::Tensor> inputs_a{x, key_a};
+  std::vector<tensorflow::Tensor> inputs_b{x, key_b};
+  const std::vector<int> variable_arg_indices = {1};
+  // 1*1 + 2*2 + 3*3 = 14 and 1*4 + 2*5 + 3*6 = 32.
+  const auto expected_a = AsTensor<int32_t>({14}, TensorShape({1, 1}));
+  const auto expected_b = AsTensor<int32_t>({32}, TensorShape({1, 1}));
+
+  // The first run of each executable warms up on the only assigned device;
+  // the second run goes through `selector_`.
+  TF_ASSERT_OK_AND_ASSIGN(auto warmup_result_a,
+                          Execute(executable_a.get(), absl::MakeSpan(inputs_a),
+                                  variable_arg_indices));
+  TF_ASSERT_OK_AND_ASSIGN(auto warmup_result_b,
+                          Execute(executable_b.get(), absl::MakeSpan(inputs_b),
+                                  variable_arg_indices));
+  TF_ASSERT_OK_AND_ASSIGN(auto result_a,
+                          Execute(executable_a.get(), absl::MakeSpan(inputs_a),
+                                  variable_arg_indices));
+  TF_ASSERT_OK_AND_ASSIGN(auto result_b,
+                          Execute(executable_b.get(), absl::MakeSpan(inputs_b),
+                                  variable_arg_indices));
+
+  EXPECT_THAT(warmup_result_a, ElementsAre(TensorEq(expected_a)));
+  EXPECT_THAT(warmup_result_b, ElementsAre(TensorEq(expected_b)));
+  EXPECT_THAT(result_a, ElementsAre(TensorEq(expected_a)));
+  EXPECT_THAT(result_b, ElementsAre(TensorEq(expected_b)));
+  // The program is compiled once for both executables.
+  EXPECT_EQ(executable_a->program()->num_compiled(), 1);
+}
+
 constexpr absl::string_view kAliasedInputModule = R"(
 module {
   func.func @main(%arg0: tensor<2x2xf32> {tf.aliasing_output = 0 : i32},
@@ -937,6 +1163,132 @@ TEST(GetInputDonationMaskTest, OutOfRangeDonatedParameterFails) {
                 .status()
                 .code(),
             absl::StatusCode::kInternal);
+}
+
+class ThreadSafetyCheckingCache : public IfrtPersistentCompilationCache {
+ public:
+  absl::StatusOr<xla::ifrt::LoadedExecutableRef> LookupLoadedExecutableOrCreate(
+      std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
+      xla::ifrt::DeviceListRef device_list,
+      const xla::CompileOptions& xla_compile_options,
+      const std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>&
+          loaded_host_callbacks,
+      xla::ifrt::Client* client,
+      absl::AnyInvocable<absl::StatusOr<xla::ifrt::LoadedExecutableRef>(
+          std::unique_ptr<xla::ifrt::Program> program,
+          std::unique_ptr<xla::ifrt::CompileOptions> options)>
+          value_fn) override {
+    seen_hlo_context_thread_safe_ =
+        hlo_program->mlir_module()->getContext()->isThreadSafeLockingEnabled();
+    return IfrtPersistentCompilationCache::LookupLoadedExecutableOrCreate(
+        std::move(hlo_program), std::move(device_list), xla_compile_options,
+        loaded_host_callbacks, client, std::move(value_fn));
+  }
+
+  bool seen_hlo_context_thread_safe() const {
+    return seen_hlo_context_thread_safe_;
+  }
+
+ private:
+  bool seen_hlo_context_thread_safe_ = false;
+};
+
+TEST(IfrtProgramTest, EnablesThreadSafeLockingAndPreloadsDialects) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::DynamicDeviceMgr> device_mgr,
+      CreateTfDynamicDeviceMgr());
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+  // `Threading::DISABLED` starts with uniquer locking off (unlike default
+  // `MLIRContext`), making `enableThreadSafeLocking()` observable.
+  mlir::MLIRContext context(registry, mlir::MLIRContext::Threading::DISABLED);
+  ASSERT_FALSE(context.isThreadSafeLockingEnabled());
+
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceFile<mlir::ModuleOp>(
+          GetMlirModulePath("executable.mlir"), &context);
+  ASSERT_TRUE(module);
+  ASSERT_LT(context.getLoadedDialects().size(),
+            context.getAvailableDialects().size());
+
+  TfToHloCompiler tf_to_hlo_compiler;
+  ThreadSafetyCheckingCache cache;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<IfrtProgram> program,
+      IfrtProgram::Create("test", "main", std::move(module), client,
+                          device_mgr.get(),
+                          tensorflow::IdentityShapeRepresentationFn(),
+                          /*ifrt_serving_core_selector=*/nullptr,
+                          /*compilation_env_or_overrides=*/nullptr,
+                          &tf_to_hlo_compiler, &cache));
+
+  EXPECT_TRUE(context.isThreadSafeLockingEnabled());
+  EXPECT_EQ(context.getLoadedDialects().size(),
+            context.getAvailableDialects().size());
+
+  std::vector<DtypeAndShape> dtypes_and_shapes = {
+      {.dtype = tensorflow::DT_INT32, .shape = tensorflow::TensorShape({1, 3})},
+      {.dtype = tensorflow::DT_INT32, .shape = tensorflow::TensorShape({3, 1})},
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      tsl::Future<std::shared_ptr<const IfrtProgram::CompiledExecutable>>
+          compiled_future,
+      program->GetOrCompile(dtypes_and_shapes, /*variable_arg_indices=*/{}));
+  using ::absl_testing::IsOkAndHolds;
+  using ::testing::NotNull;
+  EXPECT_THAT(compiled_future.Await(), IsOkAndHolds(NotNull()));
+  EXPECT_TRUE(cache.seen_hlo_context_thread_safe());
+}
+
+TEST_P(IfrtServingExecutableTest, ConcurrentCompilationAcrossDistinctShapes) {
+  constexpr int kNumShapes = 8;
+  constexpr int64_t kProgramId = 234567;
+  std::atomic<int> next_device = 0;
+  const int num_cores = std::max(1, helper_->num_cores());
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(kProgramId)))
+      .WillRepeatedly([&next_device, num_cores](::testing::Unused) {
+        return tsl::DeviceReservation(
+            next_device.fetch_add(1, std::memory_order_relaxed) % num_cores,
+            /*selector=*/nullptr);
+      });
+
+  std::unique_ptr<IfrtServingExecutable> executable =
+      helper_->MakeExecutable(kProgramId, GetMlirModulePath("executable.mlir"));
+
+  absl::BlockingCounter ready(kNumShapes);
+  absl::Notification go;
+  std::vector<absl::StatusOr<std::vector<tensorflow::Tensor>>> results(
+      kNumShapes);
+  {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                 "ConcurrentCompile", kNumShapes);
+    for (int t = 0; t < kNumShapes; ++t) {
+      pool.Schedule([&, t]() {
+        std::vector<int32_t> values(t + 1, 1);
+        std::vector<tensorflow::Tensor> inputs{
+            AsTensor<int32_t>(values, tensorflow::TensorShape({1, t + 1})),
+            AsTensor<int32_t>(values, tensorflow::TensorShape({t + 1, 1})),
+        };
+        ready.DecrementCount();
+        go.WaitForNotification();
+        results[t] = Execute(executable.get(), absl::MakeSpan(inputs), {});
+      });
+    }
+    ready.Wait();
+    go.Notify();
+  }
+
+  for (int t = 0; t < kNumShapes; ++t) {
+    ASSERT_OK_AND_ASSIGN(std::vector<tensorflow::Tensor> outputs,
+                         std::move(results[t]));
+    EXPECT_THAT(outputs, ElementsAre(TensorEq(AsTensor<int32_t>(
+                             {t + 1}, tensorflow::TensorShape({1, 1})))));
+  }
+  EXPECT_EQ(executable->num_executables(), kNumShapes);
 }
 
 }  // namespace

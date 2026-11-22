@@ -65,7 +65,9 @@ SmallVector<int64_t> BufferView::GetDefaultStrides(ArrayRef<int64_t> sizes) {
 
 SmallVector<int64_t> BufferView::GetStridesForLayout(ArrayRef<int64_t> sizes,
                                                      ArrayRef<int64_t> layout) {
-  if (layout.empty()) return GetDefaultStrides(sizes);
+  if (layout.empty()) {
+    return GetDefaultStrides(sizes);
+  }
   auto inverse_layout = invertPermutationVector(layout);
   SmallVector<int64_t> result(sizes.size());
   int64_t stride = 1;
@@ -84,7 +86,9 @@ LogicalResult BufferView::Slice(int64_t dim_index, int64_t dim_offset) {
   } else {
     return failure();
   }
-  if (dim_index >= num_dimensions()) --*num_vector_dims;
+  if (dim_index >= num_dimensions()) {
+    --*num_vector_dims;
+  }
   strides.erase(strides.begin() + dim_index);
   sizes.erase(sizes.begin() + dim_index);
   return success();

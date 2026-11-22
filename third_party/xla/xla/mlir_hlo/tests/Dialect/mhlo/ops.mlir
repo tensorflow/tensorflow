@@ -3142,6 +3142,187 @@ func.func @dot_general(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> te
 
 // -----
 
+// CHECK-LABEL: func @dot_general_block_scaling_and_sparsity
+func.func @dot_general_block_scaling_and_sparsity(%lhs: tensor<2x4x2xf32>, %rhs: tensor<2x8x4xf32>, %lhs_scale: tensor<2x4x1xf32>, %lhs_zero: tensor<2x4x1xf32>, %rhs_scale: tensor<2x1x4xf32>, %meta: tensor<2x4x2xi16>) -> tensor<2x4x4xf32> {
+  // CHECK: mhlo.dot_general
+  // CHECK-SAME: block_scaling_config = #mhlo.block_scaling_config<lhs = <scale_idx = 2, zero_idx = 3, strides = [0, 0, 1], steps = [0, 0, 1], block_sizes = [1, 1, 2]>, rhs = <scale_idx = 4>>
+  // CHECK-SAME: sparsity_config = #mhlo.sparsity_config<lhs = <num_non_zero = 1, block_size = 4, dimension = 2, stride = 1, idx = 5>>
+  %0 = "mhlo.dot_general"(%lhs, %rhs, %lhs_scale, %lhs_zero, %rhs_scale, %meta) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    block_scaling_config = #mhlo.block_scaling_config<lhs = <scale_idx = 2, zero_idx = 3, strides = [0, 0, 1], steps = [0, 0, 1], block_sizes = [1, 1, 2]>, rhs = <scale_idx = 4>>,
+    sparsity_config = #mhlo.sparsity_config<lhs = <num_non_zero = 1, block_size = 4, dimension = 2, stride = 1, idx = 5>>
+  } : (tensor<2x4x2xf32>, tensor<2x8x4xf32>, tensor<2x4x1xf32>, tensor<2x4x1xf32>, tensor<2x1x4xf32>, tensor<2x4x2xi16>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @dot_general_rhs_sparsity
+func.func @dot_general_rhs_sparsity(%lhs: tensor<2x4x8xf32>, %rhs: tensor<2x2x4xf32>, %meta: tensor<2x2x4xi16>) -> tensor<2x4x4xf32> {
+  // CHECK: sparsity_config = #mhlo.sparsity_config<rhs = <num_non_zero = 1, block_size = 4, dimension = 1, stride = 1, idx = 2>>
+  %0 = "mhlo.dot_general"(%lhs, %rhs, %meta) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    sparsity_config = #mhlo.sparsity_config<rhs = <num_non_zero = 1, block_size = 4, dimension = 1, stride = 1, idx = 2>>
+  } : (tensor<2x4x8xf32>, tensor<2x2x4xf32>, tensor<2x2x4xi16>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+func.func @dot_general_sparsity_block_size_one(%arg0: tensor<2x4x8xf32>, %arg1: tensor<2x8x4xf32>, %meta: tensor<2x4x8xi16>) -> tensor<2x4x4xf32> {
+  // expected-error @+1 {{StructuredSparsity invariants violated for lhs: expected n == 1, m > 1, stride >= 1 and valid dimension, but got n=1, m=1, stride=1, dimension=2}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1, %meta) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    sparsity_config = #mhlo.sparsity_config<lhs = <num_non_zero = 1, block_size = 1, dimension = 2, stride = 1, idx = 2>>
+  } : (tensor<2x4x8xf32>, tensor<2x8x4xf32>, tensor<2x4x8xi16>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+func.func @dot_general_sparsity_empty(%arg0: tensor<2x4x8xf32>, %arg1: tensor<2x8x4xf32>) -> tensor<2x4x4xf32> {
+  // expected-error @+1 {{sparsity_config must specify lhs or rhs}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    sparsity_config = #mhlo.sparsity_config<>
+  } : (tensor<2x4x8xf32>, tensor<2x8x4xf32>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+func.func @dot_general_sparsity_idx_out_of_range(%arg0: tensor<2x4x2xf32>, %arg1: tensor<2x8x4xf32>, %meta: tensor<2x4x2xi16>) -> tensor<2x4x4xf32> {
+  // expected-error @+1 {{sparsity_config for lhs must have distinct idx referring to one of the 1 extra operands}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1, %meta) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    sparsity_config = #mhlo.sparsity_config<lhs = <num_non_zero = 1, block_size = 4, dimension = 2, stride = 1, idx = 3>>
+  } : (tensor<2x4x2xf32>, tensor<2x8x4xf32>, tensor<2x4x2xi16>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+func.func @dot_general_sparsity_non_contracting_dim(%arg0: tensor<2x4x8xf32>, %arg1: tensor<2x8x4xf32>, %meta: tensor<2x1x8xi16>) -> tensor<2x4x4xf32> {
+  // expected-error @+1 {{sparsity dimension 1 for lhs must be a contracting dimension}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1, %meta) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    sparsity_config = #mhlo.sparsity_config<lhs = <num_non_zero = 1, block_size = 4, dimension = 1, stride = 1, idx = 2>>
+  } : (tensor<2x4x8xf32>, tensor<2x8x4xf32>, tensor<2x1x8xi16>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+func.func @dot_general_sparsity_n_not_one(%arg0: tensor<2x4x2xf32>, %arg1: tensor<2x4x4xf32>, %meta: tensor<2x4x2xi16>) -> tensor<2x4x4xf32> {
+  // expected-error @+1 {{StructuredSparsity invariants violated for lhs: expected n == 1, m > 1, stride >= 1 and valid dimension, but got n=2, m=4, stride=1, dimension=2}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1, %meta) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    sparsity_config = #mhlo.sparsity_config<lhs = <num_non_zero = 2, block_size = 4, dimension = 2, stride = 1, idx = 2>>
+  } : (tensor<2x4x2xf32>, tensor<2x4x4xf32>, tensor<2x4x2xi16>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+func.func @dot_general_sparsity_zero_stride(%arg0: tensor<2x4x2xf32>, %arg1: tensor<2x8x4xf32>, %meta: tensor<2x4x2xi16>) -> tensor<2x4x4xf32> {
+  // expected-error @+1 {{StructuredSparsity invariants violated for lhs: expected n == 1, m > 1, stride >= 1 and valid dimension, but got n=1, m=4, stride=0, dimension=2}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1, %meta) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    sparsity_config = #mhlo.sparsity_config<lhs = <num_non_zero = 1, block_size = 4, dimension = 2, stride = 0, idx = 2>>
+  } : (tensor<2x4x2xf32>, tensor<2x8x4xf32>, tensor<2x4x2xi16>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+func.func @dot_general_unreferenced_ext_operand(%arg0: tensor<2x4x8xf32>, %arg1: tensor<2x8x4xf32>, %scale: tensor<2x4x2xf32>, %extra: tensor<2x4x2xf32>) -> tensor<2x4x4xf32> {
+  // expected-error @+1 {{every operand in ext_operands must be referenced by block_scaling_config or sparsity_config}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1, %scale, %extra) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    block_scaling_config = #mhlo.block_scaling_config<lhs = <scale_idx = 2>>
+  } : (tensor<2x4x8xf32>, tensor<2x8x4xf32>, tensor<2x4x2xf32>, tensor<2x4x2xf32>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+func.func @dot_general_block_scale_does_not_divide(%arg0: tensor<2x4x8xf32>, %arg1: tensor<2x8x4xf32>, %scale: tensor<2x4x3xf32>) -> tensor<2x4x4xf32> {
+  // expected-error @+1 {{scale_factor dimension at axis 2 for lhs must evenly divide operand dimension size (8 vs 3)}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1, %scale) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    block_scaling_config = #mhlo.block_scaling_config<lhs = <scale_idx = 2>>
+  } : (tensor<2x4x8xf32>, tensor<2x8x4xf32>, tensor<2x4x3xf32>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
+func.func @dot_general_block_scaling_shared_idx(%arg0: tensor<2x4x8xf32>, %arg1: tensor<2x8x4xf32>, %scale: tensor<2x4x2xf32>) -> tensor<2x4x4xf32> {
+  // expected-error @+1 {{block_scaling_config for lhs must have distinct scale_idx/zero_idx referring to one of the 1 extra operands}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1, %scale) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    block_scaling_config = #mhlo.block_scaling_config<lhs = <scale_idx = 2, zero_idx = 2>>
+  } : (tensor<2x4x8xf32>, tensor<2x8x4xf32>, tensor<2x4x2xf32>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
+
 func.func @dot_general(%arg0: tensor<1x?x1x?xf32>, %arg1: tensor<?x1x?x1x?xf32>) {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
@@ -5968,10 +6149,18 @@ func.func @irfft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x16xf32> {
 
 // -----
 
-func.func @rfft_not_float32or64(%arg0: tensor<3x9xf16>) -> tensor<3x5xcomplex<f32>> {
+// CHECK-LABEL: @rfft_f16
+func.func @rfft_f16(%arg0: tensor<3x9xf16>) -> tensor<3x5xcomplex<f16>> {
+  %0 = "mhlo.fft"(%arg0) <{ fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT> }> : (tensor<3x9xf16>) -> tensor<3x5xcomplex<f16>>
+  func.return %0 : tensor<3x5xcomplex<f16>>
+}
+
+// -----
+
+func.func @rfft_f8(%arg0: tensor<3x9xf8E4M3FN>) -> tensor<3x5xcomplex<f32>> {
   // @expected-error@+2 {{'mhlo.fft' op failed to infer returned types}}
-  // expected-error@+1 {{RFFT requires f32 or f64 input type, but is given 'f16'.}}
-  %0 = "mhlo.fft"(%arg0) <{ fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT> }> : (tensor<3x9xf16>) -> tensor<3x5xcomplex<f32>>
+  // expected-error-re@+1 {{RFFT requires {{.*}} input type, but is given 'f8E4M3FN'.}}
+  %0 = "mhlo.fft"(%arg0) <{ fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT> }> : (tensor<3x9xf8E4M3FN>) -> tensor<3x5xcomplex<f32>>
   func.return %0 : tensor<3x5xcomplex<f32>>
 }
 
@@ -6295,14 +6484,6 @@ func.func @einsum_i8xi8_i16(%arg0: tensor<1x2xi8>, %arg1: tensor<2x1xi8>) -> ten
 // CHECK-LABEL: func @part_id
 func.func @part_id() -> tensor<ui32> {
   %1 = "mhlo.partition_id"() : () -> tensor<ui32>
-  return %1 : tensor<ui32>
-}
-
-// -----
-
-// CHECK-LABEL: func @domain
-func.func @domain(%arg0: tensor<ui32>) -> tensor<ui32> {
-  %1 = "mhlo.domain"(%arg0) {kind = #mhlo<kind sharding>, entry_metadata = "", exit_metadata = ""} : (tensor<ui32>) -> tensor<ui32>
   return %1 : tensor<ui32>
 }
 

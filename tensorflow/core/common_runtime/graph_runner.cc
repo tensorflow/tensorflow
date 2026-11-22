@@ -49,7 +49,7 @@ namespace {
 // sends of dead tensors.
 class SimpleRendezvous : public RendezvousInterface {
  public:
-  explicit SimpleRendezvous() {}
+  explicit SimpleRendezvous() = default;
 
   absl::Status Send(const ParsedKey& parsed, const Args& send_args,
                     const Tensor& val, const bool is_dead) override {
@@ -98,7 +98,7 @@ GraphRunner::GraphRunner(Env* env)
       device_(device_deleter_.get()) {}
 GraphRunner::GraphRunner(Device* device) : device_(device) {}
 
-GraphRunner::~GraphRunner() {}
+GraphRunner::~GraphRunner() = default;
 
 absl::Status GraphRunner::Run(Graph* graph,
                               FunctionLibraryRuntime* function_library,

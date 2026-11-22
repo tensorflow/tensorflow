@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_computation_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -65,7 +66,13 @@ void RemoveTilesAndMemorySpaces(HloComputation* computation) {
 absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool modified = false;
+  bool modified = hlo_computation_utils::SpecializeComputations(
+      module,
+      [this](const HloInstruction* inst) {
+        return inst->opcode() == HloOpcode::kCall &&
+               backend_config_device_type_is_host_fn_(inst);
+      },
+      /*suffix=*/"host");
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* call : computation->instructions()) {

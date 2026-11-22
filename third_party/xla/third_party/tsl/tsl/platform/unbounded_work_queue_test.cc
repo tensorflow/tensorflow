@@ -15,16 +15,21 @@ limitations under the License.
 
 #include "tsl/platform/unbounded_work_queue.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
+#include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/blocking_counter.h"
+#include "tsl/platform/cpu_info.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/random.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace {
@@ -121,6 +126,77 @@ TEST_F(UnboundedWorkQueueTest, NestedClosureDuringDestructor) {
   started.WaitForNotification();
   ResetQueue();
   EXPECT_EQ(NumClosuresExecuted(), num_closures + 1);
+}
+
+// Confirm pool grows so that threads on UnboundedWorkQueue do not wait
+// indefinitely. (b/566567502).
+TEST(UnboundedWorkQueueOptionsTest, BlockingClosuresExceedingNumCpus) {
+  // Start more closures than the default pool to confirm it grows to
+  // accommodate additional work. Cap the CPU count at 128: the internal
+  // pool stops adding worker groups past 128 CPUs, so on larger hosts an
+  // uncapped count may not all start within the 20s wait below.
+  const int num_closures = std::min(port::NumSchedulableCPUs(), 128) + 5;
+
+  BlockingCounter all_started(num_closures);
+  absl::Notification may_exit;
+
+  {
+    UnboundedWorkQueue queue(Env::Default(), "blocking_test");
+    for (int i = 0; i < num_closures; ++i) {
+      queue.Schedule([&]() {
+        all_started.DecrementCount();
+        may_exit.WaitForNotification();
+      });
+    }
+
+    // Wait for all closures to start.
+    EXPECT_TRUE(
+        all_started.WaitFor(absl::ToChronoMilliseconds(absl::Seconds(20))));
+
+    // Notify them all to finish.
+    may_exit.Notify();
+    // queue going out of scope should wait for all to finish.
+  }
+}
+
+TEST(UnboundedWorkQueueOptionsTest, DestructorWaitsForCallbackDestruction) {
+  absl::Notification callback_running;
+  bool capture_destroyed = false;
+  {
+    UnboundedWorkQueue queue(Env::Default(), "callback_destruction_test");
+    auto on_destroy = std::shared_ptr<void>(nullptr, [&](void*) {
+      Env::Default()->SleepForMicroseconds(10000);
+      capture_destroyed = true;
+    });
+    queue.Schedule([&callback_running, on_destroy = std::move(on_destroy)]() {
+      callback_running.Notify();
+    });
+    callback_running.WaitForNotification();
+  }
+  EXPECT_TRUE(capture_destroyed);
+}
+
+TEST(UnboundedWorkQueueOptionsTest, CustomStackSize) {
+  ThreadOptions thread_options;
+  thread_options.stack_size = 2 * 1024 * 1024;  // 2 MB
+  UnboundedWorkQueue queue(Env::Default(), "custom_stack_test", thread_options);
+  BlockingCounter counter(10);
+  for (int i = 0; i < 10; ++i) {
+    queue.Schedule([&counter]() { counter.DecrementCount(); });
+  }
+  counter.Wait();
+}
+
+TEST(UnboundedWorkQueueOptionsDeathTest, DefaultThreadOptions) {
+  if (kIsOpenSource) {
+    GTEST_SKIP() << "Default ThreadOptions are only rejected internally.";
+  }
+  EXPECT_DEATH(
+      {
+        UnboundedWorkQueue queue(Env::Default(), "default_options_test",
+                                 ThreadOptions{});
+      },
+      "Requires valid ThreadOptions");
 }
 
 }  // namespace

@@ -23,7 +23,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -31,17 +32,18 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -59,6 +61,13 @@ class CpuLayoutAssignmentTest : public HloHardwareIndependentTestBase {
     cpu::CpuLayoutAssignment layout_assignment(entry_computation_layout,
                                                &target_machine_features);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
+  }
+
+  void AssignLayouts(HloModule* module) {
+    ComputationLayout computation_layout(
+        module->entry_computation()->ComputeProgramShape(),
+        /*ignore_layouts=*/false);
+    AssignLayouts(module, &computation_layout);
   }
 };
 
@@ -482,6 +491,177 @@ ENTRY BatchDotLayoutMustBeRowMajor {
           op::ShapeWithLayout(computation_layout.parameter_layout(0).shape()),
           op::ShapeWithLayout(
               computation_layout.parameter_layout(1).shape()))));
+}
+
+TEST_F(CpuLayoutAssignmentTest, VectorDotWithConstantRhsTensor) {
+  constexpr absl::string_view kHlo = R"(
+HloModule VectorDotWithConstantRhsTensor
+
+ENTRY main {
+  p0 = f32[12]{0} parameter(0)
+  c0 = f32[12]{0} constant({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+  ROOT dot = f32[] dot(p0, c0), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  AssignLayouts(module.get());
+
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  EXPECT_EQ(dot->operand(0)->shape().layout(), LayoutUtil::MakeLayout({0}));
+  EXPECT_EQ(dot->operand(1)->shape().layout(), LayoutUtil::MakeLayout({0}));
+  EXPECT_EQ(dot->shape().layout(), LayoutUtil::MakeLayout({}));
+  EXPECT_THAT(module->entry_computation()->instructions(),
+              Each(Not(op::Copy())));
+}
+
+TEST_F(CpuLayoutAssignmentTest, RowMajorOpsStripPreExistingLayoutFields) {
+  constexpr absl::string_view kHlo = R"(
+HloModule RowMajorOpsStripPreExistingLayoutFields
+
+compare_topk {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT cmp = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+}
+
+ENTRY main {
+  p0 = f32[4,64,64]{2,1,0} parameter(0)
+  p1 = f32[4,64,64]{2,1,0} parameter(1)
+  p2 = f32[4,16]{1,0} parameter(2)
+  dot = f32[4,64,64]{2,0,1:T(8,128)L(128)S(1)SC(0:32)} dot(p0, p1),
+      lhs_batch_dims={0}, lhs_contracting_dims={2},
+      rhs_batch_dims={0}, rhs_contracting_dims={1}
+  topk = (f32[4,8]{0,1:T(8,128)}, s32[4,8]{0,1:T(8,128)}) custom-call(p2),
+      custom_call_target="TopK", called_computations={compare_topk}
+  ROOT out = (f32[4,64,64]{0,1,2}, (f32[4,8]{0,1}, s32[4,8]{0,1}))
+      tuple(dot, topk)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  AssignLayouts(module.get());
+
+  EXPECT_EQ(FindInstruction(module.get(), "dot")->shape().layout(),
+            LayoutUtil::MakeLayout({2, 1, 0}));
+  const Shape& topk_shape = FindInstruction(module.get(), "topk")->shape();
+  EXPECT_EQ(topk_shape.tuple_shapes(0).layout(),
+            LayoutUtil::MakeLayout({1, 0}));
+  EXPECT_EQ(topk_shape.tuple_shapes(1).layout(),
+            LayoutUtil::MakeLayout({1, 0}));
+}
+
+TEST_F(CpuLayoutAssignmentTest, CollectivesAssignDimMajorLayout) {
+  constexpr absl::string_view kHlo = R"(
+HloModule CollectivesAssignDimMajorLayout
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8,8,16]{2,1,0} parameter(0)
+  p1 = f32[4,8]{1,0} parameter(1)
+  p2 = f32[8,4,16]{2,1,0} parameter(2)
+  p3 = s32[4,4]{1,0} parameter(3)
+  in0 = f32[8,8,16]{2,1,0} negate(p0)
+  in1 = f32[4,8]{1,0} negate(p1)
+  in2 = f32[8,4,16]{2,1,0} negate(p2)
+  in3 = s32[4,4]{1,0} negate(p3)
+  rs_arr = f32[8,4,16]{2,1,0} reduce-scatter(in0), dimensions={1},
+      replica_groups={{0,1}}, to_apply=add
+  ag_arr = f32[8,8,16]{2,1,0} all-gather(in2), dimensions={1},
+      replica_groups={{0,1}}
+  rs = (f32[8,4,16]{2,1,0:T(8,128)SC(0:4)},
+        f32[4,4]{1,0:T(8,128)}) reduce-scatter(in0, in1), dimensions={1},
+      replica_groups={{0,1}}, to_apply=add
+  ag = (f32[8,8,16]{2,1,0:T(8,128)SC(0:4)},
+        s32[4,8]{1,0:T(8,128)}) all-gather(in2, in3), dimensions={1},
+      replica_groups={{0,1}}
+  keep0 = f32[8,8,16]{2,1,0} exponential(in0)
+  keep2 = f32[8,4,16]{2,1,0} exponential(in2)
+  ROOT out = (f32[8,4,16]{2,1,0}, f32[8,8,16]{2,1,0},
+              (f32[8,4,16]{2,1,0}, f32[4,4]{1,0}),
+              (f32[8,8,16]{2,1,0}, s32[4,8]{1,0}),
+              f32[8,8,16]{2,1,0}, f32[8,4,16]{2,1,0})
+      tuple(rs_arr, ag_arr, rs, ag, keep0, keep2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo, /*replica_count=*/2));
+  Layout* ag_leaf1_layout = FindInstruction(module.get(), "ag")
+                                ->mutable_shape()
+                                ->mutable_tuple_shapes(1)
+                                ->mutable_layout();
+  ag_leaf1_layout->clear_minor_to_major();
+  ag_leaf1_layout->set_memory_space(5);
+  AssignLayouts(module.get());
+
+  const Layout dim1_major_3d = LayoutUtil::MakeLayout({2, 0, 1});
+  const Layout dim1_major_2d = LayoutUtil::MakeLayout({0, 1});
+  for (absl::string_view name : {"rs_arr", "ag_arr"}) {
+    const HloInstruction* inst = FindInstruction(module.get(), name);
+    EXPECT_EQ(inst->shape().layout(), dim1_major_3d);
+    EXPECT_EQ(inst->operand(0)->shape().layout(), dim1_major_3d);
+  }
+  for (absl::string_view name : {"rs", "ag"}) {
+    const HloInstruction* inst = FindInstruction(module.get(), name);
+    EXPECT_EQ(inst->shape().tuple_shapes(0).layout(), dim1_major_3d);
+    EXPECT_EQ(inst->shape().tuple_shapes(1).layout(), dim1_major_2d);
+    EXPECT_EQ(inst->operand(0)->shape().layout(), dim1_major_3d);
+    EXPECT_EQ(inst->operand(1)->shape().layout(), dim1_major_2d);
+  }
+}
+
+TEST_F(CpuLayoutAssignmentTest, ConstrainedCollectivesPreserveLayout) {
+  constexpr absl::string_view kHlo = R"(
+HloModule ConstrainedCollectivesPreserveLayout
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8,4,16]{2,1,0} parameter(0)
+  p1 = s32[4,4]{1,0} parameter(1)
+  in0 = f32[8,4,16]{2,1,0} negate(p0)
+  in1 = f32[8,4,16]{2,1,0} abs(p0)
+  in2 = f32[8,4,16]{2,1,0} exponential(p0)
+  in3 = s32[4,4]{1,0} negate(p1)
+  rs = f32[4,4,16]{1,2,0} reduce-scatter(in0), dimensions={0},
+      constrain_layout=true, replica_groups={{0,1}}, to_apply=add
+  ag_arr = f32[16,4,16]{1,2,0} all-gather(in1), dimensions={0},
+      constrain_layout=true, replica_groups={{0,1}}
+  ag = (f32[8,8,16]{0,2,1}, s32[4,8]{1,0}) all-gather(in2, in3),
+      dimensions={1}, constrain_layout=true, replica_groups={{0,1}}
+  ROOT out = (f32[4,4,16]{2,1,0}, f32[16,4,16]{2,1,0},
+              (f32[8,8,16]{2,1,0}, s32[4,8]{1,0})) tuple(rs, ag_arr, ag)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo, /*replica_count=*/2));
+  AssignLayouts(module.get());
+
+  for (absl::string_view name : {"rs", "ag_arr"}) {
+    const HloInstruction* inst = FindInstruction(module.get(), name);
+    EXPECT_EQ(inst->shape().layout(), LayoutUtil::MakeLayout({1, 2, 0}));
+    EXPECT_EQ(inst->operand(0)->shape().layout(),
+              LayoutUtil::MakeLayout({1, 2, 0}));
+  }
+  const HloInstruction* ag = FindInstruction(module.get(), "ag");
+  EXPECT_EQ(ag->shape().tuple_shapes(0).layout(),
+            LayoutUtil::MakeLayout({0, 2, 1}));
+  EXPECT_EQ(ag->shape().tuple_shapes(1).layout(),
+            LayoutUtil::MakeLayout({0, 1}));
+  EXPECT_EQ(ag->operand(0)->shape().layout(),
+            LayoutUtil::MakeLayout({0, 2, 1}));
+  EXPECT_EQ(ag->operand(1)->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
 }
 }  // namespace
 }  // namespace xla

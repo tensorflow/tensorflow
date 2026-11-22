@@ -723,11 +723,21 @@ class FileStream : public protobuf::io::ZeroCopyInputStream {
   }
   int64_t ByteCount() const override { return pos_; }
   absl::Status status() const { return status_; }
+  absl::Status non_eof_status() const {
+    return absl::IsOutOfRange(status_) ? absl::OkStatus() : status_;
+  }
 
   bool Next(const void** data, int* size) override {
+    if (!status_.ok()) {
+      return false;
+    }
     absl::string_view result;
     absl::Status s =
         file_->Read(pos_, result, absl::MakeSpan(scratch_, kBufSize));
+    if (!s.ok() && !absl::IsOutOfRange(s)) {
+      status_ = s;
+      return false;
+    }
     if (result.empty()) {
       status_ = s;
       return false;
@@ -768,7 +778,7 @@ absl::Status ReadBinaryProto(Env* env, const std::string& fname,
     return absl::DataLossError(
         absl::StrCat("Can't parse ", fname, " as binary proto"));
   }
-  return absl::OkStatus();
+  return stream->non_eof_status();
 }
 
 absl::Status WriteTextProto(Env* env, const std::string& fname,
@@ -793,13 +803,16 @@ absl::Status ReadTextProto(Env* env, absl::string_view fname,
     return absl::DataLossError(
         absl::StrCat("Can't parse ", fname, " as text proto"));
   }
-  return absl::OkStatus();
+  return stream->non_eof_status();
 }
 
 absl::Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
                                    protobuf::Message* proto) {
-  if (ReadTextProto(env, fname, proto).ok()) {
-    return absl::OkStatus();
+  absl::Status s = ReadTextProto(env, fname, proto);
+  // Only fall back to binary parsing on parse failures (`DataLoss` mid-stream
+  // or `OutOfRange` at EOF) so real open/read errors propagate directly.
+  if (s.ok() || (!absl::IsDataLoss(s) && !absl::IsOutOfRange(s))) {
+    return s;
   }
   return ReadBinaryProto(env, fname, proto);
 }

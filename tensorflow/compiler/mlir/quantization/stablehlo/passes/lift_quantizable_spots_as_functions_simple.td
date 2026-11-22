@@ -47,7 +47,8 @@ def LiftConv : Pat<
 
 def LiftDotGeneral : Pat<
   (StableHLO_DotGeneralOp:$res
-      $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+      $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm,
+      $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
   (LiftAsTFXlaCallModule<"composite_dot_general_fn">
     (ArgumentList $lhs, $rhs),
     (ResultList $res),

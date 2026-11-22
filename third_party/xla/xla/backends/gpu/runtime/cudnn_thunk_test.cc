@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -89,6 +90,7 @@ TEST(CuDnnThunkTest, TestSerializationDeserialization) {
         output_args: false
         output_args: true
         sdpa_dropout_seed: 123456789
+        target_device { core_count: 96 serialized_device_properties: "{}" }
       )pb",
       &cudnn_thunk_proto));
 
@@ -278,15 +280,18 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
         std::vector<se::DeviceAddressBase>{input_buf_, output_buf_}, 0,
         allocator_.get());
 
-    params_.emplace(Thunk::ExecuteParams::Create(
-        run_options_, *allocations_, stream_.get(), trace_stream_.get(),
-        &*collective_params_, /*collective_cliques=*/nullptr,
-        /*collective_memory=*/nullptr));
+    thunk_params_.WithExecutor(executor_)
+        .WithBufferAllocations(allocations_.get())
+        .WithStream(stream_.get())
+        .WithRunOptions(&run_options_)
+        .WithCommandBufferTraceStream(trace_stream_.get())
+        .WithCollectiveParams(&*collective_params_);
+    params_.emplace(thunk_params_.ExecuteParams());
   }
 
   // Builds a real cuDNN matmul graph and wraps it in a CuDnnThunk. Skips the
   // enclosing test if cuDNN is too old or the GPU is below Ampere.
-  void BuildRealGraphThunk() {
+  void BuildRealGraphThunk(bool should_memzero = false) {
     se::dnn::DnnSupport& dnn_support = *executor_->AsDnn();
     if (dnn_support.GetVersion().value_or(se::dnn::VersionInfo{0, 0, 0}) <
         se::dnn::VersionInfo(9, 7, 0)) {
@@ -331,9 +336,12 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
     ASSERT_EQ(graph.Graph().get_workspace_size(), 0);
 
     std::vector<bool> output_args(args_.size(), false);
-    output_args.back() = true;
-    thunk_ = std::make_unique<CuDnnThunk>(kFingerprint, Thunk::ThunkInfo(),
-                                          args_, std::move(output_args));
+    for (int i = 2; i < args_.size(); ++i) {
+      output_args[i] = true;
+    }
+    thunk_ =
+        std::make_unique<CuDnnThunk>(kFingerprint, Thunk::ThunkInfo(), args_,
+                                     std::move(output_args), should_memzero);
 
     ASSERT_OK_AND_ASSIGN(Thunk::ExecutableSource source,
                          ExecutableSourceWithGraph(graph));
@@ -341,18 +349,21 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
   }
 
   // Builds a CuDnnThunk backed by the FakeDnnGraph (forces the traced path).
-  void BuildFakeGraphThunk() {
+  void BuildFakeGraphThunk(bool should_memzero = false) {
     std::vector<bool> output_args(args_.size(), false);
-    output_args.back() = true;
+    for (int i = 2; i < args_.size(); ++i) {
+      output_args[i] = true;
+    }
     thunk_ = std::make_unique<FakeGraphCuDnnThunk>(
-        /*fingerprint=*/"", Thunk::ThunkInfo(), args_, std::move(output_args));
+        /*fingerprint=*/"", Thunk::ThunkInfo(), args_, std::move(output_args),
+        should_memzero);
 
     InitializeThunk();
   }
 
   void InitializeThunk(const Thunk::ExecutableSource& source = {}) {
-    ASSERT_OK(thunk_->Initialize({executor_, source, allocations_.get(),
-                                  stream_.get(), trace_stream_.get()}));
+    ASSERT_OK(thunk_->Initialize(
+        thunk_params_.WithExecutableSource(source).InitializeParams()));
   }
 
   std::vector<int32_t> ReadOutput(const se::DeviceAddress<int32_t>& buf) {
@@ -384,10 +395,205 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
   std::unique_ptr<BufferAllocations> allocations_;
   ServiceExecutableRunOptions run_options_;
   std::optional<CollectiveParams> collective_params_;
-  // params_ holds references to allocations_, stream_, trace_stream_, and
-  // collective_params_, all of which must outlive it.
+  TestThunkParams thunk_params_;
+  // params_ holds references to thunk_params_, allocations_, stream_,
+  // trace_stream_, and collective_params_, all of which must outlive it.
   std::optional<Thunk::ExecuteParams> params_;
 };
+
+// The probe is an output of the thunk but is untouched by either graph.
+// The real graph uses tensor UIDs 1..3; UID 4 is unused. The fake graph
+// writes only its last operand, so put the probe before that operand.
+class CuDnnThunkZeroedTest : public CuDnnThunkCmdBufTest,
+                             public ::testing::WithParamInterface<bool> {
+ protected:
+  void BuildZeroedThunk() {
+    probe_ = executor_->AllocateArray<uint32_t>(1);
+    ASSERT_OK(stream_->Memset32(&probe_, kInitialOutput, probe_.size()));
+    ASSERT_OK(stream_->BlockHostUntilDone());
+    ShapedSlice probe_arg{BufferAllocation::Slice(&probe_alloc_, 0, 4),
+                          ShapeUtil::MakeShape(U32, {1})};
+    if (GetParam()) {
+      args_.push_back(probe_arg);
+    } else {
+      args_.insert(args_.end() - 1, probe_arg);
+    }
+    allocations_ = std::make_unique<BufferAllocations>(
+        std::vector<se::DeviceAddressBase>{input_buf_, output_buf_, probe_}, 0,
+        allocator_.get());
+    thunk_params_.WithExecutor(executor_)
+        .WithBufferAllocations(allocations_.get())
+        .WithStream(stream_.get())
+        .WithRunOptions(&run_options_)
+        .WithCommandBufferTraceStream(trace_stream_.get())
+        .WithCollectiveParams(&*collective_params_);
+    params_.emplace(thunk_params_.ExecuteParams());
+    if (GetParam()) {
+      BuildRealGraphThunk(/*should_memzero=*/true);
+    } else {
+      BuildFakeGraphThunk(/*should_memzero=*/true);
+    }
+  }
+
+  void CheckProbe(const std::string& stage) {
+    uint32_t observed = 0;
+    ASSERT_OK(stream_->Memcpy(&observed, probe_, sizeof(observed)));
+    ASSERT_OK(stream_->BlockHostUntilDone());
+    RecordProperty("observed_probe_" + stage, std::to_string(observed));
+    EXPECT_EQ(observed, 0u) << stage;
+    // Verify that the graph also performed its normal work.
+    EXPECT_EQ(
+        ReadOutput(output_buf_),
+        std::vector<int32_t>(kTotalElements, GetParam() ? 0 : kFakeSentinel));
+  }
+
+  // Expects `probe` to read zero, reporting `stage` on failure.
+  void ExpectProbeZeroed(const se::DeviceAddress<uint32_t>& probe,
+                         const std::string& stage) {
+    uint32_t observed = 0;
+    ASSERT_OK(stream_->Memcpy(&observed, probe, sizeof(observed)));
+    ASSERT_OK(stream_->BlockHostUntilDone());
+    EXPECT_EQ(observed, 0u) << stage;
+  }
+
+  se::DeviceAddress<uint32_t> probe_;
+  BufferAllocation probe_alloc_{/*index=*/2, /*size=*/4, /*color=*/0};
+};
+
+TEST_P(CuDnnThunkZeroedTest, ExecuteOnStream) {
+  BuildZeroedThunk();
+  if (HasFatalFailure() || IsSkipped()) {
+    return;
+  }
+  ASSERT_OK(thunk_->ExecuteOnStream(*params_));
+  CheckProbe("eager");
+}
+
+TEST_P(CuDnnThunkZeroedTest, RecordCreateReplayAndUpdate) {
+  BuildZeroedThunk();
+  if (HasFatalFailure() || IsSkipped()) {
+    return;
+  }
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor_->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd,
+      thunk_->Record(*params_, record_params,
+                     Command::RecordCreate{/*dependencies=*/{}},
+                     command_buffer.get()));
+  ASSERT_NE(cmd, nullptr);
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream_.get()));
+  CheckProbe("create");
+
+  ASSERT_OK(stream_->Memset32(&probe_, kInitialOutput, probe_.size()));
+  ASSERT_OK(command_buffer->Submit(stream_.get()));
+  CheckProbe("replay");
+
+  ASSERT_OK(stream_->Memset32(&probe_, kInitialOutput, probe_.size()));
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* updated_cmd,
+      thunk_->Record(*params_, record_params, Command::RecordUpdate{cmd},
+                     command_buffer.get()));
+  EXPECT_EQ(updated_cmd, cmd);
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream_.get()));
+  CheckProbe("update");
+}
+
+// One thunk recorded twice into the same command buffer, then both recordings
+// updated with moved probes: the shape an unrolled while loop produces. Both
+// recordings share one command-state entry, so each update has to reach the
+// memset recorded alongside its own node -- the DNN graph node on the explicit
+// branch, the child command node on the traced one.
+TEST_P(CuDnnThunkZeroedTest, TwoRecordingsCreateAndUpdate) {
+  BuildZeroedThunk();
+  if (HasFatalFailure() || IsSkipped()) {
+    return;
+  }
+
+  // The first recording uses the fixture's buffers through `params_`. The
+  // second gets its own output, since the two graph nodes are independent and
+  // must not write the same buffer, and its own probe. Each recording also
+  // gets a fresh probe for the update, so the memset destinations move.
+  se::DeviceAddress<int32_t> output_1 =
+      executor_->AllocateArray<int32_t>(kTotalElements);
+  se::DeviceAddress<uint32_t> probe_1 = executor_->AllocateArray<uint32_t>(1);
+  se::DeviceAddress<uint32_t> probe_0_new =
+      executor_->AllocateArray<uint32_t>(1);
+  se::DeviceAddress<uint32_t> probe_1_new =
+      executor_->AllocateArray<uint32_t>(1);
+  ASSERT_OK(stream_->Memset32(&output_1, kInitialOutput, output_1.size()));
+  for (se::DeviceAddress<uint32_t>* probe :
+       {&probe_1, &probe_0_new, &probe_1_new}) {
+    ASSERT_OK(stream_->Memset32(probe, kInitialOutput, probe->size()));
+  }
+  ASSERT_OK(stream_->BlockHostUntilDone());
+
+  // Buffers bind by allocation index: input 0, output 1, probe 2.
+  BufferAllocations allocations_1(
+      std::vector<se::DeviceAddressBase>{input_buf_, output_1, probe_1}, 0,
+      allocator_.get());
+  BufferAllocations allocations_0_new(
+      std::vector<se::DeviceAddressBase>{input_buf_, output_buf_, probe_0_new},
+      0, allocator_.get());
+  BufferAllocations allocations_1_new(
+      std::vector<se::DeviceAddressBase>{input_buf_, output_1, probe_1_new}, 0,
+      allocator_.get());
+  auto params_for = [&](const BufferAllocations& allocations) {
+    return Thunk::ExecuteParams::CloneWithNewAllocations(*params_, allocations);
+  };
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor_->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd_0,
+      thunk_->Record(*params_, record_params,
+                     Command::RecordCreate{/*dependencies=*/{}},
+                     command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd_1,
+      thunk_->Record(params_for(allocations_1), record_params,
+                     Command::RecordCreate{/*dependencies=*/{}},
+                     command_buffer.get()));
+  ASSERT_NE(cmd_0, nullptr);
+  ASSERT_NE(cmd_1, nullptr);
+  ASSERT_NE(cmd_0, cmd_1);
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream_.get()));
+  ExpectProbeZeroed(probe_, "first recording, create");
+  ExpectProbeZeroed(probe_1, "second recording, create");
+
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* updated_0,
+      thunk_->Record(params_for(allocations_0_new), record_params,
+                     Command::RecordUpdate{cmd_0}, command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* updated_1,
+      thunk_->Record(params_for(allocations_1_new), record_params,
+                     Command::RecordUpdate{cmd_1}, command_buffer.get()));
+  EXPECT_EQ(updated_0, cmd_0);
+  EXPECT_EQ(updated_1, cmd_1);
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream_.get()));
+  ExpectProbeZeroed(probe_0_new, "first recording, update");
+  ExpectProbeZeroed(probe_1_new, "second recording, update");
+}
+
+INSTANTIATE_TEST_SUITE_P(RecordBranches, CuDnnThunkZeroedTest,
+                         ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "Explicit" : "Traced";
+                         });
 
 TEST_F(CuDnnThunkCmdBufTest, RecordCreateExplicit) {
   BuildRealGraphThunk();
@@ -447,10 +653,9 @@ TEST_F(CuDnnThunkCmdBufTest, RecordUpdateExplicit) {
   BufferAllocations updated_allocations(
       std::vector<se::DeviceAddressBase>{input_buf_, output1}, 0,
       allocator_.get());
-  Thunk::ExecuteParams updated_params = Thunk::ExecuteParams::Create(
-      run_options_, updated_allocations, stream_.get(), trace_stream_.get(),
-      &*collective_params_, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  Thunk::ExecuteParams updated_params =
+      Thunk::ExecuteParams::CloneWithNewAllocations(*params_,
+                                                    updated_allocations);
 
   ASSERT_OK(command_buffer->Update());
   ASSERT_OK_AND_ASSIGN(
@@ -528,10 +733,9 @@ TEST_F(CuDnnThunkCmdBufTest, RecordUpdateImplicit) {
   BufferAllocations updated_allocations(
       std::vector<se::DeviceAddressBase>{input_buf_, output1}, 0,
       allocator_.get());
-  Thunk::ExecuteParams updated_params = Thunk::ExecuteParams::Create(
-      run_options_, updated_allocations, stream_.get(), trace_stream_.get(),
-      &*collective_params_, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  Thunk::ExecuteParams updated_params =
+      Thunk::ExecuteParams::CloneWithNewAllocations(*params_,
+                                                    updated_allocations);
 
   ASSERT_OK(command_buffer->Update());
   ASSERT_OK_AND_ASSIGN(
@@ -662,27 +866,17 @@ TEST(CuDnnThunkTest, CommandBuffer) {
     operands.push_back(workspace);
   }
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations(operands, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr,
-      nullptr, /*additional_compute_streams=*/{},
-      /*execution_scoped_state=*/nullptr,
-      /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
-
   ASSERT_OK_AND_ASSIGN(Thunk::ExecutableSource source,
                        ExecutableSourceWithGraph(graph));
-  Thunk::InitializeParams initialize_params;
-  initialize_params.executor = stream_executor;
-  initialize_params.src = source;
-  initialize_params.buffer_allocations = &allocations;
-  initialize_params.stream = stream.get();
-  initialize_params.command_buffer_trace_stream = stream.get();
-  initialize_params.persistent_alloc_indices =
-      absl::Span<const BufferAllocation::Index>();
-  ASSERT_OK(thunk.Initialize(initialize_params));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithExecutableSource(source)
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
 
   // Execute command buffer thunk and verify that it executed a GEMM.
   ASSERT_OK(thunk.ExecuteOnStream(params));

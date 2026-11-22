@@ -13,7 +13,10 @@
 // CHECK-LLVM-a6000: store <4 x i8>
 // CHECK-PTX-a6000: st.global.b32
 // CHECK-LLVM-mi200: store <4 x i8>
+// CHECK-LLVM-mi300: store <4 x i8>
 // CHECK-LLVM-mi350: store <4 x i8>
+// CHECK-LLVM-mi450: store <4 x i8>
+// CHECK-LLVM-gfx1250_strict: store <4 x i8>
 
 HloModule m8, is_scheduled=true
 

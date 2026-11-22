@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -104,6 +105,7 @@ int main(int argc, char** argv) {
   mlir::triton::xla::registerTritonXlaTransformsPasses();
   mlir::nv_tensor_ir::xla::registerTensorIrTransformsPasses();
   xla::emitters::registerTransformsPasses();
+  xla::xtile::registerXTileTransformsPasses();
   xla::gpu::registerGpuFusionTransformsPasses();
 
   return mlir::asMainReturnCode(mlir::MlirOptMain(

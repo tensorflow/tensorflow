@@ -64,9 +64,10 @@ Value EmitFloatCast(Value value, mlir::Type target_type,
 DenseElementsAttr GetZeroDenseElementsAttr(ShapedType shaped_type) {
   auto elem_type = shaped_type.getElementType();
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(elem_type)) {
+    const llvm::fltSemantics& semantics = float_type.getFloatSemantics();
+    CHECK(llvm::APFloat::semanticsHasZero(semantics));
     mlir::SmallVector<llvm::APFloat, 4> values(
-        shaped_type.getNumElements(),
-        mlir::APFloat::getZero(float_type.getFloatSemantics()));
+        shaped_type.getNumElements(), llvm::APFloat::getZero(semantics));
     return DenseElementsAttr::get(shaped_type, values);
   }
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 
 #include "grpcpp/server_context.h"
+#include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
@@ -28,7 +29,7 @@ using ::grpc::ServerContext;
 
 GrpcDispatcherImpl::GrpcDispatcherImpl(
     const experimental::DispatcherConfig& config, ServerBuilder& server_builder)
-    : impl_(config) {
+    : impl_(config), protocol_(config.protocol()) {
   server_builder.RegisterService(this);
   VLOG(1) << "Registered data service dispatcher";
 }
@@ -49,6 +50,11 @@ DispatcherStateExport GrpcDispatcherImpl::ExportState() const {
   grpc::Status GrpcDispatcherImpl::method(ServerContext* context,         \
                                           const method##Request* request, \
                                           method##Response* response) {   \
+    if (absl::Status s = CredentialsFactory::Authorize(                   \
+            protocol_, context->auth_context().get());                    \
+        !s.ok()) {                                                        \
+      return ToGrpcStatus(s);                                             \
+    }                                                                     \
     return ToGrpcStatus(impl_.method(request, response));                 \
   }
 HANDLER(WorkerHeartbeat);

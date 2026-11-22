@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_EXECUTOR_H_
 
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,11 +26,9 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
@@ -80,8 +77,6 @@ class RocmExecutor : public GpuExecutor {
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;
   bool UnloadModule(ModuleHandle module_handle) override;
-  absl::StatusOr<std::shared_ptr<DeviceAddressBase>> CreateOrShareConstant(
-      Stream* stream, absl::Span<const uint8_t> content) override;
   DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
   absl::StatusOr<DeviceAddressBase> GetMemoryRange(
       const DeviceAddressBase& location) const override;
@@ -155,13 +150,6 @@ class RocmExecutor : public GpuExecutor {
   absl::flat_hash_map<ModuleHandle, hipModule_t> in_memory_modules_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
 
-  absl::Mutex shared_constants_mu_;
-  // On-device constants that can be shared between multiple executables. A
-  // pointer for a given constant will expire when no executables require use
-  // of that constant anymore.
-  std::map<const absl::uint128, std::weak_ptr<DeviceAddressBase>>
-      shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
-
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.
   absl::flat_hash_map<const Kernel*, ModuleHandle> kernel_to_gpu_binary_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
@@ -199,9 +187,6 @@ class RocmExecutor : public GpuExecutor {
   // including in-process kernels.
   absl::flat_hash_set<const Kernel*> loaded_kernels_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
-
-  // GPU ISA version for device_.
-  int version_;
 
   // RocmContext for this device.  Owned as a value — on ROCm a "context"
   // is just a device ordinal, so there is no heavyweight object to manage.

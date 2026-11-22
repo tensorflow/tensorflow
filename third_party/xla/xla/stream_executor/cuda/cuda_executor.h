@@ -19,7 +19,6 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,7 +30,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -55,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/dma_buf.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -80,6 +79,8 @@ class CudaExecutor : public GpuExecutor {
   CudaExecutor(Platform* platform, int device_ordinal,
                absl::Duration monitor_poll_interval = absl::Seconds(5))
       : GpuExecutor(platform, device_ordinal),
+        is_multicast_supported_(false),
+        is_dma_buf_supported_(false),
         host_callback_registry_(std::make_unique<HostCallbackRegistry>(
             device_ordinal, monitor_poll_interval)) {}
 
@@ -115,8 +116,6 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;
   bool UnloadModule(ModuleHandle module_handle) override;
-  absl::StatusOr<std::shared_ptr<DeviceAddressBase>> CreateOrShareConstant(
-      Stream* stream, absl::Span<const uint8_t> content) override;
   DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceAddressBase* mem) override;
   blas::BlasSupport* AsBlas() override;
@@ -138,6 +137,14 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
+  // If XLA_CUDA_REGISTER_HOST_MEMORY_IN_SHARED_CONTEXT is true, host memory is
+  // registered and unregistered in one context shared by all executors in the
+  // process instead of the executor's primary context. The shared context is
+  // created on the device of the first executor that registers host memory
+  // (see GetHostMemoryRegisterContext in cuda_executor.cc). If it can't be
+  // created, the primary contexts are used. cuMemHostUnregister then doesn't
+  // wait for or block work in any primary context, so callers must make sure
+  // no work on any device still uses the memory before unregistering it.
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
   bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
@@ -181,9 +188,10 @@ class CudaExecutor : public GpuExecutor {
 
   // Creates a stream whose work is launched onto the SM partition of locality
   // domain `locality_domain_id`.
+  using StreamExecutor::CreateStreamInLocalityDomain;
   absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInLocalityDomain(
       int locality_domain_id,
-      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+      std::optional<std::variant<StreamPriority, int>> priority) override;
 
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
@@ -203,6 +211,12 @@ class CudaExecutor : public GpuExecutor {
       uint64_t size) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocation>>
   CreatePhysicalMemoryAllocation(uint64_t size) override;
+
+  // Returns a CudaDeviceAllocator that places physical memory on locality
+  // domain `locality_domain_id`. Returns Unimplemented on CUDA older than 13.4
+  // and FailedPrecondition on devices with a single locality domain.
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+  CreateLocalityDomainMemoryAllocator(int locality_domain_id) override;
 
   // Returns the granularity which is the minimum unit of memory that can be
   // allocated with VMM API. In order to map the memory slices to multicast
@@ -270,6 +284,11 @@ class CudaExecutor : public GpuExecutor {
     return is_multicast_supported_;
   }
 
+  bool is_dma_buf_supported() const override { return is_dma_buf_supported_; }
+
+  absl::StatusOr<DmaBuf> ExportDmaBuf(
+      const DeviceAddressBase& address) const override;
+
   bool is_fabric_supported() const {
     return device_allocator_options_.enable_fabric_handle;
   }
@@ -303,7 +322,10 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<bool> DelayKernelIsSupported();
 
   // Whether multicast objects are supported by this device.
-  bool is_multicast_supported_ = false;
+  bool is_multicast_supported_;
+
+  // Whether exporting device memory as a Linux dma-buf is supported.
+  bool is_dma_buf_supported_;
 
   // Device allocator options, probed during Init() with fallback. The
   // handle-type flags may differ from device-reported caps (e.g. in MIG or
@@ -312,13 +334,6 @@ class CudaExecutor : public GpuExecutor {
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
-
-  absl::Mutex shared_constants_mu_;
-  // On-device constants that can be shared between multiple executables. A
-  // pointer for a given constant will expire when no executables require use
-  // of that constant anymore.
-  std::map<const absl::uint128, std::weak_ptr<DeviceAddressBase>>
-      shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   struct LoadedModule {
     CUmodule module = nullptr;

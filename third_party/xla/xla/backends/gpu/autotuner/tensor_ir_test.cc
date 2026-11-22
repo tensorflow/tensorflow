@@ -114,6 +114,28 @@ ENTRY %entry_computation (p0: f32[4]) -> f32[6] {
   ROOT %fusion = f32[6]{0} fusion(%p0), kind=kLoop, calls=%fused_pad
 })";
 
+// The reshaped and transposed matmul output has view layout `(4,9,4):(4,16,1)`,
+// whose mode `(9,16)` straddles the K/N group boundary (`24`) without being
+// divisible by it, causing TensorIR layout normalization to emit an error
+// diagnostic and fail.
+constexpr char kLayoutPropagationFailureFusionHlo[] = R"(
+HloModule m
+
+%fused_matmul_reshape_transpose (p0: f32[6,4], p1: f32[4,6]) -> f32[4,9] {
+  %p0 = f32[6,4]{1,0} parameter(0)
+  %p1 = f32[4,6]{1,0} parameter(1)
+  %dot = f32[6,6]{1,0} dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %reshape = f32[9,4]{1,0} reshape(%dot)
+  ROOT %transpose = f32[4,9]{1,0} transpose(%reshape), dimensions={1,0}
+}
+
+ENTRY %entry_computation (p0: f32[6,4], p1: f32[4,6]) -> f32[4,9] {
+  %p0 = f32[6,4]{1,0} parameter(0)
+  %p1 = f32[4,6]{1,0} parameter(1)
+  ROOT %fusion = f32[4,9]{1,0} fusion(%p0, %p1),
+    kind=kCustom, calls=%fused_matmul_reshape_transpose
+})";
+
 class TensorIrBackendTest : public HloHardwareIndependentTestBase {
  protected:
   TensorIrBackendTest()
@@ -232,6 +254,21 @@ TEST_F(TensorIrBackendTest, GetSupportedConfigsReturnsEmptyForUnsupported) {
                        backend_.GetSupportedConfigs(
                            *module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, IsEmpty());
+}
+
+TEST_F(TensorIrBackendTest, GetSupportedConfigsDoesNotPrintDiagnostics) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kLayoutPropagationFailureFusionHlo));
+  const HloInstruction& fusion =
+      *module->entry_computation()->root_instruction();
+  ASSERT_TRUE(backend_.IsSupported(fusion));
+
+  testing::internal::CaptureStderr();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(fusion);
+  EXPECT_THAT(testing::internal::GetCapturedStderr(), IsEmpty());
+  EXPECT_THAT(configs, Not(IsOk()));
 }
 
 TEST_F(TensorIrBackendTest, ApplyConfigSetsFusionBackendConfig) {

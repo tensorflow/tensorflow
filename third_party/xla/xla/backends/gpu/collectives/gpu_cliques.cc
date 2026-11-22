@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -51,6 +53,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
@@ -62,10 +65,12 @@ limitations under the License.
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/sorted_range.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/hash.h"
@@ -135,6 +140,97 @@ struct GpuCliqueCreatedCallbacks {
   absl::Mutex mu;
   std::vector<GpuCliqueCreatedCallback> callbacks ABSL_GUARDED_BY(mu);
 };
+
+class SymmetricMemoryCliqueGuard;
+
+// A clique registered in `SymmetricMemoryCliques`. It holds a raw pointer to
+// a clique so a release never extends the lifetime of a clique:
+// if it did, the release could end up destroying the
+// clique (and its communicators) on an allocator thread, possibly after the
+// parent of a split clique is already destroyed.
+//
+// Instead, `SymmetricMemoryCliqueGuard` clears `clique` when the clique is
+// destroyed.
+struct SymmetricMemoryCliqueEntry {
+  explicit SymmetricMemoryCliqueEntry(GpuClique* clique) : clique(clique) {}
+
+  absl::Mutex mu;
+  GpuClique* clique ABSL_GUARDED_BY(mu);
+
+  // Keeps the guard tied to `clique`. Expires when `clique` is destroyed.
+  tsl::TiedRef<SymmetricMemoryCliqueGuard> guard;
+};
+
+// Tied to a registered clique. `~GpuClique` destroys tied objects before the
+// communicators, so this clears `entry->clique` while the communicators are
+// still alive, and waits for a release in flight on the clique to finish.
+class SymmetricMemoryCliqueGuard {
+ public:
+  explicit SymmetricMemoryCliqueGuard(
+      std::shared_ptr<SymmetricMemoryCliqueEntry> entry)
+      : entry_(std::move(entry)) {}
+
+  ~SymmetricMemoryCliqueGuard() {
+    absl::MutexLock lock(entry_->mu);
+    entry_->clique = nullptr;
+  }
+
+ private:
+  std::shared_ptr<SymmetricMemoryCliqueEntry> entry_;
+};
+
+// Cliques to forward `ReleaseSymmetricMemory` to, keyed by the local devices
+// they run on. Kept apart from `ProcessGpuCliques` because releases come from
+// allocator free paths, which must not wait for `ProcessGpuCliques::mu`: it can
+// be held for a whole run while abandoning a clique.
+struct SymmetricMemoryCliques {
+  absl::Mutex mu;
+  absl::flat_hash_map<LocalDeviceId,
+                      std::vector<std::shared_ptr<SymmetricMemoryCliqueEntry>>>
+      cliques ABSL_GUARDED_BY(mu);
+};
+
+SymmetricMemoryCliques& GetSymmetricMemoryCliques() {
+  static absl::NoDestructor<SymmetricMemoryCliques> cliques;
+  return *cliques;
+}
+
+// Registers `clique` for `ReleaseSymmetricMemory` on each local device it runs
+// on. The registration is dropped when the clique is destroyed.
+absl::Status AddSymmetricMemoryClique(GpuClique& clique) {
+  absl::InlinedVector<LocalDeviceId, 8> devices;
+  clique.ForEachComm([&](RankId rank, Communicator* comm) {
+    auto* gpu_comm = dynamic_cast<GpuCommunicator*>(comm);
+    if (gpu_comm == nullptr) {
+      return;
+    }
+    se::StreamExecutor* executor = gpu_comm->stream_executor();
+    if (executor == nullptr) {
+      return;
+    }
+    devices.push_back(LocalDeviceId(executor->device_ordinal()));
+  });
+
+  auto entry = std::make_shared<SymmetricMemoryCliqueEntry>(&clique);
+  ABSL_ASSIGN_OR_RETURN(
+      entry->guard,
+      clique.Tie(std::make_unique<SymmetricMemoryCliqueGuard>(entry)));
+
+  SymmetricMemoryCliques& registry = GetSymmetricMemoryCliques();
+  absl::MutexLock lock(registry.mu);
+  for (LocalDeviceId device : devices) {
+    std::vector<std::shared_ptr<SymmetricMemoryCliqueEntry>>& entries =
+        registry.cliques[device];
+    entries.erase(std::remove_if(
+                      entries.begin(), entries.end(),
+                      [](const std::shared_ptr<SymmetricMemoryCliqueEntry>& e) {
+                        return e->guard.Expired();
+                      }),
+                  entries.end());
+    entries.push_back(entry);
+  }
+  return absl::OkStatus();
+}
 }  // namespace
 
 // Returns process-local GPU cliques.
@@ -483,7 +579,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     // Create a new clique before inserting it into the process state, so
     // callbacks observe every constructed clique, including cliques that lose
-    // an insertion race and will be destroyed.
+    // an insertion race and will be destroyed. Such cliques are also briefly
+    // registered for `ReleaseSymmetricMemory` until they are destroyed.
     auto lockable_clique = std::make_shared<LockableGpuClique>(
         clique_key, clique_ids, std::move(comms), peer_access_enabled,
         std::move(cancel));
@@ -491,6 +588,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     {  // Cannot contend: this LockableGpuClique is not published yet.
       LockableGpuClique::Lock clique_lock = lockable_clique->Acquire();
       NotifyOnGpuCliqueCreated(*clique_lock);
+      ABSL_RETURN_IF_ERROR(AddSymmetricMemoryClique(*clique_lock));
     }
 
     // Add the clique to the process state for a given cache key.
@@ -745,14 +843,16 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     // Create a new clique before inserting it into the process state, so
     // callbacks observe every constructed clique, including cliques that lose
-    // an insertion race and will be destroyed.
+    // an insertion race and will be destroyed. Such cliques are also briefly
+    // registered for `ReleaseSymmetricMemory` until they are destroyed.
     auto lockable_clique = std::make_shared<LockableGpuClique>(
         clique_key, std::nullopt, std::move(comms), peer_access_enabled,
-        std::move(cancel), /*parent=*/&**parent_clique);
+        std::move(cancel), /*parent_key=*/parent_clique_key);
 
     {  // Cannot contend: this LockableGpuClique is not published yet.
       LockableGpuClique::Lock clique_lock = lockable_clique->Acquire();
       NotifyOnGpuCliqueCreated(*clique_lock);
+      ABSL_RETURN_IF_ERROR(AddSymmetricMemoryClique(*clique_lock));
     }
 
     // Add the clique to the process state for a given cache key.
@@ -860,9 +960,19 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
       absl::StrFormat("[%d] [rank=%v] [run_id=%v] Acquire clique: %v",
                       device->device_ordinal(), rank, run_id, clique_key);
 
+  // A clique lock together with an owner of the locked clique. `Lockable::Lock`
+  // holds a raw pointer, and a concurrent run can erase the clique from the
+  // cache (abandon it) before we lock it, so the cache entry alone doesn't
+  // guarantee that the clique outlives the lock. The owner is declared first,
+  // so it is destroyed after the lock is released.
+  struct OwnedLock {
+    std::shared_ptr<LockableGpuClique> owner;
+    LockableGpuClique::Lock lock;
+  };
+
   ABSL_ASSIGN_OR_RETURN(
-      std::shared_ptr<LockableGpuClique::Lock> clique,
-      Rendezvous<LockableGpuClique::Lock>(
+      std::shared_ptr<OwnedLock> owned_clique,
+      Rendezvous<OwnedLock>(
           rendezvous_name, rendezvous_key, device_rank, num_local_participants,
           [&](absl::Span<const DeviceRank* const> participants) {
             tsl::profiler::TraceMe trace("LockGpuClique");
@@ -874,8 +984,18 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
               ranks.emplace_back(*r);
             }
 
-            // Returns nullptr if we do not have a clique for `clique_key`.
-            auto lockable_clique = [&]() -> LockableGpuClique* {
+            // An abandoned clique is destroyed only after we release
+            // `state.mu`. Destroying communicators can block on peers
+            // , and those peers might be waiting for `state.mu` to
+            // abandon their own cliques.
+            std::shared_ptr<LockableGpuClique> abandoned;
+
+            // Returns nullptr if we do not have a clique for `clique_key`. We
+            // return a shared pointer to keep the clique alive after we
+            // release `state.mu`: a concurrent run can abandon it (erase it
+            // from the cache) before we lock it below.
+            std::shared_ptr<LockableGpuClique> lockable_clique =
+                [&]() -> std::shared_ptr<LockableGpuClique> {
               absl::MutexLock lock(state.mu);
               CliqueCacheKey cache_key(collectives, clique_key);
               auto it = state.cliques.find(cache_key);
@@ -932,9 +1052,11 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
                 auto safety_lock = to_lock->Acquire();
 
                 // Only when we know that the clique doesn't have any other
-                // users we can delete it. It will be destroyed when `to_lock`
-                // will get out of scope.
+                // users we can delete it. It will be destroyed when `abandoned`
+                // gets out of scope, after we release `state.mu`.
                 state.cliques.erase(cache_key);
+                to_lock->MarkAbandoned();
+                abandoned = std::move(to_lock);
 
                 return nullptr;
               }
@@ -950,13 +1072,34 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
               // died), we return a nullptr, as the clique will have to be
               // re-created.
               absl::Status stale = CheckCliqueIsNotStaleImpl(state, clique_key);
-              return stale.ok() ? to_lock.get() : nullptr;
+              return stale.ok() ? std::move(to_lock) : nullptr;
             }();
 
-            return lockable_clique ? lockable_clique->Acquire()
-                                   : LockableGpuClique::Lock();
+            if (!lockable_clique) return OwnedLock();
+            LockableGpuClique::Lock lock = lockable_clique->Acquire();
+
+            // A concurrent run could abandon the clique after we looked it up
+            // but before we locked it. Reusing it would diverge from the other
+            // ranks that re-split the clique, so we release the lock and
+            // return an empty lock to acquire the clique from scratch. If the
+            // clique is not abandoned now, nobody can abandon it while we hold
+            // the lock, as abandoning has to wait for it.
+            if (lockable_clique->IsAbandoned()) {
+              VLOG(1) << absl::StrFormat(
+                  "[%s] [ranks=%s] Clique %v was abandoned by a concurrent "
+                  "run before it was locked. Re-acquiring it from scratch",
+                  DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+                  clique_key);
+              return OwnedLock();
+            }
+            return OwnedLock{std::move(lockable_clique), std::move(lock)};
           },
           WarnStuckTimeout(), TerminateTimeout()));
+
+  // Shares ownership of `owned_clique`, so the clique is
+  // kept alive until the last reference to the lock is dropped.
+  std::shared_ptr<LockableGpuClique::Lock> clique(owned_clique,
+                                                  &owned_clique->lock);
 
   // If lock is not null return it to the caller, as it means that we already
   // had a clique were were looking for and we were able to lock access to it.
@@ -1192,6 +1335,29 @@ absl::Status AbortTaskCliques(int failed_task_id, absl::Status error) {
   absl::Status s = AbortOnFailure(state, updated);
   state.task_state_infos = std::move(updated);
   return s;
+}
+
+void ReleaseSymmetricMemory(LocalDeviceId device_id,
+                            se::DeviceAddressBase addr) {
+  absl::InlinedVector<std::shared_ptr<SymmetricMemoryCliqueEntry>, 8> entries;
+  {
+    SymmetricMemoryCliques& registry = GetSymmetricMemoryCliques();
+    absl::MutexLock lock(registry.mu);
+    auto it = registry.cliques.find(device_id);
+    if (it == registry.cliques.end()) {
+      return;
+    }
+    entries.assign(it->second.begin(), it->second.end());
+  }
+  // Release outside of `registry.mu`: dropping a window can block on the
+  // communicator executor. `entry->mu` keeps the clique from being destroyed
+  // while its communicators are in use.
+  for (const std::shared_ptr<SymmetricMemoryCliqueEntry>& entry : entries) {
+    absl::MutexLock lock(entry->mu);
+    if (entry->clique != nullptr) {
+      entry->clique->ReleaseSymmetricMemory(device_id, addr);
+    }
+  }
 }
 
 }  // namespace xla::gpu

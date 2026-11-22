@@ -39,6 +39,8 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
@@ -50,7 +52,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/frontend_attributes.h"
 #include "xla/future.h"
@@ -68,6 +72,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -77,12 +82,7 @@ namespace {
 
 using ::xla::xtile::BlockLevelParameters;
 
-struct EmitArgs {
-  TritonFusion::EmitThunk emit_thunk;
-  std::vector<Shape> unmanaged_arguments;
-};
-
-absl::StatusOr<EmitArgs> EmitCollectiveFusion(
+absl::StatusOr<TritonFusion::EmitThunk> EmitCollectiveFusion(
     Thunk::ThunkInfo info, const HloFusionAnalysis& analysis,
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion) {
   VLOG(5) << "EmitCollectiveFusion: " << info.profile_annotation;
@@ -108,33 +108,32 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
                                 /*has_dynamic_root=*/false));
 
   const GpuTopology& gpu_topology = ir_emitter_context.gpu_topology();
-  ABSL_ASSIGN_OR_RETURN(const SymmetricMemoryType scratch_memory_type,
+  ABSL_ASSIGN_OR_RETURN(const SymmetricMemoryType symmetric_memory_type,
                    GetSymmetricMemoryType(gpu_topology, *fusion_instr));
   int devices_in_process = gpu_topology.num_devices_per_process();
   TritonFusion::EmitThunk make_thunk =
       [info = std::move(info), buffers = std::move(buffers), config,
-       fusion_instr, scratch_memory_type, devices_in_process,
-       &gpu_topology](TritonFusion::EmitResult result) mutable
+       fusion_instr, symmetric_memory_type, devices_in_process,
+       &gpu_topology](const KernelReuseCache::Kernel& result) mutable
       -> absl::StatusOr<ThunkSequence> {
     ABSL_ASSIGN_OR_RETURN(CollectiveKernelSpec kernel_spec,
                      CreateCollectiveKernelSpec(gpu_topology, fusion_instr,
-                                                result.entry.launch_dimensions,
-                                                scratch_memory_type));
+                                                result.spec.launch_dimensions(),
+                                                symmetric_memory_type,
+                                                /*device_assignment=*/nullptr));
     // `CollectiveKernelThunk` owns its cubin, so we have to copy it out of the
     // shared buffer here.
     std::optional<std::vector<uint8_t>> cubin;
-    if (result.entry.binary != nullptr && !result.entry.binary->empty()) {
-      cubin = *result.entry.binary;
+    if (result.binary != nullptr && !result.binary->empty()) {
+      cubin = *result.binary;
     }
     return ThunkSequence::Of<CollectiveKernelThunk>(
         std::move(info), config, std::move(kernel_spec), std::move(buffers),
-        /*is_collective_kernel_enabled=*/true, result.entry.kernel_name,
-        result.entry.launch_dimensions, devices_in_process,
-        result.entry.shmem_bytes, std::move(cubin), result.entry.use_pdl);
+        /*is_collective_kernel_enabled=*/true, result.spec.name(),
+        result.spec.launch_dimensions(), devices_in_process,
+        result.spec.shmem_bytes(), std::move(cubin), result.spec.use_pdl());
   };
-  ABSL_ASSIGN_OR_RETURN(std::vector<Shape> unmanaged_arguments,
-                   GetCollectiveUnmanagedKernelArguments(fusion_instr));
-  return EmitArgs{std::move(make_thunk), std::move(unmanaged_arguments)};
+  return make_thunk;
 }
 }  // namespace
 
@@ -182,9 +181,9 @@ xla::Future<TritonWrapperResult> TritonFusion::GenerateTritonKernelAndWrapper(
                          block_level_parameters, **borrowed_context));
 
   // Forward PDL launch annotation from HLO to MLIR.
-  if (DoesPdlLaunch(fusion)) {
+  if (frontend::DoesPdlLaunch(fusion)) {
     kernel_source.module()->setAttr(
-        kXlaPdlLaunch, mlir::UnitAttr::get(borrowed_context->get()));
+        frontend::kXlaPdlLaunch, mlir::UnitAttr::get(borrowed_context->get()));
   }
   return compiler->CompileTritonToLlvm(
       impl_fn_name, *fusion.GetModule(), device_info, block_level_parameters,
@@ -199,58 +198,51 @@ AsyncThunkSequence TritonFusion::Emit(
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       &fusion, ir_emitter_context.GetNextThunkId());
   VLOG(5) << "TritonFusion::Emit: " << thunk_info.profile_annotation;
-  EmitArgs emit_args;
+  EmitThunk emit_thunk;
   if (analysis_.fusion_backend_config().kind() == kTritonCollectiveFusionKind) {
-    ABSL_ASSIGN_OR_RETURN(emit_args,
+    ABSL_ASSIGN_OR_RETURN(emit_thunk,
                      EmitCollectiveFusion(std::move(thunk_info), analysis_,
                                           ir_emitter_context, fusion));
   } else {
-    EmitThunk make_thunk =
+    emit_thunk =
         [thunk_info = std::move(thunk_info),
          devices_in_process =
              ir_emitter_context.gpu_topology().num_devices_per_process()](
-            EmitResult result) -> absl::StatusOr<ThunkSequence> {
-      ABSL_ASSIGN_OR_RETURN(
-          CustomKernel custom_kernel,
-          kernel::CreateSharedCubinCustomKernel(
-              std::move(result.entry.kernel_name),
-              std::move(result.entry.binary),
-              result.kernel_arguments.args().size(),
-              result.entry.launch_dimensions.block_counts(),
-              result.entry.launch_dimensions.thread_counts_per_block(),
-              result.entry.shmem_bytes));
+            KernelReuseCache::Kernel result) -> absl::StatusOr<ThunkSequence> {
+      ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
+                       kernel::CreateSharedCubinCustomKernel(
+                           result.spec, std::move(result.binary)));
       return ThunkSequence::Of<CustomKernelThunk>(
-          thunk_info, std::move(custom_kernel), result.kernel_arguments,
-          devices_in_process, result.entry.use_pdl, std::vector<int64_t>{},
-          std::move(result.entry.tma_metadata));
-    };
-    emit_args = {
-        std::move(make_thunk),
-        /*unmanaged_arguments=*/{},
+          thunk_info, std::move(custom_kernel), result.spec.kernel_arguments(),
+          devices_in_process, result.spec.use_pdl(), std::vector<int64_t>{},
+          std::move(result.spec.tma_metadata()));
     };
   }
-  return Emit(ir_emitter_context, fusion, nullptr,
-              std::move(emit_args.unmanaged_arguments))
-      .Map(std::move(emit_args.emit_thunk));
+  return EmitKernel(ir_emitter_context, fusion).Map(std::move(emit_thunk));
 }
 
-xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
-    IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
-    const HloInstruction* instr_override,
-    absl::Span<const Shape> unmanaged_arguments) const {
+xla::Future<KernelReuseCache::Kernel> TritonFusion::EmitKernel(
+    IrEmitterContext& ir_emitter_context,
+    const HloFusionInstruction& fusion) const {
   std::string suggested_kernel_name = std::string(fusion.name());
   VLOG(3) << fusion.ToString();
   ABSL_ASSIGN_OR_RETURN(
       emitters::KernelArguments kernel_arguments,
-      emitters::KernelArguments::Create(
-          ir_emitter_context.buffer_assignment(), GetDefaultBufferAlignment(),
-          instr_override != nullptr ? instr_override : &fusion,
-          unmanaged_arguments));
+      analysis_.fusion_backend_config().kind() == kTritonCollectiveFusionKind
+          ? CreateCollectiveKernelArguments(
+                ir_emitter_context.buffer_assignment(),
+                GetDefaultBufferAlignment(), fusion)
+          : emitters::KernelArguments::Create(
+                ir_emitter_context.buffer_assignment(),
+                GetDefaultBufferAlignment(), &fusion));
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
   VLOG(3) << "hlo_computation: " << hlo_computation->ToString();
 
+  std::string fingerprint = emitters::GetComputationFingerprint(
+      hlo_computation, kernel_arguments.args(),
+      /*discriminator=*/"TritonFusion");
   auto generate = [&]() -> xla::Future<KernelReuseCache::Entry> {
     VLOG(3) << "Generating: " << suggested_kernel_name;
 
@@ -271,7 +263,7 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
               sanitized_kernel_impl_name =
                   ir_emitter_context.GetSanitizedUniqueName(
                       sanitized_kernel_name + "_impl"),
-              kernel_arguments](
+              fingerprint, kernel_arguments](
                  TritonWrapperResult triton_wrapper_result) mutable
                  -> xla::Future<KernelReuseCache::Entry> {
           auto local_module = std::move(triton_wrapper_result.kernel_source)
@@ -330,45 +322,42 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
               gpu_device_info, launch_dimensions, kernel,
               local_module.getModuleUnlocked()));
 
+          GpuKernelSpec spec{std::move(sanitized_kernel_name),
+                             std::move(launch_dimensions),
+                             kernel_arguments,
+                             triton_wrapper_result.shmem_bytes,
+                             triton_wrapper_result.use_pdl,
+                             triton_wrapper_result.tma_metadata};
+
           return kernel_compiler
-              ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)})
-              .Map([kernel_name = std::move(sanitized_kernel_name),
-                    launch_dims = std::move(launch_dimensions),
-                    tma_metadata = triton_wrapper_result.tma_metadata,
-                    shmem_bytes = triton_wrapper_result.shmem_bytes,
-                    use_pdl = triton_wrapper_result.use_pdl](
+              ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)},
+                                      fingerprint, spec)
+              .Map([spec = std::move(spec)](
                        const std::vector<uint8_t>& cubin) mutable {
                 return KernelReuseCache::Entry{
-                    std::move(kernel_name),
-                    launch_dims,
-                    /*cluster_dim=*/std::nullopt,
-                    shmem_bytes,
+                    std::string{spec.name()},
+                    spec.launch_dimensions(),
+                    static_cast<int64_t>(*spec.scratch_bytes()),
                     std::make_shared<const std::vector<uint8_t>>(cubin),
-                    tma_metadata,
-                    use_pdl};
+                    spec.tma_metadata(),
+                    spec.use_pdl()};
               });
         });
   };
 
-  auto [status_or_entry, was_cached] =
-      ir_emitter_context.kernel_cache().GetWithStatus(
-          hlo_computation, kernel_arguments.args(),
-          /*discriminator=*/"TritonFusion", generate);
-  return status_or_entry.Map([kernel_arguments = std::move(kernel_arguments)](
-                                 const KernelReuseCache::Entry& entry) mutable
-                                 -> absl::StatusOr<EmitResult> {
-    return EmitResult{entry, std::move(kernel_arguments)};
-  });
+  return ir_emitter_context.kernel_cache()
+      .GetWithStatus(fingerprint, kernel_arguments, generate)
+      .first;
 }
 
 namespace {
-int64_t GetNumberOfBlocks(absl::Span<const int64_t> dimensions,
-                          absl::Span<const int64_t> tile_sizes) {
-  int64_t num_blocks = 1;
+int64_t GetNumberOfTiles(absl::Span<const int64_t> dimensions,
+                         absl::Span<const int64_t> tile_sizes) {
+  int64_t num_tiles = 1;
   for (auto [dim_size, dim_tile_size] : llvm::zip(dimensions, tile_sizes)) {
-    num_blocks *= (dim_size + dim_tile_size - 1) / dim_tile_size;
+    num_tiles *= (dim_size + dim_tile_size - 1) / dim_tile_size;
   }
-  return num_blocks;
+  return num_tiles;
 }
 }  // namespace
 
@@ -385,25 +374,28 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::GetLaunchConfig(
 
   CHECK_EQ(analysis->fusion_root_count(),
            block_level_parameters.output_tile_sizes.size());
-  int64_t num_blocks =
-      GetNumberOfBlocks(analysis->fusion_root(0).shape().dimensions(),
-                        block_level_parameters.output_tile_sizes[0]);
+  int64_t num_tiles =
+      GetNumberOfTiles(analysis->fusion_root(0).shape().dimensions(),
+                       block_level_parameters.output_tile_sizes[0]);
   for (int64_t i = 1; i < analysis->fusion_root_count(); ++i) {
-    int64_t root_blocks =
-        GetNumberOfBlocks(analysis->fusion_root(i).shape().dimensions(),
-                          block_level_parameters.output_tile_sizes[i]);
+    int64_t root_tiles =
+        GetNumberOfTiles(analysis->fusion_root(i).shape().dimensions(),
+                         block_level_parameters.output_tile_sizes[i]);
     if (analysis->fusion_backend_config().kind() ==
         kTritonCollectiveFusionKind) {
       // Variadic collective fusion: each output has its own tile size, and
-      // smaller outputs are padded with masked-out blocks to match the largest
-      // output's block count. So the launch grid is the max across outputs.
-      num_blocks = std::max(num_blocks, root_blocks);
+      // smaller outputs are padded with masked-out tiles to match the largest
+      // output's tile count. So the launch grid is the max across outputs.
+      num_tiles = std::max(num_tiles, root_tiles);
     } else {
-      // We expect all roots to have the same number of blocks. Otherwise we
+      // We expect all roots to have the same number of tiles. Otherwise we
       // cannot codegen it.
-      CHECK_EQ(root_blocks, num_blocks);
+      CHECK_EQ(root_tiles, num_tiles);
     }
   }
+
+  const int64_t num_blocks =
+      CeilOfRatio<int64_t>(num_tiles, block_level_parameters.num_tiles_per_pid);
 
   LaunchConfig launch_config;
   // TODO(b/451901200): We eventually also want to be able to predict this

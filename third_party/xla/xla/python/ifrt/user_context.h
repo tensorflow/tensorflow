@@ -65,7 +65,8 @@ class UserContext : public tsl::ReferenceCounted<UserContext>,
 
 using UserContextRef = tsl::RCReference<UserContext>;
 
-class BasicUserContext final : public UserContext {
+class BasicUserContext final
+    : public RTTIExtends<BasicUserContext, UserContext> {
  public:
   // `DebugString()` will contain `msg`.
   static absl_nonnull UserContextRef Create(std::string msg);

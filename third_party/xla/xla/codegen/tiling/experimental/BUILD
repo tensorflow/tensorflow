@@ -29,11 +29,6 @@ alias(
 )
 
 alias(
-    name = "tiling_space_utils",
-    actual = "//xla/codegen/tiling:tiling_space_utils",
-)
-
-alias(
     name = "tile_propagation",
     actual = "//xla/codegen/tiling:tile_propagation",
 )

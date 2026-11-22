@@ -57,6 +57,10 @@ class ConvolutionThunk : public TracedCommand {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  // The first execution on a device sets up the DNN library (handle, runner,
+  // execution plan), which fails inside a command buffer capture.
+  bool requires_warmup() const override { return true; }
+
   BufferUses buffer_uses() const override;
 
   static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> FromProto(

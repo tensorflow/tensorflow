@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/base/macros.h"
 #include "absl/strings/str_cat.h"
 namespace tsl {
 namespace net {
@@ -56,17 +55,6 @@ int PickUnusedPortOrDie();
 // abort may occur.
 void RecycleUnusedPort(int port);
 }  // namespace net
-
-namespace internal {
-ABSL_DEPRECATE_AND_INLINE()
-inline int PickUnusedPort() { return tsl::net::PickUnusedPort(); }
-
-ABSL_DEPRECATE_AND_INLINE()
-inline int PickUnusedPortOrDie() { return tsl::net::PickUnusedPortOrDie(); }
-
-ABSL_DEPRECATE_AND_INLINE()
-inline void RecycleUnusedPort(int port) { tsl::net::RecycleUnusedPort(port); }
-}  // namespace internal
 }  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_NET_H_

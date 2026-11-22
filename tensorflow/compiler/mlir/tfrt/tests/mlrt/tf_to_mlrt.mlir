@@ -62,12 +62,12 @@ func.func @main(%input0: tensor<i32>, %input1: tensor<i32>) -> tensor<i32> {
   // CHECK: [[handle_0:%.*]] = mlrt.async([[input0]], [[promises]]#0)
   // CHECK-SAME: callee = @main_stream_0
   %handle_0 = mlrt.async(%input0, %promise_b)
-    {callee = @main_stream_0} :
+    <callee = @main_stream_0> :
     (tensor<i32>, !mlrt.promise) -> !mlrt.async_handle
   // CHECK: [[handle_1:%.*]] = mlrt.async([[input1]], [[promises]]#1, [[promises]]#2)
   // CHECK-SAME: callee = @main_stream_1
   %handle_1 = mlrt.async(%input1, %promise_c, %promise_d)
-    {callee = @main_stream_1} :
+    <callee = @main_stream_1> :
     (tensor<i32>, !mlrt.promise, !mlrt.promise) -> !mlrt.async_handle
 
   %const = "tf.Const"() {__op_key = 6: i32, value = dense<2> : tensor<i32>} : () -> tensor<i32>
@@ -306,7 +306,7 @@ func.func @executeop_input(%arg0: tensor<i32>) -> (tensor<i32>) {
   // CHECK: [[async_out:%.*]] = tf_mlrt.batch_function
   %2 = "tf.BatchFunction"(%arg0) {device = "/device:CPU:0", allowed_batch_sizes = [64], batch_timeout_micros = 1 : i64, batching_queue = "", container = "", f = @callee, max_batch_size = 256 : i64, num_batch_threads = 2 : i64, operandSegmentSizes = array<i32: 1, 0>, shared_name = ""} : (tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: mlrt.async([[async_out]]) {{.*}} : (!mlrt.future)
-  %3 = mlrt.async(%2) {callee = @serving_default_stream_1} : (tensor<i32>) -> !mlrt.async_handle
+  %3 = mlrt.async(%2) <callee = @serving_default_stream_1> : (tensor<i32>) -> !mlrt.async_handle
   // CHECK: mlrt.await_handle
   mlrt.await_handle %3
   // CHECK: return
@@ -364,7 +364,7 @@ func.func @main(%input0: tensor<i32>) -> tensor<i32> {
   // CHECK: [[handle_0:%.*]] = mlrt.async([[input0]], [[promises]])
   // CHECK-SAME: callee = @main_stream_0
   %handle_0 = mlrt.async(%input0, %promise_b)
-    {callee = @main_stream_0} :
+    <callee = @main_stream_0> :
     (tensor<i32>, !mlrt.promise) -> !mlrt.async_handle
 
   // CHECK: [[const:%.*]]  = tf_mlrt.const
@@ -565,6 +565,23 @@ func.func @async_ifrt_call_test(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: tf_mlrt.await [[FUTURE]]
   %0 = "tf.AsyncIfrtCall"(%arg0) {program_id = 123 : i64, variable_arg_indices = [], __op_key = 0 : i32, operandSegmentSizes = array<i32: 1, 0>} : (tensor<i32>) -> tensor<i32>
   return %0 : tensor<i32>
+}
+
+// -----
+
+// Test that a future operand of tf.AsyncIfrtCall is awaited before the call.
+
+// CHECK-LABEL: func @async_ifrt_call_on_future
+func.func @async_ifrt_call_on_future(%arg0: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[FUTURE0:%.*]] = tf_mlrt.async_ifrt_call
+  // CHECK-SAME: program_id = 123
+  // CHECK: [[TENSOR0:%.*]] = tf_mlrt.await [[FUTURE0]]
+  // CHECK: [[FUTURE1:%.*]] = tf_mlrt.async_ifrt_call([[TENSOR0]])
+  // CHECK-SAME: program_id = 456
+  // CHECK: tf_mlrt.await [[FUTURE1]]
+  %0 = "tf.AsyncIfrtCall"(%arg0) {program_id = 123 : i64, variable_arg_indices = [], __op_key = 0 : i32, operandSegmentSizes = array<i32: 1, 0>} : (tensor<i32>) -> tensor<i32>
+  %1 = "tf.AsyncIfrtCall"(%0) {program_id = 456 : i64, variable_arg_indices = [], __op_key = 1 : i32, operandSegmentSizes = array<i32: 1, 0>} : (tensor<i32>) -> tensor<i32>
+  return %1 : tensor<i32>
 }
 
 // -----

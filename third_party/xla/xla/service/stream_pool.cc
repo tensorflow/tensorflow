@@ -16,9 +16,11 @@ limitations under the License.
 #include "xla/service/stream_pool.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -28,6 +30,16 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
+
+StreamPool::StreamPool(se::StreamExecutor* executor)
+    : StreamPool([executor](se::StreamPriority priority) {
+        return executor->CreateStream(priority);
+      }) {}
+
+StreamPool::StreamPool(StreamFactory stream_factory)
+    : stream_factory_(std::move(stream_factory)) {
+  CHECK(stream_factory_ != nullptr);
+}
 
 absl::StatusOr<StreamPool::Ptr> StreamPool::BorrowStream(
     se::StreamPriority priority) {
@@ -58,24 +70,28 @@ absl::StatusOr<StreamPool::Ptr> StreamPool::BorrowStream(
 
   if (!stream) {
     // Create a new stream.
-    ABSL_ASSIGN_OR_RETURN(stream, executor_->CreateStream(priority));
-    stream->SetName(absl::StrFormat("%s pool stream",
-                                    se::StreamPriorityToString(priority)));
+    ABSL_ASSIGN_OR_RETURN(stream, stream_factory_(priority));
+    // Keep any name the factory assigned and append the pool's label.
+    std::string name =
+        absl::StrFormat("%s pool stream", se::StreamPriorityToString(priority));
+    if (!stream->GetName().empty()) {
+      name = absl::StrFormat("%s %s", stream->GetName(), name);
+    }
+    stream->SetName(std::move(name));
     VLOG(1) << absl::StrFormat("Created new stream (%p) with priority = %s",
                                stream.get(),
                                se::StreamPriorityToString(priority));
   }
 
   // Return the stream wrapped in Ptr, which has our special deleter semantics.
-  PtrDeleter deleter = {this};
+  PtrDeleter deleter = {this, priority};
   return Ptr(stream.release(), deleter);
 }
 
-void StreamPool::ReturnStream(se::Stream* stream) {
+void StreamPool::ReturnStream(se::Stream* stream, se::StreamPriority priority) {
   if (stream->ok()) {
     VLOG(1) << absl::StrFormat("StreamPool returning ok stream (%p)", stream);
     absl::MutexLock lock(mu_);
-    auto priority = std::get<se::StreamPriority>(stream->priority());
     streams_with_pri_[priority].emplace_back(stream);
   } else {
     // If the stream has encountered any errors, all subsequent operations on it

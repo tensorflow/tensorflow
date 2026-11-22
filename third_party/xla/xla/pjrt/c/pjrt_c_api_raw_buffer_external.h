@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_RAW_BUFFER_EXTERNAL_H_
 #define XLA_PJRT_C_PJRT_C_API_RAW_BUFFER_EXTERNAL_H_
 
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace pjrt {
 
@@ -68,7 +71,7 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
         c_extension_(c_extension) {}
   ~PjRtCApiRawBuffer() override;
 
-  PjRtMemorySpace* memory_space() const override;
+  PJRT_Memory* c_memory_space() const override;
   void* GetHostPointer() const override;
   size_t GetOnDeviceSizeInBytes() const override;
   Future<> CopyRawHostToDevice(const void* src, int64_t offset,
@@ -86,6 +89,8 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
   absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
 
   absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() override;
+
+  tsl::AsyncValueRef<ExternalDmaAccess> AcquireExternalDmaAccess() override;
 
   void CopyTo(
       PjRtRawBufferRef dst_raw_buffer,

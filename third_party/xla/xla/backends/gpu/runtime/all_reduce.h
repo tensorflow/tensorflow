@@ -40,6 +40,11 @@ class GpuTopology;
 
 namespace xla::gpu {
 
+// Maximum number of blocks per grid for the Triton all-reduce kernel.
+// Heuristic maximum blocks per grid after benchmarking. Power of 2 so blocks
+// are consumed cleanly in powers of 2 from major to minor dimensions.
+inline constexpr int64_t kAllReduceMaxBlocksPerGrid = 32;
+
 // Encapsulates the information needed to perform an all-reduce.
 struct AllReduceInfo {
   ReductionKind reduction_kind;
@@ -80,12 +85,12 @@ se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
 int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 
 // Creates a CollectiveKernelSpec for a given all-reduce instruction.
-// `scratch_memory_type` is used for both scratch buffers.
+// `symmetric_memory_type` is used for both symmetric scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
     const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
     const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type,
-    const DeviceAssignment* device_assignment = nullptr);
+    SymmetricMemoryType symmetric_memory_type,
+    const DeviceAssignment* device_assignment);
 
 // Constructs an AllReduceInfo object for the given all-reduce instruction.
 // Returns an error status if the all-reduce kernel is not supported.

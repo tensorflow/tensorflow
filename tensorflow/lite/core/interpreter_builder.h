@@ -25,6 +25,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_INTERPRETER_BUILDER_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -128,6 +129,70 @@ class InterpreterBuilder {
     telemetry_profiler_ = std::move(profiler);
   }
 
+  /// Describes a static-shape variant of a model subgraph to be created while
+  /// building the interpreter. This lets accelerators that cannot resize
+  /// tensors (e.g. GPU delegates) run a graph authored with dynamic or
+  /// differently sized inputs without re-exporting the model.
+  ///
+  /// If `signature_key` is non-empty (Add): the flatbuffer subgraph
+  /// `source_subgraph_index` is instantiated a second time as a new subgraph
+  /// appended after the model's own subgraphs, its inputs are resized to
+  /// `input_dims`, and a SignatureDef with key `signature_key` is registered
+  /// for it. The new SignatureDef reuses the input/output names of
+  /// `source_signature_key` (or of the first SignatureDef that points at the
+  /// source subgraph when empty; tensor names when the model has no
+  /// SignatureDefs). The source subgraph and its signatures are untouched, so
+  /// several specializations may share one source. Weight tensors keep
+  /// pointing at the model's buffers; nothing is copied.
+  ///
+  /// If `signature_key` is empty (Replace): the inputs of the source subgraph
+  /// itself are resized in place before the interpreter is returned.
+  ///
+  /// Resizing happens before `AllocateTensors`, so the subgraph behaves
+  /// exactly as if `Interpreter::ResizeInputTensor` had been called by the
+  /// user, and shape propagation during `Prepare` makes the subgraph fully
+  /// static when the input dims are.
+  ///
+  /// WARNING: This is an experimental API and subject to change.
+  struct SubgraphSpecialization {
+    /// Index of the flatbuffer subgraph to specialize.
+    int source_subgraph_index = 0;
+    /// Add mode: key of the new SignatureDef. Empty selects Replace mode.
+    std::string signature_key;
+    /// Add mode: SignatureDef whose input/output names the new SignatureDef
+    /// should mirror. Optional; see above.
+    std::string source_signature_key;
+    /// Pairs of (position in the subgraph's `inputs()` list, new dims).
+    /// Inputs that are not listed keep their shape.
+    std::vector<std::pair<int, std::vector<int>>> input_dims;
+    /// Pairs of (tensor index within the subgraph, new dims) for tensors other
+    /// than the inputs above, typically every intermediate and output tensor
+    /// whose shape follows from the new input shapes. Optional: without it the
+    /// shapes are propagated by the kernels' `Prepare`. That pass does not run
+    /// for a delegate that sets
+    /// `kTfLiteDelegateFlagsHintFullyDelegatedToSingleDelegate`, which then
+    /// sees the shapes stored in the model; listing them here makes the
+    /// subgraph static for such a delegate too. A constant tensor may only be
+    /// listed together with an entry in `constant_overrides`.
+    std::vector<std::pair<int, std::vector<int>>> tensor_dims;
+    /// Pairs of (tensor index within the subgraph, new contents) for dense
+    /// constant tensors whose value depends on the specialized shape (e.g. the
+    /// shape operand of a RESHAPE). The bytes are copied into a buffer owned by
+    /// the subgraph; the tensor stays read-only and constant for delegates, and
+    /// other subgraphs that share the model buffer are unaffected. The contents
+    /// must cover the tensor's dims (those in `tensor_dims` if listed there).
+    std::vector<std::pair<int, std::vector<uint8_t>>> constant_overrides;
+  };
+
+  /// Registers subgraph specializations to apply in `operator()`. Replaces
+  /// any previously registered list. An empty list leaves the builder's
+  /// behavior unchanged.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetSubgraphSpecializations(
+      std::vector<SubgraphSpecialization> specializations) {
+    subgraph_specializations_ = std::move(specializations);
+  }
+
  private:
   TfLiteStatus BuildLocalIndexToRegistrationMapping();
   TfLiteStatus ParseNodes(
@@ -149,6 +214,18 @@ class InterpreterBuilder {
           signature_def_list,
       Interpreter* interpreter);
   void ParseConversionMetadata(TfLiteTelemetryInterpreterSettings* settings);
+  // Parses the flatbuffer `subgraph` into `modified_subgraph` (tensors,
+  // inputs/outputs, nodes, variables, name).
+  TfLiteStatus BuildSubgraph(
+      const ::tflite::SubGraph* subgraph,
+      const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
+      Subgraph* modified_subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info,
+      int subgraph_index);
+  // Applies `subgraph_specializations_` to `interpreter`, whose first
+  // `num_model_subgraphs` subgraphs are already built. Add-mode clones are
+  // written to the subgraphs following those.
+  TfLiteStatus ApplySubgraphSpecializations(Interpreter* interpreter,
+                                            int num_model_subgraphs);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;
@@ -171,6 +248,7 @@ class InterpreterBuilder {
   InterpreterOptions options_;
 
   std::unique_ptr<telemetry::TelemetryProfiler> telemetry_profiler_;
+  std::vector<SubgraphSpecialization> subgraph_specializations_;
 };
 
 }  // namespace impl

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/dma_buf.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -32,6 +34,12 @@ limitations under the License.
 namespace stream_executor::gpu {
 
 class GpuStream;
+
+// Every GpuExecutor aligns the device memory returned by Allocate() to at least
+// this many bytes, whatever the requested size. BFCAllocator requires it of the
+// regions it manages, and XLA of the buffers it allocates straight from an
+// executor.
+inline constexpr size_t kDeviceMemoryAlignBytes = 256;
 
 // Intermediate implementation class for StreamExecutors that are used with
 // GPUs.
@@ -49,6 +57,18 @@ class GpuExecutor : public StreamExecutorCommon {
   };
 
   virtual bool is_multicast_supported() const { return false; }
+
+  // Returns whether this device supports exporting device memory as a Linux
+  // dma-buf file descriptor.
+  virtual bool is_dma_buf_supported() const { return false; }
+
+  // Exports the given non-empty device memory range as a Linux dma-buf file
+  // descriptor.
+  virtual absl::StatusOr<DmaBuf> ExportDmaBuf(
+      const DeviceAddressBase& address) const {
+    return absl::UnimplementedError(
+        "ExportDmaBuf is not implemented for this executor.");
+  }
 
   // Returns the allocation range that contains the given pointer.
   virtual absl::StatusOr<DeviceAddressBase> GetAllocationRange(

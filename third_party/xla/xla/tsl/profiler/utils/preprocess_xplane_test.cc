@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/preprocess_xplane.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "xla/tsl/platform/test.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_test_utils.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -34,6 +37,8 @@ namespace profiler {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
 using ::tsl::profiler::CreateTfXPlaneVisitor;
 using ::tsl::profiler::CreateXEvent;
 using ::tsl::profiler::GetHostEventTypeStr;
@@ -283,12 +288,147 @@ TEST(PreprocessXPlane, ThreadPoolPreprocessorTest) {
         new_event_added = true;
         EXPECT_EQ(event.DurationPs(), 100);
         EXPECT_EQ(event.TimestampPs(), 200);
-        // TODO: b/510930307 - Verify consumer stat value for the region event
-        // once preprocess_xplane.h implements it.
+        std::optional<XStatVisitor> consumer_type =
+            event.GetStat(StatType::kConsumerType);
+        ASSERT_TRUE(consumer_type.has_value());
+        EXPECT_EQ(consumer_type->IntValue(),
+                  static_cast<int64_t>(ContextType::kThreadpoolEvent));
+        std::optional<XStatVisitor> consumer_id =
+            event.GetStat(StatType::kConsumerId);
+        ASSERT_TRUE(consumer_id.has_value());
+        EXPECT_EQ(consumer_id->IntOrUintValue(), 123);
       }
     });
   });
   EXPECT_TRUE(new_event_added);
+}
+
+TEST(PreprocessXPlane, ThreadPoolPreprocessorSingleFlowEndTest) {
+  constexpr int64_t kThreadpoolEvent =
+      static_cast<int64_t>(ContextType::kThreadpoolEvent);
+  constexpr int64_t kPairedRegionId = 123;
+  constexpr int64_t kUnpairedRegionId = 999;
+
+  XSpace space;
+  XPlane* plane = space.add_planes();
+  XPlaneBuilder plane_builder(plane);
+  auto main_line = plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&plane_builder, &main_line, kThreadpoolListenerRecord, 100, 0,
+               {{StatType::kProducerType, kThreadpoolEvent},
+                {StatType::kProducerId, kPairedRegionId}});
+  CreateXEvent(&plane_builder, &main_line, kThreadpoolListenerRecord, 350, 0,
+               {{StatType::kProducerType, kThreadpoolEvent},
+                {StatType::kProducerId, kUnpairedRegionId}});
+
+  auto thread_pool_line = plane_builder.GetOrCreateLine(1);
+  CreateXEvent(&plane_builder, &thread_pool_line,
+               kThreadpoolListenerStartRegion, 200, 0,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, kPairedRegionId}});
+  CreateXEvent(&plane_builder, &thread_pool_line, kThreadpoolListenerStopRegion,
+               300, 0);
+  // Unpaired StartRegion (e.g., closure still running when profiling stopped).
+  CreateXEvent(&plane_builder, &thread_pool_line,
+               kThreadpoolListenerStartRegion, 400, 0,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, kUnpairedRegionId}});
+
+  PreprocessXSpace(&space);
+  AddFlowsToXplane(/*host_id=*/0, /*is_host_plane=*/true,
+                   /*connect_traceme=*/true, plane);
+
+  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+  int paired_start_region_count = 0;
+  int unpaired_start_region_count = 0;
+  int region_flow_count = 0;
+  plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == kThreadpoolListenerStartRegion &&
+          event.TimestampPs() == 200) {
+        ++paired_start_region_count;
+        EXPECT_FALSE(event.GetStat(StatType::kConsumerType).has_value());
+        EXPECT_FALSE(event.GetStat(StatType::kConsumerId).has_value());
+        EXPECT_FALSE(event.GetStat(StatType::kFlow).has_value());
+      } else if (event.Name() == kThreadpoolListenerStartRegion &&
+                 event.TimestampPs() == 400) {
+        ++unpaired_start_region_count;
+        EXPECT_TRUE(event.GetStat(StatType::kConsumerType).has_value());
+        EXPECT_TRUE(event.GetStat(StatType::kConsumerId).has_value());
+        EXPECT_TRUE(event.GetStat(StatType::kFlow).has_value());
+      } else if (event.Name() == kThreadpoolListenerRegion) {
+        if (event.GetStat(StatType::kFlow).has_value()) {
+          ++region_flow_count;
+        }
+      }
+    });
+  });
+  EXPECT_EQ(paired_start_region_count, 1);
+  EXPECT_EQ(unpaired_start_region_count, 1);
+  EXPECT_EQ(region_flow_count, 1);
+}
+
+TEST(PreprocessXPlane, ThreadPoolPreprocessorNestedAndEdgeCasesTest) {
+  constexpr int64_t kThreadpoolEvent =
+      static_cast<int64_t>(ContextType::kThreadpoolEvent);
+  constexpr uint64_t kLargeRegionId =
+      static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 42ULL;
+
+  XSpace space;
+  XPlane* plane = space.add_planes();
+  XPlaneBuilder plane_builder(plane);
+  auto thread_pool_line = plane_builder.GetOrCreateLine(0);
+
+  // 1. Region starting at TimestampPs() == 0 with a uint64_t ID > INT64_MAX.
+  CreateXEvent(&plane_builder, &thread_pool_line,
+               kThreadpoolListenerStartRegion, 0, 0,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, kLargeRegionId}});
+  CreateXEvent(&plane_builder, &thread_pool_line, kThreadpoolListenerStopRegion,
+               50, 0);
+
+  // 2. Orphan StopRegion with no active StartRegion.
+  CreateXEvent(&plane_builder, &thread_pool_line, kThreadpoolListenerStopRegion,
+               75, 0);
+
+  // 3. Nested inline closure execution on a full threadpool queue:
+  //    outer [100, 200] (id=10) enclosing inner [120, 150] (id=20).
+  CreateXEvent(&plane_builder, &thread_pool_line,
+               kThreadpoolListenerStartRegion, 100, 0,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, uint64_t{10}}});
+  CreateXEvent(&plane_builder, &thread_pool_line,
+               kThreadpoolListenerStartRegion, 120, 0,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, uint64_t{20}}});
+  CreateXEvent(&plane_builder, &thread_pool_line, kThreadpoolListenerStopRegion,
+               150, 0);
+  CreateXEvent(&plane_builder, &thread_pool_line, kThreadpoolListenerStopRegion,
+               200, 0);
+
+  // 4. Trailing orphan StopRegion after stack is empty.
+  CreateXEvent(&plane_builder, &thread_pool_line, kThreadpoolListenerStopRegion,
+               250, 0);
+
+  PreprocessXSpace(&space);
+
+  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+  std::vector<std::pair<std::pair<int64_t, int64_t>, uint64_t>> regions;
+  plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == kThreadpoolListenerRegion) {
+        std::optional<XStatVisitor> consumer_id =
+            event.GetStat(StatType::kConsumerId);
+        if (consumer_id.has_value()) {
+          regions.push_back({{event.TimestampPs(), event.EndTimestampPs()},
+                             consumer_id->IntOrUintValue()});
+        }
+      }
+    });
+  });
+
+  EXPECT_THAT(regions, ElementsAre(Pair(Pair(0, 50), kLargeRegionId),
+                                   Pair(Pair(100, 200), uint64_t{10}),
+                                   Pair(Pair(120, 150), uint64_t{20})));
 }
 
 TEST(PreprocessXPlane, ThreadPoolPreprocessorSortedTest) {

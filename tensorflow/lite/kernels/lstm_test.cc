@@ -2124,6 +2124,31 @@ TEST(LstmOpTest, InvalidTypes) {
 }
 #endif
 
+// LSTMOpModel whose input-to-output weights can be resized after the model is
+// built.
+class ResizableWeightsLSTMOpModel : public LSTMOpModel {
+ public:
+  using LSTMOpModel::LSTMOpModel;
+
+  TfLiteStatus ResizeInputToOutputWeights(const std::vector<int>& dims) {
+    return interpreter_->ResizeInputTensor(input_to_output_weights_, dims);
+  }
+};
+
+// Prepare must reject rank-0 input-to-output weights before it reads their
+// first dimension.
+TEST(LstmOpTest, RankZeroInputToOutputWeightsFailsPrepare) {
+  ResizableWeightsLSTMOpModel lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/4,
+      /*use_cifg=*/false, /*use_peephole=*/false,
+      /*use_projection_weights=*/false, /*use_projection_bias=*/false,
+      /*weight_type=*/TensorType_FLOAT32,
+      /*model_has_legacy_20_inputs=*/false, /*is_layer_norm=*/false,
+      /*asymmetric_quantize_inputs=*/false);
+  ASSERT_EQ(lstm.ResizeInputToOutputWeights({}), kTfLiteOk);
+  EXPECT_EQ(lstm.AllocateTensors(), kTfLiteError);
+}
+
 class HybridSparseLSTMOpModel : public ::tflite::SingleOpModel {
  public:
   HybridSparseLSTMOpModel(

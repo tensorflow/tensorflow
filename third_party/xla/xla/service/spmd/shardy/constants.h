@@ -159,6 +159,17 @@ inline constexpr llvm::StringRef kGlobalMeshName = "mesh";
 // Keyword for enabling the dumping of propagation debug information.
 inline constexpr llvm::StringRef kShardyVerbose = "shardy-verbose";
 
+// The target name of the compute-on-start custom call.
+inline constexpr llvm::StringRef kComputeOnStartTargetName = "compute-on-start";
+
+// The target name of the compute-on-done custom call.
+inline constexpr llvm::StringRef kComputeOnDoneTargetName = "compute-on-done";
+
+// Attribute name for indicating that a `func.call` op originated from a
+// `compute-on-start` custom call.
+inline constexpr llvm::StringRef kIsComputeOnStartAttr =
+    "xla.sdy.is_compute_on_start";
+
 }  //  namespace sdy
 }  //  namespace xla
 

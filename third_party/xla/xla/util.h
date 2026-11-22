@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/packing.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/math/math_util.h"
-#include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"

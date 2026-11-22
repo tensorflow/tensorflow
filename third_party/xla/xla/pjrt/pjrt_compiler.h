@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_COMPILER_H_
 #define XLA_PJRT_PJRT_COMPILER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -26,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -50,6 +52,8 @@ limitations under the License.
 #include "xla/runtime/chip_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
+#include "xla/service/device_assignment.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
@@ -123,8 +127,6 @@ class PjRtCompiler;
 using PjRtCompilerFactory =
     std::function<absl::StatusOr<std::unique_ptr<PjRtCompiler>>()>;
 
-using PjRtCompilerVariantPicker = std::function<absl::StatusOr<std::string>()>;
-
 // A key type for the compiler registry.
 struct PjRtCompilerType {
   std::string platform_name;
@@ -164,15 +166,6 @@ class PjRtCompilerRegistry {
                                absl::string_view variant_name,
                                PjRtCompilerFactory factory);
 
-  // Registers a compiler variant picker for a specific platform.
-  void RegisterVariantPicker(absl::string_view platform_name,
-                             PjRtCompilerVariantPicker picker,
-                             bool is_weak = false);
-
-  // Retrieves the variant picker for a platform, if any.
-  std::optional<PjRtCompilerVariantPicker> GetVariantPicker(
-      absl::string_view platform_name);
-
   // Registers a compiler instance for a specific platform and variant.
   absl::Status RegisterCompiler(absl::string_view platform_name,
                                 absl::string_view variant_name,
@@ -209,13 +202,6 @@ class PjRtCompilerRegistry {
   absl::flat_hash_map<PjRtCompilerType, std::unique_ptr<PjRtCompiler>>
       compilers_ ABSL_GUARDED_BY(compiler_mutex_);
 
-  struct VariantPickerEntry {
-    PjRtCompilerVariantPicker picker;
-    bool is_weak = false;
-  };
-  absl::flat_hash_map<std::string, VariantPickerEntry> variant_pickers_
-      ABSL_GUARDED_BY(compiler_mutex_);
-
   absl::flat_hash_map<PjRtCompilerType, PjRtCompilerFactory> factories_
       ABSL_GUARDED_BY(factory_mutex_);
 };
@@ -237,11 +223,6 @@ void PjRtRegisterCompilerFactory(absl::string_view platform_name,
                                  absl::string_view variant_name,
                                  PjRtCompilerFactory factory);
 
-// Registers a compiler variant picker for a specific platform.
-void PjRtRegisterCompilerVariantPicker(absl::string_view platform_name,
-                                       PjRtCompilerVariantPicker picker,
-                                       bool is_weak = false);
-
 // A compiler variant is a string used to distinguish between different
 // compiler implementations registered for the same platform, such as a remote
 // compiler service vs in-process compilation.
@@ -262,6 +243,44 @@ bool PjRtIsCompilerVariantRegistered(absl::string_view platform_name,
                                      absl::string_view variant_name);
 
 class PjRtClient;
+
+// The location and shape of a subslice within a full slice.
+struct PjRtSubsliceBounds {
+  // Chip coordinates of the subslice's minimum corner in the full slice.
+  PjRtDeviceDimensions origin;
+  PjRtDeviceDimensions chips_per_host_bounds;
+  PjRtDeviceDimensions host_bounds;
+
+  // Returns the total chip bounds of the subslice along each dimension.
+  PjRtDeviceDimensions ChipBounds() const {
+    CHECK_EQ(chips_per_host_bounds.size(), host_bounds.size());
+    std::vector<int32_t> bounds(chips_per_host_bounds.size());
+    for (size_t i = 0; i < bounds.size(); ++i) {
+      bounds[i] = chips_per_host_bounds[i] * host_bounds[i];
+    }
+    return PjRtDeviceDimensions(bounds);
+  }
+
+  friend bool operator==(const PjRtSubsliceBounds& lhs,
+                         const PjRtSubsliceBounds& rhs) {
+    return lhs.origin == rhs.origin &&
+           lhs.chips_per_host_bounds == rhs.chips_per_host_bounds &&
+           lhs.host_bounds == rhs.host_bounds;
+  }
+
+  friend bool operator!=(const PjRtSubsliceBounds& lhs,
+                         const PjRtSubsliceBounds& rhs) {
+    return !(lhs == rhs);
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const PjRtSubsliceBounds& bounds) {
+    sink.Append(absl::StrCat(
+        "{origin: ", bounds.origin.ToString(),
+        ", chips_per_host_bounds: ", bounds.chips_per_host_bounds.ToString(),
+        ", host_bounds: ", bounds.host_bounds.ToString(), "}"));
+  }
+};
 
 // Abstract interface to represent device topology that is used by the compiler.
 class PjRtTopologyDescription {
@@ -505,6 +524,18 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("Subslice is not supported.");
   }
 
+  // Computes the subslice of this topology formed by the default-type logical
+  // devices with IDs `device_ids`.
+  //
+  // This topology must be a full physical slice (`is_subslice_topology()` must
+  // be false). A single chip and the full slice are valid subslices; callers
+  // decide whether subslicing is worthwhile.
+  virtual absl::StatusOr<PjRtSubsliceBounds> ComputeSubsliceForDevices(
+      absl::Span<const int> device_ids) const {
+    return absl::UnimplementedError(
+        "ComputeSubsliceForDevices is not supported.");
+  }
+
   virtual absl::StatusOr<xla::Shape> UpdateLayoutForDynamicShapes(
       int memory_space_kind_id, xla::Shape shape) const {
     return std::move(shape);
@@ -538,6 +569,33 @@ inline bool IsInterpreterId(PjRtPlatformId platform_id) {
 }
 
 class PjRtPhaseCompiler;
+
+// What a deserialized executable keeps of its compiler metadata, i.e. data that
+// is not needed to run it but that profilers and debuggers read (such as the
+// HLO module and symbol tables). Compilers without such metadata ignore it.
+enum class CompilerMetadataOnLoad {
+  // All of it.
+  kKeep,
+  // Only what is read after loading. Serializing the loaded executable again
+  // may fail.
+  kStrip,
+  // kStrip, and also keep the larger retained fields compressed. Readers
+  // decompress them on demand.
+  kStripAndCompress,
+};
+
+// Flag support. The spellings are "keep", "strip" and "strip_and_compress".
+bool AbslParseFlag(absl::string_view text, CompilerMetadataOnLoad* on_load,
+                   std::string* error);
+std::string AbslUnparseFlag(CompilerMetadataOnLoad on_load);
+
+// Options for PjRtCompiler::DeserializeExecutable.
+struct DeserializeExecutableOptions {
+  // Whether to check that the executable is compatible with the topology.
+  bool compatibility_check = true;
+  CompilerMetadataOnLoad compiler_metadata_on_load =
+      CompilerMetadataOnLoad::kKeep;
+};
 
 // Abstract interface that all registered compilers must implement.
 class PjRtCompiler {
@@ -576,7 +634,7 @@ class PjRtCompiler {
       const PjRtTopologyDescription& topology,
       riegeli::Any<riegeli::Reader*> reader,
       std::optional<CompileOptions>&& options,
-      bool executable_compatibility_check_on_deserialization) {
+      const DeserializeExecutableOptions& deserialize_options) {
     return absl::UnimplementedError(
         absl::StrCat("DeserializeExecutable is not implemented for: ",
                      topology.platform_name(), "."));
@@ -593,6 +651,14 @@ class PjRtCompiler {
 // REQUIRES: No default compiler has been registered for the platform.
 void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
                                  std::unique_ptr<PjRtCompiler> compiler);
+
+// Returns an unowned pointer to the compiler for `topology`, respecting
+// `topology.compiler()` if present and falling back to the global compiler
+// registry otherwise. The returned PjRtCompiler pointer is owned by topology,
+// and therefore must not outlive it.
+absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
+    const PjRtTopologyDescription& topology,
+    std::optional<PjRtCompilerVariant> variant = std::nullopt);
 
 // Compiles a 'computation' and generates a 'PjRtExecutable' using the compiler
 // registered for the platform using PjRtRegisterCompiler. The returned
@@ -631,7 +697,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtDeserializeExecutable(
     const PjRtTopologyDescription& topology,
     riegeli::Any<riegeli::Reader*> reader,
     std::optional<CompileOptions> options = std::nullopt,
-    bool executable_compatibility_check_on_deserialization = true);
+    const DeserializeExecutableOptions& deserialize_options = {});
 
 // Stores a compilation phase's compiler and validator functions.
 // This struct bundles the essential functional components required to define

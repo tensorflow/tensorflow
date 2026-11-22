@@ -275,13 +275,10 @@ INSTANTIATE_TEST_SUITE_P(AArch64MaxIsaTestInstantiation, AArch64MaxIsaTest,
 
 class DefaultMaxIsaTest : public HloHardwareIndependentTestBase {};
 
-TEST_F(DefaultMaxIsaTest, NeonForOssAArch64) {
-  if (!tsl::port::IsAarch64CPU()) {
-    GTEST_SKIP() << "This test is for AArch64 CPUs.";
-  }
+TEST_F(DefaultMaxIsaTest, EmptyByDefault) {
   DebugOptions debug_options =
       HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-  EXPECT_EQ(debug_options.xla_cpu_max_isa(), "NEON");
+  EXPECT_EQ(debug_options.xla_cpu_max_isa(), "");
 }
 
 struct JitVectorizationTestSpec {

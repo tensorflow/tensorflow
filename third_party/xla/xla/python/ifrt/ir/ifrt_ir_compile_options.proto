@@ -27,6 +27,7 @@ message IfrtIrCompileOptionsProto {
   map<string, xla.CompileOptionsProto> compile_option_overrides = 2;
   bool propagate_shardings = 3 [deprecated = true];
 
+  bool has_outputs_bundle_slice_sizes = 15;
   repeated int32 outputs_bundle_slice_sizes = 14;
 
   // If not empty, dump textual programs to the specified directory. By default,

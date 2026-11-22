@@ -227,6 +227,13 @@ absl::Status CubSortKeysExecute(
                      num_items, descending, batch_size, stream));
 }
 
+absl::Status CubSortDummyExecuteFfiHandler() {
+  return absl::InternalError("Dummy execute handler should not be called");
+}
+
+XLA_FFI_DEFINE_HANDLER(kCubSortDummyExecute, CubSortDummyExecuteFfiHandler,
+                       ffi::Ffi::Bind());
+
 XLA_FFI_DEFINE_HANDLER(kCubSortKeysInstantiate, CubSortKeysInstantiate,
                        ffi::Ffi::BindInstantiate()
                            .Arg<ffi::AnyBuffer>()          // d_keys_in
@@ -246,10 +253,18 @@ XLA_FFI_DEFINE_HANDLER(kCubSortKeysExecute, CubSortKeysExecute,
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                          xla::gpu::kCubDeviceRadixSortKeysTarget.data(), "CUDA",
-                         {/* .instantiate = */ kCubSortKeysInstantiate,
+                         {/* .instantiate = */ nullptr,
                           /* .prepare = */ nullptr,
                           /* .initialize = */ nullptr,
                           /* .execute = */ kCubSortKeysExecute});
+
+XLA_FFI_REGISTER_HANDLER(
+    ffi::GetXlaFfiApi(),
+    xla::gpu::kCubDeviceRadixSortKeysUnassignedScratchSizeTarget.data(), "CUDA",
+    {/* .instantiate = */ kCubSortKeysInstantiate,
+     /* .prepare = */ nullptr,
+     /* .initialize = */ nullptr,
+     /* .execute = */ kCubSortDummyExecute});
 
 //===----------------------------------------------------------------------===//
 // CubSortPairs: instantiate + execute
@@ -326,10 +341,19 @@ XLA_FFI_DEFINE_HANDLER(kCubSortPairsExecute, CubSortPairsExecute,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                          xla::gpu::kCubDeviceRadixSortPairsTarget.data(),
                          "CUDA",
-                         {/* .instantiate = */ kCubSortPairsInstantiate,
+                         {/* .instantiate = */ nullptr,
                           /* .prepare = */ nullptr,
                           /* .initialize = */ nullptr,
                           /* .execute = */ kCubSortPairsExecute});
+
+XLA_FFI_REGISTER_HANDLER(
+    ffi::GetXlaFfiApi(),
+    xla::gpu::kCubDeviceRadixSortPairsUnassignedScratchSizeTarget.data(),
+    "CUDA",
+    {/* .instantiate = */ kCubSortPairsInstantiate,
+     /* .prepare = */ nullptr,
+     /* .initialize = */ nullptr,
+     /* .execute = */ kCubSortDummyExecute});
 
 }  // namespace
 }  // namespace cuda

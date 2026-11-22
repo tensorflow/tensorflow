@@ -232,7 +232,8 @@ tsl::Future<Autotuner::Config> Autotuner::GetTunedConfig(
 
         ABSL_ASSIGN_OR_RETURN(
             std::vector<ConfigRunner::ConfigProfile> profiles,
-            runners_[runner_index]->ProfileAll(std::move(candidates), instr));
+            runners_[runner_index]->ProfileAll(std::move(candidates), instr,
+                                               options_.excluded_backends));
 
         LogConfigProfiles(*instr, profiles, compilation_failures);
 

@@ -292,7 +292,7 @@ or other custom ops are used in the model, please see the section [below](#build
 
 ### On Android:
 
-(0) Refer to https://www.tensorflow.org/lite/guide/build_android to edit the
+(0) Refer to https://developers.google.com/edge/litert/android/lite_build to edit the
 `WORKSPACE` to configure the android NDK/SDK.
 
 (1) Build for your specific platform, e.g.:
@@ -484,7 +484,7 @@ some additional parameters as detailed below.
 
 If you see an error that says: `ERROR: Select TensorFlow op(s), included in the
 given model, is(are) not supported by this interpreter.` you will need to
-build with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+build with [Tensorflow operators support](https://developers.google.com/edge/litert/conversion/tensorflow/ops_select).
 
 Having Tensorflow ops in the TFLite file works when the benchmark tool is built
 with Tensorflow ops support. It doesn't require any additional option to use it.

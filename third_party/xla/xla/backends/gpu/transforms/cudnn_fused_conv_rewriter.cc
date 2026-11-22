@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
@@ -163,25 +164,7 @@ bool IsLosslesslyConvertibleTo(const HloInstruction* instr,
   }
 
   if (HloPredicateIsOp<HloOpcode::kConstant>(instr)) {
-    if (!instr->shape().IsArray()) {
-      return false;
-    }
-    // Check if instr's literal roundtrips to ty and back to its original type
-    // without modification.
-    PrimitiveType orig_ty = instr->shape().element_type();
-
-    // The only reason Convert() should fail is if we don't support converting
-    // from x to y, which indeed means it's not losslessly-convertible.
-    absl::StatusOr<Literal> converted1 = instr->literal().Convert(dst_ty);
-    if (!converted1.ok()) {
-      return false;
-    }
-    absl::StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
-    if (!converted2.ok()) {
-      return false;
-    }
-
-    return instr->literal() == *converted2;
+    return instr->literal().IsLosslesslyConvertibleTo(dst_ty);
   }
 
   if (HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kReshape,
@@ -1452,7 +1435,9 @@ absl::StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
 
 absl::StatusOr<bool> FuseConvertToS8(HloComputation* comp,
                                      se::GpuComputeCapability cc) {
-  if (cc.IsRocm()) return false;
+  if (cc.IsRocm() || cc.IsOneAPI()) {
+    return false;
+  }
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte = nullptr;
@@ -1694,7 +1679,7 @@ absl::StatusOr<bool> CudnnFusedConvRewriter::RunImpl(
     bool changed = false;
     // Rewrite FP8 convolutions and supported adjacent pointwise ops into a
     // ForwardGraph Custom Call.
-    if (!compute_capability_.IsRocm() && !compute_capability_.IsOneAPI()) {
+    if (compute_capability_.IsCuda()) {
       auto* cc = compute_capability_.cuda_compute_capability();
       ABSL_ASSIGN_OR_RETURN(changed,
                        F8GraphConv(comp, *cc, dnn_version_, toolkit_version_));

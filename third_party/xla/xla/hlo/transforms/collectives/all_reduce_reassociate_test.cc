@@ -966,5 +966,296 @@ ENTRY main {
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
+TEST_F(AllReduceSimplifierTest, DoesNotReassociateThroughConvertChain) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={{0,1}}, to_apply=sum
+  ar1 = f32[8] all-reduce(p1), replica_groups={{0,1}}, to_apply=sum
+  c0 = s32[8] convert(ar0)
+  c1 = f32[8] convert(c0)
+  ROOT add = f32[8] add(c1, ar1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(kHloModule, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+  ASSERT_OK_AND_ASSIGN(module, RunPass(kHloModule, /*expect_change=*/false,
+                                       /*reassociate_converted_ar=*/true));
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
+TEST_F(AllReduceSimplifierTest, DoNotReassociateNarrowingConvertChain) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+sum {
+  x = s32[] parameter(0)
+  y = s32[] parameter(1)
+  ROOT add = s32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = s32[8] parameter(0)
+  p1 = s32[8] parameter(1)
+  ar0 = s32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  ar1 = s32[8] all-reduce(p1), replica_groups={}, to_apply=sum
+  narrow0 = s8[8] convert(ar0)
+  wide0 = s32[8] convert(narrow0)
+  narrow1 = s8[8] convert(ar1)
+  wide1 = s32[8] convert(narrow1)
+  ROOT add = s32[8] add(wide0, wide1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(kHloModule, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+  ASSERT_OK_AND_ASSIGN(module, RunPass(kHloModule, /*expect_change=*/false,
+                                       /*reassociate_converted_ar=*/true));
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
+TEST_F(AllReduceSimplifierTest, DoesNotReassociateThroughConvertAndReshape) {
+  constexpr absl::string_view kConvertThenReshapeHlo = R"(
+HloModule m
+
+sum {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+
+ENTRY main {
+  p0 = bf16[2,4] parameter(0)
+  p1 = bf16[2,4] parameter(1)
+  ar0 = bf16[2,4] all-reduce(p0), replica_groups={{0,1}}, to_apply=sum
+  ar1 = bf16[2,4] all-reduce(p1), replica_groups={{0,1}}, to_apply=sum
+  c0 = f32[2,4] convert(ar0)
+  c1 = f32[2,4] convert(ar1)
+  r0 = f32[8] reshape(c0)
+  r1 = f32[8] reshape(c1)
+  ROOT add = f32[8] add(r0, r1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(kConvertThenReshapeHlo, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+  ASSERT_OK_AND_ASSIGN(module,
+                       RunPass(kConvertThenReshapeHlo, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/true));
+  EXPECT_EQ(AllReduceCount(module), 2);
+
+  constexpr absl::string_view kReshapeThenConvertHlo = R"(
+HloModule m
+
+sum {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+
+ENTRY main {
+  p0 = bf16[2,4] parameter(0)
+  p1 = bf16[2,4] parameter(1)
+  ar0 = bf16[2,4] all-reduce(p0), replica_groups={{0,1}}, to_apply=sum
+  ar1 = bf16[2,4] all-reduce(p1), replica_groups={{0,1}}, to_apply=sum
+  r0 = bf16[8] reshape(ar0)
+  r1 = bf16[8] reshape(ar1)
+  c0 = f32[8] convert(r0)
+  c1 = f32[8] convert(r1)
+  ROOT add = f32[8] add(c0, c1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module,
+                       RunPass(kReshapeThenConvertHlo, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+  ASSERT_OK_AND_ASSIGN(module,
+                       RunPass(kReshapeThenConvertHlo, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/true));
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
+TEST_F(AllReduceSimplifierTest, DoesNotReassociateMixedConvertAndReshape) {
+  constexpr absl::string_view kConvertLhsReshapeRhsHlo = R"(
+HloModule m
+
+sum_bf16 {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+
+sum_f32 {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = bf16[8] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  ar0 = bf16[8] all-reduce(p0), replica_groups={{0,1}}, to_apply=sum_bf16
+  ar1 = f32[2,4] all-reduce(p1), replica_groups={{0,1}}, to_apply=sum_f32
+  c0 = f32[8] convert(ar0)
+  r1 = f32[8] reshape(ar1)
+  ROOT add = f32[8] add(c0, r1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunPass(kConvertLhsReshapeRhsHlo, /*expect_change=*/false,
+              /*reassociate_converted_ar=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+  ASSERT_OK_AND_ASSIGN(
+      module, RunPass(kConvertLhsReshapeRhsHlo, /*expect_change=*/false,
+                      /*reassociate_converted_ar=*/true));
+  EXPECT_EQ(AllReduceCount(module), 2);
+
+  constexpr absl::string_view kSliceLhsConvertRhsHlo = R"(
+HloModule m
+
+sum_bf16 {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+
+sum_f32 {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  p1 = bf16[8] parameter(1)
+  ar0 = f32[16] all-reduce(p0), replica_groups={{0,1}}, to_apply=sum_f32
+  ar1 = bf16[8] all-reduce(p1), replica_groups={{0,1}}, to_apply=sum_bf16
+  s0 = f32[8] slice(ar0), slice={[0:8]}
+  c1 = f32[8] convert(ar1)
+  ROOT add = f32[8] add(s0, c1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module,
+                       RunPass(kSliceLhsConvertRhsHlo, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+  ASSERT_OK_AND_ASSIGN(module,
+                       RunPass(kSliceLhsConvertRhsHlo, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/true));
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
+TEST_F(AllReduceSimplifierTest,
+       DirectConvertHonorsFlagOneSidedSharedAndSingleUserChecks) {
+  constexpr absl::string_view kOneSidedConvertHlo = R"(
+HloModule m
+
+sum_bf16 {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+
+sum_f32 {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = bf16[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = bf16[8] all-reduce(p0), replica_groups={{0,1}}, to_apply=sum_bf16
+  ar1 = f32[8] all-reduce(p1), replica_groups={{0,1}}, to_apply=sum_f32
+  c0 = f32[8] convert(ar0)
+  ROOT add = f32[8] add(c0, ar1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(kOneSidedConvertHlo, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+  ASSERT_OK_AND_ASSIGN(module,
+                       RunPass(kOneSidedConvertHlo, /*expect_change=*/true,
+                               /*reassociate_converted_ar=*/true));
+  EXPECT_EQ(AllReduceCount(module), 1);
+
+  constexpr absl::string_view kSharedConvertHlo = R"(
+HloModule m
+
+sum_bf16 {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+
+ENTRY main {
+  p0 = bf16[8] parameter(0)
+  ar0 = bf16[8] all-reduce(p0), replica_groups={{0,1}}, to_apply=sum_bf16
+  c0 = f32[8] convert(ar0)
+  ROOT add = f32[8] add(c0, c0)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module,
+                       RunPass(kSharedConvertHlo, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/false));
+  EXPECT_EQ(AllReduceCount(module), 1);
+  ASSERT_OK_AND_ASSIGN(module,
+                       RunPass(kSharedConvertHlo, /*expect_change=*/true,
+                               /*reassociate_converted_ar=*/true));
+  EXPECT_EQ(AllReduceCount(module), 1);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              m::AllReduce(m::Add(m::Convert(m::Parameter(0)),
+                                  m::Convert(m::Parameter(0)))));
+
+  constexpr absl::string_view kMultiUserConvertHlo = R"(
+HloModule m
+
+sum_bf16 {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+
+ENTRY main {
+  p0 = bf16[8] parameter(0)
+  p1 = bf16[8] parameter(1)
+  ar0 = bf16[8] all-reduce(p0), replica_groups={{0,1}}, to_apply=sum_bf16
+  ar1 = bf16[8] all-reduce(p1), replica_groups={{0,1}}, to_apply=sum_bf16
+  c0 = f32[8] convert(ar0)
+  c1 = f32[8] convert(ar1)
+  add = f32[8] add(c0, c1)
+  ROOT out = (f32[8], f32[8]) tuple(c0, add)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module,
+                       RunPass(kMultiUserConvertHlo, /*expect_change=*/false,
+                               /*reassociate_converted_ar=*/true));
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
 }  // namespace
 }  // namespace xla

@@ -639,6 +639,7 @@ bzl_library(
     deps = [
         "@bazel_skylib//lib:paths",
         "@bazel_skylib//lib:sets",
+        "@rules_cc//cc:action_names_bzl",
         "@rules_cc//cc:find_cc_toolchain_bzl",
         "@rules_cc//cc/common",
     ],

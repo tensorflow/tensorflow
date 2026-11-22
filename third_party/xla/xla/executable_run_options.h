@@ -83,6 +83,7 @@ class RunId {
   RunId(const RunId&) = default;
   RunId& operator=(const RunId&) = default;
   friend bool operator==(const RunId& a, const RunId& b);
+  friend bool operator!=(const RunId& a, const RunId& b) { return !(a == b); }
   std::string ToString() const;
   int64_t ToInt() const;
 

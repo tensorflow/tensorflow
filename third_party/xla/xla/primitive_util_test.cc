@@ -69,6 +69,19 @@ TEST_P(FloatTypeTest, ExponentWidth) {
       << "Failed for " << PrimitiveType_Name(data.type);
 }
 
+TEST_P(FloatTypeTest, HasFloatingPointPrecision) {
+  const FloatTypeTestData& data = GetParam();
+  EXPECT_TRUE(primitive_util::HasFloatingPointPrecision(
+      data.type, data.exponent_width, data.significand_width - 1))
+      << "Failed for " << PrimitiveType_Name(data.type);
+  EXPECT_FALSE(primitive_util::HasFloatingPointPrecision(
+      data.type, data.exponent_width + 1, data.significand_width - 1))
+      << "Failed for " << PrimitiveType_Name(data.type);
+  EXPECT_FALSE(primitive_util::HasFloatingPointPrecision(
+      data.type, data.exponent_width, data.significand_width))
+      << "Failed for " << PrimitiveType_Name(data.type);
+}
+
 TEST_P(FloatTypeTest, ExponentBias) {
   const FloatTypeTestData& data = GetParam();
   EXPECT_EQ(primitive_util::ExponentBias(data.type), data.exponent_bias)

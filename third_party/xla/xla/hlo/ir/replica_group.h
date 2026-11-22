@@ -63,13 +63,7 @@ class CollectiveDeviceListBase {
   // IotaReplicaGroup and a CollectiveDeviceList may correspond to the same
   // underlying set of device groups, they will compare as unequal).
   friend bool operator==(const CollectiveDeviceListBase& lhs,
-                         const CollectiveDeviceListBase& rhs) {
-    if (typeid(lhs) != typeid(rhs)) {
-      return false;
-    }
-    // If types are the same, delegate to the derived implementation
-    return lhs.isEqual(rhs);
-  }
+                         const CollectiveDeviceListBase& rhs);
 
   virtual int64_t num_replica_groups() const = 0;
   virtual int64_t num_devices_per_group() const = 0;

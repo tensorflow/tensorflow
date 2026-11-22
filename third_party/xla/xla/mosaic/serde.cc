@@ -53,8 +53,9 @@ std::optional<llvm::StringRef> demangle(llvm::StringRef name,
 }  // namespace
 
 mlir::LogicalResult RunSerde(
-    mlir::ModuleOp module, const llvm::StringMap<SerdeRuleType>& upgrade_rules,
-    const llvm::StringMap<SerdeRuleType>& downgrade_rules, bool serialize,
+    mlir::ModuleOp module,
+    const llvm::StringMap<UpgradeRuleType>& upgrade_rules,
+    const llvm::StringMap<DowngradeRuleType>& downgrade_rules, bool serialize,
     SerdeOptions options, bool keep_version_attr) {
   int version = options.highest_version;
   int serialize_version = options.serialize_version;
@@ -145,25 +146,39 @@ mlir::LogicalResult RunSerde(
             op->getRegions());
         op->getBlock()->getOperations().insertAfter(mlir::Block::iterator(op),
                                                     new_op);
+        op->replaceAllUsesWith(new_op->getResults());
+        llvm::StringRef op_name = op->getName().getStringRef();
+        op->erase();
         // Downgrade the op to the target version, if needed.
-        bool downgrade_failed = false;
         if (serialize && version != serialize_version) {
-          if (const auto rule =
-                  downgrade_rules.find(op->getName().getStringRef());
+          if (const auto rule = downgrade_rules.find(op_name);
               rule != downgrade_rules.end()) {
-            downgrade_failed =
-                rule->second(new_op, serialize_version, was_erased).failed();
+            if (rule->second(new_op, serialize_version).failed()) {
+              return mlir::WalkResult::interrupt();
+            }
           }
         }
-        if (was_erased) {
-          return mlir::WalkResult::advance();
-        }
-        op->replaceAllUsesWith(new_op->getResults());
-        op->erase();
-        return downgrade_failed ? mlir::WalkResult::interrupt()
-                                : mlir::WalkResult::advance();
+        return mlir::WalkResult::advance();
       });
   return result.wasInterrupted() ? mlir::failure() : mlir::success();
+}
+
+mlir::LogicalResult RunSerde(
+    mlir::ModuleOp module,
+    const llvm::StringMap<UpgradeRuleType>& upgrade_rules,
+    const llvm::StringMap<SerdeRuleType>& downgrade_rules, bool serialize,
+    SerdeOptions options, bool keep_version_attr) {
+  llvm::StringMap<DowngradeRuleType> new_downgrade_rules;
+  for (const auto& entry : downgrade_rules) {
+    const SerdeRuleType& rule = entry.getValue();
+    new_downgrade_rules[entry.getKey()] = [rule](mlir::Operation* op,
+                                                 int version) {
+      bool was_erased = false;
+      return rule(op, version, was_erased);
+    };
+  }
+  return RunSerde(module, upgrade_rules, new_downgrade_rules, serialize,
+                  options, keep_version_attr);
 }
 
 }  // namespace jaxlib::mosaic

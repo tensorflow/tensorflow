@@ -48,3 +48,25 @@ module {
 // CHECK-DAG: @tensorarg(%{{.*}}: tensor<43xf32> {xla.invariant, xla.slice_index = 0 : i64}, %{{.*}}: index)
 // CHECK-DAG: @tensorcall(%{{.*}}: tensor<43xf32> {xla.invariant, xla.slice_index = 0 : i64}, %{{.*}}: index)
 // CHECK-DAG: @stores(%{{.*}}: tensor<17xf32> {xla.invariant, xla.slice_index = 0 : i64}, %{{.*}}: tensor<43xf32> {xla.slice_index = 1 : i64})
+
+// -----
+
+module {
+  func.func private @sub(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>, %arg2: index) -> f32 {
+    %v0 = tensor.extract %arg0[%arg2] : tensor<8xf32>
+    %v1 = tensor.extract %arg1[%arg2] : tensor<8xf32>
+    %s = arith.addf %v0, %v1 : f32
+    func.return %s : f32
+  }
+
+  func.func @entry(%arg0: tensor<8xf32> {xla.aliased, xla.invariant, xla.slice_index = 0},
+                   %arg1: tensor<8xf32> {xla.aliased, xla.slice_index = 1}) -> tensor<8xf32>
+                   attributes { xla.entry } {
+    func.return %arg1 : tensor<8xf32>
+  }
+}
+
+// CHECK-LABEL: func.func private @sub(
+// CHECK-SAME:    %{{.*}}: tensor<8xf32> {xla.aliased, xla.invariant, xla.slice_index = 0 : i64},
+// CHECK-SAME:    %{{.*}}: tensor<8xf32> {xla.aliased, xla.slice_index = 1 : i64},
+// CHECK-SAME:    %{{.*}}: index)

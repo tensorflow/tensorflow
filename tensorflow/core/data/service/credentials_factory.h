@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "grpcpp/grpcpp.h"
-#include "grpcpp/security/credentials.h"
+#include "grpcpp/grpcpp.h"  // IWYU pragma: keep
+#include "grpcpp/security/auth_context.h"  // IWYU pragma: keep
+#include "grpcpp/security/credentials.h"  // IWYU pragma: keep
+#include "grpcpp/security/server_credentials.h"  // IWYU pragma: keep
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace data {
@@ -45,6 +47,11 @@ class CredentialsFactory {
   virtual absl::Status CreateClientCredentials(
       std::shared_ptr<::grpc::ChannelCredentials>* out) = 0;
 
+  // Authorizes an incoming RPC with the given `auth_context`.
+  virtual absl::Status Authorize(const ::grpc::AuthContext* auth_context) {
+    return absl::OkStatus();
+  }
+
   // Registers a credentials factory.
   static void Register(CredentialsFactory* factory);
 
@@ -59,6 +66,11 @@ class CredentialsFactory {
   static absl::Status CreateClientCredentials(
       absl::string_view protocol,
       std::shared_ptr<::grpc::ChannelCredentials>* out);
+
+  // Authorizes an incoming RPC using the credentials factory registered as
+  // `protocol`.
+  static absl::Status Authorize(absl::string_view protocol,
+                                const ::grpc::AuthContext* auth_context);
 
   // Returns whether a factory has been registered under the given protocol
   // name.

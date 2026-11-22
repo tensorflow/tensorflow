@@ -88,8 +88,7 @@ AllReduceConfig GetAllReduceConfigInst(
 
 absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, Communicator& comm,
-                          bool use_symmetric_buffer) {
+                          se::Stream& stream, Communicator& comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing all-reduce";
   auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
@@ -97,7 +96,8 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
     for (DeviceBufferPair& buffer : buffers) {
       ABSL_RETURN_IF_ERROR(gpu_comm->LaunchAllReduce(
           buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-          buffer.element_count, reduction_kind, GpuCollectives::On(stream)));
+          buffer.element_count, reduction_kind, GpuCollectives::On(stream),
+          buffer.IsRMA()));
     }
     return absl::OkStatus();
   });
@@ -147,8 +147,7 @@ absl::Status AllReduceThunk::RunCollective(const ExecuteParams& params,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
 
-  return RunAllReduce(config_.reduction_kind, device_buffers, stream, comm,
-                      config_.config.use_symmetric_buffer);
+  return RunAllReduce(config_.reduction_kind, device_buffers, stream, comm);
 }
 
 absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::FromProto(
@@ -264,14 +263,12 @@ absl::Status ReduceScatterThunk::RunCollective(const ExecuteParams& params,
   ABSL_ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
-  return RunReduceScatter(config_.reduction_kind, device_buffers, stream, comm,
-                          config_.config.use_symmetric_buffer);
+  return RunReduceScatter(config_.reduction_kind, device_buffers, stream, comm);
 }
 
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, Communicator& comm,
-                              bool use_symmetric_buffer) {
+                              se::Stream& stream, Communicator& comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing reduce-scatter";
 
@@ -289,7 +286,7 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
       ABSL_RETURN_IF_ERROR(gpu_comm->LaunchReduceScatter(
           buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
           buffer.element_count / num_ranks, reduction_kind,
-          GpuCollectives::On(stream)));
+          GpuCollectives::On(stream), buffer.IsRMA()));
     }
     return absl::OkStatus();
   });

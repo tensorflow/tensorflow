@@ -50,6 +50,7 @@ struct CSRSparseMatrixZeros {
           absl::StrCat("sparse tensor must have rank == 2 or 3; ",
                        "but dense shape has ", rank, " entries"));
     }
+    TF_RETURN_IF_ERROR(CSRSparseMatrix::ValidateDenseShape(dense_shape_t));
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
     const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
 

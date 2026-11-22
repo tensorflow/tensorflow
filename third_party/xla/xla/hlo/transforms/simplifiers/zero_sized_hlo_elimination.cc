@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -89,5 +90,13 @@ absl::StatusOr<bool> ZeroSizedHloElimination::RunImpl(
   }
   return changed;
 }
+
+namespace {
+
+const HloPassFactory* const kZeroSizedHloEliminationRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<ZeroSizedHloElimination>>(
+        "zero_sized_hlo_elimination");
+
+}  // namespace
 
 }  // namespace xla

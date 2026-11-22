@@ -36,6 +36,7 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
 
@@ -188,6 +189,30 @@ TEST_F(EmbedFileSystemTest, GetMatchingPathsReturnsSortedPaths) {
   EXPECT_THAT(paths, ElementsAre("embed://sorted/a", "embed://sorted/b",
                                  "embed://sorted/c", "embed://sorted/d",
                                  "embed://sorted/e"));
+}
+
+TEST_F(EmbedFileSystemTest, DeleteFileSuccess) {
+  const std::string filename = "embed://delete_success";
+  const std::string contents = "contents";
+
+  ASSERT_OK(fs_->EmbedFile(filename, contents));
+  ASSERT_OK(Env::Default()->FileExists(filename));
+
+  ASSERT_OK(Env::Default()->DeleteFile(filename));
+
+  EXPECT_THAT(
+      Env::Default()->FileExists(filename),
+      StatusIs(absl::StatusCode::kNotFound, HasSubstr("does not exist.")));
+  std::string read_contents;
+  EXPECT_THAT(
+      ReadFileToString(Env::Default(), filename, &read_contents),
+      StatusIs(absl::StatusCode::kNotFound, HasSubstr("does not exist.")));
+}
+
+TEST_F(EmbedFileSystemTest, DeleteFileNotFound) {
+  EXPECT_THAT(
+      Env::Default()->DeleteFile("embed://nonexistent"),
+      StatusIs(absl::StatusCode::kNotFound, HasSubstr("does not exist.")));
 }
 
 }  // namespace

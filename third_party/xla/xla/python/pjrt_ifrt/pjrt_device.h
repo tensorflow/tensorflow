@@ -33,7 +33,7 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-class PjRtCompatibleDevice : public RTTIExtends<PjRtDevice, Device> {
+class PjRtCompatibleDevice : public RTTIExtends<PjRtCompatibleDevice, Device> {
  public:
   virtual xla::PjRtDevice* pjrt_device() const = 0;
 

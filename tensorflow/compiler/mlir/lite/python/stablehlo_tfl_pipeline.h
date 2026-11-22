@@ -19,17 +19,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/converter_v2_options.pb.h"
 
 namespace mlir::TFL {
 
 // Converts StableHLO MLIR module to TFLite flatbuffer streamed directly to an
 // output stream.
-absl::Status ConvertStableHloToTFLite(
-    mlir::ModuleOp module, const tflite::ConverterFlags& converter_flags,
-    const mlir::TFL::PassConfig& pass_config,
-    llvm::raw_pwrite_stream& export_stream);
+absl::Status ConvertStableHloToTFLite(mlir::ModuleOp module,
+                                      const tflite::ConverterV2Options& options,
+                                      llvm::raw_pwrite_stream& export_stream);
 
 }  // namespace mlir::TFL
 

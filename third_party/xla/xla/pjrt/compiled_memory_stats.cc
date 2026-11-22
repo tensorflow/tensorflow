@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
@@ -32,7 +33,8 @@ namespace xla {
 // want, but does not distinguish between device and host memory, and does
 // not account for aliased memory.
 void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
-    absl::Span<const BufferAllocation* const> allocs) {
+    absl::Span<const BufferAllocation* const> allocs,
+    const BufferAssignment* absl_nullable assignment) {
   argument_size_in_bytes = 0;
   output_size_in_bytes = 0;
   temp_size_in_bytes = 0;
@@ -49,21 +51,24 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
     // equality here. We still sanity-check that an allocation does not mix host
     // and device assignments.
     int64_t alloc_memory_kind = -1;
-    for (const auto& [value, _] : alloc->assigned_buffers()) {
-      const HloPosition& defining_position = value->defining_position();
-      int64_t memory_space = Layout::kDefaultMemorySpace;
-      if (defining_position.shape().has_layout()) {
-        memory_space = defining_position.shape().layout().memory_space();
-      }
-      int64_t memory_kind = memory_space == Layout::kHostMemorySpace
-                                ? Layout::kHostMemorySpace
-                                : Layout::kDefaultMemorySpace;
-      if (alloc_memory_kind == -1) {
-        alloc_memory_kind = memory_kind;
-      } else {
-        CHECK(alloc_memory_kind == memory_kind &&
-              "expected same host/device memory kind for all assignments in "
-              "allocation");
+    if (assignment != nullptr) {
+      // NOLINTNEXTLINE(google*-custom-deterministic-iteration-order)
+      for (const auto& [value, _] : assignment->assigned_buffers(*alloc)) {
+        const HloPosition& defining_position = value->defining_position();
+        int64_t memory_space = Layout::kDefaultMemorySpace;
+        if (defining_position.shape().has_layout()) {
+          memory_space = defining_position.shape().layout().memory_space();
+        }
+        int64_t memory_kind = memory_space == Layout::kHostMemorySpace
+                                  ? Layout::kHostMemorySpace
+                                  : Layout::kDefaultMemorySpace;
+        if (alloc_memory_kind == -1) {
+          alloc_memory_kind = memory_kind;
+        } else {
+          CHECK(alloc_memory_kind == memory_kind &&
+                "expected same host/device memory kind for all assignments in "
+                "allocation");
+        }
       }
     }
     if (alloc_memory_kind == -1) {

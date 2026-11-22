@@ -15,6 +15,7 @@
 
 """Loads the nccl library, used by TF."""
 
+load("@rules_ml_toolchain//gpu/nccl:nccl_redist_init_repository.bzl", "nccl_redist_init_repository")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
@@ -26,3 +27,13 @@ def repo():
         strip_prefix = "nccl-2.30.7-1",
         urls = tf_mirror_urls("https://github.com/NVIDIA/nccl/archive/refs/tags/v2.30.7-1.tar.gz"),
     )
+
+def _nccl_redist_ext_impl(ctx):
+    nccl_redist_init_repository(
+        patches = ["//third_party/nccl:nccl_wheel.patch"],
+    )
+    return ctx.extension_metadata(reproducible = True)
+
+nccl_redist_ext = module_extension(
+    implementation = _nccl_redist_ext_impl,
+)

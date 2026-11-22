@@ -210,7 +210,9 @@ AttentionModel::AttentionModel(
     int b, int t, int s, int h, int n, float scale, bool transpose_io,
     bool use_delegate, const TfLiteYNNPackDelegateOptions& delegate_options,
     AttentionImpl impl, int n_kv, bool quantize_kv, bool bool_mask,
-    int32_t kv_zero_point) {
+    int32_t kv_zero_point, bool quantize_q, int32_t q_zero_point,
+    bool quantize_output, int32_t output_zero_point, bool quantize_mask,
+    int32_t mask_zero_point, bool int4_kv, bool int4_q, bool int4_mask) {
   if (n_kv <= 0) {
     n_kv = n;
   }
@@ -237,8 +239,21 @@ AttentionModel::AttentionModel(
     mask_shape = {b, 1, t, s};
   }
 
-  query_id_ = AddInput({TensorType_FLOAT32, query_shape});
-  if (quantize_kv) {
+  if (int4_q) {
+    query_id_ = AddInput(
+        {TensorType_INT4, query_shape, 0.0f, 0.0f, 0.1f, q_zero_point});
+  } else if (quantize_q) {
+    query_id_ = AddInput(
+        {TensorType_INT8, query_shape, 0.0f, 0.0f, 0.02f, q_zero_point});
+  } else {
+    query_id_ = AddInput({TensorType_FLOAT32, query_shape});
+  }
+  if (int4_kv) {
+    key_id_ = AddInput(
+        {TensorType_INT4, key_shape, 0.0f, 0.0f, 0.15f, kv_zero_point});
+    value_id_ = AddInput(
+        {TensorType_INT4, value_shape, 0.0f, 0.0f, 0.15f, kv_zero_point});
+  } else if (quantize_kv) {
     key_id_ = AddInput(
         {TensorType_INT8, key_shape, 0.0f, 0.0f, 0.05f, kv_zero_point});
     value_id_ = AddInput(
@@ -252,14 +267,28 @@ AttentionModel::AttentionModel(
   } else {
     runtime_bmm_params_id_ = -1;
   }
-  mask_id_ =
-      AddInput({bool_mask ? TensorType_BOOL : TensorType_FLOAT32, mask_shape});
+  if (bool_mask) {
+    mask_id_ = AddInput({TensorType_BOOL, mask_shape});
+  } else if (int4_mask) {
+    mask_id_ = AddInput(
+        {TensorType_INT4, mask_shape, 0.0f, 0.0f, 2000.0f, mask_zero_point});
+  } else if (quantize_mask) {
+    mask_id_ = AddInput(
+        {TensorType_INT8, mask_shape, 0.0f, 0.0f, 100.0f, mask_zero_point});
+  } else {
+    mask_id_ = AddInput({TensorType_FLOAT32, mask_shape});
+  }
 
   std::vector<int> output_shape = transpose_io ? std::vector<int>{b, t, n, h}
                                                : std::vector<int>{b, n, t, h};
 
   if (impl == AttentionImpl::kOdmlSdpa) {
-    output_id_ = AddOutput({TensorType_FLOAT32, output_shape});
+    if (quantize_output) {
+      output_id_ = AddOutput({TensorType_INT8, output_shape, 0.0f, 0.0f, 0.02f,
+                              output_zero_point});
+    } else {
+      output_id_ = AddOutput({TensorType_FLOAT32, output_shape});
+    }
 
     flexbuffers::Builder fbb;
     fbb.Map([&]() { fbb.Float("scale", scale); });

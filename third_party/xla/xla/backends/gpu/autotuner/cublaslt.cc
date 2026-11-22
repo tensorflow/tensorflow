@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -31,6 +32,8 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/triton/dot_search_space.h"
 #include "xla/backends/gpu/autotuner/triton/triton_configs.h"
+#include "xla/backends/gpu/cost_model/gpu_dot_fusion_cost_model.h"
+#include "xla/backends/gpu/cost_model/gpu_performance_model_base.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -43,14 +46,15 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
-#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.pb.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -117,12 +121,50 @@ absl::StatusOr<std::unique_ptr<HloModule>> CreateSyntheticTritonDotModule(
   return isolated_module;
 }
 
-absl::StatusOr<std::optional<absl::Duration>> EstimateTritonDotRuntime(
+// Adjusts the estimates to fit actual cuBLASLt runtimes better given a dot and
+// its estimates for Triton.
+absl::Duration AdjustDotEstimateForCublas(
+    const HloInstruction& dot_instr,
+    const stream_executor::DeviceDescription& device_info,
+    const absl::Duration triton_dot_estimate) {
+  absl::StatusOr<GemmConfig> gemm_config =
+      GemmConfig::For(&dot_instr, device_info.gpu_compute_capability());
+  if (!gemm_config.ok()) {
+    return triton_dot_estimate;
+  }
+
+  absl::Duration estimated_duration = triton_dot_estimate;
+
+  // TODO(b/503201785): Tweak this heuristic as we update the model.
+  // TODO(b/586376721): Replace the heuristical estimation with a proper
+  // cuBLASLt cost model if we get one.
+  // Runtime scale, fixed offset (5 us prior to Blackwell, 0 us on Blackwell and
+  // newer), and minimum matrix dimension threshold fitted to microbenchmarks
+  // and model profiles.
+  constexpr double kCublasLtRuntimeScale = 0.80;
+  constexpr absl::Duration kCublasLtRuntimeOffset = absl::Microseconds(5);
+  constexpr int64_t kMinScaledGemmDim = 128;
+
+  int64_t min_gemm_dim = std::min(
+      {gemm_config->lhs_layout.num_rows, gemm_config->lhs_layout.num_cols,
+       gemm_config->rhs_layout.num_rows, gemm_config->rhs_layout.num_cols});
+  if (min_gemm_dim >= kMinScaledGemmDim) {
+    estimated_duration *= kCublasLtRuntimeScale;
+  }
+
+  if (!device_info.cuda_compute_capability().IsAtLeastBlackwell()) {
+    estimated_duration += kCublasLtRuntimeOffset;
+  }
+  return estimated_duration;
+}
+
+absl::StatusOr<absl::Duration> EstimateTritonDotRuntime(
     const HloInstruction& instr, const GemmBackendConfig& backend_config,
     const stream_executor::DeviceDescription& device_info,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   if (mlir_context == nullptr) {
-    return std::nullopt;
+    return absl::FailedPreconditionError(
+        "Cannot estimate dot without MLIR Context");
   }
 
   // The dot search space and the cost model assume the dot is a part of a
@@ -143,16 +185,20 @@ absl::StatusOr<std::optional<absl::Duration>> EstimateTritonDotRuntime(
           GetDefaultTritonConfigs(device_info.gpu_compute_capability()));
 
   std::optional<absl::Duration> best_exec_time;
+  absl::Status last_status = absl::NotFoundError("No Triton config estimates");
+
   for (const auto& config : configs) {
     absl::StatusOr<xtile::BlockLevelParameters> block_params =
         FindBlockLevelParameters(dot, config, mlir_context, device_info);
     if (!block_params.ok()) {
+      last_status = block_params.status();
       continue;
     }
     absl::StatusOr<EstimateRunTimeData> estimate =
         gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
             dot, *block_params, device_info, config.block_k);
     if (!estimate.ok()) {
+      last_status = estimate.status();
       continue;
     }
 
@@ -161,7 +207,10 @@ absl::StatusOr<std::optional<absl::Duration>> EstimateTritonDotRuntime(
     }
   }
 
-  return best_exec_time;
+  if (best_exec_time.has_value()) {
+    return *best_exec_time;
+  }
+  return last_status;
 }
 
 }  // namespace
@@ -222,6 +271,13 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     auto* gemm_key = config->mutable_gemm();
     gemm_key->set_algorithm(i);
     gemm_key->set_autotune_workspace_size(workspace_size);
+    absl::StatusOr<se::gpu::BlasLtMatmulAlgorithm> blas_lt_algorithm =
+        plan->GetBlasLtMatmulAlgorithm(algorithms[i]);
+    if (blas_lt_algorithm.ok()) {
+      *gemm_key->mutable_algorithm_proto() = blas_lt_algorithm->ToProto();
+    } else if (!absl::IsUnimplemented(blas_lt_algorithm.status())) {
+      return blas_lt_algorithm.status();
+    }
     configs.push_back(std::move(config));
   }
 
@@ -239,21 +295,22 @@ CublasLtBackend::GetSupportedConfigsWithEstimates(const HloInstruction& instr) {
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr.backend_config<GpuBackendConfig>());
   const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
+  const se::DeviceDescription& device_info = target_config().device_description;
 
   std::optional<absl::Duration> estimated_duration = std::nullopt;
-  if (backend_config.epilogue() == GemmBackendConfig::DEFAULT) {
-    // There is no specialized cuBLASLt cost model that we can use (yet?) but
-    // we expect it to be somewhere in the ballpark of the fastest Triton dot.
-    absl::StatusOr<std::optional<absl::Duration>> estimate_or =
-        EstimateTritonDotRuntime(instr, backend_config,
-                                 target_config().device_description,
-                                 debug_options(), mlir_context_);
-    if (estimate_or.ok()) {
-      estimated_duration = *estimate_or;
-    } else {
-      VLOG(1) << "Failed to estimate cuBLASLt dot runtime: "
-              << estimate_or.status();
-    }
+
+  // cuBLASLt has no standalone cost model; derive its estimate from the fastest
+  // isolated Triton dot by scaling large GEMMs and adjusting via heuristics.
+
+  absl::StatusOr<absl::Duration> triton_dot_runtime = EstimateTritonDotRuntime(
+      instr, backend_config, device_info, debug_options(), mlir_context_);
+
+  if (triton_dot_runtime.ok()) {
+    estimated_duration =
+        AdjustDotEstimateForCublas(instr, device_info, *triton_dot_runtime);
+  } else {
+    VLOG(1) << "Failed to estimate cuBLASLt dot runtime: "
+            << triton_dot_runtime.status();
   }
 
   // We do not have a good way to estimate each cublaslt config, so we use the
@@ -275,6 +332,8 @@ CublasLtBackend::GetDefaultConfig(const HloInstruction& instr) {
 
   auto config = std::make_unique<BackendConfig>();
   auto* gemm_key = config->mutable_gemm();
+  // Leave `algorithm_proto` unset so the default config is identical in
+  // deviceless compilation and lets the thunk pick heuristic rank 0 at runtime.
   gemm_key->set_algorithm(0);
   // We don't know the workspace size in advance, so we pick a reasonably large
   // value that is likely to be sufficient.
@@ -295,6 +354,13 @@ absl::Status CublasLtBackend::ApplyConfig(HloInstruction& instr,
   backend_config.set_selected_algorithm(gemm_key.algorithm());
   backend_config.set_autotune_workspace_size(
       gemm_key.autotune_workspace_size());
+  // Assigning an empty submessage via mutable_algorithm_proto() would still
+  // mark has_algorithm_proto() true, so clear it explicitly when unset.
+  if (gemm_key.has_algorithm_proto()) {
+    *backend_config.mutable_algorithm_proto() = gemm_key.algorithm_proto();
+  } else {
+    backend_config.clear_algorithm_proto();
+  }
   ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
 
   if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {

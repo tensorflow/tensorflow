@@ -40,7 +40,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/cpu/export_hlo.h"
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/autotuner/autotuner_cache.h"
+#include "xla/backends/gpu/export_hlo.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -53,10 +56,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_symbol_repository.h"
-#include "xla/service/cpu/export_hlo.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuning/autotuner_cache.h"
-#include "xla/service/gpu/export_hlo.h"
 #include "xla/service/gpu/gpu_symbol_repository.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
@@ -171,6 +171,19 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
                        GetStreamExecutor(platform, 0));
 
       aot_options.set_executor(stream_executor);
+    } else {
+      // Needed to make existing paths that compile CuDNN FMHA custom calls
+      // pass.
+      // TODO(b/505264161): Remove this when the flag is enabled by default.
+      DebugOptions& debug_options =
+          hlo_module->mutable_config().mutable_debug_options();
+      const DebugOptions::CudnnDevicelessCompilationMode mode =
+          debug_options.xla_gpu_cudnn_deviceless_compilation_mode();
+      if (mode == DebugOptions::CUDNN_DEVICELESS_COMPILATION_UNSET ||
+          mode == DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED) {
+        debug_options.set_xla_gpu_cudnn_deviceless_compilation_mode(
+            DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO);
+      }
     }
 
     // We need the optimized module, so we call RunHloPasses ourselves above.

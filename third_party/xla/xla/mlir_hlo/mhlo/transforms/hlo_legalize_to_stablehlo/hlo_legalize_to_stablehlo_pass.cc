@@ -117,11 +117,11 @@ struct HloLegalizeToStablehloPass
       // These ops do not exist in StableHLO. (They don't exist in CHLO, either;
       // MHLO is the appropriate dialect for expressing XLA-specific features
       // such as these.)
-      target.addLegalOp<
-          mhlo::AsyncDoneOp, mhlo::AsyncStartOp, mhlo::AsyncUpdateOp,
-          mhlo::BitcastOp, mhlo::CopyOp, mhlo::DomainOp, mhlo::FusionOp,
-          mhlo::MinimumBroadcastShapesOp, mhlo::StochasticConvertOp,
-          mhlo::TraceOp, mhlo::XlaRngGetAndUpdateStateOp>();
+      target.addLegalOp<mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
+                        mhlo::AsyncUpdateOp, mhlo::BitcastOp, mhlo::CopyOp,
+                        mhlo::FusionOp, mhlo::MinimumBroadcastShapesOp,
+                        mhlo::StochasticConvertOp, mhlo::TraceOp,
+                        mhlo::XlaRngGetAndUpdateStateOp>();
 
       target.addDynamicallyLegalOp<mhlo::AddDependencyOp>(
           [](mhlo::AddDependencyOp op) {

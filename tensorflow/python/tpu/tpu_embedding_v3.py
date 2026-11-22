@@ -1174,7 +1174,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       )
     nest.assert_same_structure(self._feature_config, gradients)
 
-    # Note that stacking gradients is placed on the core of the trianing step
+    # Note that stacking gradients is placed on the core of the training step
     # to reduce the number of input/output arguments of the training loop during
     # pipelining.
     gradients = self._stack_gradients(gradients)
@@ -1665,7 +1665,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       activations[table_name] = activation
 
     context.Exit()
-    # Note that unstacking gradients is placed on the core of the trianing step
+    # Note that unstacking gradients is placed on the core of the training step
     # to reduce the number of input/output arguments of the training loop during
     # pipelining.
     activations = self._unstack_activations(activations)

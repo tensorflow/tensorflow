@@ -707,6 +707,10 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
                           std::optional<xla::ifrt::DeviceListRef> devices) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableExecute");
+  if (options.fill_recovery_future) {
+    return absl::UnimplementedError(
+        "IFRT proxy does not support fill_recovery_future");
+  }
   auto req = std::make_unique<LoadedExecutableExecuteRequest>();
   req->set_loaded_executable_handle(handle_);
 

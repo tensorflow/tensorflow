@@ -19,8 +19,10 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -36,12 +38,14 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/passes.h"
 #include "xla/python/ifrt/ir/conversions/mpmd/lower_to_ifrt.h"
+#include "xla/python/ifrt/ir/export/passes.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/import/passes.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/future.h"
@@ -60,7 +64,7 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
  public:
   TestChildExecutableCompiler() { methods_.reserve(kMaxTestMethods); }
 
-  tsl::Future<LoadedExecutableRef> CompileXla(
+  tsl::Future<LoadedExecutableRef> CompileAndLoadXla(
       std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks)
       override ABSL_LOCKS_EXCLUDED(mu_) {
@@ -106,7 +110,16 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
     return mock_executable;
   }
 
-  tsl::Future<LoadedExecutableRef> CompileMpmdReshard(
+  tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>
+  CompileXla(std::unique_ptr<HloProgram> hlo_program,
+             xla::CompileOptions options,
+             std::vector<tsl::RCReference<LoadedHostCallback>>
+                 loaded_host_callbacks) override {
+    return absl::UnimplementedError(
+        "TestChildExecutableCompiler does not support CompileXla");
+  }
+
+  tsl::Future<LoadedExecutableRef> CompileAndLoadMpmdReshard(
       std::vector<DType> dtypes, std::vector<Shape> shapes,
       std::vector<IfrtArrayType> in_array_types,
       std::vector<IfrtArrayType> out_array_types) override
@@ -117,6 +130,14 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
         << "push_back() might have caused reallocation, which might have "
            "invalidated some method string_views.";
     return std::make_unique<testing::NiceMock<MockLoadedExecutable>>();
+  }
+
+  tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>
+  CompileMpmdReshard(std::vector<DType> dtypes, std::vector<Shape> shapes,
+                     std::vector<IfrtArrayType> in_array_types,
+                     std::vector<IfrtArrayType> out_array_types) override {
+    return absl::UnimplementedError(
+        "TestChildExecutableCompiler does not support CompileMpmdReshard");
   }
 
  private:
@@ -157,8 +178,10 @@ int main(int argc, char** argv) {
   auto bound_executable_map = std::make_shared<xla::ifrt::AtomExecutableMap>();
 
   mlir::registerAllPasses();
-  xla::ifrt::registerIfrtPassesAndPipelines(
+  xla::ifrt::registerIfrtPassesAndPipelines();
+  xla::ifrt::registerIfrtCompilationPassesAndPipelines(
       compiler, compile_options, atom_executable_map, bound_executable_map);
+  xla::ifrt::registerIfrtIrExportPasses();
   xla::ifrt::mpmd::RegisterLowerToIfrtPasses();
   mlir::DialectRegistry registry;
   xla::ifrt::support::InitializeMlirDialectRegistry(registry);

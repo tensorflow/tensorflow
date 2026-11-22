@@ -607,6 +607,14 @@ TEST(NamedShardingTest, InvalidAxisIndex) {
                "Axis index: 1, Number of axes: 1");
 }
 
+TEST(NamedShardingTest, NegativeAxisIndexFromProto) {
+  NamedShardingProto proto = NamedSharding(Mesh({2}, {"a"})).ToProto();
+  proto.add_dim_shardings()->add_axes()->set_mesh_axis_index(-1);
+
+  EXPECT_DEATH(NamedSharding::FromProto(proto),
+               "Axis index must be non-negative.*Axis index: -1");
+}
+
 TEST(NamedShardingTest, OverlappingAxesSameDimValidation) {
   Mesh mesh({2}, {"a"});
   EXPECT_DEATH(test_utils::FromAxisNames(mesh, {{"a", "a"}}),

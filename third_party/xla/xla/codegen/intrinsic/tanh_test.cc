@@ -73,7 +73,7 @@ TEST(TanhTest, EmitTanhF32) {
                   -0.5f,
                   std::numeric_limits<float>::infinity(),
                   std::numeric_limits<float>::quiet_NaN()};
-  auto* fn = jit.GetScalarFn<float(float)>(Tanh::Name(type));
+  auto fn = jit.GetScalarFn<float(float)>(Tanh::Name(type));
   EXPECT_THAT(fn(std::numeric_limits<float>::infinity()),
               NearUlps<float>(1.0, 0));
   for (float val : vals) {
@@ -110,7 +110,7 @@ TEST(TanhTest, EmitTanhF64) {
                    -0.5f,
                    std::numeric_limits<double>::infinity(),
                    std::numeric_limits<double>::quiet_NaN()};
-  auto* fn = jit.GetScalarFn<double(double)>(Tanh::Name(type));
+  auto fn = jit.GetScalarFn<double(double)>(Tanh::Name(type));
   auto inf = std::numeric_limits<double>::infinity();
   EXPECT_THAT(fn(inf), NearUlps<double>(1.0, 0));
   EXPECT_THAT(fn(-inf), NearUlps<double>(-1.0, 0));

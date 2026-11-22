@@ -58,17 +58,19 @@ module {
 // -----
 
 module {
-  func.func @intr_f64_to_f8(%arg0: f64) -> (f8E4M3FN, f8E5M2) {
+  func.func @intr_f64_to_f8(%arg0: f64) -> (f8E4M3FN, f8E5M2, f4E2M1FN) {
     %a = arith.truncf %arg0 : f64 to f8E4M3FN
     %b = arith.truncf %arg0 : f64 to f8E5M2
-    return %a, %b : f8E4M3FN, f8E5M2
+    %c = arith.truncf %arg0 : f64 to f4E2M1FN
+    return %a, %b, %c : f8E4M3FN, f8E5M2, f4E2M1FN
   }
 }
 
 // CHECK-LABEL: @intr_f64_to_f8
-// CHECK: arith.truncf %{{.+}} : f64 to f32
-// CHECK: llvm.nvvm.ff.to.e4m3x2.rn
-// CHECK: llvm.nvvm.ff.to.e5m2x2.rn
+// CHECK-NOT: llvm.nvvm.ff.to.
+// CHECK: arith.truncf %{{.+}} : f64 to f8E4M3FN
+// CHECK: arith.truncf %{{.+}} : f64 to f8E5M2
+// CHECK: arith.truncf %{{.+}} : f64 to f4E2M1FN
 
 // -----
 

@@ -31,6 +31,10 @@ TEST(DebugOptionsRuntimeFieldsTest, ListsFieldsThatChangeExecution) {
   // Read by the watchdog while the executable runs.
   EXPECT_TRUE(IsRuntimeDebugOptionsField(
       DebugOptions::kXlaGpuDeviceExecutionTerminateTimeoutFieldNumber));
+  EXPECT_TRUE(IsRuntimeDebugOptionsField(
+      DebugOptions::kXlaGpuExecutionWarnStuckTimeoutFieldNumber));
+  EXPECT_TRUE(IsRuntimeDebugOptionsField(
+      DebugOptions::kXlaGpuDeviceExecutionWarnStuckTimeoutFieldNumber));
   // An empty value makes loading fail with the NaN checker in DUMP mode.
   EXPECT_TRUE(IsRuntimeDebugOptionsField(DebugOptions::kXlaDumpToFieldNumber));
 }
@@ -50,6 +54,8 @@ TEST(DebugOptionsRuntimeFieldsTest, OmitsCompileOnlyAndDiagnosticsFields) {
       DebugOptions::kXlaGpuTraceAnnotationLevelFieldNumber));
   EXPECT_FALSE(IsRuntimeDebugOptionsField(
       DebugOptions::kXlaGpuEnableCuptiMultiSubscriberFieldNumber));
+  EXPECT_FALSE(IsRuntimeDebugOptionsField(
+      DebugOptions::kXlaGpuEnableCommandBufferTelemetryFieldNumber));
 }
 
 }  // namespace

@@ -508,13 +508,13 @@ TEST_F(BuildReduceScatterInfoTest, CreateReduceScatterKernelSpec) {
             KernelArgType::kOutputBuffer);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[1].index, 0);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[2].type,
-            KernelArgType::kRuntimeRank);
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[2].index, 1);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[3].type,
             KernelArgType::kScratchBuffer);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[3].index, 0);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[4].type,
-            KernelArgType::kScratchBuffer);
-  EXPECT_EQ(spec.codegen_config.argument_descriptors[4].index, 1);
+            KernelArgType::kRuntimeRank);
   ASSERT_EQ(spec.scratch_buffers.size(), 2);
   EXPECT_EQ(spec.scratch_buffers[0].symmetric_memory_type,
             SymmetricMemoryType::kXlaRendezvous);
@@ -566,16 +566,16 @@ TEST_F(BuildReduceScatterInfoTest, CreateReduceScatterKernelSpecVariadic) {
             KernelArgType::kOutputBuffer);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[3].index, 1);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[4].type,
-            KernelArgType::kRuntimeRank);
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[4].index, 1);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[5].type,
             KernelArgType::kScratchBuffer);
-  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].index, 2);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[6].type,
             KernelArgType::kScratchBuffer);
-  EXPECT_EQ(spec.codegen_config.argument_descriptors[6].index, 1);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[6].index, 0);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[7].type,
-            KernelArgType::kScratchBuffer);
-  EXPECT_EQ(spec.codegen_config.argument_descriptors[7].index, 2);
+            KernelArgType::kRuntimeRank);
   ASSERT_EQ(spec.scratch_buffers.size(), 3);
   EXPECT_EQ(spec.scratch_buffers[1].size_bytes, 1024 * sizeof(float));
   EXPECT_EQ(spec.scratch_buffers[2].size_bytes, 8192 * sizeof(float));

@@ -61,7 +61,7 @@ absl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
         break;
       }
       TF_RETURN_IF_ERROR(status);
-      result.push_back(tensors[0].unaligned_flat<T>().data()[0]);
+      result.push_back(tensors[0].unaligned_flat<T>()(0));
     }
   }
   return result;

@@ -33,6 +33,13 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/cost_model/fusion_analysis_cache.h"
+#include "xla/backends/gpu/cost_model/gpu_hlo_cost_analysis.h"
+#include "xla/backends/gpu/cost_model/gpu_indexing_performance_model.h"
+#include "xla/backends/gpu/cost_model/gpu_performance_model.h"
+#include "xla/backends/gpu/cost_model/gpu_performance_model_base.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
+#include "xla/backends/gpu/transforms/fusion/fusion_pipeline.h"
 #include "xla/backends/gpu/transforms/reduction_dimension_grouper.h"
 #include "xla/backends/gpu/transforms/reduction_splitter.h"
 #include "xla/backends/gpu/transforms/tree_reduction_rewriter.h"
@@ -46,21 +53,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/service/decision.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/fusion_analysis_cache.h"
-#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
-#include "xla/service/gpu/model/gpu_performance_model.h"
-#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tools/hlo_decomposer.h"
@@ -365,8 +365,8 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or)) {
-    return FusionDecision::Forbid(absl::StrCat("SymbolicTileAnalysis failed: ",
-                                               fusion_decision->Explain()));
+    return FusionDecision::Forbid(
+        absl::StrCat("Failed to find a tiling: ", fusion_decision->Explain()));
   }
 
   TiledRunTimeData tiled_runtime_data =
@@ -446,8 +446,6 @@ absl::StatusOr<bool> CanTileDiamond(const DiamondDescriptor& diamond) {
   ABSL_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                    MakeFusionForDiamond(diamond));
   mlir::MLIRContext mlir_context;
-  using experimental::TiledHloComputation;
-  using experimental::TilingSpace;
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(normalization_fusion);
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,

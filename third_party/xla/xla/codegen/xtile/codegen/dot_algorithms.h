@@ -59,7 +59,8 @@ struct ScaledDotOperands {
 // Returns the type to use for accumulation for the given instruction.
 // This also handles the case where the algorithm is `ALG_UNSET`.
 absl::StatusOr<::mlir::Type> GetDotAccumulatorType(
-    mlir::ImplicitLocOpBuilder& b, const HloInstruction& instr);
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& instr,
+    bool is_cpu = false);
 
 // Core single-tile dot emitter. Takes the instruction (for precision config and
 // operand type handling) and explicit dimension numbers (to support callers
@@ -67,13 +68,15 @@ absl::StatusOr<::mlir::Type> GetDotAccumulatorType(
 // Applies algorithm-specific operand/accumulator type casting automatically.
 absl::StatusOr<::mlir::Value> EmitSingleTileDot(
     mlir::ImplicitLocOpBuilder& b, const HloInstruction& instr,
-    const DotDimensionNumbers& dim_nums, DotOperands dot_operands);
+    const DotDimensionNumbers& dim_nums, DotOperands dot_operands,
+    bool is_cpu = false);
 
 // Convenience overload for HloDotInstruction: extracts dimension numbers from
 // the instruction itself.
 absl::StatusOr<::mlir::Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
                                                 const HloDotInstruction& dot,
-                                                DotOperands dot_operands);
+                                                DotOperands dot_operands,
+                                                bool is_cpu = false);
 
 // Emits a single-tile scaled-dot, considering the given `scaled-dot`
 // instruction's operand precisions. Raises an `InvalidArgumentError` if the

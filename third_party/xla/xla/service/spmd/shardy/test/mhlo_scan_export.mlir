@@ -567,7 +567,6 @@ func.func private @scan_dim_sharded_indivisible_forward(
     -> (tensor<10x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{"x"}, {}]>},
         tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{}]>}) {
   // Pad input and compute 1D global scan indices (iota + shard offset).
-  // CHECK:      stablehlo.select {{.*}}, %arg0, {{.*}} : tensor<4x8xi1>, tensor<4x8xf32>
   // CHECK:      %[[BASE_IOTA:.*]] = stablehlo.iota dim = 0 : tensor<4xi32>
   // CHECK:      %[[GLOBAL_IDX:.*]] = stablehlo.add %[[BASE_IOTA]], {{.*}} : tensor<4xi32>
   //
@@ -751,10 +750,6 @@ func.func private @scan_dim_sharded_indivisible_multi_input_2d(
         tensor<7xf32> {sdy.sharding = #sdy.sharding<@mesh_xy, [{"y"}]>},
         tensor<7xi32> {sdy.sharding = #sdy.sharding<@mesh_xy, [{"y"}]>}) {
   // Pad inputs and inits and compute 1D global scan indices along "x".
-  // CHECK:      stablehlo.select {{.*}}, %arg0, {{.*}} : tensor<4x3xi1>, tensor<4x3xf32>
-  // CHECK:      stablehlo.select {{.*}}, %arg2, {{.*}} : tensor<4xi1>, tensor<4xf32>
-  // CHECK:      stablehlo.select {{.*}}, %arg1, {{.*}} : tensor<4x3xi1>, tensor<4x3xi32>
-  // CHECK:      stablehlo.select {{.*}}, %arg3, {{.*}} : tensor<4xi1>, tensor<4xi32>
   // CHECK:      %[[BASE_IOTA:.*]] = stablehlo.iota dim = 0 : tensor<3xi32>
   // CHECK:      %[[GLOBAL_IDX:.*]] = stablehlo.add %[[BASE_IOTA]], {{.*}} : tensor<3xi32>
   //

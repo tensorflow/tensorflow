@@ -669,6 +669,27 @@ TEST_F(SchedulingTest, VariadicReduceScatterWithDotProducers) {
                   "num_pids=16, num_tiles=16")));
 }
 
+TEST_F(SchedulingTest, TwoShotAllGatherSchedulesReplicaDimension) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    f {
+      p0 = f32[6,2] parameter(0)
+      ROOT ag = f32[6,8] all-gather(p0),
+        replica_groups={{0,1,2,3}}, dimensions={1},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+    }
+
+    ENTRY e {
+      arg0 = f32[6,2] parameter(0)
+      ROOT fusion = f32[6,8] fusion(arg0), kind=kCustom, calls=f
+    })",
+                                    {2, 1}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(
+                  MatchSchedule("d0 -> (pid mod 6) / 2, d1 -> pid mod 6 mod 2, "
+                                "d2 -> pid / 6, num_pids=24, num_tiles=24")));
+}
+
 TEST_F(SchedulingTest, SingleOperandReduceScatterReplicaDimension) {
   ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
                        ParseAndTile(R"(
@@ -766,6 +787,36 @@ TEST_F(SchedulingTest,
                   "d0 -> pid mod 4, d1 -> pid mod 4, d2 -> 0, "
                   "d3 -> pid / 4, d4 -> pid / 4 + ((pid mod 4) / 2) * 4, "
                   "num_pids=8, num_tiles=8")));
+}
+
+TEST_F(SchedulingTest,
+       VariadicTwoShotAllGatherPaddedSingleTileGatherDimIsMasked) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    f {
+      p0 = f32[4,2] parameter(0)
+      p1 = s32[1,2] parameter(1)
+      ag = (f32[4,4], s32[1,4]) all-gather(p0, p1),
+        replica_groups={{0,1}}, dimensions={1},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+      gte0 = f32[4,4] get-tuple-element(ag), index=0
+      gte1 = s32[1,4] get-tuple-element(ag), index=1
+      ROOT t = (f32[4,4], s32[1,4]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[4,2] parameter(0)
+      arg1 = s32[1,2] parameter(1)
+      ROOT fusion = (f32[4,4], s32[1,4]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })",
+                                    {2, 1, 1, 2}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(
+                  MatchSchedule("d0 -> (pid mod 4) / 2, d1 -> pid mod 4 mod 2, "
+                                "d2 -> pid mod 4, d3 -> (pid mod 4) * 2, "
+                                "d4 -> pid / 4, d5 -> pid / 4, "
+                                "num_pids=8, num_tiles=8")));
 }
 
 }  // namespace xla::gpu

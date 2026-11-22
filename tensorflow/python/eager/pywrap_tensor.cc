@@ -1242,8 +1242,8 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
   auto status = tensorflow::make_safe(TF_NewStatus());
 
   // Create an empty tensor.
-  auto* tensor = tensorflow::unwrap(ctx)->CreateTensor(
-      tensorflow::DT_INT32, /*dim_sizes=*/{num_tensors_int});
+  tensorflow::AbstractTensorPtr tensor(tensorflow::unwrap(ctx)->CreateTensor(
+      tensorflow::DT_INT32, /*dim_sizes=*/{num_tensors_int}));
 
   if (num_tensors_int > 0) {
     int32_t* data = reinterpret_cast<int32_t*>(tensor->Data());
@@ -1288,8 +1288,8 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
     }
   }
 
-  TFE_TensorHandle* handle =
-      tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(tensor));
+  TFE_TensorHandle* handle = tensorflow::wrap(
+      tensorflow::unwrap(ctx)->CreateLocalHandle(tensor.get()));
 
   if (!status->status.ok()) {
     PyErr_SetString(PyExc_RuntimeError,

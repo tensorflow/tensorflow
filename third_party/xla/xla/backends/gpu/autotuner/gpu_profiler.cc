@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 
+#include <algorithm>
+#include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -37,6 +41,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/profiler.h"
+#include "xla/backends/gpu/autotuner/redzone_buffers.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -46,7 +51,6 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -58,7 +62,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/util/buffer_slice_merge.h"
@@ -69,6 +75,107 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+// Minimum size of the buffer used to flush the caches, in case the device does
+// not report its L2 cache size.
+constexpr int64_t kMinCacheFlushBytes = int64_t{64} << 20;  // 64 MiB
+
+// First-principles hardware noise model and competitive margin-aware early
+// stopping for GPU autotuning (`GpuProfiler::Profile`).
+//
+// Let `mu_k` be the true steady-state execution time of candidate `k`. In
+// `GpuProfiler::Profile`, timed run `i` in `{0, ..., N - 1}` measures:
+//
+//   T_i = mu_k + delta_0 * I[i == 0] + eps_quant,i + eps_boundary,i
+//         + eta_i * mu_k
+//
+// with four physical error sources on modern GPUs:
+//   1. CUDA event timer quantization (`eps_quant`, sigma_q ~ 9 ns):
+//      `cuEventElapsedTime` samples the 32 ns GPU `GLOBALTIMER` tick at start
+//      and stop (`sqrt(2 / 12) * 32 ns ~= 13 ns`), which is negligible above
+//      1 us.
+//   2. Additive stream-boundary and cache-flush drain jitter (`eps_boundary`,
+//      `kBoundaryJitterStdDevNs = 1,000 ns`): each timed pass is preceded by a
+//      `2 * L2` `MemZero` (`FlushCaches()`, ~30-36 us on H100/B200/GB300).
+//      Residual L2/DRAM writeback drain, GPU front-end CTA launch latency, and
+//      last-wave tail drain contribute ~1 us of run-to-run standard deviation
+//      independent of kernel duration.
+//   3. First-run post-host-sync idle/clock transient (`delta_0`,
+//      `kFirstRunIdleBiasNs = 2,000 ns`): between the warm-up pass and
+//      `run == 0`, `Profile()` calls `stream_->BlockHostUntilDone()` and runs
+//      host-side `CheckRedzones()`, leaving the GPU idle while GPC boost clocks
+//      droop and power gates engage. A single ~33 us `MemZero` before
+//      `run == 0` is shorter than the ~100-200 us GPU DVFS ramp-up window,
+//      biasing `T_0` upward by up to ~2 us relative to runs `1..N-1` (which
+//      execute back-to-back on stream without host synchronization).
+//   4. Multiplicative memory-subsystem variance (`eta_i * mu_k`,
+//      `kRelativeNoiseStdDev = 0.01`): periodic HBM refresh (`tREFI ~ 3.9 us`)
+//      and L2/NoC partition arbitration scale proportionally (~1%) with kernel
+//      duration.
+//
+// From this model, additional timed runs after `run == 0` cannot improve
+// selection accuracy in two regimes:
+//   (a) Saturation / cost-regret cap (`T_0 >= kMaxMultiRunDurationNs`, 500 us):
+//       once `T_0 >= 500 us`, the combined relative error from the transient
+//       and boundary terms is `hypot(1 us, 2 us) / 500 us < 0.45%`, which is
+//       strictly dominated by the stationary 1% HBM variance floor while each
+//       extra pass costs `T_flush + T_0 > 530 us` (>15x the L2 flush cost).
+//   (b) Competitive 3-sigma contender test against `T_best`: let `T_best` be
+//       the lowest mean duration on the same `GpuInputBuffers` among
+//       candidates that passed `ConfigRunner` correctness checks and are
+//       eligible for selection (reported via `RecordValidatedCandidate`, with
+//       `ConfigRunner` profiling trusted reference backends first). Under
+//       the null hypothesis that candidate `k` is at least as fast as the
+//       leader (`mu_k <= mu_best`), `T_0` has upper idle bias `<= delta_0` and
+//       the difference `T_0 - T_best` (1 run vs. an N-run mean) has combined
+//       standard error:
+//
+//         sigma_diff(T_best, N) =
+//             sqrt(1 + 1 / N) * hypot(sigma_0, sigma_m * T_best)
+//
+//       At `z = 3` (99.87% one-sided normal confidence), any candidate with
+//
+//         T_0 > T_best + delta_0 + 3 * sigma_diff(T_best, N)
+//
+//       cannot plausibly beat the current leader and stops after `run == 0`.
+//       Contenders within this margin execute all `num_timed_runs` passes so
+//       first-run transients are averaged out before ranking close tiles.
+//       This test requires active L2 flushing before every timed run: without
+//       it, `run == 0` follows the L2-perturbing warm-up redzone check while
+//       runs `1..N-1` are L2-hot, so `T_0` carries an unbounded cold-cache
+//       bias relative to a multi-run `T_best` and only regime (a) applies.
+constexpr int64_t kMaxMultiRunDurationNs = 500'000;  // 500 us
+constexpr double kFirstRunIdleBiasNs = 2'000.0;      // 2.0 us
+constexpr double kBoundaryJitterStdDevNs = 1'000.0;  // 1.0 us
+constexpr double kRelativeNoiseStdDev = 0.01;        // 1.0%
+constexpr double kContenderConfidenceSigma = 3.0;    // 99.87% one-sided
+
+bool ShouldStopAfterFirstRun(int64_t first_run_ns, int64_t best_duration_ns,
+                             int num_timed_runs, bool l2_flush_active) {
+  if (num_timed_runs <= 1) {
+    return true;
+  }
+  // Mock or unprofiled executables may report <= 0 (`GpuExecutable` clamps real
+  // timings to >= 1 ns in `MaybeSyncAndProfile`), and kernels at or above
+  // `kMaxMultiRunDurationNs` have <0.45% transient/boundary error.
+  if (first_run_ns <= 0 || first_run_ns >= kMaxMultiRunDurationNs) {
+    return true;
+  }
+  if (!l2_flush_active || best_duration_ns <= 0 ||
+      best_duration_ns == std::numeric_limits<int64_t>::max() ||
+      first_run_ns <= best_duration_ns) {
+    return false;
+  }
+  const double best_ns = static_cast<double>(best_duration_ns);
+  const double per_run_sigma_ns =
+      std::hypot(kBoundaryJitterStdDevNs, kRelativeNoiseStdDev * best_ns);
+  const double diff_sigma_ns =
+      std::sqrt(1.0 + 1.0 / static_cast<double>(num_timed_runs)) *
+      per_run_sigma_ns;
+  const double contender_upper_bound_ns =
+      best_ns + kFirstRunIdleBiasNs + kContenderConfidenceSigma * diff_sigma_ns;
+  return static_cast<double>(first_run_ns) > contender_upper_bound_ns;
+}
 
 std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
     absl::Span<se::DeviceAddressBase const> buffers,
@@ -255,13 +362,37 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
     LOG(ERROR) << "Failed to create stream: " << stream.status();
     return nullptr;
   }
-  return absl::WrapUnique(new GpuProfiler(stream_executor, active_allocator,
-                                          std::move(owned_allocator),
-                                          stream.value(), options));
+
+  // Overwriting twice the L2 cache size evicts all previously cached lines.
+  const int64_t cache_flush_bytes =
+      options.flush_caches
+          ? std::max(
+                2 * stream_executor->GetDeviceDescription().l2_cache_size(),
+                kMinCacheFlushBytes)
+          : 0;
+  return absl::WrapUnique(new GpuProfiler(
+      stream_executor, active_allocator, std::move(owned_allocator),
+      stream.value(), options, cache_flush_bytes));
+}
+
+GpuProfiler::~GpuProfiler() {
+  if (!cache_flush_buffer_.is_null()) {
+    absl::Status status = stream_->BlockHostUntilDone();
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to synchronize stream before freeing cache flush "
+                    "buffer: "
+                 << status;
+    }
+  }
 }
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
     const Executable* executable, const HloInstruction* instr) {
+  if (!cache_flush_buffer_.is_null()) {
+    ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(cache_flush_buffer_.Free());
+  }
+  cache_flush_alloc_failed_ = false;
   ABSL_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
       RedzoneBuffers::FromProgramShape(
@@ -310,6 +441,7 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
                         .status());
     ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
     if (warmup_rz.has_value()) {
+      absl::ReaderMutexLock lock(GetGpuMutex(stream_executor_));
       ABSL_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check,
                        warmup_rz->CheckRedzones());
       if (!rz_check.ok()) {
@@ -325,19 +457,100 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     }
   }
 
+  // Average over `num_timed_runs` for competitive candidates so run-to-run
+  // jitter and first-run post-host-sync transients do not flip selection among
+  // close tiles, while stopping after `run == 0` when `ShouldStopAfterFirstRun`
+  // determines extra passes cannot plausibly change the winner.
+  int num_timed_runs = std::max(1, options_.num_timed_runs);
+  absl::Duration total_duration = absl::ZeroDuration();
   ExecutionProfile profile;
-  profile.set_warmup_run_executed(true);
-  std::vector<ExecutionInput> execution_inputs =
-      CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
-                                       rz_buffers.input_shapes());
+  for (int run = 0; run < num_timed_runs; ++run) {
+    ABSL_RETURN_IF_ERROR(FlushCaches());
+    profile.Clear();
+    profile.set_warmup_run_executed(true);
+    std::vector<ExecutionInput> execution_inputs =
+        CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
+                                         rz_buffers.input_shapes());
 
-  ABSL_ASSIGN_OR_RETURN(
-      ExecutionOutput execution_output,
-      Execute(executable, std::move(execution_inputs), &profile, allocator_));
+    ABSL_ASSIGN_OR_RETURN(
+        ExecutionOutput execution_output,
+        Execute(executable, std::move(execution_inputs), &profile, allocator_));
 
-  result.duration = absl::Nanoseconds(profile.compute_time_ns());
-  result.output_buffer = execution_output.Commit().ConsumeResult();
+    const int64_t duration_ns = profile.compute_time_ns();
+    total_duration += absl::Nanoseconds(duration_ns);
+    // Evaluated after `FlushCaches()` so allocation failures on `run == 0`
+    // are reflected.
+    const bool l2_flush_active =
+        cache_flush_bytes_ > 0 && !cache_flush_alloc_failed_;
+    if (run == 0 && options_.adaptive_early_stopping &&
+        ShouldStopAfterFirstRun(
+            duration_ns,
+            gpu_buffers.best_duration_ns.load(std::memory_order_relaxed),
+            num_timed_runs, l2_flush_active)) {
+      num_timed_runs = 1;
+    }
+    if (run == num_timed_runs - 1) {
+      result.output_buffer = execution_output.Commit().ConsumeResult();
+    }
+  }
+  result.duration = total_duration / num_timed_runs;
   return result;
+}
+
+void GpuProfiler::RecordValidatedCandidate(const InputBuffers& buffers,
+                                           absl::Duration duration) {
+  if (!options_.adaptive_early_stopping) {
+    return;
+  }
+  absl::down_cast<const GpuInputBuffers&>(buffers).RecordCandidateDurationNs(
+      absl::ToInt64Nanoseconds(duration));
+}
+
+absl::Status GpuProfiler::FlushCaches() {
+  if (cache_flush_bytes_ <= 0 || cache_flush_alloc_failed_) {
+    return absl::OkStatus();
+  }
+  auto allocate_flush_buffer = [&]() {
+    absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> buffer =
+        allocator_->Allocate(stream_executor_->device_ordinal(),
+                             cache_flush_bytes_,
+                             /*retry_on_failure=*/false);
+    if (!buffer.ok()) {
+      cache_flush_alloc_failed_ = true;
+      if (!logged_cache_flush_alloc_failure_) {
+        logged_cache_flush_alloc_failure_ = true;
+        LOG(WARNING) << "Failed to allocate " << cache_flush_bytes_
+                     << " bytes to flush caches between autotuning runs, "
+                        "profiling with warm caches: "
+                     << buffer.status();
+      }
+    }
+    return buffer;
+  };
+
+  if (allocator_->AllowsAsynchronousDeallocation()) {
+    // Pool and VMM allocators handle stream-ordered reuse in Deallocate(), so
+    // release the scratch buffer immediately after scheduling MemZero() rather
+    // than holding it across input-buffer creation, warm-up redzones, or
+    // timed executions.
+    absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> buffer =
+        allocate_flush_buffer();
+    if (!buffer.ok()) {
+      return absl::OkStatus();
+    }
+    return stream_->MemZero(buffer->ptr(), (*buffer)->size());
+  }
+
+  if (cache_flush_buffer_.is_null()) {
+    absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> buffer =
+        allocate_flush_buffer();
+    if (!buffer.ok()) {
+      return absl::OkStatus();
+    }
+    cache_flush_buffer_ = *std::move(buffer);
+  }
+  return stream_->MemZero(cache_flush_buffer_.ptr(),
+                          cache_flush_buffer_->size());
 }
 
 absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(

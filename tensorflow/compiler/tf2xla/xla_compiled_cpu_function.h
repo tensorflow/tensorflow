@@ -115,12 +115,10 @@ class XlaCompiledCpuFunction {
     // Serialized thunk execution specific (used for AOT to avoid binary size
     // issues)
     std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
-                       std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+                       xla::cpu::RngState&)>
         thunk_run_impl_ = nullptr;
 
     std::vector<std::pair<uint64_t, char*>> embedded_constant_buffers_;
-
-    std::vector<int64_t> rng_state_deltas_;
     // End serialized thunk execution specific
 
     // Contains information about the buffers used by the XLA computation.
@@ -193,7 +191,7 @@ class XlaCompiledCpuFunction {
 
   XlaCompiledCpuFunction(const XlaCompiledCpuFunction&) = delete;
   XlaCompiledCpuFunction& operator=(const XlaCompiledCpuFunction&) = delete;
-  XlaCompiledCpuFunction(XlaCompiledCpuFunction&&) = default;
+  XlaCompiledCpuFunction(XlaCompiledCpuFunction&& other) noexcept;
   XlaCompiledCpuFunction& operator=(XlaCompiledCpuFunction&&) = default;
 
   // Sets the intra-op thread pool used to run individual ops concurrently.
@@ -395,7 +393,7 @@ class XlaCompiledCpuFunction {
   static void set_static_data_thunk_run_impl(
       StaticData* static_data,
       std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
-                         std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+                         xla::cpu::RngState&)>
           thunk_run_impl) {
     static_data->thunk_run_impl_ = std::move(thunk_run_impl);
   }
@@ -405,11 +403,6 @@ class XlaCompiledCpuFunction {
       std::vector<std::pair<uint64_t, char*>> embedded_constant_buffers) {
     static_data->embedded_constant_buffers_ =
         std::move(embedded_constant_buffers);
-  }
-
-  static void set_static_data_rng_state_deltas(
-      StaticData* static_data, std::vector<int64_t> rng_state_deltas) {
-    static_data->rng_state_deltas_ = std::move(rng_state_deltas);
   }
 
   static void set_static_data_buffer_infos(
@@ -518,16 +511,16 @@ class XlaCompiledCpuFunction {
   const std::optional<size_t> temp_allocation_index_;
 
   std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
-                     std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+                     xla::cpu::RngState&)>
       thunk_run_impl_ = nullptr;
 
-  std::vector<std::unique_ptr<xla::cpu::RngState>> rng_states_;
+  std::unique_ptr<xla::cpu::RngState> rng_state_;
 
   const size_t result_index_;
 
   // Array containing pointers to argument and temp buffers (slots corresponding
   // to constant and on-stack buffers are null).
-  void** const buffer_table_;
+  void** buffer_table_ = nullptr;
 
   // Describes the buffers used by the XLA computation.
   const xla::cpu::BufferAllocationInfo* const buffer_infos_;

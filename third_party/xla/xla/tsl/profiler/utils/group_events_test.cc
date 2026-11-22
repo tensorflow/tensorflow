@@ -271,6 +271,93 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
   EXPECT_EQ(group_metadata_map.at(3).name, "1");
 }
 
+TEST(GroupEventsTest, GroupTensorFlowLoopWithThreadpoolRegionTest) {
+  constexpr int64_t kStepId = 0;
+  constexpr int64_t kFirstIterNum = 0;
+  constexpr int64_t kSecondIterNum = 1;
+  constexpr int64_t kRegionId = 42;
+  constexpr int64_t kFirstCorrelationId = 100;
+  constexpr int64_t kSecondCorrelationId = 101;
+  constexpr int64_t kThreadpoolEvent =
+      static_cast<int64_t>(ContextType::kThreadpoolEvent);
+
+  XSpace space;
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
+  host_plane_builder.ReserveLines(2);
+
+  // Thread 0 starts iteration 0 and schedules a threadpool task.
+  auto thread_0 = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &thread_0,
+               HostEventType::kExecutorStateProcess, 10, 40,
+               {{StatType::kStepId, kStepId},
+                {StatType::kIterNum, kFirstIterNum},
+                {StatType::kConsumerType, kTfExecutor},
+                {StatType::kConsumerId, kStepId}});
+  CreateXEvent(&host_plane_builder, &thread_0, "matmul_0", 15, 10,
+               {{StatType::kCorrelationId, kFirstCorrelationId}});
+  CreateXEvent(&host_plane_builder, &thread_0, kThreadpoolListenerRecord, 30,
+               10,
+               {{StatType::kProducerType, kThreadpoolEvent},
+                {StatType::kProducerId, kRegionId}});
+
+  // Thread 1 runs a ThreadpoolListener::Region that executes both iteration 0
+  // and iteration 1 (e.g., via NextIteration in ProcessInline).
+  auto thread_1 = host_plane_builder.GetOrCreateLine(1);
+  CreateXEvent(&host_plane_builder, &thread_1, kThreadpoolListenerRegion, 50,
+               100,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, kRegionId}});
+  CreateXEvent(&host_plane_builder, &thread_1,
+               HostEventType::kExecutorStateProcess, 55, 30,
+               {{StatType::kStepId, kStepId},
+                {StatType::kIterNum, kFirstIterNum},
+                {StatType::kConsumerType, kTfExecutor},
+                {StatType::kConsumerId, kStepId}});
+  CreateXEvent(&host_plane_builder, &thread_1,
+               HostEventType::kExecutorStateProcess, 90, 50,
+               {{StatType::kStepId, kStepId},
+                {StatType::kIterNum, kSecondIterNum},
+                {StatType::kConsumerType, kTfExecutor},
+                {StatType::kConsumerId, kStepId}});
+  CreateXEvent(&host_plane_builder, &thread_1, "matmul_1", 100, 20,
+               {{StatType::kCorrelationId, kSecondCorrelationId}});
+
+  XPlane* device_plane = space.add_planes();
+  XPlaneBuilder device_plane_builder(device_plane);
+  device_plane_builder.ReserveLines(1);
+  auto stream = device_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&device_plane_builder, &stream, "matmul_0", 200, 50,
+               {{StatType::kCorrelationId, kFirstCorrelationId}});
+  CreateXEvent(&device_plane_builder, &stream, "matmul_1", 300, 50,
+               {{StatType::kCorrelationId, kSecondCorrelationId}});
+
+  EventForest event_forest;
+  GroupTfEvents(&space, &event_forest);
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
+  EXPECT_EQ(group_metadata_map.size(), 2);
+  ASSERT_TRUE(group_metadata_map.contains(0));
+  EXPECT_EQ(group_metadata_map.at(0).name, "0");
+  ASSERT_TRUE(group_metadata_map.contains(1));
+  EXPECT_EQ(group_metadata_map.at(1).name, "1");
+
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
+  absl::flat_hash_map<absl::string_view, int64_t> device_event_group_ids;
+  device_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (std::optional<XStatVisitor> group_id =
+              event.GetStat(StatType::kGroupId)) {
+        device_event_group_ids[event.Name()] = group_id->IntValue();
+      }
+    });
+  });
+  EXPECT_THAT(device_event_group_ids,
+              ::testing::UnorderedElementsAre(::testing::Pair("matmul_0", 0),
+                                              ::testing::Pair("matmul_1", 1)));
+}
+
 TEST(GroupEventsTest, EagerOpTest) {
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);
@@ -678,6 +765,120 @@ TEST(GroupEventsTest, BatchingSessionTest) {
     });
   });
   EXPECT_EQ(num_checked, 3);
+}
+
+TEST(GroupEventsTest, AdaptiveSharedBatchSchedulerChainedProcessBatchTest) {
+  constexpr absl::string_view kSchedule = "ASBSQueue::Schedule";
+  constexpr int64_t kBatchContextType =
+      static_cast<int64_t>(ContextType::kAdaptiveSharedBatchScheduler);
+  constexpr int64_t kThreadpoolEvent =
+      static_cast<int64_t>(ContextType::kThreadpoolEvent);
+  constexpr int64_t kBatch0ContextId = 1001;
+  constexpr int64_t kBatch1ContextId = 1002;
+  constexpr int64_t kRegion0Id = 5001;
+  constexpr int64_t kRegion1Id = 5002;
+  constexpr int64_t kBatch0CorrelationId = 201;
+  constexpr int64_t kBatch1CorrelationId = 202;
+  constexpr int64_t kBatchingSessionRunRootLevel = 1;
+  constexpr int64_t kProcessBatchRootLevel = 2;
+
+  XSpace space;
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
+  host_plane_builder.ReserveLines(4);
+
+  // Request 0 enqueues into Batch 0 and schedules Batch 0 on the threadpool.
+  auto request_thread_0 = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &request_thread_0,
+               HostEventType::kBatchingSessionRun, 0, 100,
+               {{StatType::kIsRoot, kBatchingSessionRunRootLevel}});
+  CreateXEvent(&host_plane_builder, &request_thread_0, kSchedule, 10, 20,
+               {{StatType::kProducerType, kBatchContextType},
+                {StatType::kProducerId, kBatch0ContextId}});
+  CreateXEvent(&host_plane_builder, &request_thread_0,
+               kThreadpoolListenerRecord, 20, 5,
+               {{StatType::kProducerType, kThreadpoolEvent},
+                {StatType::kProducerId, kRegion0Id}});
+
+  // Request 1 enqueues into Batch 1 (scheduled later when Batch 0 finishes).
+  auto request_thread_1 = host_plane_builder.GetOrCreateLine(1);
+  CreateXEvent(&host_plane_builder, &request_thread_1,
+               HostEventType::kBatchingSessionRun, 30, 250,
+               {{StatType::kIsRoot, kBatchingSessionRunRootLevel}});
+  CreateXEvent(&host_plane_builder, &request_thread_1, kSchedule, 40, 20,
+               {{StatType::kProducerType, kBatchContextType},
+                {StatType::kProducerId, kBatch1ContextId}});
+
+  // Batch 0 runs inside Region 0 and calls MaybeScheduleNextBatch() before
+  // CallbackWrapper's ProcessBatch TraceMe scope exits, scheduling Region 1.
+  auto batch_thread_0 = host_plane_builder.GetOrCreateLine(2);
+  CreateXEvent(&host_plane_builder, &batch_thread_0, kThreadpoolListenerRegion,
+               50, 90,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, kRegion0Id}});
+  CreateXEvent(&host_plane_builder, &batch_thread_0,
+               HostEventType::kProcessBatch, 55, 80,
+               {{StatType::kConsumerType, kBatchContextType},
+                {StatType::kConsumerId, kBatch0ContextId},
+                {StatType::kIsRoot, kProcessBatchRootLevel}});
+  CreateXEvent(&host_plane_builder, &batch_thread_0, "batch_0_matmul", 60, 20,
+               {{StatType::kCorrelationId, kBatch0CorrelationId}});
+  CreateXEvent(&host_plane_builder, &batch_thread_0, kThreadpoolListenerRecord,
+               125, 5,
+               {{StatType::kProducerType, kThreadpoolEvent},
+                {StatType::kProducerId, kRegion1Id}});
+
+  // Batch 1 runs inside Region 1.
+  auto batch_thread_1 = host_plane_builder.GetOrCreateLine(3);
+  CreateXEvent(&host_plane_builder, &batch_thread_1, kThreadpoolListenerRegion,
+               150, 80,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, kRegion1Id}});
+  CreateXEvent(&host_plane_builder, &batch_thread_1,
+               HostEventType::kProcessBatch, 155, 70,
+               {{StatType::kConsumerType, kBatchContextType},
+                {StatType::kConsumerId, kBatch1ContextId},
+                {StatType::kIsRoot, kProcessBatchRootLevel}});
+  CreateXEvent(&host_plane_builder, &batch_thread_1, "batch_1_matmul", 160, 20,
+               {{StatType::kCorrelationId, kBatch1CorrelationId}});
+
+  XPlane* device_plane = space.add_planes();
+  XPlaneBuilder device_plane_builder(device_plane);
+  device_plane_builder.ReserveLines(1);
+  auto stream = device_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&device_plane_builder, &stream, "batch_0_matmul", 300, 40,
+               {{StatType::kCorrelationId, kBatch0CorrelationId}});
+  CreateXEvent(&device_plane_builder, &stream, "batch_1_matmul", 400, 40,
+               {{StatType::kCorrelationId, kBatch1CorrelationId}});
+
+  EventForest event_forest;
+  GroupTfEvents(&space, &event_forest);
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
+
+  // Expect 4 groups: ProcessBatch 0 (group 0), ProcessBatch 1 (group 1),
+  // Request 0 (group 2), and Request 1 (group 3).
+  ASSERT_EQ(group_metadata_map.size(), 4);
+  EXPECT_THAT(group_metadata_map.at(0).parents,
+              ::testing::UnorderedElementsAre(2));
+  EXPECT_THAT(group_metadata_map.at(1).parents,
+              ::testing::UnorderedElementsAre(3));
+
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
+  absl::flat_hash_map<absl::string_view, int64_t> device_event_group_ids;
+  device_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (std::optional<XStatVisitor> group_id =
+              event.GetStat(StatType::kGroupId)) {
+        device_event_group_ids[event.Name()] = group_id->IntValue();
+      }
+    });
+  });
+  EXPECT_THAT(
+      device_event_group_ids,
+      ::testing::UnorderedElementsAre(::testing::Pair("batch_0_matmul", 0),
+                                      ::testing::Pair("batch_1_matmul", 1)));
 }
 
 TEST(GroupTPUEventsTest, TpuExecuteOpTest) {

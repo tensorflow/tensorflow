@@ -23,17 +23,18 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
@@ -74,19 +75,25 @@ absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment = nullptr);
 
-// Adds the metadata arguments to the function's argument list.
-// For collective some extra metadata arguments are needed such as rank,
-// and pointers to remote GPU buffers.
-// The fn_arg_types is updated in place to add these.
-// Returns the number of metadata arguments added or error.
-absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
-    llvm::SmallVector<mlir::Type>& fn_arg_types, mlir::ImplicitLocOpBuilder& b,
-    const HloComputation* hlo_computation);
+// Builds the collective entry function signature spec for `fusion`.
+absl::StatusOr<xla::xtile::CollectiveEntrySpec> BuildCollectiveEntrySpec(
+    const HloFusionInstruction& fusion);
 
-// Version of [AddCollectiveMetadataArguments] that does the same for
-// [emitters::KernelArgument] structure.
-absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
-    const HloFusionInstruction* fusion);
+// Returns the unmanaged kernel arguments (`[scratch..., signal, rank]`) for a
+// collective `fusion`.
+absl::StatusOr<std::vector<emitters::KernelArgument>>
+GetCollectiveUnmanagedKernelArguments(const HloFusionInstruction* fusion);
+
+// Creates KernelArguments for a collective fusion, including unmanaged metadata
+// arguments and peer-pointer-table attributes.
+absl::StatusOr<emitters::KernelArguments> CreateCollectiveKernelArguments(
+    emitters::KernelArguments::SliceProvider slice_provider,
+    const emitters::KernelArguments::BufferAlignment& buffer_alignment,
+    const HloFusionInstruction& fusion);
+absl::StatusOr<emitters::KernelArguments> CreateCollectiveKernelArguments(
+    const BufferAssignment& buffer_assignment,
+    const emitters::KernelArguments::BufferAlignment& buffer_alignment,
+    const HloFusionInstruction& fusion);
 
 // Rewrites stablehlo all-reduce op to a triton implementation.
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
@@ -104,20 +111,20 @@ mlir::LogicalResult RewriteAllToAll(mlir::stablehlo::AllToAllOp op,
 mlir::LogicalResult RewriteReduceScatter(xla::xtile::ReduceScatterOp op,
                                          mlir::PatternRewriter& rewriter);
 
-// Returns the symmetric memory type for the scratch buffers of the collective
-// kernel emitted for `instr` (a collective or a collective fusion), or an error
-// if the collective is cross-host and cross-host symmetric memory collectives
-// are not supported on `gpu_topology`.
+// Returns the symmetric memory type for the scratch or symmetric IO buffers of
+// the collective kernel emitted for `instr` (a collective or a collective
+// fusion), or an error if the collective is cross-host and cross-host symmetric
+// memory collectives are not supported on `gpu_topology`.
 absl::StatusOr<SymmetricMemoryType> GetSymmetricMemoryType(
     const GpuTopology& gpu_topology, const HloInstruction& instr,
     const DeviceAssignment* device_assignment = nullptr);
 // Creates a CollectiveKernelSpec for a given collective or fusion instruction.
-// `scratch_memory_type` is used for all scratch buffers.
+// `symmetric_memory_type` is used for collective symmetric buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
     const GpuTopology& gpu_topology, const HloInstruction* instr,
     const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type,
-    const DeviceAssignment* device_assignment = nullptr);
+    SymmetricMemoryType symmetric_memory_type,
+    const DeviceAssignment* device_assignment);
 
 // Returns true if `rs` needs to be reshaped by `FlattenReduceScatterFusion`
 // before tiling: either an output is not divisible by the replica group size

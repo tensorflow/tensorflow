@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/scatter_expander.h"
+#include "xla/hlo/transforms/expanders/scatter_expander.h"
 
 namespace xla {
 

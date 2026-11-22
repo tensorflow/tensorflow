@@ -182,7 +182,7 @@ bool isa(const absl_nonnull tsl::RCReference<T>& val) {
 }
 
 template <typename TargetT, int&... ExplicitParameterBarrier, typename T>
-bool isa(const RCReferenceWrapper<T>& val) {
+bool isa(const absl_nonnull RCReferenceWrapper<T>& val) {
   return isa<TargetT>(val.get());
 }
 
@@ -219,7 +219,7 @@ bool isa(const absl_nonnull tsl::RCReference<T>& val) {
 
 template <typename First, typename Second, typename... Rest,
           int&... ExplicitParameterBarrier, typename T>
-bool isa(const RCReferenceWrapper<T>& val) {
+bool isa(const absl_nonnull RCReferenceWrapper<T>& val) {
   return isa<First, Second, Rest...>(val.get());
 }
 
@@ -251,7 +251,7 @@ bool isa_and_present(const absl_nullable tsl::RCReference<T>& val) {
 }
 
 template <typename TargetT, int&... ExplicitParameterBarrier, typename T>
-bool isa_and_present(const RCReferenceWrapper<T>& val) {
+bool isa_and_present(const absl_nullable RCReferenceWrapper<T>& val) {
   return isa_and_present<TargetT>(val.get());
 }
 
@@ -277,7 +277,7 @@ bool isa_and_nonnull(const absl_nullable tsl::RCReference<T>& val) {
 }
 
 template <typename TargetT, int&... ExplicitParameterBarrier, typename T>
-bool isa_and_nonnull(const RCReferenceWrapper<T>& val) {
+bool isa_and_nonnull(const absl_nullable RCReferenceWrapper<T>& val) {
   return isa_and_present<TargetT>(val);
 }
 
@@ -337,7 +337,7 @@ tsl::RCReference<TargetT> cast(absl_nonnull tsl::RCReference<T> val) {
 }
 
 template <typename TargetT, int&... ExplicitParameterBarrier, typename T>
-RCReferenceWrapper<TargetT> cast(RCReferenceWrapper<T> val) {
+RCReferenceWrapper<TargetT> cast(absl_nonnull RCReferenceWrapper<T> val) {
   CHECK(val != nullptr) << "cast<> used on a null RCReferenceWrapper";
   CHECK(isa<TargetT>(val.get())) << "cast<> failed: type mismatch";
   return RCReferenceWrapper<TargetT>(
@@ -391,7 +391,8 @@ tsl::RCReference<TargetT> cast_if_present(
 }
 
 template <typename TargetT, int&... ExplicitParameterBarrier, typename T>
-RCReferenceWrapper<TargetT> cast_if_present(RCReferenceWrapper<T> val) {
+RCReferenceWrapper<TargetT> cast_if_present(
+    absl_nullable RCReferenceWrapper<T> val) {
   if (val == nullptr) {
     return {};
   }
@@ -425,7 +426,8 @@ tsl::RCReference<TargetT> cast_or_null(absl_nullable tsl::RCReference<T> val) {
 }
 
 template <typename TargetT, int&... ExplicitParameterBarrier, typename T>
-RCReferenceWrapper<TargetT> cast_or_null(RCReferenceWrapper<T> val) {
+RCReferenceWrapper<TargetT> cast_or_null(
+    absl_nullable RCReferenceWrapper<T> val) {
   return cast_if_present<TargetT>(std::move(val));
 }
 
@@ -482,7 +484,7 @@ tsl::RCReference<TargetT> dyn_cast(absl_nonnull tsl::RCReference<T> val) {
 }
 
 template <typename TargetT, int&... ExplicitParameterBarrier, typename T>
-RCReferenceWrapper<TargetT> dyn_cast(RCReferenceWrapper<T> val) {
+RCReferenceWrapper<TargetT> dyn_cast(absl_nonnull RCReferenceWrapper<T> val) {
   CHECK(val != nullptr) << "dyn_cast<> used on a null RCReferenceWrapper";
   if (isa<TargetT>(val.get())) {
     return RCReferenceWrapper<TargetT>(
@@ -541,7 +543,8 @@ tsl::RCReference<TargetT> dyn_cast_if_present(
 }
 
 template <typename TargetT, int&... ExplicitParameterBarrier, typename T>
-RCReferenceWrapper<TargetT> dyn_cast_if_present(RCReferenceWrapper<T> val) {
+RCReferenceWrapper<TargetT> dyn_cast_if_present(
+    absl_nullable RCReferenceWrapper<T> val) {
   if (val == nullptr) {
     return {};
   }
@@ -578,7 +581,8 @@ tsl::RCReference<TargetT> dyn_cast_or_null(
 }
 
 template <typename TargetT, int&... ExplicitParameterBarrier, typename T>
-RCReferenceWrapper<TargetT> dyn_cast_or_null(RCReferenceWrapper<T> val) {
+RCReferenceWrapper<TargetT> dyn_cast_or_null(
+    absl_nullable RCReferenceWrapper<T> val) {
   return dyn_cast_if_present<TargetT>(std::move(val));
 }
 

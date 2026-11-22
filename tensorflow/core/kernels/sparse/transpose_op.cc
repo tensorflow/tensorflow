@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "Eigen/SparseCore"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -159,6 +160,7 @@ absl::Status CSRSparseMatrixTranspose<Device, T>::operator()(
   output_dense_shape(rank - 2) = input_dense_shape(rank - 1);
   output_dense_shape(rank - 1) = input_dense_shape(rank - 2);
   const int64_t output_rows = output_dense_shape(rank - 2);
+  TF_RETURN_IF_ERROR(CSRSparseMatrix::ValidateDenseShape(output_dense_shape_t));
 
   // nnzs per batch do not change with matrix transposition.
   Tensor batch_ptr_t = input_matrix.batch_pointers();

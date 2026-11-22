@@ -225,9 +225,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       {
         mutex_lock l(*mu_);
         TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
-        // Wait until the next element in the buffer has been
-        // produced, or we are shutting down.
-        while (buffer_.empty() && !prefetch_thread_finished_ &&
+        // Wait until the next element in the buffer has been produced, or
+        // we are shutting down or cancelled.
+        while (buffer_.empty() && !prefetch_thread_finished_ && !cancelled_ &&
                buffer_limit() != 0) {
           if (legacy_autotune_) {
             auto_tuner_->RecordEmpty();
@@ -236,6 +236,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           RecordStop(ctx);
           cond_var_->wait(l);
           RecordStart(ctx);
+        }
+
+        if (cancelled_) {
+          return absl::CancelledError(
+              "tf.data prefetch iterator has been cancelled.");
         }
 
         if (!buffer_.empty()) {

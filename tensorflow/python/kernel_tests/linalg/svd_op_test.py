@@ -65,7 +65,8 @@ class SvdOpTest(test.TestCase):
       if test_util.is_gpu_available(cuda_only=True):
         with self.assertRaisesRegex(
             errors_impl.UnimplementedError,
-            "Determinism is not yet supported for SVD of matrices with 1 column."
+            "Determinism is not yet supported for SVD of matrices with 1 "
+            "column.",
         ):
           self.evaluate(linalg_ops.svd(matrix))
 
@@ -130,6 +131,38 @@ class SvdOpTest(test.TestCase):
     self.assertAllEqual(s, np.zeros([0, 2]))
     self.assertAllEqual(u, np.zeros([0, 2, 2]))
     self.assertAllEqual(v, np.zeros([0, 2, 2]))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testNonFiniteInputsConsistentNaNs(self):
+    for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+      is_complex = dtype in (np.complex64, np.complex128)
+      bad_matrices = [
+          np.array([[np.inf, -np.inf]], dtype=dtype),
+          np.array([[np.nan, 1.0], [0.0, 1.0]], dtype=dtype),
+      ]
+      if is_complex:
+        bad_matrices.append(
+            np.array([[complex(1.0, np.nan), 1.0], [0.0, 1.0]], dtype=dtype)
+        )
+      for compute_uv in [True, False]:
+        for full_matrices in [True, False]:
+          for bad_matrix in bad_matrices:
+            result = linalg_ops.svd(
+                bad_matrix,
+                compute_uv=compute_uv,
+                full_matrices=full_matrices,
+            )
+            if compute_uv:
+              s, u, v = self.evaluate(result)
+              self.assertTrue(np.all(np.isnan(s)))
+              self.assertTrue(np.all(np.isnan(np.real(u))))
+              self.assertTrue(np.all(np.isnan(np.real(v))))
+              if is_complex:
+                self.assertTrue(np.all(np.isnan(np.imag(u))))
+                self.assertTrue(np.all(np.isnan(np.imag(v))))
+            else:
+              s = self.evaluate(result)
+              self.assertTrue(np.all(np.isnan(s)))
 
 
 def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,

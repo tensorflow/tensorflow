@@ -33,6 +33,8 @@ absl::Status ToStatus(CUptiResult result) {
       return absl::FailedPreconditionError("CUPTI not initialized");
     case CUPTI_ERROR_INSUFFICIENT_PRIVILEGES:
       return absl::PermissionDeniedError("CUPTI needs root access");
+    case CUPTI_ERROR_NOT_SUPPORTED:
+      return absl::UnimplementedError("CUPTI not supported");
     default: {
       const char* errstr = "";
       cuptiGetResultString(result, &errstr);

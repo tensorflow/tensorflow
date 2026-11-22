@@ -1,0 +1,132 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+edition = "2023";
+
+package xla;
+
+message AlgebraicSimplifierOptions {
+  // If is_layout_sensitive is true, then the simplifier preserves layout during
+  // transformation. Otherwise, layout is ignored.
+  bool is_layout_sensitive = 1;
+
+  // Enable dot simplification on platforms where it is profitable.
+  bool enable_dot_strength_reduction = 2 [default = true];
+
+  // This platform will not run the DotDecomposer to canonicalize dots.
+  bool supports_non_canonical_dots = 3 [default = true];
+
+  // Enable dot->multiply rewrite for dot as an outer-product.
+  bool enable_dot_to_multiply_rewrite = 4 [default = true];
+
+  bool enable_move_dot_param_to_rhs = 5;
+
+  // Enable convolution simplification on platforms where it is profitable.
+  bool enable_conv_simplification = 6 [default = true];
+
+  // Enable convolution operand swapping on platforms where it is supported.
+  bool enable_conv_operand_swap = 7 [default = true];
+
+  // Enable rewrite of convolution + add + multiply -> multiply + convolution +
+  // add.
+  bool enable_conv_add_multiply_reorder = 8;
+
+  // Move constant scalar multiply to one operand or output of convolutions with
+  // the smallest tensor size, to reduce the number of scalar multiply.
+  bool enable_scalar_multiply_reduction = 9;
+
+  // Set the algebraic simplifier to treat floats as real numbers.
+  bool enable_floats_are_real = 10;
+
+  // If enable_window_reduce_to_reduce_replacement is true, the kReduceWindow
+  // instruction can be optimized by replacement with simpler operations.
+  bool enable_window_reduce_to_reduce_replacement = 11 [default = true];
+
+  bool enable_reduce_of_reshape = 12 [default = true];
+
+  bool enable_negative_padding_replacement = 13 [default = true];
+
+  bool enable_dynamic_update_slice_to_pad_replacement = 14 [default = true];
+
+  bool enable_sink_broadcast = 15 [default = true];
+
+  // If true, always simplify reduce(transpose(x)) and reduce(reshape(x)), even
+  // if the transpose/reshape has multiple users. This can be beneficial on
+  // platforms where the extra transpose/reshape isn't as expensive as the
+  // optimization benefits brought about by simplifying the graph.
+  bool unconditionally_simplify_reduce_of_transpose_or_reshape = 16;
+
+  // Sets the size of a gather operand that can be unrolled into many selects.
+  int64 very_small_gather_size = 17 [default = 4];
+
+  // If true, min(x, NaN) = NaN. If false, min(x, NaN) = x.
+  //
+  // TODO(b/209827141): Remove this and make minmax_propagate_nan
+  // unconditionally true.
+  bool minmax_propagate_nan = 18 [default = true];
+
+  // When true, always replaces Reduce(concat({a,b,...})) with
+  // map(reduce(a),map(reduce(b),...,)). If false, only does the replacement if
+  // the shapes of a,b,... have the same dimensions.
+  bool enable_unconditional_reduce_of_concat_replacement = 19 [default = true];
+
+  // Indicates whether running on CPU.
+  bool executing_on_cpu = 20;
+
+  bool use_associative_reordering = 21;
+
+  double associative_reordering_threshold = 22 [default = 2.0];
+
+  bool raise_slice_and_reduce_through_dot = 23;
+
+  double raise_slice_and_reduce_through_dot_threshold = 24 [default = 2.0];
+
+  bool use_convert_constant_folding = 25;
+
+  // Option to disable conversion of dynamic-slice to slice.
+  bool disable_dynamic_slice_to_slice_conversion = 26;
+
+  // Option to set finite math.
+  bool enable_fast_math = 27;
+
+  bool enable_broadcast_degenerate_dimension = 28 [default = true];
+
+  bool enable_remove_no_op_reduce_precision = 29;
+
+  bool enable_onednn_support = 30;
+
+  bool rewrite_reshape_transpose_as_slice_concatenate = 31 [default = true];
+
+  bool run_to_fixed_point = 32 [default = true];
+
+  bool rewrite_no_op_bitcast_convert_to_bitcast = 33;
+
+  bool enable_conditional_simplification = 34;
+
+  bool enable_hoist_transpose_of_reshape = 35;
+
+  bool enable_fold_transpose_into_scatter = 36;
+
+  bool enable_folding_pad_into_convolution = 37 [default = true];
+
+  // Name of a custom call representing cudnn batchnorm forward training
+  // (e.g. __cudnn$batchNormalizationForwardTraining), whose output at index 2
+  // is guaranteed to be positive.
+  string cudnn_batchnorm_forward_training_metadata = 38;
+
+  // When is_layout_sensitive is true, whether reshapes with bitcast-compatible
+  // layouts may be treated as bitcasts.
+  bool enable_reshape_is_bitcast = 39 [default = true];
+}

@@ -45,7 +45,8 @@ SmallVector<InterpreterValue> Interpret(InterpreterState& state,
   auto fn = detail::GetFunction(op.getName().getStringRef());
   if (!fn) {
     llvm::errs() << "Unsupported op: " << op.getName().getStringRef() << "\n";
-    op.dump();
+    op.print(llvm::errs());
+    llvm::errs() << "\n";
     state.AddFailure("unsupported op");
     return {};
   }
@@ -69,7 +70,9 @@ SmallVector<InterpreterValue> Interpret(InterpreterState& state,
 
 SmallVector<InterpreterValue> Interpret(InterpreterState& state, Region& region,
                                         ArrayRef<InterpreterValue> bbargs) {
-  if (state.HasFailure()) return {};
+  if (state.HasFailure()) {
+    return {};
+  }
   assert(region.hasOneBlock() && "expected region to have one block");
   state.GetOptions().listener->EnterRegion(bbargs, region);
   InterpreterScope scope(state);
@@ -83,7 +86,9 @@ SmallVector<InterpreterValue> Interpret(InterpreterState& state, Region& region,
   std::optional<SmallVector<InterpreterValue>> block_results;
   for (mlir::Operation& op : block) {
     auto results = Interpret(state, op);
-    if (state.HasFailure()) return {};
+    if (state.HasFailure()) {
+      return {};
+    }
     if (op.hasTrait<OpTrait::IsTerminator>()) {
       assert(!block_results.has_value() && "Expected at most one terminator");
       block_results = results;

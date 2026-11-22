@@ -43,12 +43,6 @@ using EnvOptionsOverride =
 // options.
 using CompileOptionsMap = absl::flat_hash_map<std::string, xla::CompileOptions>;
 
-// Name of StringAttr on ifrt.CallOp used to contain the mesh name the IFRT
-// atom program will execute on. The mesh name is used as a key into a mapping
-// of optional compile options provided by users per mesh. If no compile options
-// are provided for a mesh, then the default compile options are used.
-inline constexpr llvm::StringLiteral kIfrtMeshNameAttrName = "ifrt.mesh_name";
-
 std::unique_ptr<mlir::Pass> CreateLowerToIfrtPass();
 
 // Registers -mpmd-lower-to-ifrt and -ifrt-mpmd-lower-to-ifrt-pipeline.

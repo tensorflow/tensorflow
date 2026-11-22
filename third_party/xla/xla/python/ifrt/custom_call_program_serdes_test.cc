@@ -20,6 +20,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -179,6 +182,25 @@ TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
     EXPECT_THAT(deserialized->outputs_bundle_slice_sizes,
                 testing::Optional(testing::ElementsAre(2, 3)));
   }
+}
+
+TEST_P(CustomCallCompileOptionsSerDesTest, EmptyOutputsBundleSliceSizes) {
+  CustomCallCompileOptions orig;
+  orig.outputs_bundle_slice_sizes = std::vector<int>{};
+  auto serialize_options = std::make_unique<SerializeOptions>(version());
+  absl::StatusOr<Serialized> serialized =
+      Serialize(orig, std::move(serialize_options));
+  if (version().version_number() < SerDesVersionNumber(7)) {
+    EXPECT_THAT(serialized,
+                absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+    return;
+  }
+  ASSERT_OK(serialized);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallCompileOptions> deserialized,
+      Deserialize<CustomCallCompileOptions>(*serialized, /*options=*/nullptr));
+  EXPECT_THAT(deserialized->outputs_bundle_slice_sizes,
+              testing::Optional(testing::IsEmpty()));
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -145,6 +145,9 @@ class WrappedDatasetVariantWrapper {
   }
 
   bool Decode(const VariantTensorData& data) {
+    if (data.tensors_size() == 0) {
+      return false;
+    }
     ds_tensor_ = data.tensors(0);
     return true;
   }

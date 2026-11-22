@@ -45,3 +45,11 @@ def config_googleapis():
             ],
         },
     )
+
+def _googleapis_ext_impl(ctx):
+    config_googleapis()
+    return ctx.extension_metadata(reproducible = True)
+
+googleapis_ext = module_extension(
+    implementation = _googleapis_ext_impl,
+)

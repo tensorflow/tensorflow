@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "benchmark/benchmark.h"  // from @com_google_benchmark
@@ -29,7 +30,9 @@ namespace {
 
 void BenchAttention(benchmark::State& state, int b, int query_len = 0,
                     bool transpose_io = false,
-                    AttentionImpl impl = AttentionImpl::kOdmlRuntimeBmm) {
+                    AttentionImpl impl = AttentionImpl::kOdmlRuntimeBmm,
+                    bool quantize_kv = false, bool int4_kv = false,
+                    TfLiteType sdpa_dot_type = kTfLiteNoType) {
   const int s = state.range(0);
   const int t = query_len == 0 ? s : query_len;
   const int h = state.range(1);
@@ -41,11 +44,10 @@ void BenchAttention(benchmark::State& state, int b, int query_len = 0,
   TfLiteYNNPackDelegateOptions options = TfLiteYNNPackDelegateOptionsDefault();
   options.num_threads = num_threads;
   options.static_shape = true;
+  options.sdpa_dot_type = sdpa_dot_type;
 
   // Initialize input data
   std::vector<float> q_data(b * n * t * h);
-  std::vector<float> k_data(b * n * s * h);
-  std::vector<float> v_data(b * n * h * s);
   std::vector<float> mask_data(b * 1 * t * s);
 
   for (int i = 0; i < b * t; ++i) {
@@ -56,10 +58,28 @@ void BenchAttention(benchmark::State& state, int b, int query_len = 0,
 
   // Run delegate model (YNNPACK)
   AttentionModel model(b, t, s, h, n, scale, transpose_io,
-                       /*use_delegate=*/true, options, impl);
+                       /*use_delegate=*/true, options, impl, /*n_kv=*/-1,
+                       quantize_kv, /*bool_mask=*/false, /*kv_zero_point=*/0,
+                       /*quantize_q=*/false, /*q_zero_point=*/0,
+                       /*quantize_output=*/false, /*output_zero_point=*/0,
+                       /*quantize_mask=*/false, /*mask_zero_point=*/0, int4_kv);
   model.PopulateTensor(model.query(), q_data);
-  model.PopulateTensor(model.key(), k_data);
-  model.PopulateTensor(model.value(), v_data);
+  if (int4_kv) {
+    std::vector<int8_t> k_qdata(b * n * s * h);
+    std::vector<int8_t> v_qdata(b * n * h * s);
+    model.PopulateInt4Tensor(model.key(), k_qdata);
+    model.PopulateInt4Tensor(model.value(), v_qdata);
+  } else if (quantize_kv) {
+    std::vector<int8_t> k_qdata(b * n * s * h);
+    std::vector<int8_t> v_qdata(b * n * h * s);
+    model.PopulateTensor(model.key(), k_qdata);
+    model.PopulateTensor(model.value(), v_qdata);
+  } else {
+    std::vector<float> k_data(b * n * s * h);
+    std::vector<float> v_data(b * n * h * s);
+    model.PopulateTensor(model.key(), k_data);
+    model.PopulateTensor(model.value(), v_data);
+  }
   if (model.runtime_bmm_params() != -1) {
     model.PopulateTensor(model.runtime_bmm_params(), {s_active});
   }
@@ -126,6 +146,30 @@ void SdpaAttentionDecode(benchmark::State& state) {
                  AttentionImpl::kOdmlSdpa);
 }
 
+void SdpaAttentionInt8Kv(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/0, /*transpose_io=*/false,
+                 AttentionImpl::kOdmlSdpa, /*quantize_kv=*/true,
+                 /*int4_kv=*/false, /*sdpa_dot_type=*/kTfLiteInt8);
+}
+
+void SdpaAttentionDecodeInt8Kv(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/1, /*transpose_io=*/false,
+                 AttentionImpl::kOdmlSdpa, /*quantize_kv=*/true,
+                 /*int4_kv=*/false, /*sdpa_dot_type=*/kTfLiteInt8);
+}
+
+void SdpaAttentionInt4Kv(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/0, /*transpose_io=*/false,
+                 AttentionImpl::kOdmlSdpa, /*quantize_kv=*/false,
+                 /*int4_kv=*/true);
+}
+
+void SdpaAttentionDecodeInt4Kv(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/1, /*transpose_io=*/false,
+                 AttentionImpl::kOdmlSdpa, /*quantize_kv=*/false,
+                 /*int4_kv=*/true);
+}
+
 // Full sequence benchmarks (standard ops, no dynamic slicing)
 void FullSequenceAttention(benchmark::State& state) {
   BenchAttention(state, /*b=*/1, /*query_len=*/0, /*transpose_io=*/false,
@@ -189,6 +233,18 @@ BENCHMARK(SdpaAttentionDecodeTransposed)
     ->Apply(AttentionArguments)
     ->Unit(benchmark::TimeUnit::kMillisecond);
 BENCHMARK(SdpaAttentionDecode)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(SdpaAttentionInt8Kv)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(SdpaAttentionDecodeInt8Kv)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(SdpaAttentionInt4Kv)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(SdpaAttentionDecodeInt4Kv)
     ->Apply(AttentionArguments)
     ->Unit(benchmark::TimeUnit::kMillisecond);
 

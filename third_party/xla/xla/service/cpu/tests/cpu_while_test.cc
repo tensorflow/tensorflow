@@ -13,18 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/executable.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
 
@@ -379,6 +388,570 @@ TEST_F(CpuWhileTest, IdenticalSmallWhileLoopsSharedKernelCorrect) {
       absl::MakeConstSpan({124.0f, 156.0f, 188.0f, 220.0f}), results[0]);
   LiteralTestUtil::ExpectR1Equal(
       absl::MakeConstSpan({444.0f, 764.0f, 1084.0f, 1404.0f}), results[1]);
+}
+
+// Small loops become one kernel running the thunks of the loop. These bodies
+// exercise each kind of thunk inside that kernel.
+class CpuSmallWhileLoopTest : public HloInterpreterReferenceMixin<HloTestBase> {
+ protected:
+  // Checks that the loop compiled to one kernel, since a fallback to a call
+  // thunk would still produce correct results.
+  void ExpectOneKernel(absl::string_view hlo_text) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text));
+    CpuCompiler compiler;
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> optimized,
+        compiler.RunHloPasses(std::move(module), /*stream_exec=*/nullptr,
+                              /*options=*/{}));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Executable> executable,
+        compiler.RunBackend(std::move(optimized), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+    int64_t num_kernels = 0;
+    for (const auto& thunk : absl::down_cast<CpuExecutable*>(executable.get())
+                                 ->thunks()
+                                 .thunk_sequence()) {
+      EXPECT_NE(thunk->kind(), Thunk::Kind::kWhile);
+      EXPECT_NE(thunk->kind(), Thunk::Kind::kCall);
+      num_kernels += thunk->kind() == Thunk::Kind::kKernel;
+    }
+    EXPECT_EQ(num_kernels, 1);
+  }
+
+  void ExpectBackendNoCallThunk(absl::string_view hlo_text,
+                                int64_t expected_kernels) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text));
+    CpuCompiler compiler;
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Executable> executable,
+        compiler.RunBackend(std::move(module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+    const ThunkSequence& thunks =
+        absl::down_cast<CpuExecutable*>(executable.get())
+            ->thunks()
+            .thunk_sequence();
+    int64_t num_kernels = 0;
+    for (const auto& thunk : thunks) {
+      num_kernels += thunk->kind() == Thunk::Kind::kKernel;
+    }
+    EXPECT_EQ(num_kernels, expected_kernels);
+    thunks.ForEach([](const Thunk& thunk) {
+      EXPECT_NE(thunk.kind(), Thunk::Kind::kCall);
+    });
+  }
+};
+
+TEST_F(CpuSmallWhileLoopTest, NestedWhileAndConditional) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule NestedWhileAndConditional
+
+    inner_body {
+      s = (s32[], f32[4]) parameter(0)
+      j = s32[] get-tuple-element(s), index=0
+      x = f32[4] get-tuple-element(s), index=1
+      one = s32[] constant(1)
+      c = f32[] constant(0.5)
+      cb = f32[4] broadcast(c), dimensions={}
+      ROOT r = (s32[], f32[4]) tuple(add(j, one), add(x, cb))
+    }
+
+    inner_cond {
+      s = (s32[], f32[4]) parameter(0)
+      j = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(j, s32[] constant(3)), direction=LT
+    }
+
+    double {
+      x = f32[4] parameter(0)
+      ROOT r = f32[4] add(x, x)
+    }
+
+    negate {
+      x = f32[4] parameter(0)
+      ROOT r = f32[4] negate(x)
+    }
+
+    body {
+      s = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      x = f32[4] get-tuple-element(s), index=1
+      zero = s32[] constant(0)
+      inner = (s32[], f32[4]) while((s32[], f32[4]) tuple(zero, x)),
+          condition=inner_cond, body=inner_body
+      y = f32[4] get-tuple-element(inner), index=1
+      two = s32[] constant(2)
+      branch = s32[] remainder(i, two)
+      z = f32[4] conditional(branch, y, y), branch_computations={double, negate}
+      one = s32[] constant(1)
+      ROOT r = (s32[], f32[4]) tuple(add(i, one), z)
+    }
+
+    cond {
+      s = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(4)), direction=LT
+    }
+
+    ENTRY main {
+      p = f32[4] parameter(0)
+      zero = s32[] constant(0)
+      w = (s32[], f32[4]) while((s32[], f32[4]) tuple(zero, p)),
+          condition=cond, body=body
+      ROOT r = f32[4] get-tuple-element(w), index=1
+    }
+  )";
+  ExpectOneKernel(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5}));
+}
+
+TEST_F(CpuSmallWhileLoopTest, DotsAndScatter) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule DotsAndScatter
+
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT r = f32[] add(a, b)
+    }
+
+    body {
+      s = (s32[], bf16[16,16], bf16[16], f32[16,16], f32[16]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      m = bf16[16,16] get-tuple-element(s), index=1
+      v = bf16[16] get-tuple-element(s), index=2
+      a = f32[16,16] get-tuple-element(s), index=3
+      acc = f32[16] get-tuple-element(s), index=4
+      mv = bf16[16] dot(m, v), lhs_contracting_dims={1},
+          rhs_contracting_dims={0}
+      av = f32[16] dot(a, acc), lhs_contracting_dims={1},
+          rhs_contracting_dims={0}
+      sum = f32[16] add(av, acc)
+      c = s32[] constant(5)
+      idx = s32[3,1] broadcast(remainder(i, c)), dimensions={}
+      offsets = s32[3,1] constant({{0}, {5}, {10}})
+      indices = s32[3,1] add(idx, offsets)
+      updates = f32[3] constant({1, 2, 3})
+      scattered = f32[16] scatter(sum, indices, updates), to_apply=add,
+          update_window_dims={}, inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0}, index_vector_dim=1
+      one = s32[] constant(1)
+      mn = bf16[16,16] negate(m)
+      ROOT r = (s32[], bf16[16,16], bf16[16], f32[16,16], f32[16])
+          tuple(add(i, one), mn, mv, a, scattered)
+    }
+
+    cond {
+      s = (s32[], bf16[16,16], bf16[16], f32[16,16], f32[16]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(3)), direction=LT
+    }
+
+    ENTRY main {
+      m = bf16[16,16] parameter(0)
+      v = bf16[16] parameter(1)
+      a = f32[16,16] parameter(2)
+      acc = f32[16] parameter(3)
+      zero = s32[] constant(0)
+      init = (s32[], bf16[16,16], bf16[16], f32[16,16], f32[16])
+          tuple(zero, m, v, a, acc)
+      w = (s32[], bf16[16,16], bf16[16], f32[16,16], f32[16]) while(init),
+          condition=cond, body=body
+      mv = bf16[16] get-tuple-element(w), index=2
+      out = f32[16] get-tuple-element(w), index=4
+      ROOT r = (bf16[16], f32[16]) tuple(mv, out)
+    }
+  )";
+  ExpectOneKernel(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+}
+
+// An output fusion of a dot and an addend, which no HLO pass is left to
+// create from the matrix vector product below.
+TEST_F(CpuSmallWhileLoopTest, DotOutputFusion) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule DotOutputFusion
+
+    fused_dot_add {
+      a = f32[16,16] parameter(0)
+      x = f32[16] parameter(1)
+      addend = f32[16] parameter(2)
+      d = f32[16] dot(a, x), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT r = f32[16] add(d, addend)
+    }
+
+    body {
+      s = (s32[], f32[16,16], f32[16]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      a = f32[16,16] get-tuple-element(s), index=1
+      x = f32[16] get-tuple-element(s), index=2
+      y = f32[16] fusion(a, x, x), kind=kOutput, calls=fused_dot_add
+      one = s32[] constant(1)
+      ROOT r = (s32[], f32[16,16], f32[16]) tuple(add(i, one), a, y)
+    }
+
+    cond {
+      s = (s32[], f32[16,16], f32[16]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(3)), direction=LT
+    }
+
+    ENTRY main {
+      a = f32[16,16] parameter(0)
+      x = f32[16] parameter(1)
+      zero = s32[] constant(0)
+      w = (s32[], f32[16,16], f32[16]) while((s32[], f32[16,16], f32[16])
+          tuple(zero, a, x)), condition=cond, body=body
+      ROOT r = f32[16] get-tuple-element(w), index=2
+    }
+  )";
+  ExpectOneKernel(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
+// The body fusion is large enough to be split into several workgroups, which
+// the loop kernel launches in sequence on the calling thread.
+TEST_F(CpuSmallWhileLoopTest, MultipleWorkgroups) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule MultipleWorkgroups
+
+    body {
+      s = (s32[], f32[256,1024]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      x = f32[256,1024] get-tuple-element(s), index=1
+      fi = f32[] convert(i)
+      b = f32[256,1024] broadcast(fi), dimensions={}
+      iota = f32[256,1024] iota(), iota_dimension=0
+      y = f32[256,1024] add(x, multiply(iota, b))
+      one = s32[] constant(1)
+      ROOT r = (s32[], f32[256,1024]) tuple(add(i, one), y)
+    }
+
+    cond {
+      s = (s32[], f32[256,1024]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(4)), direction=LT
+    }
+
+    ENTRY main {
+      p = f32[256,1024] parameter(0)
+      zero = s32[] constant(0)
+      w = (s32[], f32[256,1024]) while((s32[], f32[256,1024]) tuple(zero, p)),
+          condition=cond, body=body
+      ROOT r = f32[256,1024] get-tuple-element(w), index=1
+    }
+  )";
+  ExpectOneKernel(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
+TEST_F(CpuSmallWhileLoopTest, InPlaceDynamicUpdateSlice) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule InPlaceDynamicUpdateSlice
+
+    body {
+      s = (s32[], s32[], f32[32]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      acc = s32[] get-tuple-element(s), index=1
+      arr = f32[32] get-tuple-element(s), index=2
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      next_acc = s32[] add(acc, next_i)
+      slice = f32[1] dynamic-slice(arr, i), dynamic_slice_sizes={1}
+      delta = f32[1] reshape(f32[] convert(next_acc))
+      upd = f32[1] add(slice, delta)
+      next_arr = f32[32] dynamic-update-slice(arr, upd, i)
+      ROOT r = (s32[], s32[], f32[32]) tuple(next_i, next_acc, next_arr)
+    }
+
+    cond {
+      s = (s32[], s32[], f32[32]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(16)), direction=LT
+    }
+
+    ENTRY main {
+      p = f32[32] parameter(0)
+      z = s32[] constant(0)
+      w = (s32[], s32[], f32[32]) while((s32[], s32[], f32[32]) tuple(z, z, p)),
+          condition=cond, body=body
+      ROOT r = f32[32] get-tuple-element(w), index=2
+    }
+  )";
+  ExpectOneKernel(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5}));
+}
+
+TEST_F(CpuSmallWhileLoopTest, ReusedTempBuffers) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule ReusedTempBuffers
+
+    inner_body {
+      s = (s32[], u32[2], u32[4]) parameter(0)
+      j = s32[] get-tuple-element(s), index=0
+      v = u32[2] get-tuple-element(s), index=1
+      k = u32[4] get-tuple-element(s), index=2
+      k0 = u32[2] slice(k), slice={[0:2]}
+      k1 = u32[2] slice(k), slice={[2:4]}
+      v1 = u32[2] xor(add(v, k0), k1)
+      k_next = u32[4] concatenate(k1, k0), dimensions={0}
+      ROOT r = (s32[], u32[2], u32[4]) tuple(add(j, s32[] constant(1)), v1, k_next)
+    }
+
+    inner_cond {
+      s = (s32[], u32[2], u32[4]) parameter(0)
+      j = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(j, s32[] constant(4)), direction=LT
+    }
+
+    body {
+      s = (s32[], u32[2]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      v = u32[2] get-tuple-element(s), index=1
+      k = u32[4] constant({13, 15, 26, 6})
+      inner = (s32[], u32[2], u32[4]) while(
+          (s32[], u32[2], u32[4]) tuple(s32[] constant(0), v, k)),
+          condition=inner_cond, body=inner_body
+      v_next = u32[2] get-tuple-element(inner), index=1
+      ROOT r = (s32[], u32[2]) tuple(add(i, s32[] constant(1)), v_next)
+    }
+
+    cond {
+      s = (s32[], u32[2]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(5)), direction=LT
+    }
+
+    ENTRY main {
+      p = u32[2] parameter(0)
+      w = (s32[], u32[2]) while((s32[], u32[2]) tuple(s32[] constant(0), p)),
+          condition=cond, body=body
+      ROOT r = u32[2] get-tuple-element(w), index=1
+    }
+  )";
+  ExpectOneKernel(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0}));
+}
+
+TEST_F(CpuSmallWhileLoopTest, NestedFusionKernelNameCollision) {
+  // Fusion and concatenate emitted before enclosing small call.
+  constexpr absl::string_view kBackward = R"(
+    HloModule NestedFusionKernelNameCollision
+
+    f_add {
+      x = s32[4] parameter(0)
+      y = s32[4] parameter(1)
+      ROOT s = s32[4] add(x, y)
+    }
+
+    f_mul {
+      x = s32[4] parameter(0)
+      ROOT y = s32[4] multiply(x, s32[4] constant({2, 2, 2, 2}))
+    }
+
+    small_fn {
+      v = s32[4] parameter(0)
+      cat = s32[4] concatenate(s32[2] constant({1, 2}),
+                               s32[2] constant({3, 4})), dimensions={0}
+      call_kernel = s32[4] fusion(v, cat), kind=kLoop, calls=f_add
+      ROOT call_kernel_body = s32[4] fusion(call_kernel), kind=kLoop, calls=f_mul
+    }
+
+    ENTRY main {
+      p = s32[4] parameter(0)
+      ROOT call = s32[4] call(p), to_apply=small_fn,
+          frontend_attributes={xla_cpu_small_call="true"}
+    }
+  )";
+  ExpectBackendNoCallThunk(kBackward, /*expected_kernels=*/1);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kBackward, ErrorSpec{0}));
+
+  // Unfused concatenate before small call `c`, `c` before top level fusion
+  // `c_kernel`, and nested small call `n` before sibling fusion `n_kernel`.
+  constexpr absl::string_view kForward = R"(
+    HloModule ForwardKernelNameCollision
+
+    f_add {
+      x = s32[4] parameter(0)
+      ROOT y = s32[4] add(x, s32[4] constant({1, 2, 3, 4}))
+    }
+
+    f_mul_outer {
+      x = s32[4] parameter(0)
+      ROOT y = s32[4] multiply(x, s32[4] constant({3, 3, 3, 3}))
+    }
+
+    f_mul_entry {
+      x = s32[4] parameter(0)
+      y = s32[4] parameter(1)
+      ROOT z = s32[4] add(x, y)
+    }
+
+    inner_fn {
+      v = s32[4] parameter(0)
+      ROOT a = s32[4] fusion(v), kind=kLoop, calls=f_add
+    }
+
+    outer_fn {
+      v = s32[4] parameter(0)
+      n = s32[4] call(v), to_apply=inner_fn,
+          frontend_attributes={xla_cpu_small_call="true"}
+      ROOT n_kernel = s32[4] fusion(n), kind=kLoop, calls=f_mul_outer
+    }
+
+    ENTRY main {
+      p = s32[4] parameter(0)
+      pre = s32[4] concatenate(s32[2] constant({1, 2}),
+                               s32[2] constant({3, 4})), dimensions={0}
+      c = s32[4] call(p), to_apply=outer_fn,
+          frontend_attributes={xla_cpu_small_call="true"}
+      ROOT c_kernel = s32[4] fusion(c, pre), kind=kLoop, calls=f_mul_entry
+    }
+  )";
+  ExpectBackendNoCallThunk(kForward, /*expected_kernels=*/3);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kForward, ErrorSpec{0}));
+
+  // Sort comparator computation named like small call `c`'s kernel.
+  constexpr absl::string_view kComparator = R"(
+    HloModule ComparatorKernelNameCollision
+
+    c_kernel {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT lt = pred[] compare(a, b), direction=LT
+    }
+
+    f_add {
+      x = s32[4] parameter(0)
+      ROOT y = s32[4] add(x, s32[4] constant({1, 2, 3, 4}))
+    }
+
+    small_fn {
+      v = s32[4] parameter(0)
+      ROOT a = s32[4] fusion(v), kind=kLoop, calls=f_add
+    }
+
+    ENTRY main {
+      p = s32[4] parameter(0)
+      s = s32[4] sort(p), dimensions={0}, to_apply=c_kernel
+      ROOT c = s32[4] call(s), to_apply=small_fn,
+          frontend_attributes={xla_cpu_small_call="true"}
+    }
+  )";
+  ExpectBackendNoCallThunk(kComparator, /*expected_kernels=*/1);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kComparator, ErrorSpec{0}));
+}
+
+TEST_F(CpuSmallWhileLoopTest, BatchedMatrixVectorDot) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule BatchedMatrixVectorDot
+
+    body {
+      s = (s32[], f32[2,16,16], f32[2,16]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      a = f32[2,16,16] get-tuple-element(s), index=1
+      x = f32[2,16] get-tuple-element(s), index=2
+      y = f32[2,16] dot(a, x), lhs_batch_dims={0}, rhs_batch_dims={0},
+          lhs_contracting_dims={2}, rhs_contracting_dims={1}
+      next_i = s32[] add(i, s32[] constant(1))
+      ROOT r = (s32[], f32[2,16,16], f32[2,16]) tuple(next_i, a, y)
+    }
+
+    cond {
+      s = (s32[], f32[2,16,16], f32[2,16]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(3)), direction=LT
+    }
+
+    ENTRY main {
+      a = f32[2,16,16] parameter(0)
+      x = f32[2,16] parameter(1)
+      w = (s32[], f32[2,16,16], f32[2,16]) while(
+          (s32[], f32[2,16,16], f32[2,16]) tuple(s32[] constant(0), a, x)),
+          condition=cond, body=body
+      ROOT out = f32[2,16] get-tuple-element(w), index=2
+    }
+  )";
+  ExpectOneKernel(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4}));
+}
+
+TEST_F(CpuSmallWhileLoopTest, ZeroSizedArrayInLoopState) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule ZeroSizedArrayInLoopState
+
+    body {
+      s = (s32[], f32[0], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      e = f32[0] get-tuple-element(s), index=1
+      x = f32[4] get-tuple-element(s), index=2
+      next_i = s32[] add(i, s32[] constant(1))
+      next_e = f32[0] negate(e)
+      next_x = f32[4] add(x, x)
+      ROOT r = (s32[], f32[0], f32[4]) tuple(next_i, next_e, next_x)
+    }
+
+    cond {
+      s = (s32[], f32[0], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(s), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(3)), direction=LT
+    }
+
+    ENTRY main {
+      e = f32[0] parameter(0)
+      p = f32[4] parameter(1)
+      w = (s32[], f32[0], f32[4]) while((s32[], f32[0], f32[4]) tuple(
+          s32[] constant(0), e, p)), condition=cond, body=body
+      e_out = f32[0] get-tuple-element(w), index=1
+      x_out = f32[4] get-tuple-element(w), index=2
+      ROOT r = (f32[0], f32[4]) tuple(e_out, x_out)
+    }
+  )";
+  ExpectOneKernel(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0}));
+}
+
+TEST_F(CpuSmallWhileLoopTest, ReadOnlyWhileConditionEmitsNoCallThunk) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule ReadOnlyWhileCondition
+
+    f_double {
+      x = s32[4] parameter(0)
+      ROOT y = s32[4] add(x, x)
+    }
+
+    cond {
+      s = (pred[], s32[4]) parameter(0)
+      ROOT c = pred[] get-tuple-element(s), index=0
+    }
+
+    body {
+      s = (pred[], s32[4]) parameter(0)
+      c = pred[] get-tuple-element(s), index=0
+      x = s32[4] get-tuple-element(s), index=1
+      nx = s32[4] fusion(x), kind=kLoop, calls=f_double
+      ROOT r = (pred[], s32[4]) tuple(c, nx)
+    }
+
+    small_fn {
+      c = pred[] parameter(0)
+      x = s32[4] parameter(1)
+      x_copy = s32[4] copy(x)
+      init = (pred[], s32[4]) tuple(c, x_copy)
+      w = (pred[], s32[4]) while(init), condition=cond, body=body
+      ROOT out = s32[4] get-tuple-element(w), index=1
+    }
+
+    ENTRY main {
+      p = s32[4] parameter(0)
+      f = pred[] constant(false)
+      ROOT call = s32[4] call(f, p), to_apply=small_fn,
+          frontend_attributes={xla_cpu_small_call="true"}
+    }
+  )";
+  ExpectBackendNoCallThunk(kHlo, /*expected_kernels=*/1);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{0}));
 }
 
 }  // namespace

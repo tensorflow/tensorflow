@@ -1,5 +1,8 @@
 // RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize \
+// RUN:   -xla-gpu-test-transform-loops -xla-gpu-test-to-llvm |\
+// RUN:   FileCheck %s --check-prefix=CHECK-LLVM
 // RUN: gpu_test_correctness %s
 
 overwrite {
@@ -32,8 +35,10 @@ scatter {
 // CHECK: %[[IN_BOUNDS:.*]] = arith.cmpi ule
 // CHECK: scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
 // CHECK:   %[[UPD_ELEM:.*]] = xla.pure_call @scatter_update
-// CHECK:   %[[RMW:.*]] = xla.atomic_rmw %{{[a-z0-9]+}}
-// CHECK:   ^bb0(%[[CUR_VALUE:.*]]: f32):
-// CHECK:     xla.yield %[[UPD_ELEM]] : f32
-// CHECK:   }
-// CHECK:   xla.yield %[[RMW]] : tensor<10x5xf32>
+// CHECK:   %[[STORE:.*]] = xla.atomic_store %[[UPD_ELEM]] into %{{[a-z0-9]+}}
+// CHECK:   xla.yield %[[STORE]] : tensor<10x5xf32>
+
+// CHECK-LLVM-LABEL: llvm.func @main
+// CHECK-LLVM-NOT: llvm.cmpxchg
+// CHECK-LLVM: llvm.store %{{.*}}, %{{.*}} atomic unordered <alignment = 4>
+// CHECK-LLVM-NOT: llvm.cmpxchg

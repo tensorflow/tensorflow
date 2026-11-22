@@ -13,7 +13,7 @@
 // limitations under the License.
 // ==============================================================================
 // RUN: emitters_opt %s --split-input-file \
-// RUN:   --xla-gpu-test-to-llvm="gpu_device_info='oneapi_compute_capability { architecture: \"bmg\"}'" \
+// RUN:   --xla-gpu-test-to-llvm="gpu_device_info='oneapi_compute_capability { architecture: \"xe2hpg\"}'" \
 // RUN: | FileCheck %s
 
 module {

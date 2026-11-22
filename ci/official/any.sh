@@ -55,7 +55,7 @@ elif [[ -n "${TF_ANY_TARGETS:-}" ]]; then
     HERMETIC_CUDA_UMD_FLAGS="--@local_config_cuda//cuda:override_include_cuda_libs=true --config=hermetic_cuda_umd"
   fi
 
-  tfrun bazel "${TF_ANY_MODE:-test}" $TFCI_BAZEL_COMMON_ARGS $HERMETIC_CUDA_UMD_FLAGS $TF_ANY_TARGETS
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS "${TF_ANY_MODE:-test}" $TFCI_BAZEL_COMMON_ARGS $HERMETIC_CUDA_UMD_FLAGS $TF_ANY_TARGETS
 else
   echo 'Looks like $TF_ANY_TARGETS are $TF_ANY_SCRIPT are both empty. That is an error.'
   exit 1

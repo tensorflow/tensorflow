@@ -40,6 +40,31 @@ limitations under the License.
 
 namespace xla::gpu {
 
+namespace {
+
+bool IsCommunicationThunk(const Thunk* thunk) {
+  if (thunk->IsCollective()) {
+    return true;
+  }
+  switch (thunk->kind()) {
+    case Thunk::kCollectiveKernel:
+    case Thunk::kCollectiveMetadata:
+    case Thunk::kHostRecv:
+    case Thunk::kHostRecvDone:
+    case Thunk::kHostSend:
+    case Thunk::kHostSendDone:
+      return true;
+    case Thunk::kAsyncStart:
+      return static_cast<const AsyncStartThunk*>(thunk)
+          ->execution_stream_id()
+          .is_communication();
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
 //===----------------------------------------------------------------------===//
 // AsyncStartThunk
 //===----------------------------------------------------------------------===//
@@ -71,6 +96,18 @@ std::string AsyncStartThunk::ToString(int indent) const {
 }
 
 absl::Status AsyncStartThunk::Prepare(const PrepareParams& params) {
+  if (execution_stream_id_.is_locality_domain()) {
+    ABSL_RETURN_IF_ERROR(
+        executor_.thunks().WalkNested([&](Thunk* thunk) -> absl::Status {
+          if (IsCommunicationThunk(thunk)) {
+            return InvalidArgument(
+                "Locality-domain async start contains unsupported "
+                "communication thunk: %s",
+                Thunk::KindToString(thunk->kind()));
+          }
+          return absl::OkStatus();
+        }));
+  }
   return executor_.Prepare(params);
 }
 
@@ -106,8 +143,23 @@ absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
       }
       return stream;
     }
-    return params.collective_params->async_streams.at(
-        execution_stream_id_.communication_id().value());
+    if (execution_stream_id_.is_communication()) {
+      return params.collective_params->async_streams.at(
+          execution_stream_id_.communication_id().value());
+    }
+    auto it = params.locality_domain_streams.find(
+        execution_stream_id_.locality_domain_id());
+    if (it == params.locality_domain_streams.end()) {
+      return InvalidArgument(
+          "No execution stream available for locality-domain stream id: %v",
+          execution_stream_id_);
+    }
+    if (it->second == nullptr) {
+      return InvalidArgument(
+          "Null execution stream for locality-domain stream id: %v",
+          execution_stream_id_);
+    }
+    return it->second;
   };
 
   ABSL_ASSIGN_OR_RETURN(se::Stream * async_stream, std::invoke(get_async_stream));
@@ -195,9 +247,12 @@ absl::StatusOr<ThunkProto> AsyncStartThunk::ToProto() const {
         execution_stream_id_.computation_id().value());
   } else if (execution_stream_id_.is_memcpy()) {
     start_proto->set_memcpy_stream_id(execution_stream_id_.memcpy_id().value());
-  } else {
+  } else if (execution_stream_id_.is_communication()) {
     start_proto->set_communication_stream_id(
         execution_stream_id_.communication_id().value());
+  } else {
+    start_proto->set_locality_domain_stream_id(
+        execution_stream_id_.locality_domain_id().value());
   }
 
   start_proto->mutable_thunks();
@@ -226,6 +281,8 @@ absl::StatusOr<std::unique_ptr<AsyncStartThunk>> AsyncStartThunk::FromProto(
         }
         return id;
       }
+      case AsyncStartThunkProto::kLocalityDomainStreamId:
+        return LocalityDomainStreamId(proto.locality_domain_stream_id());
       default:
         return Internal("Unknown execution stream id type in AsyncStartThunk");
     }

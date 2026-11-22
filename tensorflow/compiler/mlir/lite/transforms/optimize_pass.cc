@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -62,13 +63,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
+#include "tensorflow/compiler/mlir/lite/transforms/resource_constant_fold_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 namespace mlir::TFL {
 
@@ -1015,6 +1015,127 @@ bool IsPermutationNCHW(Value perm) {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
+// The patterns below handle TF ops left in the IR by the TensorFlow lowering.
+// They match the TF ops by name so that this pass does not depend on the TF
+// dialect, which the StableHLO conversion path does not use.
+
+// sqrt(1/2). Compared against f32 constants after rounding to f32.
+constexpr double kSqrtHalf = 0.707106769;
+
+// Returns true if `value` is defined by an `arith.constant` of f32 elements
+// that are all equal to `expected`.
+bool IsF32ConstantEqualTo(Value value, double expected) {
+  auto cst = value.getDefiningOp<arith::ConstantOp>();
+  if (!cst) return false;
+  auto attr = mlir::dyn_cast<ElementsAttr>(cst.getValue());
+  if (!attr || !attr.getShapedType().getElementType().isF32()) return false;
+  return FloatValueEquals(attr, expected);
+}
+
+// Returns the single operand of `value`'s defining op if the op is named
+// `op_name` and has one operand and one result, and nullptr otherwise.
+Value GetUnaryOperandIfOpNamed(Value value, llvm::StringRef op_name) {
+  Operation* op = value.getDefiningOp();
+  if (!op || op->getName().getStringRef() != op_name ||
+      op->getNumOperands() != 1 || op->getNumResults() != 1) {
+    return nullptr;
+  }
+  return op->getOperand(0);
+}
+
+template <typename BinaryOp>
+BinaryOp GetDefiningOpWithoutActivation(Value value) {
+  auto op = value.getDefiningOp<BinaryOp>();
+  if (!op || op.getFusedActivationFunction() != "NONE") return nullptr;
+  return op;
+}
+
+// The constant folding in this pass might produce constants in the TF dialect.
+// Legalizes `tf.Const` to `tfl.pseudo_const`.
+struct LegalizeTFConstOp : public RewritePattern {
+  explicit LegalizeTFConstOp(MLIRContext* context)
+      : RewritePattern("tf.Const", /*benefit=*/1, context) {}
+
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
+    auto value = op->getAttrOfType<ElementsAttr>("value");
+    if (!value || op->getNumResults() != 1) return failure();
+    rewriter.replaceOp(op, TFL::ConstOp::create(rewriter, op->getLoc(), value));
+    return success();
+  }
+};
+
+// Replaces
+//   0.5 * x * (1 + tf.Erf(x * sqrt_1_2))
+// with tfl.gelu(x, approximate = false).
+struct MatchGeluWithTFErf : public OpRewritePattern<TFL::MulOp> {
+  explicit MatchGeluWithTFErf(MLIRContext* context)
+      : OpRewritePattern<TFL::MulOp>(context, /*benefit=*/8) {}
+
+  LogicalResult matchAndRewrite(TFL::MulOp mul,
+                                PatternRewriter& rewriter) const override {
+    if (mul.getFusedActivationFunction() != "NONE") return failure();
+    auto mul_half = GetDefiningOpWithoutActivation<TFL::MulOp>(mul.getLhs());
+    auto add_one = GetDefiningOpWithoutActivation<TFL::AddOp>(mul.getRhs());
+    if (!mul_half || !add_one) return failure();
+    Value input = mul_half.getLhs();
+    Value erf_input = GetUnaryOperandIfOpNamed(add_one.getLhs(), "tf.Erf");
+    if (!erf_input) return failure();
+    auto mul_sqrt = GetDefiningOpWithoutActivation<TFL::MulOp>(erf_input);
+    if (!mul_sqrt || mul_sqrt.getLhs() != input) return failure();
+    if (!IsF32ConstantEqualTo(mul_half.getRhs(), 0.5) ||
+        !IsF32ConstantEqualTo(add_one.getRhs(), 1) ||
+        !IsF32ConstantEqualTo(mul_sqrt.getRhs(), kSqrtHalf)) {
+      return failure();
+    }
+    if (!mul_half->hasOneUse() || !add_one->hasOneUse() ||
+        !add_one.getLhs().hasOneUse() || !mul_sqrt->hasOneUse()) {
+      return failure();
+    }
+    rewriter.replaceOpWithNewOp<TFL::GeluOp>(mul, mul.getType(), input,
+                                             rewriter.getBoolAttr(false));
+    return success();
+  }
+};
+
+// Replaces
+//   0.5 * x * tf.Erfc(-x * sqrt_1_2)
+// with tfl.gelu(x, approximate = false).
+struct MatchGeluWithTFErfc : public OpRewritePattern<TFL::MulOp> {
+  explicit MatchGeluWithTFErfc(MLIRContext* context)
+      : OpRewritePattern<TFL::MulOp>(context, /*benefit=*/7) {}
+
+  LogicalResult matchAndRewrite(TFL::MulOp mul,
+                                PatternRewriter& rewriter) const override {
+    if (mul.getFusedActivationFunction() != "NONE") return failure();
+    auto mul_half = GetDefiningOpWithoutActivation<TFL::MulOp>(mul.getLhs());
+    if (!mul_half) return failure();
+    Value input = mul_half.getLhs();
+    Value erfc_input = GetUnaryOperandIfOpNamed(mul.getRhs(), "tf.Erfc");
+    if (!erfc_input) return failure();
+    auto mul_sqrt = GetDefiningOpWithoutActivation<TFL::MulOp>(erfc_input);
+    if (!mul_sqrt) return failure();
+    auto neg = mul_sqrt.getLhs().getDefiningOp<TFL::NegOp>();
+    if (!neg || neg.getX() != input) return failure();
+    if (!IsF32ConstantEqualTo(mul_half.getRhs(), 0.5) ||
+        !IsF32ConstantEqualTo(mul_sqrt.getRhs(), kSqrtHalf)) {
+      return failure();
+    }
+    if (!mul_half->hasOneUse() || !mul.getRhs().hasOneUse() ||
+        !mul_sqrt->hasOneUse()) {
+      return failure();
+    }
+    rewriter.replaceOpWithNewOp<TFL::GeluOp>(mul, mul.getType(), input,
+                                             rewriter.getBoolAttr(false));
+    return success();
+  }
+};
+
+void AddTFOpPatterns(MLIRContext* context, RewritePatternSet& patterns) {
+  patterns.add<LegalizeTFConstOp, MatchGeluWithTFErf, MatchGeluWithTFErfc>(
+      context);
+}
+
 // Get the number of leading 1s in the shape of the given input.
 // Ex. input_shape = [1 x 1 x 1 x 1 x 2 x 1] => 4
 // returns 0 if the input shape is not static.
@@ -1517,8 +1638,8 @@ struct Convert2DUpscalingToResizeNearestNeighor
 
     auto reshape_op = TFL::ReshapeOp::create(
         rewriter, gather_nd_first->getLoc(),
-        tensorflow::GetTypeFromTFTensorShape(reshape_shape_in_int64,
-                                             result_type.getElementType()),
+        mlir::TFL::GetTypeFromTFLiteShape(reshape_shape_in_int64,
+                                          result_type.getElementType()),
         params_value, reshape_shape_const_op.getResult());
 
     // Add TFL::resize_nearest_neighor op for 2x upscaling.
@@ -2270,20 +2391,20 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     // Affine op.
     Value filter = fc_op.getFilter();
     Value bias = fc_op.getBias();
-    DenseFPElementsAttr filter_cst, bias_cst;
-    if (!matchPattern(filter, m_Constant(&filter_cst))) {
+    ElementsAttr filter_attr, bias_attr;
+    if (!matchPattern(filter, m_Constant(&filter_attr))) {
       // The filter maybe quantized, then we should set it to the real constant.
       auto dq = llvm::dyn_cast_or_null<DequantizeOp>(filter.getDefiningOp());
       if (!dq) return failure();
       auto q =
           llvm::dyn_cast_or_null<QuantizeOp>(dq.getInput().getDefiningOp());
-      if (!q || !matchPattern(q.getInput(), m_Constant(&filter_cst))) {
+      if (!q || !matchPattern(q.getInput(), m_Constant(&filter_attr))) {
         return failure();
       }
       filter = q.getInput();
     }
     if (!mlir::isa<NoneType>(bias.getType()) &&
-        !matchPattern(bias, m_Constant(&bias_cst)))
+        !matchPattern(bias, m_Constant(&bias_attr)))
       return failure();
     auto binary_op_activation_func =
         binary_op->template getAttrOfType<StringAttr>(
@@ -2291,6 +2412,15 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     if (!binary_op_activation_func ||
         binary_op_activation_func.getValue() != "NONE")
       return failure();
+
+    auto filter_cst = mlir::dyn_cast<DenseFPElementsAttr>(filter_attr);
+    auto bias_cst = mlir::dyn_cast_or_null<DenseFPElementsAttr>(bias_attr);
+    if (!filter_cst || (bias_attr && !bias_cst)) {
+      // Not all-dense weights: try the DenseResourceElementsAttr path, which
+      // requires a resource filter (the bias may be none, dense or resource).
+      return RewriteWithResourceFilter(fc_op, binary_op, cst_value, filter,
+                                       filter_attr, bias, bias_attr, rewriter);
+    }
     ShapedType filter_type = filter_cst.getType();
 
     if (llvm::isa<AddOp, SubOp>(binary_op)) {
@@ -2371,6 +2501,139 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   }
 
  private:
+  // Returns the f32 values of `attr`, read directly from its blob, or nullopt
+  // if it is not an f32 resource with a well-formed blob.
+  static std::optional<ArrayRef<float>> GetF32ResourceValues(
+      DenseResourceElementsAttr attr) {
+    ShapedType type = attr.getType();
+    if (!type.getElementType().isF32() || !type.hasStaticShape()) {
+      return std::nullopt;
+    }
+    AsmResourceBlob* blob = GetResourceBlob(attr);
+    if (!blob) return std::nullopt;
+    ArrayRef<char> data = blob->getData();
+    const size_t num_elements = type.getNumElements();
+    if (data.size() != num_elements * sizeof(float) ||
+        reinterpret_cast<uintptr_t>(data.data()) % alignof(float) != 0) {
+      return std::nullopt;
+    }
+    return ArrayRef<float>(reinterpret_cast<const float*>(data.data()),
+                           num_elements);
+  }
+
+  // The rewrite of `matchAndRewrite` for an f32 filter held in a
+  // DenseResourceElementsAttr. The filter is read from its blob and a scaled
+  // filter is written to a new blob, so large weights are never materialized
+  // as DenseElementsAttr. The arithmetic uses APFloat, element by element in
+  // the same order as the dense path, so both paths give the same values.
+  static LogicalResult RewriteWithResourceFilter(
+      AffineOpType fc_op, Operation* binary_op, APFloat cst_value, Value filter,
+      ElementsAttr filter_attr, Value bias, ElementsAttr bias_attr,
+      PatternRewriter& rewriter) {
+    auto filter_res = mlir::dyn_cast<DenseResourceElementsAttr>(filter_attr);
+    if (!filter_res) return failure();
+    if (&cst_value.getSemantics() != &APFloat::IEEEsingle()) return failure();
+    std::optional<ArrayRef<float>> filter_values =
+        GetF32ResourceValues(filter_res);
+    if (!filter_values) return failure();
+    ShapedType filter_type = filter_res.getType();
+    constexpr auto kRounding = APFloat::rmNearestTiesToEven;
+
+    if (llvm::isa<AddOp, SubOp>(binary_op)) {
+      auto padding = fc_op->template getAttrOfType<StringAttr>("padding");
+      if (padding && padding.getValue() != "VALID") return failure();
+
+      // w * (x + c) + b => w * x + (w * c + b)
+      if (llvm::isa<SubOp>(binary_op)) cst_value.changeSign();
+
+      auto [bias_size, slice_size] =
+          GetBiasDimAndSliceSize(filter_type.getShape(), fc_op);
+
+      SmallVector<float> new_bias;
+      if (!bias_attr) {  // none bias, a list of zeros
+        new_bias.assign(bias_size, 0.0f);
+      } else if (!bias_attr.getElementType().isF32()) {
+        return failure();
+      } else if (auto dense = mlir::dyn_cast<DenseFPElementsAttr>(bias_attr)) {
+        new_bias.assign(dense.value_begin<float>(), dense.value_end<float>());
+      } else if (auto res =
+                     mlir::dyn_cast<DenseResourceElementsAttr>(bias_attr)) {
+        std::optional<ArrayRef<float>> values = GetF32ResourceValues(res);
+        if (!values) return failure();
+        new_bias.assign(values->begin(), values->end());
+      } else {
+        return failure();
+      }
+      if (new_bias.size() == 1) {  // scalar bias, broadcast it
+        new_bias.assign(bias_size, new_bias.front());
+      } else if (static_cast<int64_t>(new_bias.size()) != bias_size) {
+        return failure();
+      }
+
+      SmallVector<APFloat> acc;
+      acc.reserve(bias_size);
+      for (float value : new_bias) acc.emplace_back(value);
+      const int64_t num_filter_elements = filter_values->size();
+      for (int64_t i = 0; i < num_filter_elements; ++i) {
+        const int64_t bias_index = (i / slice_size) % bias_size;
+        APFloat product((*filter_values)[i]);
+        product.multiply(cst_value, kRounding);
+        acc[bias_index].add(product, kRounding);
+      }
+      for (int64_t i = 0; i < bias_size; ++i) {
+        new_bias[i] = acc[i].convertToFloat();
+      }
+
+      auto new_bias_type =
+          RankedTensorType::get({bias_size}, filter_type.getElementType());
+      auto new_bias_op = ConstOp::create(
+          rewriter, fc_op.getLoc(), new_bias_type,
+          DenseFPElementsAttr::get(new_bias_type, ArrayRef<float>(new_bias)));
+      rewriter.modifyOpInPlace(fc_op, [&] {
+        fc_op.setOperand(0, binary_op->getOperand(0));
+        fc_op.setOperand(2, new_bias_op);
+      });
+      return success();
+    }
+
+    if (llvm::isa<MulOp, DivOp>(binary_op)) {
+      // A quantized filter (through quantize and dequantize ops) would also
+      // need its quantization parameters rescaled, which is not done here.
+      if (fc_op.getFilter() != filter) return failure();
+      // w * (x ' c) + b => (w ' c) x + b
+      const bool is_mul = llvm::isa<MulOp>(binary_op);
+      // The source blob is not released here: other constants, possibly in
+      // other functions, may still reference it.
+      AsmResourceBlob blob = HeapAsmResourceBlob::allocate(
+          filter_values->size() * sizeof(float), /*align=*/64,
+          /*dataIsMutable=*/true);
+      float* out = reinterpret_cast<float*>(blob.getMutableData().data());
+      for (size_t i = 0; i < filter_values->size(); ++i) {
+        APFloat value((*filter_values)[i]);
+        if (is_mul) {
+          value.multiply(cst_value, kRounding);
+        } else {
+          value.divide(cst_value, kRounding);
+        }
+        out[i] = value.convertToFloat();
+      }
+      auto new_filter = DenseResourceElementsAttr::get(
+          filter_type,
+          (filter_res.getRawHandle().getKey() + (is_mul ? "_mul" : "_div"))
+              .str(),
+          std::move(blob));
+      // A new constant, in case the original one is shared by other ops.
+      auto new_filter_op = ConstOp::create(rewriter, fc_op.getLoc(),
+                                           filter.getType(), new_filter);
+      rewriter.modifyOpInPlace(fc_op, [&] {
+        fc_op.setOperand(0, binary_op->getOperand(0));
+        fc_op.setOperand(1, new_filter_op);
+      });
+      return success();
+    }
+    return failure();
+  }
+
   // Returns the dimension length of the channel dimension and also the slide
   // size by each position in the channel dimension accordingly. tfl.conv2d and
   // tfl.fully_connected has heading channel dimension, but tfl.depthwise_conv2d
@@ -3539,6 +3802,7 @@ void OptimizePass::runOnOperation() {
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
   TFL::populateWithGenerated(patterns);
+  AddTFOpPatterns(ctx, patterns);
   patterns
       .add<OptimizeGatherNdToSlice, OptimizeGatherNdSlidingWindow,
            Convert2DUpscalingToResizeNearestNeighor, FuseFullyConnectedAndAdd,
@@ -3557,6 +3821,7 @@ void OptimizePass::runOnOperation() {
   // Fuse the binary ops with the following ops.
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
+  AddTFOpPatterns(ctx, phase_2_patterns);
   phase_2_patterns.add<
       FuseLogSoftmax, FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
       FuseFullyConnectedAndMul, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,

@@ -41,14 +41,17 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::testing::Values;
+using ::testing::WithParamInterface;
 
 class TypeSupportTest : public HloInterpreterReferenceMixin<HloTestBase>,
                         public ::testing::WithParamInterface<PrimitiveType> {};
@@ -98,7 +101,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 class SortingTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
-  SortingTest() {}
+  SortingTest() = default;
 };
 
 TEST_F(SortingTest, Regression1) {
@@ -310,6 +313,199 @@ TEST_F(SortingTest, SortFusionWithPartialLastTile) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{0, 0}));
 }
 
+class SortKernelReuseTest : public SortingTest,
+                            public WithParamInterface<const char*> {};
+
+// Sorts share kernels when they are identical. Each module has sorts that look
+// alike but need different kernels, so a wrongly shared kernel gives a wrong
+// result here.
+TEST_P(SortKernelReuseTest, SimilarSortsKeepTheirOwnKernels) {
+  EXPECT_TRUE(RunAndCompareNoHloPasses(GetParam(), ErrorSpec{0, 0}));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Modules, SortKernelReuseTest,
+    Values(
+        // fusion.0 and fusion.1 are identical. The others differ from them in
+        // the shape, the iota dimension or the position of the iota operand.
+        R"(
+    HloModule module
+
+    compare {
+      p.0.lhs = s32[] parameter(0)
+      p.0.rhs = s32[] parameter(1)
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      lt_key = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+      eq_key = pred[] compare(p.0.lhs, p.0.rhs), direction=EQ
+      lt_idx = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
+      ROOT res = pred[] select(eq_key, lt_idx, lt_key)
+    }
+
+    sort_fusion.0 {
+      p0 = s32[3,5000]{1,0} parameter(0)
+      iota = s32[3,5000]{1,0} iota(), iota_dimension=1
+      ROOT sort = (s32[3,5000]{1,0}, s32[3,5000]{1,0}) sort(p0, iota),
+          dimensions={1}, is_stable=true, to_apply=compare
+    }
+
+    sort_fusion.1 {
+      p0 = s32[3,5000]{1,0} parameter(0)
+      iota = s32[3,5000]{1,0} iota(), iota_dimension=1
+      ROOT sort = (s32[3,5000]{1,0}, s32[3,5000]{1,0}) sort(p0, iota),
+          dimensions={1}, is_stable=true, to_apply=compare
+    }
+
+    sort_fusion.2 {
+      p0 = s32[3,700]{1,0} parameter(0)
+      iota = s32[3,700]{1,0} iota(), iota_dimension=1
+      ROOT sort = (s32[3,700]{1,0}, s32[3,700]{1,0}) sort(p0, iota),
+          dimensions={1}, is_stable=true, to_apply=compare
+    }
+
+    sort_fusion.3 {
+      p0 = s32[3,5000]{1,0} parameter(0)
+      iota = s32[3,5000]{1,0} iota(), iota_dimension=0
+      ROOT sort = (s32[3,5000]{1,0}, s32[3,5000]{1,0}) sort(p0, iota),
+          dimensions={1}, is_stable=true, to_apply=compare
+    }
+
+    sort_fusion.4 {
+      p0 = s32[3,5000]{1,0} parameter(0)
+      iota = s32[3,5000]{1,0} iota(), iota_dimension=1
+      ROOT sort = (s32[3,5000]{1,0}, s32[3,5000]{1,0}) sort(iota, p0),
+          dimensions={1}, is_stable=true, to_apply=compare
+    }
+
+    ENTRY main {
+      p0 = s32[3,5000]{1,0} parameter(0)
+      p1 = s32[3,5000]{1,0} parameter(1)
+      p2 = s32[3,700]{1,0} parameter(2)
+      fusion.0 = (s32[3,5000]{1,0}, s32[3,5000]{1,0}) fusion(p0),
+          kind=kCustom, calls=sort_fusion.0
+      fusion.1 = (s32[3,5000]{1,0}, s32[3,5000]{1,0}) fusion(p1),
+          kind=kCustom, calls=sort_fusion.1
+      fusion.2 = (s32[3,700]{1,0}, s32[3,700]{1,0}) fusion(p2),
+          kind=kCustom, calls=sort_fusion.2
+      fusion.3 = (s32[3,5000]{1,0}, s32[3,5000]{1,0}) fusion(p0),
+          kind=kCustom, calls=sort_fusion.3
+      fusion.4 = (s32[3,5000]{1,0}, s32[3,5000]{1,0}) fusion(p1),
+          kind=kCustom, calls=sort_fusion.4
+      keys.0 = s32[3,5000]{1,0} get-tuple-element(fusion.0), index=0
+      indices.0 = s32[3,5000]{1,0} get-tuple-element(fusion.0), index=1
+      keys.1 = s32[3,5000]{1,0} get-tuple-element(fusion.1), index=0
+      indices.1 = s32[3,5000]{1,0} get-tuple-element(fusion.1), index=1
+      keys.2 = s32[3,700]{1,0} get-tuple-element(fusion.2), index=0
+      indices.2 = s32[3,700]{1,0} get-tuple-element(fusion.2), index=1
+      keys.3 = s32[3,5000]{1,0} get-tuple-element(fusion.3), index=0
+      indices.3 = s32[3,5000]{1,0} get-tuple-element(fusion.3), index=1
+      indices.4 = s32[3,5000]{1,0} get-tuple-element(fusion.4), index=0
+      keys.4 = s32[3,5000]{1,0} get-tuple-element(fusion.4), index=1
+      ROOT result = (s32[3,5000]{1,0}, s32[3,5000]{1,0}, s32[3,5000]{1,0},
+          s32[3,5000]{1,0}, s32[3,700]{1,0}, s32[3,700]{1,0}, s32[3,5000]{1,0},
+          s32[3,5000]{1,0}, s32[3,5000]{1,0}, s32[3,5000]{1,0}) tuple(
+          keys.0, indices.0, keys.1, indices.1, keys.2, indices.2, keys.3,
+          indices.3, indices.4, keys.4)
+    }
+  )",
+        // The two comparators differ only in the sign of a constant.
+        R"(
+    HloModule module
+
+    compare_ascending {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      scale = f32[] constant(0.5)
+      scaled_lhs = f32[] multiply(lhs, scale)
+      scaled_rhs = f32[] multiply(rhs, scale)
+      ROOT lt = pred[] compare(scaled_lhs, scaled_rhs), direction=LT
+    }
+
+    compare_descending {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      scale = f32[] constant(-0.5)
+      scaled_lhs = f32[] multiply(lhs, scale)
+      scaled_rhs = f32[] multiply(rhs, scale)
+      ROOT lt = pred[] compare(scaled_lhs, scaled_rhs), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[3,64]{1,0} parameter(0)
+      p1 = f32[3,64]{1,0} parameter(1)
+      ascending = f32[3,64]{1,0} sort(p0), dimensions={1},
+          to_apply=compare_ascending
+      descending = f32[3,64]{1,0} sort(p1), dimensions={1},
+          to_apply=compare_descending
+      ROOT result = (f32[3,64]{1,0}, f32[3,64]{1,0}) tuple(
+          ascending, descending)
+    }
+  )"));
+
+// Tests multi-tile bitonic sort when the sort dimension has full tiles and a
+// partial trailing tile across multiple outer stages with iota operands.
+TEST_F(SortingTest, SortFusionWithMultipleTilesAndPartialTile) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    compare {
+      p.0.lhs = s64[] parameter(0)
+      p.0.rhs = s64[] parameter(1)
+      p.1.lhs = s64[] parameter(2)
+      p.1.rhs = s64[] parameter(3)
+      p.2.lhs = s64[] parameter(4)
+      p.2.rhs = s64[] parameter(5)
+      p.3.lhs = s64[] parameter(6)
+      p.3.rhs = s64[] parameter(7)
+      lt_key = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+      eq_key = pred[] compare(p.0.lhs, p.0.rhs), direction=EQ
+      lt_idx = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
+      ROOT res = pred[] select(eq_key, lt_idx, lt_key)
+    }
+
+    sort_fusion {
+      p0 = s64[2, 2500]{1, 0} parameter(0)
+      iota = s64[2, 2500]{1, 0} iota(), iota_dimension=1
+      ROOT sort = (s64[2, 2500]{1, 0}, s64[2, 2500]{1, 0},
+                   s64[2, 2500]{1, 0}, s64[2, 2500]{1, 0})
+          sort(p0, iota, iota, iota), dimensions={1}, is_stable=true,
+          to_apply=compare
+    }
+
+    ENTRY main {
+      p0 = s64[2, 2500]{1, 0} parameter(0)
+      ROOT fusion = (s64[2, 2500]{1, 0}, s64[2, 2500]{1, 0},
+                     s64[2, 2500]{1, 0}, s64[2, 2500]{1, 0})
+          fusion(p0), kind=kCustom, calls=sort_fusion
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{0, 0}));
+}
+
+TEST_F(SortingTest, SortFusionMultiStageWithPartialTile) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    compare {
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+    }
+
+    sort_fusion {
+      p0 = f32[2, 10000]{1, 0} parameter(0)
+      ROOT sort = f32[2, 10000]{1, 0} sort(p0), dimensions={1}, to_apply=compare
+    }
+
+    ENTRY main {
+      p0 = f32[2, 10000]{1, 0} parameter(0)
+      ROOT fusion = f32[2, 10000]{1, 0} fusion(p0),
+          kind=kCustom, calls=sort_fusion
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{0, 0}));
+}
+
 // Test that verifies the IgnoreMemorySpace option works correctly
 TEST_F(SortingTest, LayoutsInShapesEqualWithIgnoreMemorySpace) {
   const char* hlo_text = R"(
@@ -376,10 +572,9 @@ bool CompareAdjacentValues(const Literal& literal, int index, bool ascending) {
   if (primitive_util::IsFloatingPointType(literal.shape().element_type())) {
     return CheckOrder(*literal.GetAsDouble({index - 1}),
                       *literal.GetAsDouble({index}), ascending, index);
-  } else {
-    return CheckOrder(*literal.GetIntegralAsS64({index - 1}),
-                      *literal.GetIntegralAsS64({index}), ascending, index);
   }
+  return CheckOrder(*literal.GetIntegralAsS64({index - 1}),
+                    *literal.GetIntegralAsS64({index}), ascending, index);
 }
 
 std::string GetTypeName(PrimitiveType type) {

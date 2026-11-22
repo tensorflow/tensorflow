@@ -44,7 +44,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "hwy//highway.h"
+#include "hwy/highway.h"
 #include "xla/index_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -1229,6 +1229,13 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
 
   auto src_minor_to_major = LayoutUtil::MinorToMajor(src_shape);
   auto result_minor_to_major = LayoutUtil::MinorToMajor(result_shape);
+  const int64_t minor_dim =
+      result_minor_to_major.empty() ? 0 : result_minor_to_major[0];
+  const int64_t inner_broadcast_size =
+      result_minor_to_major.empty() ? 1 : broadcast_shape.dimensions(minor_dim);
+  if (!result_minor_to_major.empty()) {
+    broadcast_shape.set_dimensions(minor_dim, 1);
+  }
 
   ShapeUtil::ForEachIndex(src_shape, [&](absl::Span<const int64_t> src_index) {
     // Linear index into the source literal.
@@ -1251,10 +1258,15 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
           IndexUtil::MultidimensionalIndexToLinearIndex(
               result_shape, result_minor_to_major, broadcast_index_span);
 
-      // Move one element from src_linear_index in source to
-      // result_linear_index in dest
-      memcpy(result_data + PRIMITIVE_SIZE * result_linear_index,
-             source_data + PRIMITIVE_SIZE * src_linear_index, PRIMITIVE_SIZE);
+      char* dst = result_data + PRIMITIVE_SIZE * result_linear_index;
+      const char* src_elem = source_data + PRIMITIVE_SIZE * src_linear_index;
+      if constexpr (PRIMITIVE_SIZE == 1) {
+        memset(dst, *src_elem, inner_broadcast_size);
+      } else if constexpr (PRIMITIVE_SIZE > 1) {
+        for (int64_t k = 0; k < inner_broadcast_size; ++k) {
+          memcpy(dst + k * PRIMITIVE_SIZE, src_elem, PRIMITIVE_SIZE);
+        }
+      }
     } while (IndexUtil::BumpIndices(broadcast_shape, broadcast_index_span));
 
     return true;
@@ -1947,6 +1959,26 @@ absl::StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
 absl::StatusOr<Literal> LiteralBase::Convert(
     PrimitiveType primitive_dest_type) const {
   return ConvertSwitch(*this, primitive_dest_type);
+}
+
+bool LiteralBase::IsLosslesslyConvertibleTo(
+    PrimitiveType primitive_dest_type) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType orig_type = shape().element_type();
+  if (orig_type == primitive_dest_type) {
+    return true;
+  }
+  absl::StatusOr<Literal> converted = Convert(primitive_dest_type);
+  if (!converted.ok()) {
+    return false;
+  }
+  absl::StatusOr<Literal> roundtripped = converted->Convert(orig_type);
+  if (!roundtripped.ok()) {
+    return false;
+  }
+  return *this == *roundtripped;
 }
 
 absl::StatusOr<Literal> LiteralBase::BitcastConvert(

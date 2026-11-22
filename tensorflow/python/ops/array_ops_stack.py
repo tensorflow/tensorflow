@@ -15,8 +15,12 @@
 # Tests for this file live in python/kernel_tests/array_ops_test.py
 """Operations to stack and unstack tensors."""
 
+from collections.abc import Iterator, Mapping, Sequence
 import warnings
 
+import numpy as np
+
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.util import dispatch
@@ -68,21 +72,55 @@ def stack(values, axis=0, name="stack"):
     output: A stacked `Tensor` with the same type as `values`.
 
   Raises:
-    ValueError: If `axis` is out of the range [-(R+1), R+1).
+    TypeError: If `values` is not a sequence of Tensor objects (e.g. if a
+      single Tensor or non-iterable object is passed).
+    ValueError: If `axis` is out of the range `[-(R+1), R+1)`, or if `values`
+      is empty and `axis != 0`.
   """
-  if ops.is_dense_tensor_like(values):
-    if axis == 0:
-      warnings.warn(
-          "Passing a single Tensor to tf.stack is deprecated and will be"
-          " removed in a future release. Argument `values` must be a sequence"
-          " of Tensor objects.",
-          DeprecationWarning,
-          stacklevel=2,
+  # Fast-path for list and tuple (covers >99% of calls).
+  if not isinstance(values, (list, tuple)):
+    if ops.is_dense_tensor_like(values) or isinstance(
+        values, composite_tensor.CompositeTensor
+    ):
+      if axis == 0 and ops.is_dense_tensor_like(values):
+        warnings.warn(
+            "Passing a single Tensor to tf.stack is deprecated and will be"
+            " removed in a future release. Argument `values` must be a"
+            " sequence of Tensor objects.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return ops.convert_to_tensor(values, name=name)
+      raise TypeError(
+          "Argument `values` must be a sequence of Tensor objects, but got a "
+          f"single {type(values).__name__}."
       )
-      return ops.convert_to_tensor(values, name=name)
-    raise TypeError(
-        "Argument `values` must be a sequence of Tensor objects, but got a "
-        f"single Tensor of type {type(values).__name__}."
+    if isinstance(values, Mapping):
+      raise TypeError(
+          "Argument `values` must be a sequence of Tensor objects, but got a "
+          f"mapping of type {type(values).__name__}."
+      )
+    if isinstance(values, np.ndarray):
+      if values.ndim == 0:
+        raise TypeError(
+            "Argument `values` must be a sequence of Tensor objects, but got "
+            "a 0-dimensional numpy ndarray."
+        )
+    elif isinstance(values, Iterator):
+      values = list(values)
+    elif isinstance(values, Sequence) and not isinstance(
+        values, (str, bytes, bytearray, memoryview)
+    ):
+      values = list(values)
+    else:
+      raise TypeError(
+          "Argument `values` must be a sequence of Tensor objects, but got "
+          f"an instance of {type(values).__name__}."
+      )
+
+  if axis != 0 and len(values) == 0:
+    raise ValueError(
+        f"Argument `values` cannot be empty when axis != 0 (got axis = {axis})."
     )
 
   if axis == 0:
@@ -91,6 +129,9 @@ def stack(values, axis=0, name="stack"):
       return ops.convert_to_tensor(values, name=name)
     except (TypeError, ValueError, NotImplementedError):
       pass  # Input list contains non-constant tensors
+
+  if not isinstance(values, (list, tuple)):
+    values = list(values)
 
   value_shape = ops.convert_to_tensor(values[0], name=name)._shape_tuple()  # pylint: disable=protected-access
   if value_shape is not None:

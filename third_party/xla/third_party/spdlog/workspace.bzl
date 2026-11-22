@@ -29,5 +29,11 @@ def repo():
         strip_prefix = "spdlog-{version}".format(version = SPDLOG_VERSION),
         urls = tf_mirror_urls("https://github.com/gabime/spdlog/archive/refs/tags/v{version}.tar.gz".format(version = SPDLOG_VERSION)),
         build_file = "//third_party/spdlog:spdlog.BUILD",
+        patch_cmds = [
+            # Hide XLA's header-only spdlog symbols from the dynamic symbol
+            # table so they do not collide with other spdlog copies loaded in
+            # the same process (such as librocroller.so on ROCm).
+            "find include/spdlog -type f -name '*.h' -exec sed -i.bak 's/namespace spdlog {/namespace [[gnu::visibility(\"hidden\")]] spdlog {/g' {} + && find include/spdlog -type f -name '*.bak' -delete",
+        ],
         patch_file = ["//third_party/spdlog:smoke_test.cc.patch"],
     )

@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -47,12 +46,10 @@ class PjRtTuple final : public RTTIExtends<PjRtTuple, Tuple> {
   ~PjRtTuple() override = default;
 
   PjRtCompatibleClient* client() const override {
-    DCHECK(this);
     return client_;
   }
 
   UserContextRef user_context() const override {
-    DCHECK(this);
     return {};
   }
 

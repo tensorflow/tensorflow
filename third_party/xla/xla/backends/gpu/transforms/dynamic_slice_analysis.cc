@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/overflow_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -264,37 +265,51 @@ struct InitStep {
   int64_t step;
 };
 
-static InitStep GetInitStepForVariable(const HloInstruction* variable,
-                                       const WhileLoopBackendConfig& config) {
-  InitStep init_step{config.known_init_step().init(),
-                     config.known_init_step().step()};
-
-  if (variable->opcode() != HloOpcode::kGetTupleElement) {
-    return init_step;
-  }
-
-  int64_t tuple_idx = variable->tuple_index();
-  for (const auto& dynamic_variable : config.dynamic_variables()) {
-    if (dynamic_variable.tuple_index() != tuple_idx) {
-      continue;
-    }
-    if (dynamic_variable.has_init()) {
-      init_step.init = dynamic_variable.init();
-    }
-    if (dynamic_variable.has_step()) {
-      init_step.step = dynamic_variable.step();
-    }
-    break;
-  }
-
-  return init_step;
-}
-
 static const HloInstruction* StripCopies(const HloInstruction* instr) {
   while (instr->opcode() == HloOpcode::kCopy) {
     instr = instr->operand(0);
   }
   return instr;
+}
+
+// Returns the affine init/step of `variable`, a GTE of the loop parameter
+// (possibly through copies), or nullopt if they are not known.
+//
+// The induction variable uses `known_init_step`, which is authoritative (the
+// HloVerifier rejects a `dynamic_variables` entry that contradicts it). Any
+// other loop-carried variable needs both init and step in its
+// `dynamic_variables` entry. Such a variable is not equal to the induction
+// variable in general (e.g. CollectivePipeliner's prefetch counters, whose init
+// is computed by a peeled iteration), so substituting the induction variable's
+// init/step would compute offsets for the wrong iteration.
+static std::optional<InitStep> GetInitStepForVariable(
+    const HloInstruction* variable, const WhileLoopBackendConfig& config) {
+  const HloInstruction* gte = StripCopies(variable);
+  if (gte->opcode() != HloOpcode::kGetTupleElement) {
+    VLOG(5) << "Variable " << variable->name() << " is not a GTE.";
+    return std::nullopt;
+  }
+  int64_t tuple_idx = gte->tuple_index();
+  if (config.has_known_induction_variable() && config.has_known_init_step() &&
+      config.known_induction_variable().tuple_index() == tuple_idx) {
+    return InitStep{config.known_init_step().init(),
+                    config.known_init_step().step()};
+  }
+
+  const WhileLoopBackendConfig::DynamicVariable* entry = nullptr;
+  for (const auto& dynamic_variable : config.dynamic_variables()) {
+    if (dynamic_variable.tuple_index() == tuple_idx) {
+      entry = &dynamic_variable;
+      break;
+    }
+  }
+
+  if (entry == nullptr || !entry->has_init() || !entry->has_step()) {
+    VLOG(5) << "Variable at tuple index " << tuple_idx
+            << " has unknown init/step.";
+    return std::nullopt;
+  }
+  return InitStep{entry->init(), entry->step()};
 }
 
 static std::optional<StaggeredVariable> TryResolveStaggeredVariable(
@@ -354,9 +369,15 @@ static std::optional<StaggeredVariable> TryResolveStaggeredVariable(
   }
 
   // Step 5: Read the staggered slot's initial value from the while loop's
-  // init tuple. It must be a constant (possibly through copies) so we can
-  // compute the offset formula. Typically this is (init - step), e.g. 0 when
-  // init=1, step=1.
+  // init tuple. It must be a constant (possibly through copies) equal to
+  // (init - step) of the induction variable, e.g. 0 when init=1, step=1.
+  //
+  // By Step 4, the slot holds its initial value in iteration 0 and the
+  // induction variable of iteration k-1, init + (k-1)*step, in iteration
+  // k >= 1. The caller describes the slot as init_value + k*step for every
+  // iteration, which matches iterations k >= 1 only when
+  // init_value == init - step. Any other initial value would make every
+  // offset after the first wrong while still looking linear, so reject it.
   if (!Match(while_loop->operand(0), m::Tuple()) ||
       staggered_index >= while_loop->operand(0)->operand_count()) {
     return std::nullopt;
@@ -368,6 +389,19 @@ static std::optional<StaggeredVariable> TryResolveStaggeredVariable(
   }
   auto init_value = LiteralUtil::LiteralAsScalarInt64(init_constant->literal());
   if (!init_value) {
+    return std::nullopt;
+  }
+  // Check `init_value + step == init` rather than computing `init - step`: the
+  // backend config fields are unvalidated, so the subtraction could overflow.
+  std::optional<int64_t> reconstructed_init =
+      OverflowSafeAdd(*init_value, config->known_init_step().step());
+  if (!reconstructed_init ||
+      *reconstructed_init != config->known_init_step().init()) {
+    VLOG(5) << "Staggered slot " << staggered_index << " of "
+            << while_loop->name() << " starts at " << *init_value
+            << " which is not init - step for init="
+            << config->known_init_step().init()
+            << ", step=" << config->known_init_step().step() << ".";
     return std::nullopt;
   }
 
@@ -517,25 +551,34 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
     return std::nullopt;
   }
 
-  InitStep init_step =
-      GetInitStepForVariable(front.init_step_variable, loop_config);
+  // Step 7: Determine the init/step of the variable the offsets depend on.
+  // A staggered variable receives the induction variable every iteration
+  // (verified by TryResolveStaggeredVariable), so it advances by the induction
+  // variable's step from its own initial value. E.g. if the primary ivar
+  // starts at 1 with step 1, a staggered copy starts at 0.
+  std::optional<InitStep> maybe_init_step;
+  if (all_staggered) {
+    maybe_init_step = InitStep{resolved_offsets.front().staggered_init,
+                               loop_config.known_init_step().step()};
+  } else {
+    maybe_init_step =
+        GetInitStepForVariable(front.init_step_variable, loop_config);
+  }
+  if (!maybe_init_step.has_value()) {
+    return std::nullopt;
+  }
+  InitStep init_step = *maybe_init_step;
   int64_t trip_count = loop_config.known_trip_count().n();
 
   if (trip_count < 1) {
     return std::nullopt;
   }
 
-  // Step 7: For staggered variables, the iteration sequence uses the staggered
-  // init value rather than the primary induction variable's init. E.g. if the
-  // primary ivar starts at 1 with step 1, a staggered copy starts at 0.
-  int64_t effective_init =
-      all_staggered ? resolved_offsets.front().staggered_init : init_step.init;
-
   // Step 8: Evaluate the byte offset for every iteration by substituting the
   // induction variable value into HloEvaluator.
   std::vector<EvaluatedByteOffsets> offsets(trip_count);
   for (int64_t iter = 0; iter < trip_count; ++iter) {
-    int64_t ivar = effective_init + iter * init_step.step;
+    int64_t ivar = init_step.init + iter * init_step.step;
     ABSL_ASSIGN_OR_RETURN(offsets[iter], EvaluateByteOffsetAtIteration(
                                         instr, *strides, induction_var,
                                         functional_dependencies, ivar));

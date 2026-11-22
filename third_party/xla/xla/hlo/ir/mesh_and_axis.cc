@@ -425,6 +425,10 @@ bool AxisRef::Merge(const AxisRef& other, const Mesh& mesh) {
 }
 
 absl::Status AxisRef::Validate(const Mesh& mesh) const {
+  if (mesh_axis_index_ < 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Axis index must be non-negative. Axis index: ", mesh_axis_index_));
+  }
   if (mesh_axis_index_ >= mesh.num_axes()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Axis index must be less than number of axes. Axis index: ",

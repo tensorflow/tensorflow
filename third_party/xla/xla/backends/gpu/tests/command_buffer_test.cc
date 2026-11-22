@@ -237,6 +237,11 @@ TEST_P(CommandBufferTest, Fusions) {
 }
 
 TEST_P(CommandBufferTest, Convolutions) {
+  if (IsRocm()) {
+    // TODO(rocm) Re-enable once MIOpen conv supports command buffer capture.
+    // ROCm 10.1 is affected.
+    GTEST_SKIP() << "Command buffer capture of MIOpen conv fails on ROCm";
+  }
   constexpr absl::string_view hlo_text = R"(
 HloModule test
 ENTRY Test {

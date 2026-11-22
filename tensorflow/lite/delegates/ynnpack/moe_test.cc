@@ -17,14 +17,16 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "Eigen/Core"  // from @eigen_archive
 #include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/ynnpack/ynnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -37,8 +39,11 @@ namespace {
 
 class MoeModel : public SingleOpModel {
  public:
+  // If `ei_from_reshape`, the expert indices go through a reshape before the
+  // MoE op, so that they are computed inside the delegated partition.
   MoeModel(int B, int N, int D_in, int D_mid, int E, int K, bool use_delegate,
-           bool scalar_scale = false, bool static_shape = true)
+           bool scalar_scale = false, bool static_shape = true,
+           bool ei_from_reshape = false, bool dispatch_moe_on_host = false)
       : w_gate_data_(D_mid * E * D_in),
         w_up_data_(D_mid * E * D_in),
         w_down_data_(D_in * E * D_mid),
@@ -87,8 +92,40 @@ class MoeModel : public SingleOpModel {
             builder_, "odml.moe_experts",
             /*decomposition_subgraph_index=*/1, &empty_attrs);
 
-    SetBuiltinOp(BuiltinOperator_STABLEHLO_COMPOSITE,
-                 BuiltinOptions2_StableHLOCompositeOptions, options.Union());
+    if (ei_from_reshape) {
+      const int ei_reshaped_id =
+          AddTensor<int32_t>({TensorType_INT32, ei_shape}, {}, false);
+      opcodes_.push_back(CreateOperatorCode(
+          builder_,
+          static_cast<int8_t>(BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES),
+          /*custom_code=*/0, /*version=*/1,
+          BuiltinOperator_STABLEHLO_COMPOSITE));
+      opcodes_.push_back(
+          CreateOperatorCode(builder_, BuiltinOperator_RESHAPE, 0, 0));
+      operators_.push_back(
+          CreateOperator(builder_, /*opcode_index=*/1,
+                         builder_.CreateVector<int32_t>({ei_id_}),
+                         builder_.CreateVector<int32_t>({ei_reshaped_id}),
+                         BuiltinOptions_ReshapeOptions,
+                         CreateReshapeOptions(
+                             builder_, builder_.CreateVector<int32_t>(ei_shape))
+                             .Union()));
+      const std::vector<int32_t> moe_inputs = {
+          tokens_id_, rw_id_,     ei_reshaped_id, w_gate_id_,
+          w_up_id_,   w_down_id_, scale_id_};
+      operators_.push_back(CreateOperator(
+          builder_, /*opcode_index=*/0,
+          builder_.CreateVector<int32_t>(moe_inputs),
+          builder_.CreateVector<int32_t>({out_id_}), BuiltinOptions_NONE,
+          /*builtin_options=*/0, /*custom_options=*/0,
+          CustomOptionsFormat_FLEXBUFFERS, /*mutating_variable_inputs=*/0,
+          /*intermediates=*/0, /*large_custom_options_offset=*/0,
+          /*large_custom_options_size=*/0,
+          BuiltinOptions2_StableHLOCompositeOptions, options.Union()));
+    } else {
+      SetBuiltinOp(BuiltinOperator_STABLEHLO_COMPOSITE,
+                   BuiltinOptions2_StableHLOCompositeOptions, options.Union());
+    }
 
     BuildInterpreter({tokens_shape, rw_shape, ei_shape}, -1, false, false,
                      /*allocate_and_delegate=*/false);
@@ -98,6 +135,7 @@ class MoeModel : public SingleOpModel {
           TfLiteYNNPackDelegateOptionsDefault();
       delegate_options.num_threads = 1;
       delegate_options.static_shape = static_shape;
+      delegate_options.dispatch_moe_on_host = dispatch_moe_on_host;
       SetDelegate(Interpreter::TfLiteDelegatePtr(
           TfLiteYNNPackDelegateCreate(&delegate_options),
           TfLiteYNNPackDelegateDelete));
@@ -126,6 +164,9 @@ class MoeModel : public SingleOpModel {
     return interpreter_->ResizeInputTensor(id, dims);
   }
   TfLiteStatus AllocateTensors() { return interpreter_->AllocateTensors(); }
+  size_t NumNodesInExecutionPlan() const {
+    return interpreter_->execution_plan().size();
+  }
 
  private:
   int tokens_id_;
@@ -228,304 +269,409 @@ TEST(MoeTest, SingleTokenEvaluation) {
 TEST(MoeTest, BatchTokenEvaluation) {
   int B = 1, N = 4, D_in = 32, D_mid = 64, E = 4, K = 2;
 
-  MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
+                       /*scalar_scale=*/false, /*static_shape=*/true,
+                       /*ei_from_reshape=*/false, dispatch_moe_on_host);
 
-  std::vector<float> tokens(B * N * D_in);
-  std::vector<float> rw(B * N * K);
-  std::vector<int32_t> ei(B * N * K);
+    std::vector<float> tokens(B * N * D_in);
+    std::vector<float> rw(B * N * K);
+    std::vector<int32_t> ei(B * N * K);
 
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] = 0.5f * std::sin(static_cast<float>(i));
-  }
-  for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = 0.5f;
-  }
-  for (size_t i = 0; i < ei.size(); ++i) {
-    ei[i] = static_cast<int32_t>(i % E);
-  }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      tokens[i] = 0.5f * std::sin(static_cast<float>(i));
+    }
+    for (size_t i = 0; i < rw.size(); ++i) {
+      rw[i] = 0.5f;
+    }
+    for (size_t i = 0; i < ei.size(); ++i) {
+      ei[i] = static_cast<int32_t>(i % E);
+    }
 
-  model_del.PopulateTensor(model_del.tokens(), tokens);
-  model_del.PopulateTensor(model_del.rw(), rw);
-  model_del.PopulateTensor(model_del.ei(), ei);
+    model_del.PopulateTensor(model_del.tokens(), tokens);
+    model_del.PopulateTensor(model_del.rw(), rw);
+    model_del.PopulateTensor(model_del.ei(), ei);
 
-  ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
 
-  std::vector<float> expected_out(B * N * D_in);
-  RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
-                  model_del.w_gate_data().data(), model_del.w_up_data().data(),
-                  model_del.w_down_data().data(), model_del.scale_data().data(),
-                  model_del.scale_data().size(), expected_out.data());
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(
+        B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
+        model_del.w_gate_data().data(), model_del.w_up_data().data(),
+        model_del.w_down_data().data(), model_del.scale_data().data(),
+        model_del.scale_data().size(), expected_out.data());
 
-  std::vector<float> del_out = model_del.ExtractVector<float>(model_del.out());
+    std::vector<float> del_out =
+        model_del.ExtractVector<float>(model_del.out());
 
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    }
   }
 }
 
 TEST(MoeTest, ScalarScaleEvaluation) {
   int B = 1, N = 2, D_in = 16, D_mid = 32, E = 4, K = 2;
 
-  MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
-                     /*scalar_scale=*/true);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
+                       /*scalar_scale=*/true, /*static_shape=*/true,
+                       /*ei_from_reshape=*/false, dispatch_moe_on_host);
 
-  std::vector<float> tokens(B * N * D_in);
-  std::vector<float> rw(B * N * K);
-  std::vector<int32_t> ei(B * N * K);
+    std::vector<float> tokens(B * N * D_in);
+    std::vector<float> rw(B * N * K);
+    std::vector<int32_t> ei(B * N * K);
 
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] = 0.3f * std::sin(static_cast<float>(i));
-  }
-  for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = 0.5f;
-  }
-  for (size_t i = 0; i < ei.size(); ++i) {
-    ei[i] = static_cast<int32_t>(i % E);
-  }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      tokens[i] = 0.3f * std::sin(static_cast<float>(i));
+    }
+    for (size_t i = 0; i < rw.size(); ++i) {
+      rw[i] = 0.5f;
+    }
+    for (size_t i = 0; i < ei.size(); ++i) {
+      ei[i] = static_cast<int32_t>(i % E);
+    }
 
-  model_del.PopulateTensor(model_del.tokens(), tokens);
-  model_del.PopulateTensor(model_del.rw(), rw);
-  model_del.PopulateTensor(model_del.ei(), ei);
+    model_del.PopulateTensor(model_del.tokens(), tokens);
+    model_del.PopulateTensor(model_del.rw(), rw);
+    model_del.PopulateTensor(model_del.ei(), ei);
 
-  ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
 
-  std::vector<float> expected_out(B * N * D_in);
-  RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
-                  model_del.w_gate_data().data(), model_del.w_up_data().data(),
-                  model_del.w_down_data().data(), model_del.scale_data().data(),
-                  model_del.scale_data().size(), expected_out.data());
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(
+        B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
+        model_del.w_gate_data().data(), model_del.w_up_data().data(),
+        model_del.w_down_data().data(), model_del.scale_data().data(),
+        model_del.scale_data().size(), expected_out.data());
 
-  std::vector<float> del_out = model_del.ExtractVector<float>(model_del.out());
+    std::vector<float> del_out =
+        model_del.ExtractVector<float>(model_del.out());
 
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    }
   }
 }
 
 TEST(MoeTest, SingleExpertEvaluation) {
   int B = 1, N = 2, D_in = 16, D_mid = 32, E = 1, K = 1;
 
-  MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
+                       /*scalar_scale=*/false, /*static_shape=*/true,
+                       /*ei_from_reshape=*/false, dispatch_moe_on_host);
 
-  std::vector<float> tokens(B * N * D_in);
-  std::vector<float> rw(B * N * K);
-  std::vector<int32_t> ei(B * N * K);
+    std::vector<float> tokens(B * N * D_in);
+    std::vector<float> rw(B * N * K);
+    std::vector<int32_t> ei(B * N * K);
 
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] = 0.2f * std::sin(static_cast<float>(i));
-  }
-  for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = 1.0f;
-  }
-  for (size_t i = 0; i < ei.size(); ++i) {
-    ei[i] = 0;
-  }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      tokens[i] = 0.2f * std::sin(static_cast<float>(i));
+    }
+    for (size_t i = 0; i < rw.size(); ++i) {
+      rw[i] = 1.0f;
+    }
+    for (size_t i = 0; i < ei.size(); ++i) {
+      ei[i] = 0;
+    }
 
-  model_del.PopulateTensor(model_del.tokens(), tokens);
-  model_del.PopulateTensor(model_del.rw(), rw);
-  model_del.PopulateTensor(model_del.ei(), ei);
+    model_del.PopulateTensor(model_del.tokens(), tokens);
+    model_del.PopulateTensor(model_del.rw(), rw);
+    model_del.PopulateTensor(model_del.ei(), ei);
 
-  ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
 
-  std::vector<float> expected_out(B * N * D_in);
-  RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
-                  model_del.w_gate_data().data(), model_del.w_up_data().data(),
-                  model_del.w_down_data().data(), model_del.scale_data().data(),
-                  model_del.scale_data().size(), expected_out.data());
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(
+        B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
+        model_del.w_gate_data().data(), model_del.w_up_data().data(),
+        model_del.w_down_data().data(), model_del.scale_data().data(),
+        model_del.scale_data().size(), expected_out.data());
 
-  std::vector<float> del_out = model_del.ExtractVector<float>(model_del.out());
+    std::vector<float> del_out =
+        model_del.ExtractVector<float>(model_del.out());
 
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    }
   }
 }
 
 TEST(MoeTest, MultiBatchEvaluation) {
   int B = 2, N = 3, D_in = 16, D_mid = 32, E = 4, K = 2;
 
-  MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
+                       /*scalar_scale=*/false, /*static_shape=*/true,
+                       /*ei_from_reshape=*/false, dispatch_moe_on_host);
 
-  std::vector<float> tokens(B * N * D_in);
-  std::vector<float> rw(B * N * K);
-  std::vector<int32_t> ei(B * N * K);
+    std::vector<float> tokens(B * N * D_in);
+    std::vector<float> rw(B * N * K);
+    std::vector<int32_t> ei(B * N * K);
 
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] = 0.3f * std::sin(static_cast<float>(i));
-  }
-  for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = 0.5f;
-  }
-  for (size_t i = 0; i < ei.size(); ++i) {
-    ei[i] = static_cast<int32_t>(i % E);
-  }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      tokens[i] = 0.3f * std::sin(static_cast<float>(i));
+    }
+    for (size_t i = 0; i < rw.size(); ++i) {
+      rw[i] = 0.5f;
+    }
+    for (size_t i = 0; i < ei.size(); ++i) {
+      ei[i] = static_cast<int32_t>(i % E);
+    }
 
-  model_del.PopulateTensor(model_del.tokens(), tokens);
-  model_del.PopulateTensor(model_del.rw(), rw);
-  model_del.PopulateTensor(model_del.ei(), ei);
+    model_del.PopulateTensor(model_del.tokens(), tokens);
+    model_del.PopulateTensor(model_del.rw(), rw);
+    model_del.PopulateTensor(model_del.ei(), ei);
 
-  ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
 
-  std::vector<float> expected_out(B * N * D_in);
-  RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
-                  model_del.w_gate_data().data(), model_del.w_up_data().data(),
-                  model_del.w_down_data().data(), model_del.scale_data().data(),
-                  model_del.scale_data().size(), expected_out.data());
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(
+        B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
+        model_del.w_gate_data().data(), model_del.w_up_data().data(),
+        model_del.w_down_data().data(), model_del.scale_data().data(),
+        model_del.scale_data().size(), expected_out.data());
 
-  std::vector<float> del_out = model_del.ExtractVector<float>(model_del.out());
+    std::vector<float> del_out =
+        model_del.ExtractVector<float>(model_del.out());
 
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    }
   }
 }
 
 TEST(MoeTest, ResizeTensorEvaluation) {
   int B = 1, N = 2, D_in = 16, D_mid = 32, E = 4, K = 2;
 
-  MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
+                       /*scalar_scale=*/false, /*static_shape=*/true,
+                       /*ei_from_reshape=*/false, dispatch_moe_on_host);
 
-  std::vector<float> tokens(B * N * D_in);
-  std::vector<float> rw(B * N * K);
-  std::vector<int32_t> ei(B * N * K);
+    std::vector<float> tokens(B * N * D_in);
+    std::vector<float> rw(B * N * K);
+    std::vector<int32_t> ei(B * N * K);
 
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] = 0.3f * std::sin(static_cast<float>(i));
-  }
-  for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = 0.5f;
-  }
-  for (size_t i = 0; i < ei.size(); ++i) {
-    ei[i] = static_cast<int32_t>(i % E);
-  }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      tokens[i] = 0.3f * std::sin(static_cast<float>(i));
+    }
+    for (size_t i = 0; i < rw.size(); ++i) {
+      rw[i] = 0.5f;
+    }
+    for (size_t i = 0; i < ei.size(); ++i) {
+      ei[i] = static_cast<int32_t>(i % E);
+    }
 
-  model_del.PopulateTensor(model_del.tokens(), tokens);
-  model_del.PopulateTensor(model_del.rw(), rw);
-  model_del.PopulateTensor(model_del.ei(), ei);
+    model_del.PopulateTensor(model_del.tokens(), tokens);
+    model_del.PopulateTensor(model_del.rw(), rw);
+    model_del.PopulateTensor(model_del.ei(), ei);
 
-  ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
-  EXPECT_EQ(model_del.GetTensorShape(model_del.out()),
-            std::vector<int>({B, N, D_in}));
+    ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
+    EXPECT_EQ(model_del.GetTensorShape(model_del.out()),
+              std::vector<int>({B, N, D_in}));
 
-  // Resize tensor inputs to B = 2, N = 4.
-  int B_new = 2;
-  int N_new = 4;
-  ASSERT_EQ(
-      model_del.ResizeInputTensor(model_del.tokens(), {B_new, N_new, D_in}),
-      kTfLiteOk);
-  ASSERT_EQ(model_del.ResizeInputTensor(model_del.rw(), {B_new, N_new, K}),
-            kTfLiteOk);
-  ASSERT_EQ(model_del.ResizeInputTensor(model_del.ei(), {B_new, N_new, K}),
-            kTfLiteOk);
-  ASSERT_EQ(model_del.AllocateTensors(), kTfLiteOk);
-  EXPECT_EQ(model_del.GetTensorShape(model_del.out()),
-            std::vector<int>({B_new, N_new, D_in}));
+    // Resize tensor inputs to B = 2, N = 4.
+    int B_new = 2;
+    int N_new = 4;
+    ASSERT_EQ(
+        model_del.ResizeInputTensor(model_del.tokens(), {B_new, N_new, D_in}),
+        kTfLiteOk);
+    ASSERT_EQ(model_del.ResizeInputTensor(model_del.rw(), {B_new, N_new, K}),
+              kTfLiteOk);
+    ASSERT_EQ(model_del.ResizeInputTensor(model_del.ei(), {B_new, N_new, K}),
+              kTfLiteOk);
+    ASSERT_EQ(model_del.AllocateTensors(), kTfLiteOk);
+    EXPECT_EQ(model_del.GetTensorShape(model_del.out()),
+              std::vector<int>({B_new, N_new, D_in}));
 
-  std::vector<float> new_tokens(B_new * N_new * D_in);
-  std::vector<float> new_rw(B_new * N_new * K);
-  std::vector<int32_t> new_ei(B_new * N_new * K);
+    std::vector<float> new_tokens(B_new * N_new * D_in);
+    std::vector<float> new_rw(B_new * N_new * K);
+    std::vector<int32_t> new_ei(B_new * N_new * K);
 
-  for (size_t i = 0; i < new_tokens.size(); ++i) {
-    new_tokens[i] = 0.4f * std::sin(static_cast<float>(i) + 0.5f);
-  }
-  for (size_t i = 0; i < new_rw.size(); ++i) {
-    new_rw[i] = 0.5f;
-  }
-  for (size_t i = 0; i < new_ei.size(); ++i) {
-    new_ei[i] = static_cast<int32_t>((i + 1) % E);
-  }
+    for (size_t i = 0; i < new_tokens.size(); ++i) {
+      new_tokens[i] = 0.4f * std::sin(static_cast<float>(i) + 0.5f);
+    }
+    for (size_t i = 0; i < new_rw.size(); ++i) {
+      new_rw[i] = 0.5f;
+    }
+    for (size_t i = 0; i < new_ei.size(); ++i) {
+      new_ei[i] = static_cast<int32_t>((i + 1) % E);
+    }
 
-  model_del.PopulateTensor(model_del.tokens(), new_tokens);
-  model_del.PopulateTensor(model_del.rw(), new_rw);
-  model_del.PopulateTensor(model_del.ei(), new_ei);
+    model_del.PopulateTensor(model_del.tokens(), new_tokens);
+    model_del.PopulateTensor(model_del.rw(), new_rw);
+    model_del.PopulateTensor(model_del.ei(), new_ei);
 
-  ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
 
-  std::vector<float> expected_out(B_new * N_new * D_in);
-  RunReferenceMoe(B_new, N_new, D_in, D_mid, E, K, new_tokens.data(),
-                  new_rw.data(), new_ei.data(), model_del.w_gate_data().data(),
-                  model_del.w_up_data().data(), model_del.w_down_data().data(),
-                  model_del.scale_data().data(), model_del.scale_data().size(),
-                  expected_out.data());
+    std::vector<float> expected_out(B_new * N_new * D_in);
+    RunReferenceMoe(
+        B_new, N_new, D_in, D_mid, E, K, new_tokens.data(), new_rw.data(),
+        new_ei.data(), model_del.w_gate_data().data(),
+        model_del.w_up_data().data(), model_del.w_down_data().data(),
+        model_del.scale_data().data(), model_del.scale_data().size(),
+        expected_out.data());
 
-  std::vector<float> del_out = model_del.ExtractVector<float>(model_del.out());
+    std::vector<float> del_out =
+        model_del.ExtractVector<float>(model_del.out());
 
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+    }
   }
 }
 
 TEST(MoeTest, ResizeTensorDefaultOptions) {
   int B = 1, N = 2, D_in = 16, D_mid = 32, E = 4, K = 2;
 
-  MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
-                     /*scalar_scale=*/false, /*static_shape=*/false);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    MoeModel model_del(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
+                       /*scalar_scale=*/false, /*static_shape=*/false,
+                       /*ei_from_reshape=*/false, dispatch_moe_on_host);
 
+    for (int N_cur : {2, 4, 1}) {
+      ASSERT_EQ(
+          model_del.ResizeInputTensor(model_del.tokens(), {B, N_cur, D_in}),
+          kTfLiteOk);
+      ASSERT_EQ(model_del.ResizeInputTensor(model_del.rw(), {B, N_cur, K}),
+                kTfLiteOk);
+      ASSERT_EQ(model_del.ResizeInputTensor(model_del.ei(), {B, N_cur, K}),
+                kTfLiteOk);
+      ASSERT_EQ(model_del.AllocateTensors(), kTfLiteOk);
+      EXPECT_EQ(model_del.GetTensorShape(model_del.out()),
+                std::vector<int>({B, N_cur, D_in}));
+
+      std::vector<float> tokens(B * N_cur * D_in);
+      std::vector<float> rw(B * N_cur * K);
+      std::vector<int32_t> ei(B * N_cur * K);
+
+      for (size_t i = 0; i < tokens.size(); ++i) {
+        tokens[i] = 0.4f * std::sin(static_cast<float>(i) + 0.5f);
+      }
+      for (size_t i = 0; i < rw.size(); ++i) {
+        rw[i] = 0.5f;
+      }
+      for (size_t i = 0; i < ei.size(); ++i) {
+        ei[i] = static_cast<int32_t>((i + 1) % E);
+      }
+
+      model_del.PopulateTensor(model_del.tokens(), tokens);
+      model_del.PopulateTensor(model_del.rw(), rw);
+      model_del.PopulateTensor(model_del.ei(), ei);
+
+      ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
+
+      std::vector<float> expected_out(B * N_cur * D_in);
+      RunReferenceMoe(
+          B, N_cur, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
+          model_del.w_gate_data().data(), model_del.w_up_data().data(),
+          model_del.w_down_data().data(), model_del.scale_data().data(),
+          model_del.scale_data().size(), expected_out.data());
+
+      std::vector<float> del_out =
+          model_del.ExtractVector<float>(model_del.out());
+
+      for (size_t i = 0; i < expected_out.size(); ++i) {
+        EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+      }
+    }
+  }
+}
+
+// Invokes `model` with each of `routings` as the expert indices in turn, and
+// checks the output against the reference each time.
+void CheckRoutings(MoeModel& model, int B, int N, int D_in, int D_mid, int E,
+                   int K, const std::vector<std::vector<int32_t>>& routings) {
   std::vector<float> tokens(B * N * D_in);
   std::vector<float> rw(B * N * K);
-  std::vector<int32_t> ei(B * N * K);
-
   for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] = 0.3f * std::sin(static_cast<float>(i));
+    tokens[i] = 0.5f * std::sin(static_cast<float>(i));
   }
   for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = 0.5f;
+    rw[i] = 0.25f + 0.5f * std::cos(static_cast<float>(i));
   }
-  for (size_t i = 0; i < ei.size(); ++i) {
-    ei[i] = static_cast<int32_t>(i % E);
+  model.PopulateTensor(model.tokens(), tokens);
+  model.PopulateTensor(model.rw(), rw);
+
+  for (size_t r = 0; r < routings.size(); ++r) {
+    const std::vector<int32_t>& ei = routings[r];
+    ASSERT_EQ(ei.size(), B * N * K);
+    model.PopulateTensor(model.ei(), ei);
+    ASSERT_EQ(model.Invoke(), kTfLiteOk) << "routing " << r;
+
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens.data(), rw.data(),
+                    ei.data(), model.w_gate_data().data(),
+                    model.w_up_data().data(), model.w_down_data().data(),
+                    model.scale_data().data(), model.scale_data().size(),
+                    expected_out.data());
+    std::vector<float> out = model.ExtractVector<float>(model.out());
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      ASSERT_NEAR(out[i], expected_out[i], 1e-4f)
+          << "routing " << r << ", mismatch at " << i;
+    }
   }
+}
 
-  model_del.PopulateTensor(model_del.tokens(), tokens);
-  model_del.PopulateTensor(model_del.rw(), rw);
-  model_del.PopulateTensor(model_del.ei(), ei);
+// Routings of 8 tokens to K = 2 of E = 4 experts, which route between 0 and
+// 16 (token, expert) pairs to one expert.
+std::vector<std::vector<int32_t>> TestRoutings() {
+  return {
+      // Balanced: 4 pairs per expert.
+      {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
+      // Skewed: 11 pairs to expert 2, none to expert 0.
+      {2, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 3, 2, 2},
+      // Every token selects expert 3 twice: 16 pairs to one expert.
+      {3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3},
+      // Balanced again.
+      {3, 2, 1, 0, 3, 2, 1, 0, 3, 2, 1, 0, 3, 2, 1, 0},
+  };
+}
 
-  ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
-  EXPECT_EQ(model_del.GetTensorShape(model_del.out()),
-            std::vector<int>({B, N, D_in}));
-
-  // Resize sequence length N from 2 to 4 with static_shape = false.
-  int B_new = 1;
-  int N_new = 4;
-  ASSERT_EQ(
-      model_del.ResizeInputTensor(model_del.tokens(), {B_new, N_new, D_in}),
-      kTfLiteOk);
-  ASSERT_EQ(model_del.ResizeInputTensor(model_del.rw(), {B_new, N_new, K}),
-            kTfLiteOk);
-  ASSERT_EQ(model_del.ResizeInputTensor(model_del.ei(), {B_new, N_new, K}),
-            kTfLiteOk);
-  ASSERT_EQ(model_del.AllocateTensors(), kTfLiteOk);
-  EXPECT_EQ(model_del.GetTensorShape(model_del.out()),
-            std::vector<int>({B_new, N_new, D_in}));
-
-  std::vector<float> new_tokens(B_new * N_new * D_in);
-  std::vector<float> new_rw(B_new * N_new * K);
-  std::vector<int32_t> new_ei(B_new * N_new * K);
-
-  for (size_t i = 0; i < new_tokens.size(); ++i) {
-    new_tokens[i] = 0.4f * std::sin(static_cast<float>(i) + 0.5f);
+TEST(MoeTest, RoutingChangesBetweenInvocations) {
+  const int B = 2, N = 4, D_in = 32, D_mid = 64, E = 4, K = 2;
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    for (bool static_shape : {true, false}) {
+      SCOPED_TRACE(static_shape ? "static_shape" : "dynamic_shape");
+      MoeModel model(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
+                     /*scalar_scale=*/false, static_shape,
+                     /*ei_from_reshape=*/false, dispatch_moe_on_host);
+      CheckRoutings(model, B, N, D_in, D_mid, E, K, TestRoutings());
+    }
   }
-  for (size_t i = 0; i < new_rw.size(); ++i) {
-    new_rw[i] = 0.5f;
-  }
-  for (size_t i = 0; i < new_ei.size(); ++i) {
-    new_ei[i] = static_cast<int32_t>((i + 1) % E);
-  }
+}
 
-  model_del.PopulateTensor(model_del.tokens(), new_tokens);
-  model_del.PopulateTensor(model_del.rw(), new_rw);
-  model_del.PopulateTensor(model_del.ei(), new_ei);
-
-  ASSERT_EQ(model_del.Invoke(), kTfLiteOk);
-
-  std::vector<float> expected_out(B_new * N_new * D_in);
-  RunReferenceMoe(B_new, N_new, D_in, D_mid, E, K, new_tokens.data(),
-                  new_rw.data(), new_ei.data(), model_del.w_gate_data().data(),
-                  model_del.w_up_data().data(), model_del.w_down_data().data(),
-                  model_del.scale_data().data(), model_del.scale_data().size(),
-                  expected_out.data());
-
-  std::vector<float> del_out = model_del.ExtractVector<float>(model_del.out());
-
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(del_out[i], expected_out[i], 1e-4f) << "Mismatch at " << i;
+TEST(MoeTest, ExpertIndicesComputedInPartition) {
+  const int B = 2, N = 4, D_in = 32, D_mid = 64, E = 4, K = 2;
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    for (bool static_shape : {true, false}) {
+      SCOPED_TRACE(static_shape ? "static_shape" : "dynamic_shape");
+      MoeModel model(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
+                     /*scalar_scale=*/false, static_shape,
+                     /*ei_from_reshape=*/true, dispatch_moe_on_host);
+      // The reshape is delegated together with the MoE op, so the expert
+      // indices are not available on the host when the partition is invoked.
+      ASSERT_EQ(model.NumNodesInExecutionPlan(), 1);
+      CheckRoutings(model, B, N, D_in, D_mid, E, K, TestRoutings());
+    }
   }
 }
 
@@ -533,7 +679,7 @@ template <typename InT, typename WeightT, typename OutT = InT>
 class FloatMoeModel : public SingleOpModel {
  public:
   FloatMoeModel(int B, int N, int D_in, int D_mid, int E, int K,
-                bool use_delegate)
+                bool use_delegate, bool dispatch_moe_on_host = false)
       : w_gate_ref_(D_mid * E * D_in),
         w_up_ref_(D_mid * E * D_in),
         w_down_ref_(D_in * E * D_mid),
@@ -605,6 +751,7 @@ class FloatMoeModel : public SingleOpModel {
           TfLiteYNNPackDelegateOptionsDefault();
       delegate_options.num_threads = 1;
       delegate_options.static_shape = true;
+      delegate_options.dispatch_moe_on_host = dispatch_moe_on_host;
       SetDelegate(Interpreter::TfLiteDelegatePtr(
           TfLiteYNNPackDelegateCreate(&delegate_options),
           TfLiteYNNPackDelegateDelete));
@@ -718,14 +865,20 @@ std::vector<uint8_t> PackQuantizedWeights(const std::vector<int8_t>& values,
   return packed;
 }
 
-// `ActT` is the type of the tokens, the routing weights and the output.
+// `ActT` is the type of the tokens, the routing weights and the output. If
+// `multi_axis_quantization` is true, the weights carry a multi-axis
+// quantization that refers to their explicit scales, or, if
+// `mismatched_multi_axis_scales`, the gate weights refer to the up scales.
 template <typename ActT>
 class QuantizedMoeModel : public SingleOpModel {
  public:
   QuantizedMoeModel(int B, int N, int D_in, int D_mid, int E, int K,
                     bool use_delegate, bool explicit_scales = true,
                     TensorType scale_type = TensorType_FLOAT32,
-                    TensorType weight_type = TensorType_INT8)
+                    TensorType weight_type = TensorType_INT8,
+                    bool multi_axis_quantization = false,
+                    bool mismatched_multi_axis_scales = false,
+                    bool dispatch_moe_on_host = false)
       : weight_scale_(WeightScaleFor(weight_type)) {
     std::vector<int> tokens_shape = {B, N, D_in};
     std::vector<int> rw_shape = {B, N, K};
@@ -752,11 +905,6 @@ class QuantizedMoeModel : public SingleOpModel {
     const std::vector<int8_t> w_down_data =
         MakeQuantizedWeights(down_size, /*seed=*/3, weight_type);
 
-    w_gate_ref_ = Dequantize(w_gate_data);
-    w_up_ref_ = Dequantize(w_up_data);
-    w_down_ref_ = Dequantize(w_down_data);
-    scale_ref_.assign(E, 1.0f);
-
     const std::vector<uint8_t> w_gate_packed =
         PackQuantizedWeights(w_gate_data, weight_type);
     const std::vector<uint8_t> w_up_packed =
@@ -764,19 +912,28 @@ class QuantizedMoeModel : public SingleOpModel {
     const std::vector<uint8_t> w_down_packed =
         PackQuantizedWeights(w_down_data, weight_type);
 
+    // Distinct but uniform gate and up scales detect a gate/up scale swap
+    // without widening the per-row range of the `gelu(gate) * up` activations,
+    // which the delegate requantizes to int8 before the down projection. The
+    // down scales vary per (channel, expert) to detect a misplaced scale.
+    std::vector<float> gate_scales(
+        D_mid * E, explicit_scales ? 0.75f * weight_scale_ : weight_scale_);
+    std::vector<float> up_scales(
+        D_mid * E, explicit_scales ? 1.25f * weight_scale_ : weight_scale_);
+    std::vector<float> down_scales =
+        explicit_scales ? MakeWeightScales(D_in * E, /*seed=*/3)
+                        : std::vector<float>(D_in * E, weight_scale_);
+
     if (explicit_scales) {
       w_gate_id_ =
           AddConstInput(TensorData{weight_type, w_gate_shape}, w_gate_packed);
-      gate_scale_id_ =
-          AddScaleInput(scale_type, gate_scale_shape, gate_up_size / D_in);
+      gate_scale_id_ = AddScaleInput(scale_type, gate_scale_shape, gate_scales);
       w_up_id_ =
           AddConstInput(TensorData{weight_type, w_up_shape}, w_up_packed);
-      up_scale_id_ =
-          AddScaleInput(scale_type, up_scale_shape, gate_up_size / D_in);
+      up_scale_id_ = AddScaleInput(scale_type, up_scale_shape, up_scales);
       w_down_id_ =
           AddConstInput(TensorData{weight_type, w_down_shape}, w_down_packed);
-      down_scale_id_ =
-          AddScaleInput(scale_type, down_scale_shape, down_size / D_mid);
+      down_scale_id_ = AddScaleInput(scale_type, down_scale_shape, down_scales);
     } else {
       w_gate_id_ = AddConstInput(
           TensorData{weight_type, w_gate_shape, 0.0f, 0.0f, weight_scale_, 0},
@@ -788,6 +945,14 @@ class QuantizedMoeModel : public SingleOpModel {
           TensorData{weight_type, w_down_shape, 0.0f, 0.0f, weight_scale_, 0},
           w_down_packed);
     }
+
+    // After `AddScaleInput`, so that the reference uses the scales as the
+    // delegate sees them.
+    w_gate_ref_ = Dequantize(w_gate_data, gate_scales, /*inner=*/D_in);
+    w_up_ref_ = Dequantize(w_up_data, up_scales, /*inner=*/D_in);
+    w_down_ref_ = Dequantize(w_down_data, down_scales, /*inner=*/D_mid);
+
+    scale_ref_.assign(E, 1.0f);
     scale_id_ =
         AddConstInput(TensorData{TensorType_FLOAT32, scale_shape}, scale_ref_);
 
@@ -805,11 +970,20 @@ class QuantizedMoeModel : public SingleOpModel {
     BuildInterpreter({tokens_shape, rw_shape, ei_shape}, -1, false, false,
                      /*allocate_and_delegate=*/false);
 
+    if (multi_axis_quantization && explicit_scales) {
+      SetMultiAxisQuantization(w_gate_id_, mismatched_multi_axis_scales
+                                               ? up_scale_id_
+                                               : gate_scale_id_);
+      SetMultiAxisQuantization(w_up_id_, up_scale_id_);
+      SetMultiAxisQuantization(w_down_id_, down_scale_id_);
+    }
+
     if (use_delegate) {
       TfLiteYNNPackDelegateOptions delegate_options =
           TfLiteYNNPackDelegateOptionsDefault();
       delegate_options.num_threads = 1;
       delegate_options.static_shape = true;
+      delegate_options.dispatch_moe_on_host = dispatch_moe_on_host;
       SetDelegate(Interpreter::TfLiteDelegatePtr(
           TfLiteYNNPackDelegateCreate(&delegate_options),
           TfLiteYNNPackDelegateDelete));
@@ -825,6 +999,14 @@ class QuantizedMoeModel : public SingleOpModel {
   int ei() const { return ei_id_; }
   int out() const { return out_id_; }
 
+  // Whether the delegate replaced the whole model.
+  bool IsFullyDelegated() const {
+    const std::vector<int>& plan = interpreter_->execution_plan();
+    return plan.size() == 1 &&
+           interpreter_->node_and_registration(plan[0])->second.builtin_code ==
+               kTfLiteBuiltinDelegate;
+  }
+
   // The weights the delegate is expected to see, i.e. the quantized values
   // scaled back to float.
   const std::vector<float>& w_gate_ref() const { return w_gate_ref_; }
@@ -833,24 +1015,60 @@ class QuantizedMoeModel : public SingleOpModel {
   const std::vector<float>& scale_ref() const { return scale_ref_; }
 
  private:
-  // The weights as the delegate should see them: every element shares
-  // `weight_scale_`, so dequantizing is a single multiply.
-  std::vector<float> Dequantize(const std::vector<int8_t>& values) const {
+  // The weights as the delegate should see them: every element of row
+  // `(channel, expert)`, i.e. of `inner` consecutive values, shares one scale.
+  std::vector<float> Dequantize(const std::vector<int8_t>& values,
+                                const std::vector<float>& scales,
+                                int inner) const {
     std::vector<float> dequantized(values.size());
     for (size_t i = 0; i < values.size(); ++i) {
-      dequantized[i] = static_cast<float>(values[i]) * weight_scale_;
+      dequantized[i] = static_cast<float>(values[i]) * scales[i / inner];
     }
     return dequantized;
   }
 
-  int AddScaleInput(TensorType scale_type, const std::vector<int>& shape,
-                    size_t count) {
-    if (scale_type == TensorType_FLOAT16) {
-      return AddConstInput(TensorData{TensorType_FLOAT16, shape},
-                           std::vector<half>(count, half(weight_scale_)));
+  // Per (output channel, expert) scales of the down projection, for its
+  // [D_in, E, 1, 1] scale tensor: `weight_scale_` times a factor in
+  // {0.5, 0.75, 1, 1.25, 1.5} that varies with the channel and expert, so a
+  // misplaced scale changes the result.
+  std::vector<float> MakeWeightScales(size_t count, int seed) const {
+    std::vector<float> scales(count);
+    for (size_t i = 0; i < count; ++i) {
+      scales[i] = weight_scale_ * (0.5f + 0.25f * ((i * 7 + seed) % 5));
     }
-    return AddConstInput(TensorData{TensorType_FLOAT32, shape},
-                         std::vector<float>(count, weight_scale_));
+    return scales;
+  }
+
+  // Replaces the quantization of tensor `tensor_id` with a per output channel
+  // and expert multi-axis quantization with the scales `scale_tensor_id`.
+  void SetMultiAxisQuantization(int tensor_id, int scale_tensor_id) {
+    TfLiteTensor* tensor = interpreter_->tensor(tensor_id);
+    TfLiteQuantizationFree(&tensor->quantization);
+    auto* params = static_cast<TfLiteMultiAxisQuantization*>(
+        malloc(sizeof(TfLiteMultiAxisQuantization)));
+    params->scales = scale_tensor_id;
+    params->zero_points = -1;
+    params->blocksize = 0;
+    params->quantized_dimensions = TfLiteIntArrayCreate(2);
+    params->quantized_dimensions->data[0] = 0;
+    params->quantized_dimensions->data[1] = 1;
+    tensor->quantization.type = kTfLiteMultiAxisQuantization;
+    tensor->quantization.params = params;
+  }
+
+  // Adds the constant scale tensor `scales` of type `scale_type`. For fp16,
+  // rounds `scales` in place to the values the delegate sees.
+  int AddScaleInput(TensorType scale_type, const std::vector<int>& shape,
+                    std::vector<float>& scales) {
+    if (scale_type == TensorType_FLOAT16) {
+      std::vector<half> scales_f16(scales.size());
+      for (size_t i = 0; i < scales.size(); ++i) {
+        scales_f16[i] = half(scales[i]);
+        scales[i] = static_cast<float>(scales_f16[i]);
+      }
+      return AddConstInput(TensorData{TensorType_FLOAT16, shape}, scales_f16);
+    }
+    return AddConstInput(TensorData{TensorType_FLOAT32, shape}, scales);
   }
 
   const float weight_scale_;
@@ -900,45 +1118,52 @@ void ExpectQuantizedMoeNearReference(
     int B, int N, int D_in, int D_mid, int E, int K,
     const std::vector<float>& mock_tokens, const std::vector<int32_t>& mock_ei,
     bool explicit_scales, TensorType scale_type, TensorType weight_type,
-    float relative_tolerance) {
-  QuantizedMoeModel<ActT> model(B, N, D_in, D_mid, E, K, /*use_delegate=*/true,
-                                explicit_scales, scale_type, weight_type);
+    float relative_tolerance, bool multi_axis_quantization = false) {
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    QuantizedMoeModel<ActT> model(
+        B, N, D_in, D_mid, E, K, /*use_delegate=*/true, explicit_scales,
+        scale_type, weight_type, multi_axis_quantization,
+        /*mismatched_multi_axis_scales=*/false, dispatch_moe_on_host);
+    ASSERT_TRUE(model.IsFullyDelegated());
 
-  const std::vector<ActT> tokens = CastVector<ActT>(mock_tokens);
-  const std::vector<ActT> rw =
-      CastVector<ActT>(std::vector<float>(B * N * K, 0.5f));
+    const std::vector<ActT> tokens = CastVector<ActT>(mock_tokens);
+    const std::vector<ActT> rw =
+        CastVector<ActT>(std::vector<float>(B * N * K, 0.5f));
 
-  model.template PopulateTensor<ActT>(model.tokens(), tokens);
-  model.template PopulateTensor<ActT>(model.rw(), rw);
-  model.PopulateTensor(model.ei(), mock_ei);
+    model.template PopulateTensor<ActT>(model.tokens(), tokens);
+    model.template PopulateTensor<ActT>(model.rw(), rw);
+    model.PopulateTensor(model.ei(), mock_ei);
 
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  // The reference runs on the activations as the model stores them, so the
-  // bound does not have to absorb their rounding as well.
-  const std::vector<float> tokens_ref = ToFloatVector(tokens);
-  const std::vector<float> rw_ref = ToFloatVector(rw);
+    // The reference runs on the activations as the model stores them, so the
+    // bound does not have to absorb their rounding as well.
+    const std::vector<float> tokens_ref = ToFloatVector(tokens);
+    const std::vector<float> rw_ref = ToFloatVector(rw);
 
-  std::vector<float> expected_out(B * N * D_in);
-  RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens_ref.data(), rw_ref.data(),
-                  mock_ei.data(), model.w_gate_ref().data(),
-                  model.w_up_ref().data(), model.w_down_ref().data(),
-                  model.scale_ref().data(), model.scale_ref().size(),
-                  expected_out.data());
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens_ref.data(), rw_ref.data(),
+                    mock_ei.data(), model.w_gate_ref().data(),
+                    model.w_up_ref().data(), model.w_down_ref().data(),
+                    model.scale_ref().data(), model.scale_ref().size(),
+                    expected_out.data());
 
-  float max_abs_expected = 0.0f;
-  for (float expected : expected_out) {
-    max_abs_expected = std::max(max_abs_expected, std::abs(expected));
-  }
-  // A comparison against a reference that is ~0 would pass for any result, a
-  // delegate returning all zeros included.
-  ASSERT_GT(max_abs_expected, 1e-3f);
-  const float tolerance = relative_tolerance * max_abs_expected;
+    float max_abs_expected = 0.0f;
+    for (float expected : expected_out) {
+      max_abs_expected = std::max(max_abs_expected, std::abs(expected));
+    }
+    // A comparison against a reference that is ~0 would pass for any result, a
+    // delegate returning all zeros included.
+    ASSERT_GT(max_abs_expected, 1e-3f);
+    const float tolerance = relative_tolerance * max_abs_expected;
 
-  const std::vector<float> delegate_output =
-      ToFloatVector(model.template ExtractVector<ActT>(model.out()));
-  for (int i = 0; i < B * N * D_in; ++i) {
-    EXPECT_NEAR(delegate_output[i], expected_out[i], tolerance) << "at " << i;
+    const std::vector<float> delegate_output =
+        ToFloatVector(model.template ExtractVector<ActT>(model.out()));
+    for (int i = 0; i < B * N * D_in; ++i) {
+      EXPECT_NEAR(delegate_output[i], expected_out[i], tolerance) << "at " << i;
+    }
   }
 }
 
@@ -1003,6 +1228,39 @@ TEST(MoeTest, QuantizedInt4MoePrefill) {
       /*weight_type=*/TensorType_INT4, /*relative_tolerance=*/0.01f);
 }
 
+TEST(MoeTest, MultiAxisQuantizedInt4MoeDecode) {
+  const int B = 1, N = 1, D_in = 32, D_mid = 16, E = 4, K = 2;
+  ExpectQuantizedMoeNearReference(
+      B, N, D_in, D_mid, E, K, std::vector<float>(B * N * D_in, 0.5f),
+      /*mock_ei=*/{1, 3}, /*explicit_scales=*/true,
+      /*scale_type=*/TensorType_FLOAT32, /*weight_type=*/TensorType_INT4,
+      /*relative_tolerance=*/0.01f, /*multi_axis_quantization=*/true);
+}
+
+TEST(MoeTest, MultiAxisQuantizedInt4MoePrefill) {
+  const int B = 1, N = 4, D_in = 32, D_mid = 16, E = 4, K = 2;
+  std::vector<int32_t> mock_ei(B * N * K);
+  for (size_t i = 0; i < mock_ei.size(); ++i) {
+    mock_ei[i] = (i * 2 + 1) % E;
+  }
+  ExpectQuantizedMoeNearReference(
+      B, N, D_in, D_mid, E, K, MakeTokens(B * N * D_in), mock_ei,
+      /*explicit_scales=*/true, /*scale_type=*/TensorType_FLOAT32,
+      /*weight_type=*/TensorType_INT4, /*relative_tolerance=*/0.01f,
+      /*multi_axis_quantization=*/true);
+}
+
+TEST(MoeTest, NotDelegatedIfMultiAxisScalesMismatch) {
+  const int B = 1, N = 4, D_in = 32, D_mid = 16, E = 4, K = 2;
+  QuantizedMoeModel<float> model(B, N, D_in, D_mid, E, K,
+                                 /*use_delegate=*/true,
+                                 /*explicit_scales=*/true, TensorType_FLOAT32,
+                                 TensorType_INT4,
+                                 /*multi_axis_quantization=*/true,
+                                 /*mismatched_multi_axis_scales=*/true);
+  EXPECT_FALSE(model.IsFullyDelegated());
+}
+
 TEST(MoeTest, QuantizedInt2MoeDecode) {
   const int B = 1, N = 1, D_in = 32, D_mid = 16, E = 4, K = 2;
   ExpectQuantizedMoeNearReference(
@@ -1035,149 +1293,172 @@ TEST(MoeTest, AffineQuantizedInt2MoeDecode) {
 
 TEST(MoeTest, Float16WeightsMoe) {
   int B = 1, N = 2, D_in = 16, D_mid = 32, E = 4, K = 2;
-  FloatMoeModel<float, half, float> model(B, N, D_in, D_mid, E, K,
-                                          /*use_delegate=*/true);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    FloatMoeModel<float, half, float> model(B, N, D_in, D_mid, E, K,
+                                            /*use_delegate=*/true,
+                                            dispatch_moe_on_host);
 
-  std::vector<float> tokens(B * N * D_in);
-  std::vector<float> rw(B * N * K);
-  std::vector<int32_t> ei = {0, 2, 1, 3};
+    std::vector<float> tokens(B * N * D_in);
+    std::vector<float> rw(B * N * K);
+    std::vector<int32_t> ei = {0, 2, 1, 3};
 
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] = 0.3f * std::sin(static_cast<float>(i));
-  }
-  for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = 0.5f;
-  }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      tokens[i] = 0.3f * std::sin(static_cast<float>(i));
+    }
+    for (size_t i = 0; i < rw.size(); ++i) {
+      rw[i] = 0.5f;
+    }
 
-  model.PopulateTensor(model.tokens(), tokens);
-  model.PopulateTensor(model.rw(), rw);
-  model.PopulateTensor(model.ei(), ei);
+    model.PopulateTensor(model.tokens(), tokens);
+    model.PopulateTensor(model.rw(), rw);
+    model.PopulateTensor(model.ei(), ei);
 
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  std::vector<float> expected_out(B * N * D_in);
-  RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
-                  model.w_gate_ref().data(), model.w_up_ref().data(),
-                  model.w_down_ref().data(), model.scale_ref().data(),
-                  model.scale_ref().size(), expected_out.data());
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens.data(), rw.data(),
+                    ei.data(), model.w_gate_ref().data(),
+                    model.w_up_ref().data(), model.w_down_ref().data(),
+                    model.scale_ref().data(), model.scale_ref().size(),
+                    expected_out.data());
 
-  std::vector<float> del_out = model.ExtractVector<float>(model.out());
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(del_out[i], expected_out[i], 1e-3f) << "Mismatch at " << i;
+    std::vector<float> del_out = model.ExtractVector<float>(model.out());
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      EXPECT_NEAR(del_out[i], expected_out[i], 1e-3f) << "Mismatch at " << i;
+    }
   }
 }
 
 TEST(MoeTest, PureFloat16Moe) {
   int B = 1, N = 2, D_in = 16, D_mid = 32, E = 4, K = 2;
-  FloatMoeModel<half, half, half> model(B, N, D_in, D_mid, E, K,
-                                        /*use_delegate=*/true);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    FloatMoeModel<half, half, half> model(B, N, D_in, D_mid, E, K,
+                                          /*use_delegate=*/true,
+                                          dispatch_moe_on_host);
 
-  std::vector<half> tokens(B * N * D_in);
-  std::vector<float> tokens_ref(tokens.size());
-  std::vector<half> rw(B * N * K);
-  std::vector<float> rw_ref(rw.size());
-  std::vector<int32_t> ei = {0, 2, 1, 3};
+    std::vector<half> tokens(B * N * D_in);
+    std::vector<float> tokens_ref(tokens.size());
+    std::vector<half> rw(B * N * K);
+    std::vector<float> rw_ref(rw.size());
+    std::vector<int32_t> ei = {0, 2, 1, 3};
 
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] = static_cast<half>(0.3f * std::sin(static_cast<float>(i)));
-    tokens_ref[i] = static_cast<float>(tokens[i]);
-  }
-  for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = static_cast<half>(0.5f);
-    rw_ref[i] = static_cast<float>(rw[i]);
-  }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      tokens[i] = static_cast<half>(0.3f * std::sin(static_cast<float>(i)));
+      tokens_ref[i] = static_cast<float>(tokens[i]);
+    }
+    for (size_t i = 0; i < rw.size(); ++i) {
+      rw[i] = static_cast<half>(0.5f);
+      rw_ref[i] = static_cast<float>(rw[i]);
+    }
 
-  model.PopulateTensor<half>(model.tokens(), tokens);
-  model.PopulateTensor<half>(model.rw(), rw);
-  model.PopulateTensor(model.ei(), ei);
+    model.PopulateTensor<half>(model.tokens(), tokens);
+    model.PopulateTensor<half>(model.rw(), rw);
+    model.PopulateTensor(model.ei(), ei);
 
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  std::vector<float> expected_out(B * N * D_in);
-  RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens_ref.data(), rw_ref.data(),
-                  ei.data(), model.w_gate_ref().data(), model.w_up_ref().data(),
-                  model.w_down_ref().data(), model.scale_ref().data(),
-                  model.scale_ref().size(), expected_out.data());
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens_ref.data(), rw_ref.data(),
+                    ei.data(), model.w_gate_ref().data(),
+                    model.w_up_ref().data(), model.w_down_ref().data(),
+                    model.scale_ref().data(), model.scale_ref().size(),
+                    expected_out.data());
 
-  std::vector<half> del_out = model.ExtractVector<half>(model.out());
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(static_cast<float>(del_out[i]), expected_out[i], 1e-3f)
-        << "Mismatch at " << i;
+    std::vector<half> del_out = model.ExtractVector<half>(model.out());
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      EXPECT_NEAR(static_cast<float>(del_out[i]), expected_out[i], 1e-3f)
+          << "Mismatch at " << i;
+    }
   }
 }
 
 TEST(MoeTest, BFloat16WeightsMoe) {
   int B = 1, N = 2, D_in = 16, D_mid = 32, E = 4, K = 2;
-  FloatMoeModel<float, Eigen::bfloat16, float> model(B, N, D_in, D_mid, E, K,
-                                                     /*use_delegate=*/true);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    FloatMoeModel<float, Eigen::bfloat16, float> model(B, N, D_in, D_mid, E, K,
+                                                       /*use_delegate=*/true,
+                                                       dispatch_moe_on_host);
 
-  std::vector<float> tokens(B * N * D_in);
-  std::vector<float> rw(B * N * K);
-  std::vector<int32_t> ei = {0, 2, 1, 3};
+    std::vector<float> tokens(B * N * D_in);
+    std::vector<float> rw(B * N * K);
+    std::vector<int32_t> ei = {0, 2, 1, 3};
 
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] = 0.3f * std::sin(static_cast<float>(i));
-  }
-  for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = 0.5f;
-  }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      tokens[i] = 0.3f * std::sin(static_cast<float>(i));
+    }
+    for (size_t i = 0; i < rw.size(); ++i) {
+      rw[i] = 0.5f;
+    }
 
-  model.PopulateTensor(model.tokens(), tokens);
-  model.PopulateTensor(model.rw(), rw);
-  model.PopulateTensor(model.ei(), ei);
+    model.PopulateTensor(model.tokens(), tokens);
+    model.PopulateTensor(model.rw(), rw);
+    model.PopulateTensor(model.ei(), ei);
 
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  std::vector<float> expected_out(B * N * D_in);
-  RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens.data(), rw.data(), ei.data(),
-                  model.w_gate_ref().data(), model.w_up_ref().data(),
-                  model.w_down_ref().data(), model.scale_ref().data(),
-                  model.scale_ref().size(), expected_out.data());
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens.data(), rw.data(),
+                    ei.data(), model.w_gate_ref().data(),
+                    model.w_up_ref().data(), model.w_down_ref().data(),
+                    model.scale_ref().data(), model.scale_ref().size(),
+                    expected_out.data());
 
-  std::vector<float> del_out = model.ExtractVector<float>(model.out());
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(del_out[i], expected_out[i], 1e-2f) << "Mismatch at " << i;
+    std::vector<float> del_out = model.ExtractVector<float>(model.out());
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      EXPECT_NEAR(del_out[i], expected_out[i], 1e-2f) << "Mismatch at " << i;
+    }
   }
 }
 
 TEST(MoeTest, PureBFloat16Moe) {
   int B = 1, N = 2, D_in = 16, D_mid = 32, E = 4, K = 2;
-  FloatMoeModel<Eigen::bfloat16, Eigen::bfloat16, Eigen::bfloat16> model(
-      B, N, D_in, D_mid, E, K, /*use_delegate=*/true);
+  for (bool dispatch_moe_on_host : {false, true}) {
+    SCOPED_TRACE(dispatch_moe_on_host ? "dispatch_moe_on_host"
+                                      : "weight_gather");
+    FloatMoeModel<Eigen::bfloat16, Eigen::bfloat16, Eigen::bfloat16> model(
+        B, N, D_in, D_mid, E, K, /*use_delegate=*/true, dispatch_moe_on_host);
 
-  std::vector<Eigen::bfloat16> tokens(B * N * D_in);
-  std::vector<float> tokens_ref(tokens.size());
-  std::vector<Eigen::bfloat16> rw(B * N * K);
-  std::vector<float> rw_ref(rw.size());
-  std::vector<int32_t> ei = {0, 2, 1, 3};
+    std::vector<Eigen::bfloat16> tokens(B * N * D_in);
+    std::vector<float> tokens_ref(tokens.size());
+    std::vector<Eigen::bfloat16> rw(B * N * K);
+    std::vector<float> rw_ref(rw.size());
+    std::vector<int32_t> ei = {0, 2, 1, 3};
 
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    tokens[i] =
-        static_cast<Eigen::bfloat16>(0.3f * std::sin(static_cast<float>(i)));
-    tokens_ref[i] = static_cast<float>(tokens[i]);
-  }
-  for (size_t i = 0; i < rw.size(); ++i) {
-    rw[i] = static_cast<Eigen::bfloat16>(0.5f);
-    rw_ref[i] = static_cast<float>(rw[i]);
-  }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      tokens[i] =
+          static_cast<Eigen::bfloat16>(0.3f * std::sin(static_cast<float>(i)));
+      tokens_ref[i] = static_cast<float>(tokens[i]);
+    }
+    for (size_t i = 0; i < rw.size(); ++i) {
+      rw[i] = static_cast<Eigen::bfloat16>(0.5f);
+      rw_ref[i] = static_cast<float>(rw[i]);
+    }
 
-  model.PopulateTensor<Eigen::bfloat16>(model.tokens(), tokens);
-  model.PopulateTensor<Eigen::bfloat16>(model.rw(), rw);
-  model.PopulateTensor(model.ei(), ei);
+    model.PopulateTensor<Eigen::bfloat16>(model.tokens(), tokens);
+    model.PopulateTensor<Eigen::bfloat16>(model.rw(), rw);
+    model.PopulateTensor(model.ei(), ei);
 
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  std::vector<float> expected_out(B * N * D_in);
-  RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens_ref.data(), rw_ref.data(),
-                  ei.data(), model.w_gate_ref().data(), model.w_up_ref().data(),
-                  model.w_down_ref().data(), model.scale_ref().data(),
-                  model.scale_ref().size(), expected_out.data());
+    std::vector<float> expected_out(B * N * D_in);
+    RunReferenceMoe(B, N, D_in, D_mid, E, K, tokens_ref.data(), rw_ref.data(),
+                    ei.data(), model.w_gate_ref().data(),
+                    model.w_up_ref().data(), model.w_down_ref().data(),
+                    model.scale_ref().data(), model.scale_ref().size(),
+                    expected_out.data());
 
-  std::vector<Eigen::bfloat16> del_out =
-      model.ExtractVector<Eigen::bfloat16>(model.out());
-  for (size_t i = 0; i < expected_out.size(); ++i) {
-    EXPECT_NEAR(static_cast<float>(del_out[i]), expected_out[i], 1e-2f)
-        << "Mismatch at " << i;
+    std::vector<Eigen::bfloat16> del_out =
+        model.ExtractVector<Eigen::bfloat16>(model.out());
+    for (size_t i = 0; i < expected_out.size(); ++i) {
+      EXPECT_NEAR(static_cast<float>(del_out[i]), expected_out[i], 1e-2f)
+          << "Mismatch at " << i;
+    }
   }
 }
 

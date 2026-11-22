@@ -265,6 +265,25 @@ class GatherNdTest(test.TestCase):
       gather_nd_val = self.evaluate(gather_nd)
     self.assertAllEqual(gather_nd_val, [10, 0, 1])
 
+  @test_util.disable_xla("XLA does not have assertions in kernels.")
+  def testTooManyIndicesForInt16CPU(self):
+    # The number of index tuples must fit the index type: with int16 indices,
+    # 32768 or more tuples used to abort or return uninitialized memory.
+    with self.session(use_gpu=False):
+      params = np.arange(1, 8, dtype=np.int32)
+      valid_indices = np.zeros((32767, 1), dtype=np.int16)
+      self.assertAllEqual(
+          self.evaluate(array_ops.gather_nd(params, valid_indices)),
+          np.ones((32767,), dtype=np.int32),
+      )
+      for num_tuples in (32768, 65537):
+        indices = np.zeros((num_tuples, 1), dtype=np.int16)
+        with self.assertRaisesOpError(
+            r"indices has too many elements for int16 indexing: "
+            rf"{num_tuples} > 32767"
+        ):
+          self.evaluate(array_ops.gather_nd(params, indices))
+
   def _disabledTestBadIndicesGPU(self):
     # TODO disabled due to different behavior on GPU and CPU
     # On GPU the bad indices do not raise error but fetch 0 values

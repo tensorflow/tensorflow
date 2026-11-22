@@ -889,11 +889,13 @@ bool MetalInfo::IsMslVersionEqualOrHigher(int major, int minor) const {
       {MetalLanguageVersion::kMetal2_2, {2, 2}},
       {MetalLanguageVersion::kMetal2_3, {2, 3}},
       {MetalLanguageVersion::kMetal2_4, {2, 4}},
-      {MetalLanguageVersion::kMetal3_0, {3, 0}}};
+      {MetalLanguageVersion::kMetal3_0, {3, 0}},
+      {MetalLanguageVersion::kMetal3_1, {3, 1}},
+      {MetalLanguageVersion::kMetal3_2, {3, 2}}};
   auto version = kMapping.at(language_version);
-  if (major > version.first) {
+  if (version.first > major) {
     return true;
-  } else if (major == version.first && minor >= version.second) {
+  } else if (version.first == major && version.second >= minor) {
     return true;
   } else {
     return false;

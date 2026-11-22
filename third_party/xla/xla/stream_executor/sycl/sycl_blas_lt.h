@@ -24,8 +24,6 @@ limitations under the License.
 namespace stream_executor {
 namespace sycl {
 
-constexpr int64_t kOneDnnGemm = 1;
-
 class BlasLt : public gpu::BlasLt {
  public:
   explicit BlasLt(StreamExecutor* parent) : parent_(parent) {}
@@ -63,6 +61,30 @@ class BlasLt : public gpu::BlasLt {
       return absl::OkStatus();
     }
 
+    // For executing complex (C64/C128) matmuls using oneMKL as
+    // oneDNN doesn't support these data types.
+    class OneMklMatmulPlan : public gpu::BlasLt::MatmulPlan {
+     public:
+      OneMklMatmulPlan(const gpu::GemmConfig& config) : config_(config) {}
+      ~OneMklMatmulPlan() override = default;
+      absl::Status ExecuteOnStream(
+          Stream* stream, const gpu::BlasLt::MemoryArgs& args,
+          blas::ProfileResult* profile_result) const override;
+
+      absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
+          size_t max_algorithm_count,
+          size_t max_workspace_size) const override {
+        return std::vector<MatmulAlgorithm>{MatmulAlgorithm{std::any{}, 0}};
+      }
+
+      absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
+        return absl::OkStatus();
+      }
+
+     private:
+      const gpu::GemmConfig config_;
+    };
+
    private:
     std::optional<MatmulAlgorithm> algorithm_;  // selected algorithm
     xla::gpu::GemmConfig config_;
@@ -92,42 +114,24 @@ class SyclBlasSupport : public blas::BlasSupport {
   }
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count, float alpha,
-                  DeviceAddress<float>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<float>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count, double alpha,
-                  DeviceAddress<double>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<double>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count, float alpha,
-                  DeviceAddress<std::complex<float>>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<std::complex<float>>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count, double alpha,
-                  DeviceAddress<std::complex<double>>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<std::complex<double>>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count,
                   std::complex<float> alpha,
-                  DeviceAddress<std::complex<float>>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<std::complex<float>>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count,
                   std::complex<double> alpha,
-                  DeviceAddress<std::complex<double>>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<std::complex<double>>* x, int incx) override;
 
   bool DoBlasGemv(Stream* stream, blas::Transpose trans, uint64_t m, uint64_t n,
                   float alpha, const DeviceAddress<float>& a, int lda,

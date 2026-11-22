@@ -39,6 +39,7 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 TEST(IotaTileAssignmentTest, Create) {
   // Test with dims only
@@ -451,6 +452,46 @@ TEST(TileAssignmentTest, AnalyzeTileAssignment) {
   auto result_v1_iota_1s = AnalyzeTileAssignment(ta_v1_iota_1s);
   EXPECT_TRUE(result_v1_iota_1s.has_value());
   EXPECT_THAT(result_v1_iota_1s->local_mesh, ::testing::ElementsAre(2, 2));
+}
+
+TEST(IotaTileAssignmentTest, TryCreateEnforcesInvariants) {
+  EXPECT_THAT(
+      IotaTileAssignment::TryCreate({-2, 2}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("nonnegative")));
+  EXPECT_THAT(
+      IotaTileAssignment::TryCreate({4611686018427387905LL, 4}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("overflows")));
+  EXPECT_THAT(
+      IotaTileAssignment::TryCreate({0, int64_t{1} << 40, int64_t{1} << 40}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("overflows")));
+
+  EXPECT_THAT(IotaTileAssignment::TryCreate({1}, {}, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must not be empty")));
+  EXPECT_THAT(
+      IotaTileAssignment::TryCreate({4}, {-2, -2}, {0, 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("nonnegative")));
+  EXPECT_THAT(IotaTileAssignment::TryCreate({4}, {0, 4}, {0, 1}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must match expected")));
+  EXPECT_THAT(
+      IotaTileAssignment::TryCreate({4}, {4611686018427387905LL, 4}, {0, 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("overflows")));
+  EXPECT_THAT(IotaTileAssignment::TryCreate({4}, {2, 3}, {0, 1}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must match expected")));
+  EXPECT_THAT(IotaTileAssignment::TryCreate({4}, {2, 2}, {0}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("transpose_perm size")));
+  EXPECT_THAT(
+      IotaTileAssignment::TryCreate({4}, {2, 2}, {0, 2}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("out of range")));
+  EXPECT_THAT(
+      IotaTileAssignment::TryCreate({4}, {2, 2}, {-1, 0}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("out of range")));
+  EXPECT_THAT(
+      IotaTileAssignment::TryCreate({16}, {4, 2, 2}, {0, 2, 2}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("not unique")));
 }
 
 }  // namespace

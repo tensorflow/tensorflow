@@ -54,11 +54,17 @@ absl::Status SnapshotResourceVariables(
 // `variables` is allowed to contain instances that don't track a resource
 // variable (i.e. variables[i].var() can be null for some i).
 //
-// If the variable is read_only(), only acquires reader locks.
-absl::Status LockVariables(absl::Span<VariableInfo*> variables)
-    TF_EXCLUSIVE_LOCK_FUNCTION();
-absl::Status LockVariables(absl::Span<VariableInfo> variables)
-    TF_EXCLUSIVE_LOCK_FUNCTION();
+// If the variable is read_only(), only acquires reader locks, unless
+// `upgrade_read_only_for_pjrt_tensor_buffer` is true and the variable's tensor
+// is an initialized non-empty root buffer not yet backed by a PjRtTensorBuffer
+// (in which case it upgrades to an exclusive lock so
+// PreparePjRtExecutableArguments can safely attach a PjRtTensorBuffer).
+absl::Status LockVariables(absl::Span<VariableInfo*> variables,
+                           bool upgrade_read_only_for_pjrt_tensor_buffer =
+                               false) TF_EXCLUSIVE_LOCK_FUNCTION();
+absl::Status LockVariables(absl::Span<VariableInfo> variables,
+                           bool upgrade_read_only_for_pjrt_tensor_buffer =
+                               false) TF_EXCLUSIVE_LOCK_FUNCTION();
 
 // Returns a vector of VariableInfo instances for the resource variable inputs,
 // given that *all* inputs are in `inputs`. The input indices for the resource
@@ -80,6 +86,17 @@ absl::Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
                                         absl::Span<const Tensor* const> inputs,
                                         absl::Span<const int> variable_indices,
                                         const std::set<int>* variables_updated,
+                                        std::vector<VariableInfo>* result);
+
+// As above. If `ctx` is non-null and TF_XLA_ALLOW_HOST_RESIDENT_VARS=1,
+// read-only variables on a host device are copied to `dev` once and the copy
+// is reused, instead of being rejected. Variables in `variables_updated` are
+// still rejected, since updates to the copy would not reach the host variable.
+absl::Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
+                                        absl::Span<const Tensor* const> inputs,
+                                        absl::Span<const int> variable_indices,
+                                        const std::set<int>* variables_updated,
+                                        OpKernelContext* ctx,
                                         std::vector<VariableInfo>* result);
 
 std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx);

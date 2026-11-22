@@ -14,23 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/test_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -66,6 +70,87 @@ TEST(PjRtTensorBufferUtilTest, MakeTensorFromPjRtBuffer) {
   for (int i = 0; i < tensor.NumElements(); ++i) {
     EXPECT_EQ(dest_cpu_tensor.flat<int32_t>().data()[i], data[i]);
   }
+}
+
+TEST(PjRtTensorBufferUtilTest,
+     UpdateOrMakeTensorWithPjRtBufferReusesExistingBuffer) {
+  DeviceSetup device_setup;
+  device_setup.AddDevicesAndSetUp({DEVICE_GPU});
+  Device* device = device_setup.GetDevice(DEVICE_GPU);
+  Allocator* gpu_allocator = device->GetAllocator(AllocatorAttributes());
+  std::vector<int64_t> dimensions = {2, 3};
+  TensorShape shape(dimensions);
+  Tensor tensor(gpu_allocator, DT_INT32, shape);
+  ASSERT_TRUE(tensor.RefCountIsOne());
+  const size_t orig_allocated_bytes = tensor.AllocatedBytes();
+  TensorBuffer* orig_root_buffer = DMAHelper::buffer(&tensor)->root_buffer();
+  ASSERT_EQ(dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(&tensor)),
+            nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetPjRtClient(DEVICE_GPU));
+  xla::Shape xla_shape = xla::ShapeUtil::MakeShape(xla::S32, dimensions);
+  xla::PjRtDevice* pjrt_device = pjrt_client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto pjrt_buffer,
+      pjrt_client->CreateViewOfDeviceBuffer(
+          const_cast<char*>(tensor.tensor_data().data()), xla_shape,
+          pjrt_device->default_memory_space().value_or(nullptr),
+          [tensor = tensor]() {}));
+
+  TF_ASSERT_OK(PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtBuffer(
+      DT_INT32, shape, std::move(pjrt_buffer), &tensor));
+
+  auto* pjrt_tensor_buffer =
+      dynamic_cast<PjRtTensorBuffer*>(DMAHelper::buffer(&tensor));
+  ASSERT_NE(pjrt_tensor_buffer, nullptr);
+  EXPECT_EQ(pjrt_tensor_buffer->root_buffer(), orig_root_buffer);
+  EXPECT_GT(orig_allocated_bytes, tensor.TotalBytes());
+  EXPECT_EQ(tensor.AllocatedBytes(), orig_allocated_bytes);
+  EXPECT_TRUE(tensor.RefCountIsOne());
+}
+
+TEST(PjRtTensorBufferUtilTest, FindPjRtTensorBufferDistinguishesSlicedViews) {
+  DeviceSetup device_setup;
+  device_setup.AddDevicesAndSetUp({DEVICE_GPU});
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetPjRtClient(DEVICE_GPU));
+  std::vector<int64_t> dimensions = {4, 3};
+  std::vector<int32_t> data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  xla::Shape xla_shape = xla::ShapeUtil::MakeShape(xla::S32, dimensions);
+  xla::PjRtDevice* pjrt_device = pjrt_client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(xla::PjRtMemorySpace * pjrt_memory,
+                          pjrt_device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto pjrt_buffer,
+      pjrt_client->BufferFromHostBuffer(
+          data.data(), xla_shape.element_type(), xla_shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          nullptr, pjrt_memory, /*device_layout=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Tensor tensor, MakeTensorFromPjRtBuffer(DT_INT32, TensorShape(dimensions),
+                                              std::move(pjrt_buffer)));
+  const auto* root_pjrt_buf =
+      dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(&tensor));
+  ASSERT_NE(root_pjrt_buf, nullptr);
+
+  PjRtTensorBufferUtil::LookupResult direct_lookup =
+      PjRtTensorBufferUtil::FindPjRtTensorBuffer(&tensor);
+  EXPECT_EQ(direct_lookup.buffer, root_pjrt_buf);
+  EXPECT_TRUE(direct_lookup.is_full_buffer);
+
+  Tensor reshaped;
+  ASSERT_TRUE(reshaped.CopyFrom(tensor.Slice(0, 4), TensorShape({1, 4, 3})));
+  Tensor full_subslice = reshaped.SubSlice(0);
+  PjRtTensorBufferUtil::LookupResult full_subslice_lookup =
+      PjRtTensorBufferUtil::FindPjRtTensorBuffer(&full_subslice);
+  EXPECT_EQ(full_subslice_lookup.buffer, root_pjrt_buf);
+  EXPECT_TRUE(full_subslice_lookup.is_full_buffer);
+
+  Tensor prefix_slice = tensor.Slice(0, 2);
+  PjRtTensorBufferUtil::LookupResult prefix_lookup =
+      PjRtTensorBufferUtil::FindPjRtTensorBuffer(&prefix_slice);
+  EXPECT_EQ(prefix_lookup.buffer, root_pjrt_buf);
+  EXPECT_FALSE(prefix_lookup.is_full_buffer);
 }
 
 }  // namespace

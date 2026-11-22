@@ -1,0 +1,23 @@
+diff --git a/python/private/site_init_template.py b/python/private/site_init_template.py
+--- a/python/private/site_init_template.py
++++ b/python/private/site_init_template.py
+@@ -130,10 +130,18 @@
+         @classmethod
+         def find_spec(cls, fullname, path=None, target=None):
+             spec = super().find_spec(fullname, path, target)
++            # LoadLibraryExW probes side-by-side manifests (e.g. `<pyd>.manifest`,
++            # +9 chars plus NUL) against MAX_PATH (260), so unprefixed .pyd paths in
++            # the 251-259 char range fail with ERROR_FILENAME_EXCED_RANGE. Use 240
++            # (and check realpath for symlink targets) to leave safe headroom.
+             if (
+                 spec is None
+                 or not isinstance(spec.loader, importlib.machinery.ExtensionFileLoader)
+-                or len(os.path.abspath(spec.origin)) < 260
++                or max(
++                    len(os.path.abspath(spec.origin)),
++                    len(os.path.realpath(spec.origin)),
++                )
++                < 240
+             ):
+                 return spec
+ 

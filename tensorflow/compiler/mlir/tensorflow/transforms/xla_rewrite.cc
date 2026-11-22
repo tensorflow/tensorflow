@@ -39,7 +39,6 @@ struct XlaRewritePass : public impl::XlaRewritePassBase<XlaRewritePass> {
 };
 
 void MoveResourceArgsToEnd(func::FuncOp callee) {
-  llvm::DenseMap<BlockArgument, BlockArgument> mapping;
   unsigned num_params = callee.getNumArguments();
   llvm::BitVector removed_params(num_params);
   // Copy the resource-type parameters to the end.

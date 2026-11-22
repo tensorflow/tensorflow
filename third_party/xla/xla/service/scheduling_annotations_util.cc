@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -30,8 +31,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/collective_pipeliner_utils.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/transforms/collectives/collective_pipeliner_utils.h"
 #include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -85,11 +88,12 @@ absl::Status VerifyAnnotation(const HloInstruction* instr,
 
 absl::StatusOr<std::optional<Annotation>> ParseAnnotation(
     const HloInstruction* instr) {
-  const auto& attrs = instr->frontend_attributes().map();
-  if (!attrs.contains(kXlaSchedulingGroupIdAttr)) {
+  std::optional<std::string> annotation_attr =
+      instr->get_frontend_attribute(kXlaSchedulingGroupIdAttr);
+  if (!annotation_attr.has_value()) {
     return std::nullopt;
   }
-  absl::string_view annotation_str = attrs.at(kXlaSchedulingGroupIdAttr);
+  absl::string_view annotation_str = *annotation_attr;
   VLOG(2) << "Annotated instruction: " << instr->name() << " "
           << annotation_str;
   if (annotation_str == kXlaNoOpSchedulingGroup) {
@@ -122,7 +126,7 @@ absl::StatusOr<std::optional<Annotation>> ParseAnnotation(
 }  // namespace
 
 bool HasSchedulingAnnotation(const HloInstruction* instr) {
-  return instr->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr);
+  return instr->has_frontend_attribute(kXlaSchedulingGroupIdAttr);
 }
 
 absl::StatusOr<std::optional<Annotation>> GetSchedulingAnnotation(
@@ -133,15 +137,7 @@ absl::StatusOr<std::optional<Annotation>> GetSchedulingAnnotation(
 absl::Status SetSchedulingAnnotation(HloInstruction* instr,
                                      std::string annotation) {
   ABSL_RETURN_IF_ERROR(VerifyAnnotation(instr, annotation));
-  FrontendAttributes frontend_attributes = instr->frontend_attributes();
-  if (frontend_attributes.map().contains(kXlaSchedulingGroupIdAttr)) {
-    frontend_attributes.mutable_map()->find(kXlaSchedulingGroupIdAttr)->second =
-        annotation;
-  } else {
-    frontend_attributes.mutable_map()->insert(
-        {kXlaSchedulingGroupIdAttr, annotation});
-  }
-  instr->set_frontend_attributes(frontend_attributes);
+  instr->set_frontend_attribute(kXlaSchedulingGroupIdAttr, annotation);
   return absl::OkStatus();
 }
 
@@ -151,13 +147,7 @@ absl::Status SetSchedulingAnnotation(HloInstruction* instr,
 }
 
 bool RemoveSchedulingAnnotation(HloInstruction* instr) {
-  FrontendAttributes frontend_attributes = instr->frontend_attributes();
-  if (!frontend_attributes.map().contains(kXlaSchedulingGroupIdAttr)) {
-    return false;
-  }
-  frontend_attributes.mutable_map()->erase(kXlaSchedulingGroupIdAttr);
-  instr->set_frontend_attributes(frontend_attributes);
-  return true;
+  return instr->erase_frontend_attribute(kXlaSchedulingGroupIdAttr) > 0;
 }
 
 absl::StatusOr<std::optional<AnnotationIterationId>>
@@ -212,6 +202,30 @@ absl::StatusOr<AnnotationGroupId> NextSchedulingGroupId(
     }
   }
   return next_scheduling_id + 1;
+}
+
+bool HasDeepPipelineSchedulingMode(const HloInstruction* instr) {
+  std::optional<std::string> mode =
+      instr->get_frontend_attribute(kXlaSchedulingGroupDeepPipelineAttr);
+  return mode.has_value() && *mode == "true";
+}
+
+absl::StatusOr<absl::flat_hash_set<AnnotationGroupId>>
+GetDeepPipelineSchedulingGroupIds(const HloModule& module) {
+  absl::flat_hash_set<AnnotationGroupId> group_ids;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* hlo : comp->instructions()) {
+      if (!HasDeepPipelineSchedulingMode(hlo)) {
+        continue;
+      }
+      ABSL_ASSIGN_OR_RETURN(std::optional<AnnotationGroupId> group_id,
+                       GetSchedulingAnnotationGroupId(hlo));
+      if (group_id.has_value()) {
+        group_ids.insert(*group_id);
+      }
+    }
+  }
+  return group_ids;
 }
 
 bool IsIterationIdConstentWithPipeliningDirection(

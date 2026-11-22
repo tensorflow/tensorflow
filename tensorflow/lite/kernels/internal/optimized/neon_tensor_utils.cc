@@ -486,7 +486,8 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
                 m_rows <= std::numeric_limits<ptrdiff_t>::max() / m_cols);
   for (ptrdiff_t row = 0; row < m_rows; row += 2) {
     for (ptrdiff_t batch = 0; batch < n_batch; batch += 4) {
-      const float* channel_scales_ptr = per_channel_scale + row;
+      const float* channel_scales_ptr =
+          per_channel_scale ? per_channel_scale + row : nullptr;
       int32_t* row_sums_ptr = row_sums ? row_sums + row : nullptr;
 
       float* result_ptr = result + (batch * m_rows) + row;

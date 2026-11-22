@@ -15,12 +15,21 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_executor.h"
 
+#include <algorithm>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+#if defined(__linux__)
+#include <fcntl.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -28,12 +37,18 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/debug_options_flags.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/dma_buf.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -51,6 +66,7 @@ limitations under the License.
 namespace stream_executor::gpu {
 namespace {
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::AnyOf;
 using ::testing::Ge;
@@ -174,6 +190,81 @@ TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
   EXPECT_GE(allocation->address().size(), 1024);
 }
 
+TEST(CudaExecutorTest, CreateLocalityDomainMemoryAllocatorWorks) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  const int domain_count =
+      executor->GetDeviceDescription().locality_domain_count();
+  if (domain_count < 2) {
+    EXPECT_THAT(executor->CreateLocalityDomainMemoryAllocator(0),
+                Not(absl_testing::IsOk()));
+    return;
+  }
+  for (int locality_domain_id = 0; locality_domain_id < domain_count;
+       ++locality_domain_id) {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<MemoryAllocator> allocator,
+        executor->CreateLocalityDomainMemoryAllocator(locality_domain_id));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                         allocator->Allocate(1024));
+    EXPECT_NE(allocation->address().opaque(), nullptr);
+    EXPECT_GE(allocation->address().size(), 1024);
+  }
+}
+
+TEST(CudaExecutorTest, CreateLocalityDomainMemoryAllocatorRejectsInvalidId) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  const int domain_count =
+      executor->GetDeviceDescription().locality_domain_count();
+  if (domain_count < 2) {
+    GTEST_SKIP() << "Requires a GPU with at least two locality domains";
+  }
+  EXPECT_THAT(executor->CreateLocalityDomainMemoryAllocator(-1),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(executor->CreateLocalityDomainMemoryAllocator(domain_count),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(CudaExecutorTest, DisabledVmmRejectsLocalityDomainAllocator) {
+  const bool was_disabled =
+      xla::GetDebugOptionsFromFlags().xla_gpu_experimental_vmm_disabled();
+  std::vector<tsl::Flag> flags;
+  xla::AppendDebugOptionsFlags(&flags);
+  auto set_vmm_disabled = [&](bool disabled) {
+    std::vector<std::string> args = {
+        disabled ? "--xla_gpu_experimental_vmm_disabled=true"
+                 : "--xla_gpu_experimental_vmm_disabled=false"};
+    EXPECT_TRUE(tsl::Flags::Parse(args, flags));
+    EXPECT_TRUE(args.empty());
+  };
+  absl::Cleanup restore_flag = [&] { set_vmm_disabled(was_disabled); };
+  set_vmm_disabled(true);
+
+  // Use a fresh executor: cached executors retain the options from Init().
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_GT(platform->VisibleDeviceCount(), 0);
+  CudaExecutor executor(platform, /*device_ordinal=*/0);
+  ASSERT_OK(executor.Init());
+  const DeviceDescription& device = executor.GetDeviceDescription();
+  if (std::min(device.driver_version(), device.compile_time_toolkit_version()) <
+      SemanticVersion{13, 4, 0}) {
+    GTEST_SKIP() << "Requires CUDA toolkit and driver 13.4 or newer";
+  }
+  if (device.locality_domain_count() < 2) {
+    GTEST_SKIP() << "Requires a GPU with at least two locality domains";
+  }
+  // Locality-domain placement needs VMM; the allocator must be rejected at
+  // creation rather than silently falling back to whole-device memory.
+  EXPECT_THAT(executor.CreateLocalityDomainMemoryAllocator(0),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST(CudaExecutorTest, AllocateArrayReturnsRequestedSize) {
   ASSERT_OK_AND_ASSIGN(Platform * platform,
                        PlatformManager::PlatformWithName("CUDA"));
@@ -252,6 +343,74 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceAddress) {
   EXPECT_NE(allocation.opaque(), nullptr);
   EXPECT_THAT(executor->GetPointerMemorySpace(allocation.opaque()),
               absl_testing::IsOkAndHolds(MemorySpace::kDevice));
+}
+
+TEST(CudaExecutorTest, IsHostMemoryPinnedWorksWithRegisteredHostMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  constexpr size_t kSize = 64 * 1024;
+  std::vector<uint8_t> buffer(kSize);
+  // Pageable host memory isn't pinned until we register it.
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+
+  ASSERT_TRUE(executor->HostMemoryRegister(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data() + 1024, 4096));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), 0));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data() + kSize / 2, kSize));
+
+  ASSERT_TRUE(executor->HostMemoryUnregister(buffer.data()));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+}
+
+// Without XLA_CUDA_REGISTER_HOST_MEMORY_IN_SHARED_CONTEXT, host memory is
+// registered in the primary context (see cuda_executor_shared_context_test).
+TEST(CudaExecutorTest, HostMemoryRegisterUsesPrimaryContextByDefault) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  CUcontext primary = nullptr;
+  {
+    std::unique_ptr<ActivateContext> activation = executor->Activate();
+    ASSERT_EQ(cuCtxGetCurrent(&primary), CUDA_SUCCESS);
+  }
+
+  std::vector<uint8_t> buffer(64 * 1024);
+  ASSERT_TRUE(executor->HostMemoryRegister(buffer.data(), buffer.size()));
+  CUcontext context = nullptr;
+  EXPECT_EQ(cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT,
+                                  reinterpret_cast<CUdeviceptr>(buffer.data())),
+            CUDA_SUCCESS);
+  EXPECT_EQ(context, primary);
+  ASSERT_TRUE(executor->HostMemoryUnregister(buffer.data()));
+}
+
+TEST(CudaExecutorTest, IsHostMemoryPinnedWorksWithHostMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       executor->HostMemoryAllocate(256));
+  EXPECT_TRUE(
+      executor->IsHostMemoryPinned(allocation->address().opaque(), 256));
+}
+
+TEST(CudaExecutorTest, IsHostMemoryPinnedIsFalseForDeviceAddress) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  DeviceAddressBase allocation = executor->Allocate(256);
+  ASSERT_NE(allocation.opaque(), nullptr);
+  EXPECT_FALSE(executor->IsHostMemoryPinned(allocation.opaque(), 256));
+  executor->Deallocate(&allocation);
 }
 
 TEST(CudaExecutorTest, AllocateCollectiveMemoryWithDeviceAllocator) {
@@ -344,6 +503,23 @@ TEST(CudaExecutorTest, DisabledVmmRejectsReservationAndPhysicalAllocation) {
   DeviceAddressBase memory = executor.Allocate(4096, /*memory_space=*/0);
   EXPECT_NE(memory.opaque(), nullptr);
   executor.Deallocate(&memory);
+
+  // cuMemAlloc has no alignment parameter, so pin what the driver hands out.
+  // Keep the buffers live together so neighboring allocations are checked.
+  constexpr uint64_t kSizes[] = {1, 16, 16, 16, 16, 64, 100, 4096};
+  std::vector<DeviceAddressBase> buffers;
+  for (uint64_t size : kSizes) {
+    DeviceAddressBase small = executor.Allocate(size, /*memory_space=*/0);
+    ASSERT_FALSE(small.is_null()) << "size " << size;
+    buffers.push_back(small);
+  }
+  for (DeviceAddressBase& small : buffers) {
+    EXPECT_EQ(
+        reinterpret_cast<uintptr_t>(small.opaque()) % kDeviceMemoryAlignBytes,
+        0)
+        << small.opaque();
+    executor.Deallocate(&small);
+  }
 }
 
 // Reservations and physical allocations created through the executor use its
@@ -416,6 +592,75 @@ TEST(CudaExecutorTest, RetainVmmMemoryHandleForDefaultDeviceMemory) {
                        cuda_executor->RetainVmmMemoryHandle(ptr.opaque()));
   EXPECT_NE(handle.handle(), 0);
   cuda_executor->Deallocate(&ptr);
+}
+
+TEST(CudaExecutorTest, ExportDmaBuf) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  auto* cuda_executor = dynamic_cast<CudaExecutor*>(executor);
+  ASSERT_NE(cuda_executor, nullptr);
+
+  DeviceAddressBase ptr =
+      cuda_executor->Allocate(8192, static_cast<int>(MemorySpace::kDevice));
+  ASSERT_NE(ptr.opaque(), nullptr);
+  absl::Cleanup cleanup = [&] { cuda_executor->Deallocate(&ptr); };
+
+  if (!cuda_executor->is_dma_buf_supported()) {
+    EXPECT_THAT(cuda_executor->ExportDmaBuf(ptr),
+                StatusIs(absl::StatusCode::kUnimplemented));
+    GTEST_SKIP() << "dma-buf export not supported on this device.";
+  }
+
+  // Export a non-page-aligned sub-slice and verify the returned offset and fd
+  // lifecycle.
+  constexpr uint64_t kSubOffset = 256;
+  constexpr uint64_t kSubSize = 512;
+  DeviceAddressBase sub(static_cast<char*>(ptr.opaque()) + kSubOffset,
+                        kSubSize);
+  int sub_fd = -1;
+  {
+    ASSERT_OK_AND_ASSIGN(DmaBuf sub_buf, cuda_executor->ExportDmaBuf(sub));
+    sub_fd = sub_buf.fd();
+    EXPECT_GE(sub_fd, 0);
+#if defined(__linux__)
+    const int64_t page_size = sysconf(_SC_PAGESIZE);
+    ASSERT_GT(page_size, 0);
+    EXPECT_EQ(sub_buf.offset(), reinterpret_cast<uintptr_t>(sub.opaque()) %
+                                    static_cast<uint64_t>(page_size));
+    char link_target[64] = {};
+    const ssize_t link_len =
+        readlink(absl::StrCat("/proc/self/fd/", sub_fd).c_str(), link_target,
+                 sizeof(link_target) - 1);
+    ASSERT_GT(link_len, 0);
+    EXPECT_THAT(absl::string_view(link_target, link_len), HasSubstr("dmabuf"));
+    const off_t dmabuf_size = lseek(sub_fd, 0, SEEK_END);
+    ASSERT_NE(dmabuf_size, static_cast<off_t>(-1));
+    EXPECT_GE(static_cast<uint64_t>(dmabuf_size), sub_buf.offset() + kSubSize);
+#endif
+  }
+#if defined(__linux__)
+  EXPECT_EQ(fcntl(sub_fd, F_GETFD), -1);
+  EXPECT_EQ(errno, EBADF);
+#endif
+}
+
+TEST(CudaExecutorTest, ExportDmaBufRejectsEmptyRange) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  auto* cuda_executor = dynamic_cast<CudaExecutor*>(executor);
+  ASSERT_NE(cuda_executor, nullptr);
+
+  const absl::StatusCode expected_code =
+      cuda_executor->is_dma_buf_supported() ? absl::StatusCode::kInvalidArgument
+                                            : absl::StatusCode::kUnimplemented;
+  EXPECT_THAT(cuda_executor->ExportDmaBuf(DeviceAddressBase()),
+              StatusIs(expected_code));
 }
 }  // namespace
 }  // namespace stream_executor::gpu

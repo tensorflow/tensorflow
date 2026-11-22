@@ -16,33 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ASYNC_CUSTOM_CALL_UTILS_H_
 #define XLA_SERVICE_ASYNC_CUSTOM_CALL_UTILS_H_
 
-#include <optional>
-#include <string>
-
-#include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instruction_utils.h"
-
-namespace xla {
-
-// Returns the corresponding "-start" custom-call target for a "-done" target,
-// or std::nullopt if `done_target` does not end with "-done".
-std::optional<std::string> MatchingStartTarget(absl::string_view done_target);
-
-// Completes rewriting a custom-call start/done pair into `async_start` and
-// `async_done` (with `final_result` replacing uses of `done_call`), propagating
-// dataflow along `forward_path`, transferring metadata and control
-// dependencies, and removing the original custom-call instructions.
-absl::Status FinishRewrite(
-    HloComputation* computation, HloInstruction* start_call,
-    HloInstruction* done_call, HloInstruction* async_start,
-    HloInstruction* async_done,
-    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
-    HloInstruction* final_result, bool propagate_annotations = true);
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/async_custom_call_utils.h"
+#include "xla/hlo/transforms/async_custom_call_utils.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_ASYNC_CUSTOM_CALL_UTILS_H_

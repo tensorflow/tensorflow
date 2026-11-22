@@ -24,6 +24,7 @@
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
@@ -49,6 +50,9 @@ absl::StatusOr<SingleDeviceShardSemantics> FromSingleDeviceShardSemanticsProto(
     proto::SingleDeviceShardSemantics s);
 proto::SingleDeviceShardSemantics ToSingleDeviceShardSemanticsProto(
     SingleDeviceShardSemantics s);
+
+absl::StatusOr<Client::HashMode> FromHashModeProto(proto::HashMode m);
+proto::HashMode ToHashModeProto(Client::HashMode m);
 
 absl::StatusOr<xla::PjRtValueType> FromVariantProto(
     const proto::Variant& variant_proto);

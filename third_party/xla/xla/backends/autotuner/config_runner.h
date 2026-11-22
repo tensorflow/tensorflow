@@ -26,10 +26,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/autotune_cache.pb.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -92,9 +94,14 @@ class ConfigRunner {
   static absl::StatusOr<std::unique_ptr<ConfigRunner>> Create(
       std::unique_ptr<Profiler> profiler, CorrectnessCheckOptions options);
 
+  // Profiles all `candidates`. Candidates whose backend is in
+  // `excluded_backends` are still profiled, but are not reported to the
+  // profiler as a competitive baseline (see
+  // `Profiler::RecordValidatedCandidate`) since they cannot be selected.
   absl::StatusOr<std::vector<ConfigProfile>> ProfileAll(
       std::vector<ExecutableCandidate> candidates,
-      const HloInstruction* instr = nullptr);
+      const HloInstruction* instr = nullptr,
+      absl::Span<const autotuner::Backend> excluded_backends = {});
 
  private:
   ConfigRunner(std::unique_ptr<Profiler> profiler,
@@ -105,12 +112,27 @@ class ConfigRunner {
     ScopedShapedBuffer representative;
     int count = 0;
     bool has_trusted_member = false;
+    // Duration of the first selectable member of an uncorroborated untrusted
+    // cluster (`count < 2`), deferred until a second member agrees with it.
+    std::optional<absl::Duration> pending_selectable_duration;
   };
 
   ConfigProfile ProfileCandidate(ExecutableCandidate candidate,
                                  InputBuffers& input_buffers,
                                  std::vector<OutputCluster>& clusters,
                                  bool is_trusted_config, bool allow_new_cluster)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
+
+  // Reports `result` to the profiler as a validated candidate if it succeeded,
+  // passed correctness checks, and its backend is not excluded from selection.
+  // If `require_corroboration` is true (untrusted candidates without a trusted
+  // reference), reporting is deferred until the candidate's output cluster has
+  // at least two agreeing members, so that a singleton wrong-output candidate
+  // that is later demoted cannot lower the competitive baseline.
+  void MaybeRecordValidatedCandidate(
+      const ConfigProfile& result, const InputBuffers& input_buffers,
+      absl::Span<const autotuner::Backend> excluded_backends,
+      std::vector<OutputCluster>& clusters, bool require_corroboration)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
 
   int AssignToOutputCluster(

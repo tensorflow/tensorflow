@@ -48,6 +48,10 @@ inline constexpr absl::string_view kFlattenAfterFusion =
     "xla_cpu_flatten_after_fusion";
 inline constexpr absl::string_view kUseMultiOutputFusion =
     "xla_cpu_use_multi_output_fusion";
+// Maximum number of distinct operands a loop fusion may have in
+// CpuInstructionFusion. A value <= 0 disables the check.
+inline constexpr absl::string_view kMaxFusionOperands =
+    "xla_cpu_max_fusion_operands";
 [[deprecated(
     "Use DebugOptions::xla_cpu_enable_platform_dependent_math instead.")]]
 inline constexpr absl::string_view kDisablePlatformDependentMath =
@@ -71,6 +75,8 @@ absl::StatusOr<int64_t> SmallWhileLoopByteThreshold(
     const HloModuleConfig& config);
 bool FlattenAfterFusion(const HloModuleConfig& config);
 bool UseMultiOutputFusion(const HloModuleConfig& config);
+// Default: 96, matching the GPU backend's MaxOperandsAndOutputsPerFusion.
+absl::StatusOr<int64_t> MaxFusionOperands(const HloModuleConfig& config);
 bool EnableTiledEmitter(const HloModuleConfig& config);
 bool EnableExperimentalTiling(const HloModuleConfig& config);
 

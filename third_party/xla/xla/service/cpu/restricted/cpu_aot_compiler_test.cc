@@ -18,6 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -34,6 +37,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/restricted/hlo_runner_legacy.h"
 #include "xla/stream_executor/platform.h"
@@ -41,6 +45,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
 
 namespace xla {
@@ -293,6 +298,184 @@ ENTRY main {
   ASSERT_NE(cpu_aot_result, nullptr);
 
   EXPECT_FALSE(cpu_aot_result->proto().data_layout().empty());
+}
+
+class CpuAotLoadExecutableTest : public HloTestBaseLegacy {
+ protected:
+  // Contains a constant so that an embedded HloProto has a literal to strip.
+  static constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[4] parameter(0)
+  c = f32[4] constant({1, 2, 3, 4})
+  ROOT add = f32[4] add(p, c)
+})";
+
+  // Compiles kHlo ahead of time, serializes the result and loads it back.
+  absl::StatusOr<std::unique_ptr<CompiledModule>> CompileSerializeAndReload() {
+    ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
+                     se::PlatformManager::PlatformWithName("host"));
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_exec,
+                     platform->ExecutorForDevice(0));
+    Compiler* compiler = backend().compiler();
+
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(kHlo));
+
+    CpuAotCompilationOptions aot_options(
+        /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
+        /*features=*/"",
+        /*entry_point_name=*/"entry",
+        /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::BigPic);
+    aot_options.set_executor(stream_exec);
+
+    ABSL_ASSIGN_OR_RETURN(
+        std::vector<std::unique_ptr<CompiledModule>> aot_results,
+        compiler->CompileAheadOfTime(std::move(module), aot_options));
+    if (aot_results.size() != 1) {
+      return absl::InternalError("Expected exactly one AOT result.");
+    }
+
+    ABSL_ASSIGN_OR_RETURN(std::string serialized,
+                     aot_results[0]->SerializeAsString());
+    return compiler->LoadAotCompilationResult(serialized);
+  }
+
+  absl::StatusOr<std::unique_ptr<Executable>> LoadWithEmbedIr(
+      bool embed_ir_in_executable) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> loaded,
+                     CompileSerializeAndReload());
+    ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
+                     se::PlatformManager::PlatformWithName("host"));
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_exec,
+                     platform->ExecutorForDevice(0));
+
+    DebugOptions debug_options = GetDebugOptionsFromFlags();
+    debug_options.set_xla_embed_ir_in_executable(embed_ir_in_executable);
+    return std::move(*loaded).LoadExecutable(
+        platform->id(), stream_exec->GetDeviceDescription(), debug_options);
+  }
+};
+
+// The overload without DebugOptions is the one PjRt uses when deserializing.
+TEST_F(CpuAotLoadExecutableTest, DoesNotEmbedHloProtoByDefault) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledModule> loaded,
+                       CompileSerializeAndReload());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       std::move(*loaded).LoadExecutable());
+  EXPECT_EQ(executable->hlo_proto(), nullptr);
+}
+
+TEST_F(CpuAotLoadExecutableTest, DoesNotEmbedHloProtoWhenEmbedIrDisabled) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       LoadWithEmbedIr(/*embed_ir_in_executable=*/false));
+  EXPECT_EQ(executable->hlo_proto(), nullptr);
+}
+
+TEST_F(CpuAotLoadExecutableTest, EmbedsStrippedHloProtoWhenEmbedIrEnabled) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       LoadWithEmbedIr(/*embed_ir_in_executable=*/true));
+
+  const HloProto* hlo_proto = executable->hlo_proto();
+  ASSERT_NE(hlo_proto, nullptr);
+  EXPECT_TRUE(hlo_proto->has_hlo_module());
+  EXPECT_TRUE(hlo_proto->has_buffer_assignment());
+
+  int num_literals = 0;
+  for (const auto& computation : hlo_proto->hlo_module().computations()) {
+    for (const auto& instruction : computation.instructions()) {
+      if (!instruction.has_literal()) {
+        continue;
+      }
+      ++num_literals;
+      EXPECT_TRUE(instruction.literal().has_shape());
+      EXPECT_EQ(instruction.literal().f32s_size(), 0);
+    }
+  }
+  // Guard against the constant being optimized away, which would make the
+  // checks above vacuous.
+  EXPECT_GT(num_literals, 0);
+}
+
+TEST_F(CpuAotLoadExecutableTest, EmbedsHloProtoWhenModuleCompiledWithEmbedIr) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("host"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
+  Compiler* compiler = backend().compiler();
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_embed_ir_in_executable(true);
+
+  CpuAotCompilationOptions aot_options(
+      /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
+      /*features=*/"",
+      /*entry_point_name=*/"entry",
+      /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::BigPic);
+  aot_options.set_executor(stream_exec);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      compiler->CompileAheadOfTime(std::move(module), aot_options));
+  ASSERT_EQ(aot_results.size(), 1);
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       aot_results[0]->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledModule> loaded,
+                       compiler->LoadAotCompilationResult(serialized));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       std::move(*loaded).LoadExecutable());
+  EXPECT_NE(executable->hlo_proto(), nullptr);
+}
+
+TEST_F(CpuAotLoadExecutableTest, EmbedsFullHloProtoWhenDumpingSnapshots) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("host"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
+  Compiler* compiler = backend().compiler();
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  module->mutable_config().mutable_debug_options().set_xla_dump_hlo_snapshots(
+      true);
+
+  CpuAotCompilationOptions aot_options(
+      /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
+      /*features=*/"",
+      /*entry_point_name=*/"entry",
+      /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::BigPic);
+  aot_options.set_executor(stream_exec);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      compiler->CompileAheadOfTime(std::move(module), aot_options));
+  ASSERT_EQ(aot_results.size(), 1);
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       aot_results[0]->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledModule> loaded,
+                       compiler->LoadAotCompilationResult(serialized));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       std::move(*loaded).LoadExecutable());
+
+  ASSERT_TRUE(executable->dumping_snapshot());
+  const HloProto* hlo_proto = executable->hlo_proto();
+  ASSERT_NE(hlo_proto, nullptr);
+
+  // Literal payloads must be kept so the snapshot can be replayed.
+  bool found_payload = false;
+  for (const auto& computation : hlo_proto->hlo_module().computations()) {
+    for (const auto& instruction : computation.instructions()) {
+      if (instruction.has_literal() && instruction.literal().f32s_size() > 0) {
+        found_payload = true;
+      }
+    }
+  }
+  EXPECT_TRUE(found_payload);
 }
 
 }  // namespace

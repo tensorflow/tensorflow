@@ -94,35 +94,30 @@ static void InitializeTargets() {
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
-  LLVMInitializeARMAsmParser();
   LLVMInitializeARMAsmPrinter();
 #endif
 #if XLA_LLVM_AARCH64_AVAILABLE
   LLVMInitializeAArch64Target();
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
-  LLVMInitializeAArch64AsmParser();
   LLVMInitializeAArch64AsmPrinter();
 #endif
 #if XLA_LLVM_POWERPC_AVAILABLE
   LLVMInitializePowerPCTarget();
   LLVMInitializePowerPCTargetInfo();
   LLVMInitializePowerPCTargetMC();
-  LLVMInitializePowerPCAsmParser();
   LLVMInitializePowerPCAsmPrinter();
 #endif
 #if XLA_LLVM_S390X_AVAILABLE
   LLVMInitializeSystemZTarget();
   LLVMInitializeSystemZTargetInfo();
   LLVMInitializeSystemZTargetMC();
-  LLVMInitializeSystemZAsmParser();
   LLVMInitializeSystemZAsmPrinter();
 #endif
 #if XLA_LLVM_X86_AVAILABLE
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
-  LLVMInitializeX86AsmParser();
   LLVMInitializeX86AsmPrinter();
 #endif
 }
@@ -373,7 +368,7 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   llvm::StandardInstrumentations si(module.getContext(), false);
   si.registerCallbacks(pic, &mam);
 
-  llvm::PassBuilder pb(target_machine, pto, {}, &pic);
+  llvm::PassBuilder pb(module.getContext(), target_machine, pto, {}, &pic);
 
   // Add the appropriate TargetLibraryInfo.
   llvm::Triple target_triple(target_machine->getTargetTriple());

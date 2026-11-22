@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -39,6 +40,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -120,9 +123,7 @@ class NanoIfrtClient
       std::optional<absl::Span<const int64_t>> byte_strides,
       ifrt::ShardingRef sharding, ifrt::LayoutRef layout,
       HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) override;
-  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
-  using xla::ifrt::Client::MakeArrayFromHostBuffer;
+      std::shared_ptr<const void> host_buffer_hold) override;
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
@@ -177,6 +178,15 @@ class NanoIfrtClient
       absl::Span<const xla::ifrt::ArraySpec> specs,
       xla::ifrt::ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> CopyArraySlices(
+      absl::Span<const xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::IndexDomain> index_domains) override;
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> UpdateArraySlices(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArrayRef> slices,
+      absl::Span<const xla::ifrt::Index> origins) override;
+
   tsl::Future<> GetReadyFuture(
       absl::Span<const ifrt::ValueRef> values) override;
 
@@ -221,19 +231,21 @@ class NanoIfrtClient
       int local_hardware_id) const override;
 
   absl::StatusOr<ifrt::DeviceListRef> MakeDeviceList(
-      absl::Span<ifrt::Device* const> devices) const override;
+      absl::Span<ifrt::Device* absl_nonnull const> devices) const override;
 
   ifrt::Compiler* GetDefaultCompiler() override;
 
   absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>> Load(
       absl::Span<const ifrt::ExecutableRef> executables,
-      absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) override;
+      absl::Span<absl_nonnull std::unique_ptr<ifrt::LoadOptions>> options)
+      override;
 
   absl::StatusOr<std::shared_ptr<ifrt::Topology>> GetTopologyForDevices(
       const ifrt::DeviceListRef& devices) const override;
 
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultPjRtLayout(
-      ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
+      ifrt::DType dtype, absl::Span<const int64_t> dims,
+      ifrt::Device* absl_nonnull device,
       ifrt::MemoryKind memory_kind) const override;
   absl::StatusOr<ifrt::CustomLayoutRef> GetDefaultLayout(
       ifrt::DType dtype, const ifrt::Shape& shape,
@@ -241,7 +253,7 @@ class NanoIfrtClient
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
   SubscribeToAttributeChanges(
-      absl::Span<xla::ifrt::Device* const> devices,
+      absl::Span<xla::ifrt::Device* absl_nonnull const> devices,
       std::optional<absl::Span<const std::string>> attribute_names,
       xla::ifrt::OnDeviceAttributeChangeCallback callback) override {
     return absl::UnimplementedError(

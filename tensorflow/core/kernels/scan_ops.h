@@ -32,14 +32,18 @@ struct Scan {
                   const bool reverse, const bool exclusive) {
     // Perform the reverse ops directly with Eigen, which avoids copying the
     // tensor twice compared to using individual ops.
-    Eigen::array<bool, 3> dims;
-    dims[0] = false;
-    dims[1] = reverse;
-    dims[2] = false;
     MaybeWith32BitIndexing<Device>(
         [&](auto in32, auto out32) {
-          out32.device(d) =
-              in32.reverse(dims).scan(1, reducer, exclusive).reverse(dims);
+          if (reverse) {
+            Eigen::array<bool, 3> dims;
+            dims[0] = false;
+            dims[1] = true;
+            dims[2] = false;
+            out32.device(d) =
+                in32.reverse(dims).scan(1, reducer, exclusive).reverse(dims);
+          } else {
+            out32.device(d) = in32.scan(1, reducer, exclusive);
+          }
         },
         in, out);
   }

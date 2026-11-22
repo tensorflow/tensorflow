@@ -198,6 +198,21 @@ CUptiResult CuptiErrorManager::ActivitySetAttributeV2(
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error =
       interface_->ActivitySetAttributeV2(subscriber, attr, valueSize, value);
+  if (error == CUPTI_SUCCESS &&
+      attr == kCuptiActivityAttrEnableMultiSubscriberGraphTrace &&
+      valueSize != nullptr && *valueSize == sizeof(uint8_t) &&
+      value != nullptr && *static_cast<const uint8_t*>(value) != 0) {
+    RegisterUndoFunction([this, subscriber, attr]() {
+      uint8_t disable_graph_trace = 0;
+      size_t size = sizeof(disable_graph_trace);
+      return this->ActivitySetAttributeV2(subscriber, attr, &size,
+                                          &disable_graph_trace);
+    });
+  }
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_COMPATIBLE);
+  ALLOW_ERROR(error, CUPTI_ERROR_INVALID_OPERATION);
+  ALLOW_ERROR(error, CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -325,6 +340,8 @@ CUptiResult CuptiErrorManager::Subscribe(CUpti_SubscriberHandle* subscriber,
     auto f = std::bind(&CuptiErrorManager::Unsubscribe, this, *subscriber);
     RegisterUndoFunction(f);
   }
+  ALLOW_ERROR(error, CUPTI_ERROR_MAX_LIMIT_REACHED);
+  ALLOW_ERROR(error, CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -340,6 +357,12 @@ CUptiResult CuptiErrorManager::SubscribeV2(CUpti_SubscriberHandle* subscriber,
     RegisterUndoFunction(f);
   }
   // Optional V2 subscriber path unavailable; callers can fall back to V1.
+  // Note: CuptiWrapper::SubscribeV2 maps
+  // CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED (39) to
+  // CUPTI_ERROR_NOT_SUPPORTED because static CUPTI (libcupti_static.a) rejects
+  // allowMultipleSubscribers=1 with error 39 even when no external subscriber
+  // is active (cupti_callbacks.h); external subscriber conflicts are then
+  // detected by the V1 CuptiErrorManager::Subscribe fallback.
   ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
   ALLOW_ERROR(error, CUPTI_ERROR_NOT_COMPATIBLE);
   ALLOW_ERROR(error, CUPTI_ERROR_UNKNOWN);

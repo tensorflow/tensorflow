@@ -95,9 +95,9 @@ def _find_rocm_config(rocm_install_path):
   major, minor, patch = rocm_version_numbers(rocm_install_path)
 
   composite_version = _get_composite_version_number(major, minor, patch)
-  if composite_version < 70100:
+  if composite_version < 70200:
     raise ConfigError(
-        "XLA requires ROCm 7.1 or higher, but found {}.{}.{}".format(
+        "XLA requires ROCm 7.2 or higher, but found {}.{}.{}".format(
             major, minor, patch))
 
   rocm_config = {

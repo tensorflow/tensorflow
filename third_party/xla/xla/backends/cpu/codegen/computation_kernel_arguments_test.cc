@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/computation_kernel_arguments.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -34,6 +36,7 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/service/shaped_slice.h"
 
 namespace xla::cpu {
 namespace {
@@ -182,8 +185,6 @@ class ComputationKernelArgumentsTest : public HloHardwareIndependentTestBase {
 
 TEST_F(ComputationKernelArgumentsTest, IdenticalCallsShareFingerprint) {
   ASSERT_OK_AND_ASSIGN(Calls calls, CreateForCalls(kScalarMul, kScalarMul));
-
-  ASSERT_TRUE(calls.a.fingerprint().has_value());
   EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
   EXPECT_NE(calls.a.arguments(), calls.b.arguments());
   EXPECT_THAT(calls.a.arguments(), Pointwise(SameShape(), calls.b.arguments()));
@@ -213,8 +214,6 @@ TEST_F(ComputationKernelArgumentsTest, DifferentCallsNoShare) {
     SCOPED_TRACE(c.name);
     ASSERT_OK_AND_ASSIGN(Calls calls,
                          CreateForCalls(c.mul_a, c.mul_b, "p0, p1", c.args_b));
-    ASSERT_TRUE(calls.a.fingerprint().has_value());
-    ASSERT_TRUE(calls.b.fingerprint().has_value());
     EXPECT_NE(calls.a.fingerprint(), calls.b.fingerprint());
   }
 }
@@ -224,13 +223,10 @@ TEST_F(ComputationKernelArgumentsTest, DifferentCallsNoShare) {
 TEST_F(ComputationKernelArgumentsTest, ExternalConstantOperand) {
   ASSERT_OK_AND_ASSIGN(
       Calls same, CreateForCalls(kScalarMul, kScalarMul, "k0, p1", "k0, p3"));
-  ASSERT_TRUE(same.a.fingerprint().has_value());
   EXPECT_EQ(same.a.fingerprint(), same.b.fingerprint());
 
   ASSERT_OK_AND_ASSIGN(Calls different, CreateForCalls(kScalarMul, kScalarMul,
                                                        "k0, p1", "k1, p3"));
-  ASSERT_TRUE(different.a.fingerprint().has_value());
-  ASSERT_TRUE(different.b.fingerprint().has_value());
   EXPECT_NE(different.a.fingerprint(), different.b.fingerprint());
 }
 
@@ -263,14 +259,155 @@ ENTRY e {
 )";
   ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
 
-  // The first argument is p0 and the only result is s.
-  ASSERT_EQ(calls.a.results().size(), 1);
-  ASSERT_EQ(calls.b.results().size(), 1);
+  // In call_a, p0 and p1 are read only entry parameters (2 arguments, 1
+  // result). In call_b, the sum reuses the temporary operand p0_copy, so
+  // p0_copy and s share one written result region (1 argument, 1 result).
+  EXPECT_EQ(calls.a.arguments().size(), 2);
+  EXPECT_EQ(calls.a.results().size(), 1);
+  EXPECT_EQ(calls.b.arguments().size(), 1);
+  EXPECT_EQ(calls.b.results().size(), 1);
   EXPECT_NE(calls.a.arguments()[0].slice, calls.a.results()[0].slice);
-  EXPECT_EQ(calls.b.arguments()[0].slice, calls.b.results()[0].slice);
-  ASSERT_TRUE(calls.a.fingerprint().has_value());
-  ASSERT_TRUE(calls.b.fingerprint().has_value());
   EXPECT_NE(calls.a.fingerprint(), calls.b.fingerprint());
+}
+
+TEST_F(ComputationKernelArgumentsTest, MergeOverlapping) {
+  BufferAllocation alloc0(/*index=*/0, /*size=*/64, /*color=*/0);
+  BufferAllocation alloc1(/*index=*/1, /*size=*/64, /*color=*/0);
+  auto s0 = [&](int64_t off, int64_t size) {
+    return BufferAllocation::Slice(&alloc0, off, size);
+  };
+  auto s1 = [&](int64_t off, int64_t size) {
+    return BufferAllocation::Slice(&alloc1, off, size);
+  };
+
+  EXPECT_THAT(ComputationKernelArguments::MergeOverlapping(
+                  {s0(0, 16), s0(0, 1), s0(4, 4), s0(8, 0)}),
+              ::testing::ElementsAre(s0(0, 16)));
+  EXPECT_THAT(
+      ComputationKernelArguments::MergeOverlapping({s0(0, 4), s0(4, 4)}),
+      ::testing::ElementsAre(s0(0, 4), s0(4, 4)));
+  EXPECT_THAT(ComputationKernelArguments::MergeOverlapping(
+                  {s0(0, 8), s0(6, 4), s0(9, 3), s1(0, 4)}),
+              ::testing::ElementsAre(s0(0, 12), s1(0, 4)));
+}
+
+TEST_F(ComputationKernelArgumentsTest, InPlaceUpdateIsOneResultRegion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+call_a {
+  p0 = f32[16] parameter(0)
+  u = f32[2] constant({1, 2})
+  i = s32[] constant(4)
+  ROOT d = f32[16] dynamic-update-slice(p0, u, i)
+}
+
+call_b {
+  p0 = f32[16] parameter(0)
+  u = f32[2] constant({1, 2})
+  i = s32[] constant(4)
+  ROOT d = f32[16] dynamic-update-slice(p0, u, i)
+}
+
+ENTRY e {
+  p0 = f32[16] parameter(0)
+  c0 = f32[16] copy(p0)
+  r0 = f32[16] call(c0), to_apply=call_a
+  c1 = f32[16] copy(p0)
+  r1 = f32[16] call(c1), to_apply=call_b
+  ROOT t = (f32[16], f32[16]) tuple(r0, r1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
+  ASSERT_EQ(calls.a.results().size(), 1);
+  for (const ShapedSlice& arg : calls.a.arguments()) {
+    EXPECT_FALSE(arg.slice.OverlapsWith(calls.a.results()[0].slice));
+  }
+}
+
+// The callee only reads the caller's temporaries through `get-tuple-element`,
+// so their regions are arguments.
+TEST_F(ComputationKernelArgumentsTest, ReadOnlyBuffersAreArguments) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+call_a {
+  p = (f32[16], f32[16]) parameter(0)
+  a = f32[16] get-tuple-element(p), index=0
+  b = f32[16] get-tuple-element(p), index=1
+  ROOT s = f32[16] add(a, b)
+}
+
+call_b {
+  p = (f32[16], f32[16]) parameter(0)
+  a = f32[16] get-tuple-element(p), index=0
+  b = f32[16] get-tuple-element(p), index=1
+  ROOT s = f32[16] add(a, b)
+}
+
+ENTRY e {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  t0 = f32[16] negate(p0)
+  t1 = f32[16] negate(p1)
+  tup = (f32[16], f32[16]) tuple(t0, t1)
+  c0 = f32[16] call(tup), to_apply=call_a
+  c1 = f32[16] call(tup), to_apply=call_b
+  ROOT t = (f32[16], f32[16], f32[16], f32[16]) tuple(c0, c1, t0, t1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
+  EXPECT_EQ(calls.a.arguments().size(), 2);
+  EXPECT_EQ(calls.a.results().size(), 1);
+}
+
+// call_a updates donated p0 in place. Non donated p1 is read only, so call_b
+// writes a temporary and must not reuse call_a's kernel.
+TEST_F(ComputationKernelArgumentsTest,
+       DonatedAndNonDonatedEntryParametersDiffer) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, input_output_alias={ {0}: (0, {}, may-alias) }
+
+call_a {
+  p0 = f32[16] parameter(0)
+  u = f32[2] constant({1, 2})
+  i = s32[] constant(4)
+  ROOT d = f32[16] dynamic-update-slice(p0, u, i)
+}
+
+call_b {
+  p0 = f32[16] parameter(0)
+  u = f32[2] constant({1, 2})
+  i = s32[] constant(4)
+  ROOT d = f32[16] dynamic-update-slice(p0, u, i)
+}
+
+ENTRY e {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  r0 = f32[16] call(p0), to_apply=call_a
+  r1 = f32[16] call(p1), to_apply=call_b
+  ROOT t = (f32[16], f32[16]) tuple(r0, r1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
+  EXPECT_NE(calls.a.fingerprint(), calls.b.fingerprint());
+}
+
+TEST_F(ComputationKernelArgumentsTest, ParametersAreDisjoint) {
+  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForCalls(kScalarMul, kScalarMul));
+  std::vector<BufferAllocation::Slice> all;
+  for (const ShapedSlice& s : calls.a.arguments()) {
+    all.push_back(s.slice);
+  }
+  for (const ShapedSlice& s : calls.a.results()) {
+    all.push_back(s.slice);
+  }
+  for (size_t i = 0; i < all.size(); ++i) {
+    for (size_t j = i + 1; j < all.size(); ++j) {
+      EXPECT_FALSE(all[i].OverlapsWith(all[j]));
+    }
+  }
 }
 
 // Values of the reducers are thread-local, outside the kernel table.
@@ -311,94 +448,7 @@ ENTRY e {
 }
 )";
   ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
-  ASSERT_TRUE(calls.a.fingerprint().has_value());
   EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
-}
-
-// The emitted kernel owns a private RNG state, which callers must not share.
-TEST_F(ComputationKernelArgumentsTest, RngStateNotReusable) {
-  constexpr absl::string_view kHlo = R"(
-HloModule m
-
-rng_a {
-  ROOT s = u64[2] rng-get-and-update-state(), delta=16
-}
-
-call_a {
-  ROOT c = u64[2] call(), to_apply=rng_a
-}
-
-rng_b {
-  ROOT s = u64[2] rng-get-and-update-state(), delta=16
-}
-
-call_b {
-  ROOT c = u64[2] call(), to_apply=rng_b
-}
-
-ENTRY e {
-  c0 = u64[2] call(), to_apply=call_a
-  c1 = u64[2] call(), to_apply=call_b
-  ROOT t = (u64[2], u64[2]) tuple(c0, c1)
-}
-)";
-  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
-  EXPECT_EQ(calls.a.fingerprint(), std::nullopt);
-  EXPECT_EQ(calls.b.fingerprint(), std::nullopt);
-}
-
-// The RNG state op is in a reducer of a fusion, which the walk does not enter.
-TEST_F(ComputationKernelArgumentsTest, RngStateInFusionNotReusable) {
-  constexpr absl::string_view kHlo = R"(
-HloModule m
-
-add_a {
-  x = f32[] parameter(0)
-  y = f32[] parameter(1)
-  s = u64[2] rng-get-and-update-state(), delta=16
-  ROOT r = f32[] add(x, y)
-}
-
-fused_a {
-  p0 = f32[16] parameter(0)
-  zero = f32[] constant(0)
-  ROOT r = f32[] reduce(p0, zero), dimensions={0}, to_apply=add_a
-}
-
-call_a {
-  p0 = f32[16] parameter(0)
-  ROOT f = f32[] fusion(p0), kind=kLoop, calls=fused_a
-}
-
-add_b {
-  x = f32[] parameter(0)
-  y = f32[] parameter(1)
-  s = u64[2] rng-get-and-update-state(), delta=16
-  ROOT r = f32[] add(x, y)
-}
-
-fused_b {
-  p0 = f32[16] parameter(0)
-  zero = f32[] constant(0)
-  ROOT r = f32[] reduce(p0, zero), dimensions={0}, to_apply=add_b
-}
-
-call_b {
-  p0 = f32[16] parameter(0)
-  ROOT f = f32[] fusion(p0), kind=kLoop, calls=fused_b
-}
-
-ENTRY e {
-  p0 = f32[16] parameter(0)
-  p1 = f32[16] parameter(1)
-  c0 = f32[] call(p0), to_apply=call_a
-  c1 = f32[] call(p1), to_apply=call_b
-  ROOT t = (f32[], f32[]) tuple(c0, c1)
-}
-)";
-  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
-  EXPECT_EQ(calls.a.fingerprint(), std::nullopt);
-  EXPECT_EQ(calls.b.fingerprint(), std::nullopt);
 }
 
 // The inner tuple {0} of p0 is not the top-level buffer of any instruction.
@@ -425,12 +475,128 @@ ENTRY e {
 }
 )";
   ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
-  ASSERT_TRUE(calls.a.fingerprint().has_value());
+  EXPECT_EQ(calls.a.arguments().size(), 3);
+  EXPECT_EQ(calls.a.results().size(), 0);
   EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
 }
 
-// The unused parameter p1 has a buffer outside the kernel table.
-TEST_F(ComputationKernelArgumentsTest, UndescribedBufferNotReusable) {
+TEST_F(ComputationKernelArgumentsTest, TupleConstantSharesFingerprint) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+call_a {
+  p0 = f32[4] parameter(0)
+  c = (f32[4], f32[4]) constant(({1, 2, 3, 4}, {5, 6, 7, 8}))
+  g = f32[4] get-tuple-element(c), index=1
+  ROOT s = f32[4] add(p0, g)
+}
+
+call_b {
+  p0 = f32[4] parameter(0)
+  c = (f32[4], f32[4]) constant(({1, 2, 3, 4}, {5, 6, 7, 8}))
+  g = f32[4] get-tuple-element(c), index=1
+  ROOT s = f32[4] add(p0, g)
+}
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  c0 = f32[4] call(p0), to_apply=call_a
+  c1 = f32[4] call(p1), to_apply=call_b
+  ROOT t = (f32[4], f32[4]) tuple(c0, c1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
+  EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
+}
+
+TEST_F(ComputationKernelArgumentsTest, OpaqueAndEmptySubshapesSkipped) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+call_a {
+  p0 = (opaque[], f32[0], f32[4]) parameter(0)
+  x = f32[4] get-tuple-element(p0), index=2
+  ROOT y = f32[4] negate(x)
+}
+
+call_b {
+  p0 = (opaque[], f32[0], f32[4]) parameter(0)
+  x = f32[4] get-tuple-element(p0), index=2
+  ROOT y = f32[4] negate(x)
+}
+
+ENTRY e {
+  p0 = (opaque[], f32[0], f32[4]) parameter(0)
+  p1 = (opaque[], f32[0], f32[4]) parameter(1)
+  c0 = f32[4] call(p0), to_apply=call_a
+  c1 = f32[4] call(p1), to_apply=call_b
+  ROOT t = (f32[4], f32[4]) tuple(c0, c1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
+  EXPECT_EQ(calls.a.arguments().size(), 1);
+  EXPECT_EQ(calls.a.results().size(), 1);
+  EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
+}
+
+TEST_F(ComputationKernelArgumentsTest, UnwrittenWhileConditionStaysArgument) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+cond_a {
+  s = (pred[]) parameter(0)
+  ROOT c = pred[] get-tuple-element(s), index=0
+}
+
+body_a {
+  s = (pred[]) parameter(0)
+  c = pred[] get-tuple-element(s), index=0
+  ROOT r = (pred[]) tuple(c)
+}
+
+call_a {
+  flag = pred[] parameter(0)
+  init = (pred[]) tuple(flag)
+  w = (pred[]) while(init), condition=cond_a, body=body_a
+  ROOT out = pred[] get-tuple-element(w), index=0
+}
+
+cond_b {
+  s = (pred[]) parameter(0)
+  ROOT c = pred[] get-tuple-element(s), index=0
+}
+
+body_b {
+  s = (pred[]) parameter(0)
+  c = pred[] get-tuple-element(s), index=0
+  ROOT r = (pred[]) tuple(c)
+}
+
+call_b {
+  flag = pred[] parameter(0)
+  init = (pred[]) tuple(flag)
+  w = (pred[]) while(init), condition=cond_b, body=body_b
+  ROOT out = pred[] get-tuple-element(w), index=0
+}
+
+ENTRY e {
+  f0 = pred[] parameter(0)
+  f1 = pred[] parameter(1)
+  n0 = pred[] not(f0)
+  n1 = pred[] not(f1)
+  c0 = pred[] call(n0), to_apply=call_a
+  c1 = pred[] call(n1), to_apply=call_b
+  ROOT t = (pred[], pred[]) tuple(c0, c1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
+  EXPECT_EQ(calls.a.arguments().size(), 1);
+  EXPECT_EQ(calls.a.results().size(), 0);
+  EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
+}
+
+TEST_F(ComputationKernelArgumentsTest, UnusedParameterSharesFingerprint) {
   constexpr absl::string_view kHlo = R"(
 HloModule m
 
@@ -450,13 +616,43 @@ ENTRY e {
   p0 = f32[16] parameter(0)
   p1 = f32[16] parameter(1)
   c0 = f32[16] call(p0, p1), to_apply=call_a
-  c1 = f32[16] call(p1, p0), to_apply=call_b
+  c1 = f32[16] call($ARGS_B), to_apply=call_b
+  ROOT t = (f32[16], f32[16]) tuple(c0, c1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(absl::StrReplaceAll(
+                                        kHlo, {{"$ARGS_B", "p1, p0"}})));
+  EXPECT_EQ(calls.a.arguments().size(), 2);
+  EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
+
+  ASSERT_OK_AND_ASSIGN(Calls aliased, CreateForModule(absl::StrReplaceAll(
+                                          kHlo, {{"$ARGS_B", "p0, p0"}})));
+  EXPECT_NE(aliased.a.fingerprint(), aliased.b.fingerprint());
+}
+
+TEST_F(ComputationKernelArgumentsTest, RootParameterSharesFingerprint) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+call_a {
+  ROOT p0 = f32[16] parameter(0)
+}
+
+call_b {
+  ROOT p0 = f32[16] parameter(0)
+}
+
+ENTRY e {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  c0 = f32[16] call(p0), to_apply=call_a
+  c1 = f32[16] call(p1), to_apply=call_b
   ROOT t = (f32[16], f32[16]) tuple(c0, c1)
 }
 )";
   ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
-  EXPECT_EQ(calls.a.fingerprint(), std::nullopt);
-  EXPECT_EQ(calls.b.fingerprint(), std::nullopt);
+  EXPECT_EQ(calls.a.arguments().size(), 1);
+  EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
 }
 
 }  // namespace

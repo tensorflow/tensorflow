@@ -29,10 +29,13 @@ class Semaphore {
   explicit Semaphore(int64_t capacity);
 
   // Acquires `amount` units. Blocks until `amount` units are available.
+  // Blocked waiters are woken in arrival order; a smaller request may bypass
+  // an earlier waiter whose larger request cannot yet be satisfied.
   void Acquire(int64_t amount);
 
-  // Tries to acquire `amount` units. Returns true if successful. Returns false
-  // immediately if not enough units are available.
+  // Tries to acquire `amount` units without blocking. Returns true if
+  // `amount` units are available and no waiters are queued; returns false
+  // immediately otherwise (does not barge ahead of queued waiters).
   bool TryAcquire(int64_t amount);
 
   // Returns `amount` units to the semaphore.
@@ -68,15 +71,17 @@ class Semaphore {
   ScopedReservation ScopedAcquire(int64_t amount);
 
  private:
-  struct CanAcquireArgs {
-    Semaphore* semaphore;
+  struct Waiter {
     int64_t amount;
+    bool granted = false;
+    absl::CondVar cv;
+    Waiter* next = nullptr;
   };
-  static bool CanAcquire(CanAcquireArgs* args)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(args->semaphore->mu_);
 
   mutable absl::Mutex mu_;
   int64_t value_ ABSL_GUARDED_BY(mu_);
+  Waiter* head_ ABSL_GUARDED_BY(mu_) = nullptr;
+  Waiter* tail_ ABSL_GUARDED_BY(mu_) = nullptr;
   const int64_t max_capacity_;
 };
 

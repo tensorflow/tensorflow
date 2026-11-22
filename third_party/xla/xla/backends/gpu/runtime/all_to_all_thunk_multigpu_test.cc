@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk_multigpu_test_utils.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -275,15 +276,13 @@ TEST(AllToAllThunkMultiGpuTest, ExecuteOnStreamP2PMemcpy) {
 
         BufferAllocations allocations =
             MakeBufferAllocations(slots[d], slots[d].create_buffers);
-        Thunk::InitializeParams init_params;
-        init_params.executor = slots[d].executor;
-        init_params.stream = slots[d].stream.get();
-        init_params.command_buffer_trace_stream = slots[d].stream.get();
-        init_params.buffer_allocations = &allocations;
-        init_params.collective_params = &*slots[d].collective_params;
-        init_params.collective_cliques = &slots[d].collective_cliques;
-        init_params.local_device_count = kNumDevices;
-        ABSL_RETURN_IF_ERROR(thunk.Initialize(init_params));
+        TestThunkParams thunk_params(slots[d].executor, &allocations,
+                                     slots[d].stream.get());
+        thunk_params.WithCommandBufferTraceStream(slots[d].stream.get())
+            .WithCollectiveParams(&*slots[d].collective_params)
+            .WithCollectiveCliques(&slots[d].collective_cliques)
+            .WithLocalDeviceCount(kNumDevices);
+        ABSL_RETURN_IF_ERROR(thunk.Initialize(thunk_params.InitializeParams()));
 
         return RunExecuteOnStreamPhase(slots[d], thunk, d, /*phase=*/2);
       }));

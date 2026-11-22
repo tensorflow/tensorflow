@@ -77,10 +77,7 @@ cc_library(
         ":quantization_interfaces_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:portable_tensor_utils",
-        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
-        "//tensorflow/compiler/mlir/tools/optimize:quantization_utils",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/compiler/mlir/lite/tools/optimize:quantization_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -99,6 +96,7 @@ tf_cc_test(
     srcs = ["quantization_driver_test.cc"],
     deps = [
         ":quantization_lib",
+        ":tfl_quantization_driver",
         "//tensorflow/compiler/mlir/lite/quantization/common:test_base",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
@@ -151,10 +149,36 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
-        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "tf_quantization_config",
+    srcs = [
+        "tf_quantization_config.cc",
+    ],
+    hdrs = [
+        "tf_quantization_config.h",
+    ],
+    deps = [
+        ":quantization_config",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_quantization_config_test",
+    srcs = ["tf_quantization_config_test.cc"],
+    deps = [
+        ":quantization_config",
+        ":tf_quantization_config",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

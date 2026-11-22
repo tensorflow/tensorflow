@@ -205,6 +205,22 @@ TEST_F(HloCostAnalysisTest, DotGeneral) {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 10 * 30);
 }
 
+TEST_F(HloCostAnalysisTest, DotGeneralOpcode) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(R"(
+HloModule module
+ENTRY entry {
+  lhs = f8e4m3fn[10,64] parameter(0)
+  rhs = f8e4m3fn[64,30] parameter(1)
+  lhs_scale = f8e8m0fnu[10,2] parameter(2)
+  ROOT dot = f32[10,30] dot-general(lhs, rhs, lhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    block_scaling_config={lhs={scale_idx=2}}
+})"));
+  HloCostAnalysis analysis;
+  ASSERT_OK(module->entry_computation()->root_instruction()->Accept(&analysis));
+  EXPECT_EQ(analysis.flop_count(), 2 * 10 * 30 * 64);
+}
+
 TEST_F(HloCostAnalysisTest, DotGeneral2) {
   XlaBuilder builder("matrix_multiply");
   auto lhs =
@@ -1379,30 +1395,6 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), 0);
   EXPECT_EQ(analysis.output_bytes_accessed(*root),
             HloCostAnalysis::kDefaultPointerSize * 2);
-}
-
-using DomainCostAnalysis = HloHardwareIndependentTestBase;
-TEST_F(DomainCostAnalysis, DomainCost) {
-  HloCostAnalysis analysis;
-
-  HloComputation::Builder builder("domain");
-  auto x = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {123}), "x"));
-  auto y = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {42}), "y"));
-  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({x, y}));
-  auto domain = builder.AddInstruction(
-      HloInstruction::CreateDomain(tuple->shape(), tuple, nullptr, nullptr));
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(builder.Build());
-
-  EXPECT_EQ(hlo_module->entry_computation()->root_instruction(), domain);
-  ASSERT_IS_OK(domain->Accept(&analysis));
-
-  EXPECT_EQ(analysis.flop_count(*domain), 0);
-  EXPECT_EQ(analysis.transcendental_count(*domain), 0);
-  EXPECT_EQ(analysis.bytes_accessed(*domain), 0);
 }
 
 TEST_F(HloCostAnalysisTest, BaseDilatedConvolution) {

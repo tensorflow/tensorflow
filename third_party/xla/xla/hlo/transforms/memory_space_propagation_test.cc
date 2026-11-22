@@ -654,5 +654,42 @@ ENTRY %jit_insert.fusion.21.isolated.root {
   TF_EXPECT_OK(Verify(module.get()));
 }
 
+TEST_F(MemorySpacePropagationTest,
+       DoesNotOverwriteFusedParameterOnDynamicUpdateSliceBaseMismatch) {
+  absl::string_view hlo_string = R"(
+HloModule DusParameterMismatch
+
+%fused_dus {
+  %p0 = s32[8,128]{1,0:T(8,128)S(13)} parameter(0)
+  %p1 = s32[1,128]{1,0:T(8,128)} parameter(1)
+  %c0 = s32[]{:T(128)} constant(0)
+  ROOT %dus = s32[8,128]{1,0:T(8,128)} dynamic-update-slice(%p0, %p1, %c0, %c0)
+}
+
+ENTRY %entry {
+  %base = s32[8,128]{1,0:T(8,128)} parameter(0)
+  %update = s32[1,128]{1,0:T(8,128)} parameter(1)
+  %c0 = s32[]{:T(128)} constant(0)
+  %view = s32[8,128]{1,0:T(8,128)S(13)} custom-call(%base, %c0, %c0),
+      custom_call_target="tpu_get_view"
+  ROOT %dus_fusion = s32[8,128]{1,0:T(8,128)} fusion(%view, %update),
+      kind=kLoop, calls=%fused_dus
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          memory_space_propagation.Run(module.get()));
+  EXPECT_FALSE(changed);
+  const HloInstruction* dus_fusion =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(dus_fusion->fused_parameter(0)->shape().layout().memory_space(),
+            13);
+  HloVerifier layout_verifier(/*layout_sensitive=*/true,
+                              /*allow_mixed_precision=*/false);
+  TF_EXPECT_OK(layout_verifier.Run(module.get()).status());
+}
+
 }  // namespace
 }  // namespace xla

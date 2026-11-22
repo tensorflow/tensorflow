@@ -268,6 +268,12 @@ bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo);
 inline constexpr absl::string_view
     kCubDeviceRadixSortUnassignedScratchSizeTarget =
         "xla.gpu.ext.cub_sort_unassigned_scratch_size";
+inline constexpr absl::string_view
+    kCubDeviceRadixSortKeysUnassignedScratchSizeTarget =
+        "xla.gpu.ext.cub_sort_keys_unassigned_scratch_size";
+inline constexpr absl::string_view
+    kCubDeviceRadixSortPairsUnassignedScratchSizeTarget =
+        "xla.gpu.ext.cub_sort_pairs_unassigned_scratch_size";
 
 inline constexpr absl::string_view kCubDeviceRadixSortPairsTarget =
     "xla.gpu.ext.cub_sort_pairs";

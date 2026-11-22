@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_GATHER_CSE_H_
 
 #include "absl/strings/string_view.h"
-#include "xla/service/hlo_cse.h"
+#include "xla/hlo/transforms/simplifiers/hlo_cse.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

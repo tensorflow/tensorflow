@@ -27,6 +27,8 @@ limitations under the License.
 #include <malloc.h>
 #include <sys/resource.h>
 #include <sys/time.h>
+#include <time.h>
+#include <unistd.h>
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <malloc/malloc.h>
@@ -68,6 +70,54 @@ int64_t GetCurrentVmSwapKb() {
   // If the VmSwap line is not found, it means 0 swap is being used.
   return 0;
 }
+
+// Returns the current CPU VMA-backed resident set size in kilobytes on Linux,
+// or -1 if unavailable. Reading Rss from /proc/self/smaps_rollup walks only
+// userspace CPU virtual memory areas and excludes unmapped GPU driver pages
+// injected into mm->rss_stat[MM_FILEPAGES] on Mali (mali_kbase). Because
+// walking /proc/self/smaps_rollup takes 10-30 ms on a large process, it is only
+// read on Mali devices and refreshed at most every 500 ms per thread.
+int64_t GetCurrentCpuRssKb() {
+  static const bool has_mali_device = (access("/dev/mali0", F_OK) == 0);
+  if (!has_mali_device) {
+    return -1;
+  }
+
+  thread_local int64_t last_refresh_ms = 0;
+  thread_local int64_t cached_rss_kb = -1;
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  const int64_t now_ms =
+      static_cast<int64_t>(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
+  if (last_refresh_ms != 0 && now_ms - last_refresh_ms < 500) {
+    return cached_rss_kb;
+  }
+  last_refresh_ms = now_ms;
+
+  FILE* smaps_file = fopen("/proc/self/smaps_rollup", "r");
+  if (!smaps_file) {
+    cached_rss_kb = -1;
+    return -1;
+  }
+  char line[256];
+  while (fgets(line, sizeof(line), smaps_file)) {
+    if (strncmp(line, "Rss:", 4) == 0) {
+      int64_t value_kb = 0;
+      if (sscanf(line + 4, "%" SCNd64, &value_kb) == 1) {
+        fclose(smaps_file);
+        cached_rss_kb = value_kb;
+        return value_kb;
+      } else {
+        fclose(smaps_file);
+        cached_rss_kb = -1;
+        return -1;
+      }
+    }
+  }
+  fclose(smaps_file);
+  cached_rss_kb = -1;
+  return -1;
+}
 #endif
 
 }  // namespace
@@ -82,12 +132,18 @@ bool MemoryUsage::IsSupported() {
 MemoryUsage GetMemoryUsage() {
   MemoryUsage result;
 #ifdef __linux__
-  rusage res;
-  if (getrusage(RUSAGE_SELF, &res) == 0) {
-    result.mem_footprint_kb = res.ru_maxrss;
+  int64_t rss_kb = GetCurrentCpuRssKb();
+  if (rss_kb < 0) {
+    rusage res;
+    if (getrusage(RUSAGE_SELF, &res) == 0) {
+      rss_kb = res.ru_maxrss;
+    }
+  }
+  if (rss_kb >= 0) {
+    result.mem_footprint_kb = rss_kb;
     int64_t vm_swap_kb = GetCurrentVmSwapKb();
     if (vm_swap_kb >= 0) {
-      result.private_footprint_bytes = (vm_swap_kb + res.ru_maxrss) * 1024;
+      result.private_footprint_bytes = (vm_swap_kb + rss_kb) * 1024;
     }
   }
 #if defined(__NO_MALLINFO__) || !defined(__GLIBC__) ||         \

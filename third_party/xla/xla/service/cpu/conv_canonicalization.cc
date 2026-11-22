@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
-#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"

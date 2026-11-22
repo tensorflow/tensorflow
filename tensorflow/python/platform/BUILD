@@ -30,7 +30,6 @@ visibility = [
     # copybara:uncomment "//learning/brain/contrib/eager/numlib/benchmarks/kumamon:__subpackages__",
     # copybara:uncomment "//learning/brain/mobile/lite/tooling/model_analyzer:__subpackages__",
     # copybara:uncomment "//tensorflow_serving/model_servers:__subpackages__",
-    # copybara:uncomment "//third_party/odml/model_customization/quantization:__subpackages__",
 ]
 
 package(
@@ -166,7 +165,6 @@ tf_py_strict_test(
         ":client_testlib",
         ":sysconfig",
         ":test",
-        "//tensorflow:tensorflow_py",
     ],
 )
 

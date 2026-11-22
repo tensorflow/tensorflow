@@ -115,7 +115,7 @@ def test_truncated_normal(assert_equal,
     return math.exp(-(x**2) / 2.) / math.sqrt(2 * math.pi)
 
   def probit(x):
-    return special_math.ndtri(x)
+    return special_math.ndtri(np.float64(x))
 
   a = -2.
   b = 2.
@@ -136,7 +136,12 @@ def test_truncated_normal(assert_equal,
 
   alpha = (a - mu) / sigma
   beta = (b - mu) / sigma
-  z = _normal_cdf(beta) - _normal_cdf(alpha)
+  if alpha > 0:
+    z = _normal_cdf(-alpha) - _normal_cdf(-beta)
+    median_norm = -probit((_normal_cdf(-alpha) + _normal_cdf(-beta)) / 2.0)
+  else:
+    z = _normal_cdf(beta) - _normal_cdf(alpha)
+    median_norm = probit((_normal_cdf(alpha) + _normal_cdf(beta)) / 2.0)
 
   assert_equal((y >= a).sum(), n)
   assert_equal((y <= b).sum(), n)
@@ -149,8 +154,7 @@ def test_truncated_normal(assert_equal,
   actual_mean = np.mean(y)
   assert_all_close(actual_mean, expected_mean, atol=mean_atol)
 
-  expected_median = mu + probit(
-      (_normal_cdf(alpha) + _normal_cdf(beta)) / 2.) * sigma
+  expected_median = mu + median_norm * sigma
   actual_median = np.median(y)
   assert_all_close(actual_median, expected_median, atol=median_atol)
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <any>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -26,14 +27,19 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_internal.h"
+#include "tensorflow/lite/delegates/gpu/common/object_reader.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/interpreter.h"
@@ -1887,6 +1893,35 @@ TEST(ArithmeticBinaryElementwiseOperationParserTest, TestIsSupported) {
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
+}
+
+TEST(GeluOperationParserTest, ParseRecordsApproximate) {
+  for (const bool approximate : {false, true}) {
+    auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinGelu,
+                                                       /*op_version=*/2,
+                                                       /*num_inputs=*/1);
+    static_cast<TfLiteGeluParams*>(context->node()->builtin_data)->approximate =
+        approximate;
+    auto parser = NewOperationParser(context->registration());
+    ASSERT_TRUE(parser
+                    ->IsSupported(context.get(), context->node(),
+                                  context->registration())
+                    .ok());
+
+    GraphFloat32 graph;
+    absl::flat_hash_map<int, Value*> tensor_to_value;
+    ObjectReader reader(&graph, context.get(), context->node(),
+                        &tensor_to_value);
+    ASSERT_TRUE(
+        parser->Parse(context->node(), context->registration(), &graph, &reader)
+            .ok());
+    ASSERT_EQ(graph.nodes().size(), 1);
+    const Node& node = *graph.nodes()[0];
+    EXPECT_EQ(node.operation.type, ToString(OperationType::GELU));
+    EXPECT_EQ(
+        std::any_cast<GeluAttributes>(node.operation.attributes).approximate,
+        approximate);
+  }
 }
 
 TEST(FullyConnectedOperationParserTest, TestIsSupported) {

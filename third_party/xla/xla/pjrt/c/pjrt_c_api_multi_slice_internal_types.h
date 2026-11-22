@@ -16,12 +16,10 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_MULTI_SLICE_INTERNAL_TYPES_H_
 #define XLA_PJRT_C_PJRT_C_API_MULTI_SLICE_INTERNAL_TYPES_H_
 
-#include <memory>
-
 #include "xla/pjrt/pjrt_executable.h"
 
 typedef struct PJRT_MultiSlice_Config {
-  std::unique_ptr<const xla::MultiSliceConfig> config;
+  xla::MultiSliceConfigRef config;
 } PJRT_MultiSlice_Config;
 
 #endif  // XLA_PJRT_C_PJRT_C_API_MULTI_SLICE_INTERNAL_TYPES_H_

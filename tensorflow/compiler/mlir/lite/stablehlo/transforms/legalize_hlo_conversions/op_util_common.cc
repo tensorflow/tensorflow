@@ -68,6 +68,24 @@ llvm::SmallVector<int64_t, 4> ResolveStridesOrDilations(
   return llvm::SmallVector<int64_t, 4>(attr.getValues<int64_t>());
 }
 
+llvm::SmallVector<int64_t, 4> ResolveStridesOrDilations(
+    int64_t rank, std::optional<llvm::ArrayRef<int64_t>> opt_attr) {
+  if (!opt_attr.has_value()) {
+    return llvm::SmallVector<int64_t, 4>(rank, 1);
+  }
+  return llvm::SmallVector<int64_t, 4>(opt_attr.value().begin(),
+                                       opt_attr.value().end());
+}
+
+llvm::SmallVector<bool, 4> ResolveWindowReversal(
+    int64_t rank, std::optional<llvm::ArrayRef<bool>> opt_attr) {
+  if (!opt_attr.has_value()) {
+    return llvm::SmallVector<bool, 4>(rank, false);
+  }
+  return llvm::SmallVector<bool, 4>(opt_attr.value().begin(),
+                                    opt_attr.value().end());
+}
+
 llvm::SmallVector<DimPadding, 4> ResolvePadding(
     int64_t rank, std::optional<mlir::DenseIntElementsAttr> opt_padding) {
   llvm::SmallVector<DimPadding, 4> res;

@@ -48,6 +48,7 @@ cc_library(
         ":symbol_finder",
         "//xla/mlir/tools/mlir_interpreter/framework",
         "//xla/mlir_hlo",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",

@@ -18,10 +18,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/transforms/collectives/collective_pipeliner.h"
+#include "xla/hlo/transforms/hlo_scheduling/latency_hiding_scheduler.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/service/collective_pipeliner.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/latency_hiding_scheduler.h"
 #include "xla/xla.pb.h"
 
 namespace xla {

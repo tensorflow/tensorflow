@@ -17,18 +17,30 @@ limitations under the License.
 #define XLA_PJRT_PJRT_CLIENT_UTILS_H_
 
 #include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/shape.h"
 
 namespace xla {
 
 absl::StatusOr<std::vector<Shape>> ConvertShapeSpecsToShapes(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
     std::optional<absl::Span<const std::optional<Layout>>> device_layouts);
+
+std::string GetPluginStablehloVersionOrDefault(
+    const absl::flat_hash_map<std::string, PjRtValueType>& attributes);
+std::string GetPluginStablehloVersionOrDefault(const PjRtClient* client);
+
+std::string GetPluginSdyVersionOrDefault(
+    const absl::flat_hash_map<std::string, PjRtValueType>& attributes);
+std::string GetPluginSdyVersionOrDefault(const PjRtClient* client);
 
 }  // namespace xla
 

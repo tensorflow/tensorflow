@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -68,7 +69,7 @@ class PjRtClient;
 // environment specific information to enable communication between devices on
 // different slices. Passed as options during compile and execute.
 // Implementations that do not support this are allowed to pass nullptr.
-class MultiSliceConfig {
+class MultiSliceConfig : public tsl::ReferenceCounted<MultiSliceConfig> {
  public:
   virtual ~MultiSliceConfig();
 
@@ -83,7 +84,17 @@ class MultiSliceConfig {
 
   // Returns a serialized proto representing MultiSliceConfig.
   virtual std::string Serialize() const = 0;
+
+  // Translates a multi-slice device ID from a DeviceAssignment into a
+  // slice-local GlobalDeviceId if the device is on `SliceId()`, or
+  // `std::nullopt` if the device is on a non-local slice.
+  virtual absl::StatusOr<std::optional<GlobalDeviceId>> GetSliceLocalDeviceId(
+      int64_t multi_slice_device_id) const {
+    return absl::UnimplementedError("GetSliceLocalDeviceId is not supported.");
+  }
 };
+
+using MultiSliceConfigRef = tsl::RCReference<const MultiSliceConfig>;
 
 struct CompileOptions {
   // The layouts of the arguments that the computation should expect.
@@ -111,8 +122,16 @@ struct CompileOptions {
 
   // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
-  const MultiSliceConfig* multi_slice_config = nullptr;
+  MultiSliceConfigRef multi_slice_config;
   std::string serialized_multi_slice_config = "";
+
+  void set_multi_slice_config(MultiSliceConfigRef config) {
+    multi_slice_config = std::move(config);
+  }
+
+  const MultiSliceConfig* get_multi_slice_config() const {
+    return multi_slice_config.get();
+  }
 
   // Key-value string pairs, parsed in order to set miscellaneous options,
   // overriding if appropriate.

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -39,17 +40,29 @@ mlir::Location GenerateInstructionLocation(
         b.getStringAttr(xla::ToStringRef(instruction->name())));
   }
 
+  mlir::Location frame_location = b.getUnknownLoc();
   if (instruction->metadata().stack_frame_id() != 0) {
-    mlir::Location frame_location = GetLocationFromFrameIndex(
+    frame_location = GetLocationFromFrameIndex(
         instruction->metadata().stack_frame_id(), b,
         instruction->parent()->parent(), frame_locations);
-
-    if (!isa<mlir::UnknownLoc>(frame_location)) {
-      return mlir::NameLoc::get(b.getStringAttr(op_name), frame_location);
-    }
   }
 
-  mlir::Location op_name_loc = mlir::NameLoc::get(b.getStringAttr(op_name));
+  // Encode `op_name` (wrapping the stack trace if present), and wrap it in an
+  // outer `<op_type>:` NameLoc when `op_type` is set, matching the convention
+  // expected by `mhlo::CreateOpMetadataFromLocation`:
+  // `loc("<op_type>:"("<op_name>"(<frames>)))`.
+  mlir::Location op_name_loc =
+      mlir::NameLoc::get(b.getStringAttr(op_name), frame_location);
+  if (const std::string& op_type = instruction->metadata().op_type();
+      !op_type.empty()) {
+    op_name_loc = mlir::NameLoc::get(
+        b.getStringAttr(absl::StrCat(op_type, ":")), op_name_loc);
+  }
+
+  if (!isa<mlir::UnknownLoc>(frame_location)) {
+    return op_name_loc;
+  }
+
   const std::string& source_file = instruction->metadata().source_file();
 
   if (source_file.empty()) {
@@ -58,8 +71,11 @@ mlir::Location GenerateInstructionLocation(
 
   return b.getFusedLoc(
       {op_name_loc,
-       mlir::FileLineColLoc::get(b.getContext(), source_file,
-                                 instruction->metadata().source_line(), 0)});
+       GetFileLineColLocOrRange(b.getContext(), source_file,
+                                instruction->metadata().source_line(),
+                                instruction->metadata().source_column(),
+                                instruction->metadata().source_end_line(),
+                                instruction->metadata().source_end_column())});
 }
 
 }  // namespace hlo

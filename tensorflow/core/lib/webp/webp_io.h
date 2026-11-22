@@ -28,13 +28,17 @@ limitations under the License.
 //
 // if (has_animation) { DecideIfYouWantFrame0(); }
 //
-// uint8_t* output_bytes = new uint8_t[width * height * channels];
-// DecodeWebPImage(input_bytes, output_bytes, width, height, channels);
+// size_t byte_size = GetWebPImageSize(width, height, channels);
+// if (byte_size == 0) { return; }
+// uint8_t* output_bytes = new uint8_t[byte_size];
+// DecodeWebPImage(input_bytes, output_bytes, width, height, channels, false);
 //
 
 #ifndef TENSORFLOW_CORE_LIB_WEBP_WEBP_IO_H_
 #define TENSORFLOW_CORE_LIB_WEBP_WEBP_IO_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -43,6 +47,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace webp {
+
+// Computes the decoded byte size using checked size_t arithmetic. Returns 0
+// for nonpositive dimensions, unsupported channels, or an unrepresentable
+// size.
+size_t GetWebPImageSize(int64_t width, int64_t height, int channels);
 
 // Given an input encoded in WebP as `webp_string`, extract the width, height,
 // number of channels, and whether or not the file is an animation. Return false
@@ -65,6 +74,9 @@ bool DecodeWebPImage(absl::string_view webp_string, uint8_t* output, int width,
 //
 // Note: Decoding a WebP animation, even to get the number of frames, reads the
 // entire image into memory, hence this callback mechanism.
+//
+// The callback must return a buffer large enough for all requested frames, or
+// nullptr on failure. The raw pointer does not convey the buffer's capacity.
 uint8_t* DecodeWebPAnimation(
     absl::string_view webp_string,
     const std::function<uint8_t*(int, int, int, int)>& allocate_output,

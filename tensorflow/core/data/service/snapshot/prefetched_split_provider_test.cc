@@ -89,7 +89,7 @@ absl::StatusOr<std::unique_ptr<SplitProvider>> RangeSplitProvider(
 
 template <class T>
 T GetValue(const Tensor& tensor) {
-  return tensor.unaligned_flat<T>().data()[0];
+  return tensor.unaligned_flat<T>()(0);
 }
 
 template <class T>

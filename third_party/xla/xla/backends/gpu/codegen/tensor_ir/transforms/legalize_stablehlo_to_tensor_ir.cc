@@ -271,73 +271,6 @@ struct ClampOpConversion
   }
 };
 
-// Returns a splat nv_tensor_ir.constant of the integral value `value` over
-// `type`, which must have a floating-point element type.
-mlir::Value CreateFloatSplat(mlir::ConversionPatternRewriter& rewriter,
-                             mlir::Location loc, mlir::RankedTensorType type,
-                             int64_t value) {
-  auto element_type = mlir::cast<mlir::FloatType>(type.getElementType());
-  llvm::APFloat splat(element_type.getFloatSemantics(), value);
-  return mlir::nv_tensor_ir::ConstantOp::create(
-      rewriter, loc, mlir::DenseElementsAttr::get(type, splat));
-}
-
-// NOTE: Decomposing Expm1(x) to Exp(x) - 1.0 can result in a severe loss of
-// precision for values of x close to 0. nv_tensor_ir has no expm1, so this is
-// the only available lowering; the caveat is reproduced from the converter
-// this pass replaces because it is invisible in the emitted IR.
-struct Expm1OpConversion
-    : public mlir::OpConversionPattern<mlir::stablehlo::Expm1Op> {
-  using mlir::OpConversionPattern<
-      mlir::stablehlo::Expm1Op>::OpConversionPattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::stablehlo::Expm1Op op, OpAdaptor adaptor,
-      mlir::ConversionPatternRewriter& rewriter) const override {
-    auto result_type = mlir::dyn_cast_or_null<mlir::RankedTensorType>(
-        this->getTypeConverter()->convertType(op.getType()));
-    if (!result_type ||
-        !mlir::isa<mlir::FloatType>(result_type.getElementType())) {
-      return rewriter.notifyMatchFailure(
-          op, "expected a ranked floating-point result");
-    }
-    mlir::Location loc = op.getLoc();
-    mlir::Value one = CreateFloatSplat(rewriter, loc, result_type, /*value=*/1);
-    mlir::Value exp = mlir::nv_tensor_ir::ExpOp::create(
-        rewriter, loc, result_type, adaptor.getOperand());
-    rewriter.replaceOpWithNewOp<mlir::nv_tensor_ir::SubOp>(op, result_type, exp,
-                                                           one);
-    return mlir::success();
-  }
-};
-
-// NOTE: Decomposing Log1p(x) to Log(x + 1.0) can result in a severe loss of
-// precision for values of x close to 0. See the note on Expm1OpConversion.
-struct Log1pOpConversion
-    : public mlir::OpConversionPattern<mlir::stablehlo::Log1pOp> {
-  using mlir::OpConversionPattern<
-      mlir::stablehlo::Log1pOp>::OpConversionPattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::stablehlo::Log1pOp op, OpAdaptor adaptor,
-      mlir::ConversionPatternRewriter& rewriter) const override {
-    auto result_type = mlir::dyn_cast_or_null<mlir::RankedTensorType>(
-        this->getTypeConverter()->convertType(op.getType()));
-    if (!result_type ||
-        !mlir::isa<mlir::FloatType>(result_type.getElementType())) {
-      return rewriter.notifyMatchFailure(
-          op, "expected a ranked floating-point result");
-    }
-    mlir::Location loc = op.getLoc();
-    mlir::Value one = CreateFloatSplat(rewriter, loc, result_type, /*value=*/1);
-    mlir::Value sum = mlir::nv_tensor_ir::AddOp::create(
-        rewriter, loc, result_type, adaptor.getOperand(), one);
-    rewriter.replaceOpWithNewOp<mlir::nv_tensor_ir::LogOp>(op, result_type,
-                                                           sum);
-    return mlir::success();
-  }
-};
-
 //===----------------------------------------------------------------------===//
 // Structural operations.
 //===----------------------------------------------------------------------===//
@@ -1546,8 +1479,12 @@ void populateLegalizeStablehloToTensorIrPatterns(
                                             mlir::nv_tensor_ir::TanOp>,
                ElementwiseUnaryOpConversion<mlir::stablehlo::ExpOp,
                                             mlir::nv_tensor_ir::ExpOp>,
+               ElementwiseUnaryOpConversion<mlir::stablehlo::Expm1Op,
+                                            mlir::nv_tensor_ir::ExpM1Op>,
                ElementwiseUnaryOpConversion<mlir::stablehlo::LogOp,
                                             mlir::nv_tensor_ir::LogOp>,
+               ElementwiseUnaryOpConversion<mlir::stablehlo::Log1pOp,
+                                            mlir::nv_tensor_ir::Log1POp>,
                ElementwiseUnaryOpConversion<mlir::stablehlo::RsqrtOp,
                                             mlir::nv_tensor_ir::RsqrtOp>,
                ElementwiseUnaryOpConversion<mlir::stablehlo::SqrtOp,
@@ -1587,9 +1524,9 @@ void populateLegalizeStablehloToTensorIrPatterns(
                ElementwiseBinaryOpConversion<mlir::stablehlo::Atan2Op,
                                              mlir::nv_tensor_ir::Atan2Op>,
                ElementwiseBinaryOpConversion<mlir::stablehlo::AndOp,
-                                             mlir::nv_tensor_ir::LogicalAndOp>,
+                                             mlir::nv_tensor_ir::AndOp>,
                ElementwiseBinaryOpConversion<mlir::stablehlo::OrOp,
-                                             mlir::nv_tensor_ir::LogicalOrOp>>(
+                                             mlir::nv_tensor_ir::OrOp>>(
       type_converter, context);
 
   // Select, Compare, Convert, and Results.
@@ -1602,8 +1539,7 @@ void populateLegalizeStablehloToTensorIrPatterns(
 
   // Operations without a direct nv_tensor_ir counterpart, expressed in terms
   // of the operations that do exist.
-  patterns.add<ClampOpConversion, Expm1OpConversion, Log1pOpConversion>(
-      type_converter, context);
+  patterns.add<ClampOpConversion>(type_converter, context);
 
   // Structural operations, constants and matmul.
   // Note: pad, gather, scatter, dynamic_slice, sort, reverse, convolution and

@@ -226,5 +226,50 @@ TEST(AnnotationTest, ModuleAnnotationsWithStackFrames) {
   EXPECT_THAT(detailed_fusion.xprof_name(), HasSubstr("shape=f32[4]"));
 }
 
+TEST(AnnotationTest, GetCurrentModuleAnnotationsFollowsScopes) {
+  ModuleAnnotations outer("outer");
+  ModuleAnnotations inner("inner");
+  EXPECT_EQ(GetCurrentModuleAnnotations(), nullptr);
+  {
+    ScopedModuleAnnotations outer_scope(&outer);
+    EXPECT_EQ(GetCurrentModuleAnnotations(), &outer);
+    {
+      ScopedModuleAnnotations inner_scope(&inner);
+      EXPECT_EQ(GetCurrentModuleAnnotations(), &inner);
+    }
+    EXPECT_EQ(GetCurrentModuleAnnotations(), &outer);
+  }
+  EXPECT_EQ(GetCurrentModuleAnnotations(), nullptr);
+}
+
+TEST(AnnotationTest, GetInstructionAnnotationStringOfEmptyNameIsEmpty) {
+  EXPECT_EQ(GetInstructionAnnotationString(""), "");
+}
+
+TEST(AnnotationTest, GetInstructionAnnotationStringUsesModuleAnnotations) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(R"(
+    HloModule test
+
+    ENTRY main {
+      ROOT constant = f32[] constant(1)
+    }
+  )"));
+  ModuleAnnotations annotations(*module);
+  const InstructionAnnotation& constant =
+      annotations.instructions.at("constant");
+
+  // Without module annotations, the fallback.
+  EXPECT_EQ(GetInstructionAnnotationString("constant"),
+            "Thunk:#hlo_op=constant#");
+
+  ScopedModuleAnnotations scope(&annotations);
+  // The pre-built xprof name of an instruction of the module.
+  EXPECT_EQ(GetInstructionAnnotationString("constant"), constant.xprof_name());
+  EXPECT_NE(constant.xprof_name(), "Thunk:#hlo_op=constant#");
+  // The fallback for a name that isn't an instruction of the module.
+  EXPECT_EQ(GetInstructionAnnotationString("unknown"),
+            "Thunk:#hlo_op=unknown#");
+}
+
 }  // namespace
 }  // namespace xla::gpu

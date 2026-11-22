@@ -19,6 +19,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -196,13 +197,18 @@ class HloValue : public BufferValue {
   // Computes the uses of all `values` now, sharing per instruction work
   // between them: the users of a tuple shaped instruction that can use the
   // values nested in it are gathered once instead of once per value, and the
-  // operands of wide users are indexed once. Each value ends up with exactly
-  // the uses GetUses() would compute, in the same order, but computing them
-  // one value at a time is quadratic in the width of a tuple.
-  // REQUIRES: no value in `values` has computed its uses yet.
-  static void PrecomputeUses(absl::Span<HloValue* const> values);
+  // operands of wide users are indexed once. Each value ends up with the uses
+  // GetUses() would compute, in the same order, omitting users that are not
+  // computation roots when `is_passthrough` matches them.
+  //
+  // REQUIRES: No value in `values` has computed its uses yet.
+  static void PrecomputeUses(
+      absl::Span<HloValue* const> values,
+      std::function<bool(const HloInstruction*)> is_passthrough = nullptr);
 
-  // Computes the uses, through `use_cache` when it is not null.
+  // Computes the uses, through `use_cache` when it is not null, omitting users
+  // that are not computation roots when `use_cache`'s passthrough predicate
+  // matches them.
   Uses ComputeUses(UseCache* use_cache) const;
 
   // The set of positions of this HloValue. The first element is always the

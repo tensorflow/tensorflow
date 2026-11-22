@@ -1686,6 +1686,83 @@ ENTRY test {
       )");
 }
 
+TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationWrongConstantBF16) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP() << "Padding of GEMM bf16 operands only implemented on "
+                    "architectures with bf16 Tensor Cores.";
+  }
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[2,3] parameter(0)
+  y = bf16[3,4] parameter(1)
+  dot = bf16[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  mul.0 = bf16[2,4] multiply(dot, dot)
+  mul.1 = bf16[2,4] multiply(dot, mul.0)
+  const.0 = bf16[] constant(0.05)
+  bcast.0 = bf16[2,4] broadcast(const.0), dimensions={}
+  mul.2 = bf16[2,4] multiply(mul.1, bcast.0)
+  add.0 = bf16[2,4] add(dot, mul.2)
+  const.1 = bf16[] constant(0.797884583)
+  bcast.1 = bf16[2,4] broadcast(const.1), dimensions={}
+  mul.3 = bf16[2,4] multiply(add.0, bcast.1)
+  tanh = bf16[2,4] tanh(mul.3)
+  const.2 = bf16[] constant(1)
+  bcast.2 = bf16[2,4] broadcast(const.2), dimensions={}
+  add.2 = bf16[2,4] add(tanh, bcast.2)
+  const.3 = bf16[] constant(0.5)
+  bcast.3 = bf16[2,4] broadcast(const.3), dimensions={}
+  mul.4 = bf16[2,4] multiply(add.2, bcast.3)
+  ROOT out = bf16[2,4] multiply(dot, mul.4)
+}
+
+)";
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-NOT: GELU
+      )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationWrongConstantF16) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f16[2,3] parameter(0)
+  y = f16[3,4] parameter(1)
+  dot = f16[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  mul.0 = f16[2,4] multiply(dot, dot)
+  mul.1 = f16[2,4] multiply(dot, mul.0)
+  const.0 = f16[] constant(0.05)
+  bcast.0 = f16[2,4] broadcast(const.0), dimensions={}
+  mul.2 = f16[2,4] multiply(mul.1, bcast.0)
+  add.0 = f16[2,4] add(dot, mul.2)
+  const.1 = f16[] constant(0.797884583)
+  bcast.1 = f16[2,4] broadcast(const.1), dimensions={}
+  mul.3 = f16[2,4] multiply(add.0, bcast.1)
+  tanh = f16[2,4] tanh(mul.3)
+  const.2 = f16[] constant(1)
+  bcast.2 = f16[2,4] broadcast(const.2), dimensions={}
+  add.2 = f16[2,4] add(tanh, bcast.2)
+  const.3 = f16[] constant(0.5)
+  bcast.3 = f16[2,4] broadcast(const.3), dimensions={}
+  mul.4 = f16[2,4] multiply(add.2, bcast.3)
+  ROOT out = f16[2,4] multiply(dot, mul.4)
+}
+
+)";
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-NOT: GELU
+      )");
+}
+
 TEST_F(CublasLtGemmRewriteTest, MatrixBiasSwishActivation) {
   if (!IsRocm()) {
     GTEST_SKIP() << "Swish/SILU epilogue fusion is ROCm-only";
@@ -2770,10 +2847,6 @@ TEST_F(ParameterizedGemmRewriteTest, F64C64_CublasLtSupportTest) {
   if (IsRocm()) {
     GTEST_SKIP() << " hipblaslt doesn't support c64 c128 types";
   }
-  // TODO(intel-tf): Remove this check once SYCL supports c64/c128.
-  if (IsSycl()) {
-    GTEST_SKIP() << "c64/c128 not supported on SYCL.";
-  }
   // This test should fail if gemm rewriter does not correctly rewrite
   // F64/C64 dots to cublas-lt or legacy cublas calls
   {
@@ -2986,9 +3059,8 @@ ENTRY main {
 }
 
 TEST_F(ParameterizedGemmRewriteTest, ComplexAlphaSimpleRewrite) {
-  if ((IsSycl() || IsRocm()) &&
-      GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
-    GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM/SYCL.";
+  if (IsRocm() && GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
+    GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM.";
   }
   const char* hlo_text = R"(
 HloModule ComplexAlphaSimpleRewrite
@@ -3409,19 +3481,6 @@ TEST_F(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
   } else {
     type_combinations.push_back({"c64", "c64", true});
     type_combinations.push_back({"c128", "c128", true});
-  }
-
-  // TODO(intel-tf): Remove this check once SYCL supports f64, c64, c128 data
-  // types. SYCL does not support f64, c64, c128 data types in oneDNN matmul
-  if (IsSycl()) {
-    type_combinations.erase(
-        std::remove_if(type_combinations.begin(), type_combinations.end(),
-                       [](const auto& combo) {
-                         auto [input_type, output_type, should_rewrite] = combo;
-                         return input_type == "f64" || input_type == "c64" ||
-                                input_type == "c128";
-                       }),
-        type_combinations.end());
   }
 
   for (const auto& type_combination : type_combinations) {

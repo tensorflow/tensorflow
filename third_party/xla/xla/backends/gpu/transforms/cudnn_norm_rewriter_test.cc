@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/backends/gpu/transforms/cudnn_norm_rewriter.h"
+
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/error_spec.h"
@@ -636,6 +640,157 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3InputOutputTypeMismatch) {
   )";
 
   TestNorm(hlo_text, optimized_hlo);
+}
+
+// The reductions are applied to a reshape of the input with additional
+// degenerate dimensions, one of which is reduced. The dimensions of the
+// reductions are not valid dimensions of the input.
+TEST_F(CudnnNormRewriterTest, LayerNorm2D1ReduceOperandRankMismatch) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    apply {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT c = f32[] add(a,b)
+    }
+
+    ENTRY test {
+        input = f32[2,4] parameter(0)
+        input_reshape = f32[2,4,1,1] reshape(input)
+        input_square = f32[2,4,1,1] multiply(input_reshape, input_reshape)
+        c0 = f32[] constant(0)
+        input_square_sum = f32[2,1] reduce(input_square, c0), dimensions={1,3}, to_apply=apply
+        r_nelems = f32[] constant(0.25)
+        r_nelems_bcast = f32[2,1] broadcast(r_nelems), dimensions={}
+        input_square_mean = f32[2,1] multiply(input_square_sum, r_nelems_bcast)
+        input_sum = f32[2,1] reduce(input_reshape, c0), dimensions={1,3}, to_apply=apply
+        input_mean = f32[2,1] multiply(input_sum, r_nelems_bcast)
+        input_mean_square = f32[2,1] multiply(input_mean, input_mean)
+        variance = f32[2,1] subtract(input_square_mean, input_mean_square)
+        epsilon = f32[] constant(0.001)
+        epsilon_bcast = f32[2,1] broadcast(epsilon), dimensions={}
+        variance_plus_epsilon = f32[2,1] add(variance, epsilon_bcast)
+        norm_factor = f32[2,1] rsqrt(variance_plus_epsilon)
+        norm_factor_reshape = f32[2] reshape(norm_factor)
+        norm_factor_bcast = f32[2,4] broadcast(norm_factor_reshape), dimensions={0}
+        input_mean_reshape = f32[2] reshape(input_mean)
+        input_mean_bcast = f32[2,4] broadcast(input_mean_reshape), dimensions={0}
+        input_center = f32[2,4] subtract(input, input_mean_bcast)
+        norm = f32[2,4] multiply(norm_factor_bcast, input_center)
+        scale = f32[4] parameter(1)
+        scale_bcast = f32[2,4] broadcast(scale), dimensions={1}
+        norm_scale = f32[2,4] multiply(norm, scale_bcast)
+        bias = f32[4] parameter(2)
+        bias_broadcast = f32[2,4] broadcast(bias), dimensions={1}
+        ROOT out = f32[2,4] add(norm_scale, bias_broadcast)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_THAT(
+      RunHloPass(CudnnNormRewriter(GetCudaComputeCapability()), module.get()),
+      absl_testing::IsOkAndHolds(false));
+}
+
+// The reductions are applied to a reshape of the input that moves the
+// degenerate dimension. The dimensions of the reductions are valid dimensions
+// of the input but describe a different dimension of the input.
+TEST_F(CudnnNormRewriterTest,
+       LayerNorm3D2ReduceOperandDegenerateDimensionMismatch) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    apply {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT c = f32[] add(a,b)
+    }
+
+    ENTRY test {
+        input = f32[1,4,4] parameter(0)
+        input_reshape = f32[4,4,1] reshape(input)
+        input_square = f32[4,4,1] multiply(input_reshape, input_reshape)
+        c0 = f32[] constant(0)
+        input_square_sum = f32[4,1] reduce(input_square, c0), dimensions={1}, to_apply=apply
+        r_nelems = f32[] constant(0.25)
+        r_nelems_bcast = f32[4,1] broadcast(r_nelems), dimensions={}
+        input_square_mean = f32[4,1] multiply(input_square_sum, r_nelems_bcast)
+        input_sum = f32[4,1] reduce(input_reshape, c0), dimensions={1}, to_apply=apply
+        input_mean = f32[4,1] multiply(input_sum, r_nelems_bcast)
+        input_mean_square = f32[4,1] multiply(input_mean, input_mean)
+        variance = f32[4,1] subtract(input_square_mean, input_mean_square)
+        epsilon = f32[] constant(0.001)
+        epsilon_bcast = f32[4,1] broadcast(epsilon), dimensions={}
+        variance_plus_epsilon = f32[4,1] add(variance, epsilon_bcast)
+        norm_factor = f32[4,1] rsqrt(variance_plus_epsilon)
+        norm_factor_reshape = f32[4] reshape(norm_factor)
+        norm_factor_bcast = f32[1,4,4] broadcast(norm_factor_reshape), dimensions={1}
+        input_mean_reshape = f32[4] reshape(input_mean)
+        input_mean_bcast = f32[1,4,4] broadcast(input_mean_reshape), dimensions={1}
+        input_center = f32[1,4,4] subtract(input, input_mean_bcast)
+        norm = f32[1,4,4] multiply(norm_factor_bcast, input_center)
+        scale = f32[4] parameter(1)
+        scale_bcast = f32[1,4,4] broadcast(scale), dimensions={2}
+        norm_scale = f32[1,4,4] multiply(norm, scale_bcast)
+        bias = f32[4] parameter(2)
+        bias_broadcast = f32[1,4,4] broadcast(bias), dimensions={2}
+        ROOT out = f32[1,4,4] add(norm_scale, bias_broadcast)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_THAT(
+      RunHloPass(CudnnNormRewriter(GetCudaComputeCapability()), module.get()),
+      absl_testing::IsOkAndHolds(false));
+}
+
+// The reductions are applied to a reshape of the input with an additional
+// degenerate dimension. The dimensions of the reductions describe the same
+// dimension of the input.
+TEST_F(CudnnNormRewriterTest, LayerNorm2D1ReduceOperandDegenerateDimension) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    apply {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT c = f32[] add(a,b)
+    }
+
+    ENTRY test {
+        input = f32[2,4] parameter(0)
+        input_reshape = f32[2,4,1] reshape(input)
+        input_square = f32[2,4,1] multiply(input_reshape, input_reshape)
+        c0 = f32[] constant(0)
+        input_square_sum = f32[2,1] reduce(input_square, c0), dimensions={1}, to_apply=apply
+        r_nelems = f32[] constant(0.25)
+        r_nelems_bcast = f32[2,1] broadcast(r_nelems), dimensions={}
+        input_square_mean = f32[2,1] multiply(input_square_sum, r_nelems_bcast)
+        input_sum = f32[2,1] reduce(input_reshape, c0), dimensions={1}, to_apply=apply
+        input_mean = f32[2,1] multiply(input_sum, r_nelems_bcast)
+        input_mean_square = f32[2,1] multiply(input_mean, input_mean)
+        variance = f32[2,1] subtract(input_square_mean, input_mean_square)
+        epsilon = f32[] constant(0.001)
+        epsilon_bcast = f32[2,1] broadcast(epsilon), dimensions={}
+        variance_plus_epsilon = f32[2,1] add(variance, epsilon_bcast)
+        norm_factor = f32[2,1] rsqrt(variance_plus_epsilon)
+        norm_factor_reshape = f32[2] reshape(norm_factor)
+        norm_factor_bcast = f32[2,4] broadcast(norm_factor_reshape), dimensions={0}
+        input_mean_reshape = f32[2] reshape(input_mean)
+        input_mean_bcast = f32[2,4] broadcast(input_mean_reshape), dimensions={0}
+        input_center = f32[2,4] subtract(input, input_mean_bcast)
+        norm = f32[2,4] multiply(norm_factor_bcast, input_center)
+        scale = f32[4] parameter(1)
+        scale_bcast = f32[2,4] broadcast(scale), dimensions={1}
+        norm_scale = f32[2,4] multiply(norm, scale_bcast)
+        bias = f32[4] parameter(2)
+        bias_broadcast = f32[2,4] broadcast(bias), dimensions={1}
+        ROOT out = f32[2,4] add(norm_scale, bias_broadcast)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_THAT(
+      RunHloPass(CudnnNormRewriter(GetCudaComputeCapability()), module.get()),
+      absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrain2D1) {

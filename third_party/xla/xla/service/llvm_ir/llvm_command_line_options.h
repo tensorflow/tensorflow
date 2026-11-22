@@ -96,6 +96,15 @@ class ABSL_SCOPED_LOCKABLE LLVMCommandLineOptionsLock {
   // a context after calling this. Should be called while holding the lock.
   static void ApplyLibraryOptions(llvm::LLVMContext& context);
 
+  // Returns the per-context LLVM library options parsed from the active client
+  // options, e.g. for llvm::TargetOptions::MCOptions.LibraryOptions, which LLVM
+  // reads target and CodeGen options from. Should be called while holding the
+  // lock; the returned context is valid until LLVM is reinitialized with
+  // different options.
+  static const llvm::cl::LibraryOptionsContext& GetLibraryOptions() {
+    return *GetActiveLibraryOptions();
+  }
+
  private:
   // Global XLA LLVM options lock.
   static inline absl::Mutex lock_{absl::kConstInit};

@@ -640,6 +640,8 @@ class TensorListSplit : public OpKernel {
                                  ? &CopyTensorPluggableDevice<T>
                                  : &CopyTensor<Device, T>;
 
+    const int64_t expected_first_dim =
+        element_shape.unknown_rank() ? -1 : element_shape.dim_size(0);
     int64_t start = 0;
     int64_t end = 0;
     for (int i = 0; i < lengths.shape().dim_size(0); ++i) {
@@ -647,12 +649,20 @@ class TensorListSplit : public OpKernel {
       OP_REQUIRES(c, length >= 0,
                   absl::InvalidArgumentError(
                       absl::StrCat("Invalid value in lengths: ", length)));
-      end = start + length;
       OP_REQUIRES(
-          c, end <= input_tensor.shape().dim_size(0),
+          c, length <= input_tensor.shape().dim_size(0) - start,
           absl::InvalidArgumentError(absl::StrCat(
-              "Attempting to slice [", start, ", ", end,
+              "Attempting to slice [", start, ", ",
+              (start <= std::numeric_limits<int64_t>::max() - length
+                   ? absl::StrCat(start + length)
+                   : absl::StrCat(start, " + ", length)),
               "] from tensor with length ", input_tensor.shape().dim_size(0))));
+      OP_REQUIRES(c, expected_first_dim == -1 || length == expected_first_dim,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Length ", length, " at index ", i,
+                                   " is not compatible with element_shape ",
+                                   element_shape.DebugString())));
+      end = start + length;
       Tensor tmp = input_tensor.Slice(start, end);
       start = end;
       // TODO(apassos) maybe not always align; but weird compiler bugs seem to
@@ -881,6 +891,14 @@ class TensorListScatterIntoExistingList : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Tensor must be at least a vector, but saw shape: ",
                     input_tensor.shape().DebugString())));
+    TensorShape element_shape(input_tensor.shape());
+    element_shape.RemoveDim(0);
+    OP_REQUIRES(c, l->element_shape.IsCompatibleWith(element_shape),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Tried to scatter tensors with incompatible shape into a "
+                    "list. Item element shape: ",
+                    element_shape.DebugString(),
+                    " list shape: ", l->element_shape.DebugString())));
     OP_REQUIRES(c, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
                     "Expected indices to be a vector, but received shape: ",

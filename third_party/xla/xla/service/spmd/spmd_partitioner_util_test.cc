@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/service/spmd/spmd_partitioner_util_internal.h"
 
 namespace xla {
@@ -472,6 +473,67 @@ TEST(SPMDPartitionerUtilTest,
   EXPECT_EQ(v3_group_list->num_replica_groups(), 4);
   EXPECT_EQ(v3_group_list->num_devices_per_group(), 8);
   EXPECT_EQ(v3_group_list->ToString(), "mesh['a'=8,'b'=4] {'b':(2)2,'a':(2)4}");
+}
+
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsAcrossTargetDimsMergesAdjacentSubAxes) {
+  struct TestCase {
+    Mesh mesh;
+    std::vector<std::vector<std::string>> dim_shardings;
+    std::vector<int64_t> target_dims;
+    std::vector<int64_t> group_sizes;
+    int64_t expected_num_groups;
+    int64_t expected_devices_per_group;
+    std::string expected_str;
+  };
+  std::vector<TestCase> cases = {
+      // Adjacent sub-axes across two target dims merge into a single sub-axis.
+      {Mesh({16}, {"model"}),
+       {{"model:(1)4"}, {"model:(4)2"}},
+       {0, 1},
+       {4, 2},
+       2,
+       8,
+       "mesh['model'=16] {'model':(1)8}"},
+      // Minor sub-axis of dim 0 merges with major sub-axis of dim 1 into full
+      // axis.
+      {Mesh({4, 8}, {"a", "b"}),
+       {{"a", "b:(1)4"}, {"b:(4)2"}},
+       {0, 1},
+       {4, 2},
+       4,
+       8,
+       "mesh['a'=4,'b'=8] {'b'}"},
+      // Three contiguous sub-axes across three target dims merge into full
+      // axis.
+      {Mesh({8}, {"model"}),
+       {{"model:(1)2"}, {"model:(2)2"}, {"model:(4)2"}},
+       {0, 1, 2},
+       {2, 2, 2},
+       1,
+       8,
+       "mesh['model'=8] {'model'}"},
+      // Reversed (non-mergeable) sub-axes across target dims stay separate.
+      {Mesh({8}, {"model"}),
+       {{"model:(4)2"}, {"model:(1)4"}},
+       {0, 1},
+       {2, 4},
+       1,
+       8,
+       "mesh['model'=8] {'model':(4)2,'model':(1)4}"},
+  };
+
+  for (const TestCase& tc : cases) {
+    HloSharding sharding(test_utils::FromAxisNames(tc.mesh, tc.dim_shardings));
+    std::optional<MeshAxesReplicaGroupList> v3_group_list =
+        GetMeshAxesPartitionGroupsAcrossTargetDims(sharding, tc.target_dims,
+                                                   tc.group_sizes);
+    ASSERT_TRUE(v3_group_list.has_value());
+    EXPECT_EQ(v3_group_list->num_replica_groups(), tc.expected_num_groups);
+    EXPECT_EQ(v3_group_list->num_devices_per_group(),
+              tc.expected_devices_per_group);
+    EXPECT_EQ(v3_group_list->ToString(), tc.expected_str);
+  }
 }
 
 TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplicationV2) {
@@ -968,6 +1030,44 @@ INSTANTIATE_TEST_SUITE_P(
             HloSharding::SingleDevice(1), false}),
     [](const testing::TestParamInfo<CanReshardWithCollectivePermuteTestCase>&
            info) { return info.param.name; });
+
+TEST(SPMDPartitionerUtilTest, AlignGroupsWithIfCompatibleIgnoreGroupOrder) {
+  // Reference groups along dim 1: [[0, 4, 1, 5], [2, 6, 3, 7]].
+  HloSharding ref_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 1, 0}));
+  auto ref_grouped = hlo_sharding_util::GroupShardingOnDims(ref_sharding, {1});
+
+  // Same groups in reversed group order with uniform within group permutation
+  // [0, 2, 1, 3]: groups [[2, 3, 6, 7], [0, 1, 4, 5]].
+  Array<int64_t> reversed_groups_tiles({4, 2});
+  reversed_groups_tiles.SetValues({2, 0, 3, 1, 6, 4, 7, 5});
+  auto src_grouped = hlo_sharding_util::GroupShardingOnDims(
+      HloSharding::Tile(reversed_groups_tiles), {1});
+
+  EXPECT_FALSE(AlignGroupsWithIfCompatible(src_grouped, ref_grouped,
+                                           /*ignore_group_order=*/false)
+                   .has_value());
+  auto aligned = AlignGroupsWithIfCompatible(src_grouped, ref_grouped,
+                                             /*ignore_group_order=*/true);
+  ASSERT_TRUE(aligned.has_value());
+  Array<int64_t> expected_inner({4, 1});
+  expected_inner.SetValues({0, 2, 1, 3});
+  EXPECT_EQ(aligned->sharding, HloSharding::Tile(expected_inner));
+
+  // Inconsistent within group permutation across groups: [[0, 2], [1, 3]] vs
+  // [[0, 2], [3, 1]] must return nullopt even with ignore_group_order=true.
+  Array<int64_t> ref_non_uniform({2, 2});
+  ref_non_uniform.SetValues({0, 3, 2, 1});
+  auto ref_nu_grouped = hlo_sharding_util::GroupShardingOnDims(
+      HloSharding::Tile(ref_non_uniform), {1});
+  Array<int64_t> src_non_uniform({2, 2});
+  src_non_uniform.SetValues({0, 1, 2, 3});
+  auto src_nu_grouped = hlo_sharding_util::GroupShardingOnDims(
+      HloSharding::Tile(src_non_uniform), {1});
+  EXPECT_FALSE(AlignGroupsWithIfCompatible(src_nu_grouped, ref_nu_grouped,
+                                           /*ignore_group_order=*/true)
+                   .has_value());
+}
 
 }  // namespace
 }  // namespace spmd

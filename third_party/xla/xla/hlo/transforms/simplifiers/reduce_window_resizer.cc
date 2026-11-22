@@ -37,7 +37,7 @@ absl::StatusOr<bool> ReduceWindowResizer::RunImpl(
          computation->MakeInstructionPostOrder()) {
       HloReduceWindowInstruction* reduce_window =
           DynCast<HloReduceWindowInstruction>(instruction);
-      if (!reduce_window) {
+      if (!reduce_window || (filter_ && !filter_(reduce_window))) {
         continue;
       }
 

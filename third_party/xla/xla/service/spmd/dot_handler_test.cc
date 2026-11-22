@@ -30,13 +30,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/sharding_propagation.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/sharding_format_picker.h"
-#include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -54,8 +54,11 @@ class DotHandlerTest
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_partitions,
-      int64_t max_windowed_einsum_iteration = 32,         // Default value
-      int64_t threshold_for_windowed_einsum_mib = 256) {  // Default value
+      int64_t max_windowed_einsum_iteration = 32,
+      int64_t threshold_for_windowed_einsum_mib = 256,
+      bool disable_ag_rewrite_for_multiple_consumers = false,
+      std::optional<int64_t> total_bytes_windowed_einsum_threshold =
+          std::nullopt) {
     HloModuleConfig config = GetModuleConfigForTest(1, num_partitions);
     config.set_use_spmd_partitioning(true);
 
@@ -73,20 +76,24 @@ class DotHandlerTest
     ShardingFormatPicker format_picker(GetParam());
     ABSL_RETURN_IF_ERROR(format_picker.Run(module.get()).status());
 
+    SpmdPartitionerOptions options;
+    options.threshold_for_windowed_einsum_mib =
+        threshold_for_windowed_einsum_mib;
+    options.unroll_windowed_einsum =
+        debug_options.xla_gpu_multi_streamed_windowed_einsum();
+    options.skip_checking_windowed_einsum_users = true;
+    options.disable_ag_rewrite_for_multiple_consumers =
+        disable_ag_rewrite_for_multiple_consumers;
+    options.total_bytes_windowed_einsum_threshold =
+        total_bytes_windowed_einsum_threshold;
+    options.max_windowed_einsum_iteration = max_windowed_einsum_iteration;
+
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
-    pass.AddPass<StatefulRngSpmdPartitioner>(
-        num_partitions,
-        /*num_replicas=*/1, threshold_for_windowed_einsum_mib,
-        /*windowed_einsum_use_multiple_streams=*/
-        debug_options.xla_gpu_multi_streamed_windowed_einsum(),
-        /*skip_checking_windowed_einsum_users=*/true,  // Skip user checking
-        /*disable_ag_rewrite_for_multiple_consumers=*/false,
-        /*enable_partial_windowed_einsums=*/false,
-        /*total_bytes_windowed_einsum_threshold=*/std::nullopt,
-        /*max_windowed_einsum_iteration=*/max_windowed_einsum_iteration);
+    pass.AddPass<SpmdPartitioner>(num_partitions, /*num_replicas=*/1,
+                                  std::move(options));
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
 
@@ -105,39 +112,6 @@ class DotHandlerTest
     return count;
   }
 };
-
-TEST_P(DotHandlerTest, VerifyDefaultMaxWindowedEinsumIterationInPartitioner) {
-  // Verify that StatefulRngSpmdPartitioner correctly sets the default
-  // max_windowed_einsum_iteration when not explicitly provided
-
-  // Create partitioner without specifying max_windowed_einsum_iteration
-  StatefulRngSpmdPartitioner partitioner_default(
-      /*num_partitions=*/4,
-      /*num_replicas=*/1,
-      /*threshold_for_windowed_einsum_mib=*/0,
-      /*windowed_einsum_use_multiple_streams=*/false);
-
-  // The default should be 32
-  EXPECT_EQ(partitioner_default.options().max_windowed_einsum_iteration, 32)
-      << "Default max_windowed_einsum_iteration should be 32";
-
-  // Create partitioner with explicit max_windowed_einsum_iteration
-  const int64_t custom_max = 42;
-  StatefulRngSpmdPartitioner partitioner_custom(
-      /*num_partitions=*/4,
-      /*num_replicas=*/1,
-      /*threshold_for_windowed_einsum_mib=*/0,
-      /*windowed_einsum_use_multiple_streams=*/false,
-      /*skip_checking_windowed_einsum_users=*/false,
-      /*disable_ag_rewrite_for_multiple_consumers=*/false,
-      /*enable_partial_windowed_einsums=*/false,
-      /*total_bytes_windowed_einsum_threshold=*/std::nullopt,
-      /*max_windowed_einsum_iteration=*/custom_max);
-
-  EXPECT_EQ(partitioner_custom.options().max_windowed_einsum_iteration,
-            custom_max)
-      << "Custom max_windowed_einsum_iteration should be respected";
-}
 
 TEST_P(DotHandlerTest, MaxWindowedEinsumIterationWithContractingDims) {
   // Test with contracting dimension sharding pattern
@@ -182,6 +156,98 @@ ENTRY main {
         CountInstructions(*module->entry_computation(), HloOpcode::kWhile), 1)
         << "Expected While loop for contracting dims when max_iterations "
            "allows";
+  }
+}
+
+TEST_P(DotHandlerTest, ReduceScatterWindowedEinsumPermutedContractingSharding) {
+  struct TestCase {
+    absl::string_view name;
+    int64_t num_partitions;
+    bool expect_lhs_cp;
+    bool expect_rhs_cp;
+    bool check_rhs_pairs;
+    absl::string_view hlo;
+  };
+  static constexpr TestCase kCases[] = {
+      {"1d_permuted_rhs_smaller_f32", 4, false, true, true, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = f32[32,16]{1,0} parameter(0), sharding={devices=[1,4]<=[2,2]T(0,1)}
+  rhs = f32[16,16]{1,0} parameter(1), sharding={devices=[4,1]<=[2,2]T(1,0)}
+  ROOT dot = f32[32,16]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[4,1]<=[2,2]T(0,1)}
+})hlo"},
+      {"1d_permuted_lhs_smaller_bf16", 4, true, false, false, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = bf16[16,16]{1,0} parameter(0), sharding={devices=[1,4]<=[2,2]T(0,1)}
+  rhs = bf16[16,32]{1,0} parameter(1), sharding={devices=[4,1]<=[2,2]T(1,0)}
+  ROOT dot = bf16[16,32]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[1,4]<=[2,2]T(0,1)}
+})hlo"},
+      {"2d_contracting_permuted_axes_f32", 4, false, true, false, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = f32[32,4,4]{2,1,0} parameter(0), sharding={devices=[1,2,2]<=[2,2]T(0,1)}
+  rhs = f32[4,4,16]{2,1,0} parameter(1), sharding={devices=[2,2,1]<=[2,2]T(1,0)}
+  ROOT dot = f32[32,16]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1},
+    sharding={devices=[4,1]<=[2,2]T(0,1)}
+})hlo"},
+      {"batched_and_permuted_contracting_bf16", 8, false, true, false, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = bf16[2,32,16]{2,1,0} parameter(0), sharding={devices=[2,1,4]<=[2,2,2]T(0,1,2)}
+  rhs = bf16[2,16,16]{2,1,0} parameter(1), sharding={devices=[2,4,1]<=[2,2,2]T(0,2,1)}
+  ROOT dot = bf16[2,32,16]{2,1,0} dot(lhs, rhs),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    sharding={devices=[2,4,1]<=[2,2,2]T(0,1,2)}
+})hlo"},
+      {"matching_permuted_contracting_no_pre_reshard_bf16", 4, false, false,
+       false, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = bf16[32,16]{1,0} parameter(0), sharding={devices=[1,4]<=[2,2]T(1,0)}
+  rhs = bf16[16,16]{1,0} parameter(1), sharding={devices=[4,1]<=[2,2]T(1,0)}
+  ROOT dot = bf16[32,16]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[4,1]<=[2,2]T(1,0)}
+})hlo"},
+  };
+
+  for (const TestCase& tc : kCases) {
+    SCOPED_TRACE(tc.name);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> module,
+        PartitionComputation(tc.hlo, tc.num_partitions,
+                             /*max_windowed_einsum_iteration=*/32,
+                             /*threshold_for_windowed_einsum_mib=*/0));
+    const HloInstruction* while_inst =
+        FindInstruction(module.get(), HloOpcode::kWhile);
+    ASSERT_NE(while_inst, nullptr);
+    if (tc.expect_lhs_cp) {
+      EXPECT_THAT(while_inst->operand(0)->operand(0),
+                  op::CollectivePermute(op::Parameter(0)));
+    } else {
+      EXPECT_THAT(while_inst->operand(0)->operand(0), op::Parameter(0));
+    }
+    if (tc.expect_rhs_cp) {
+      ASSERT_THAT(while_inst->operand(0)->operand(1),
+                  op::CollectivePermute(op::Parameter(1)));
+      if (tc.check_rhs_pairs) {
+        EXPECT_THAT(
+            while_inst->operand(0)->operand(1)->source_target_pairs(),
+            ::testing::UnorderedElementsAre(std::pair<int64_t, int64_t>{0, 0},
+                                            std::pair<int64_t, int64_t>{2, 1},
+                                            std::pair<int64_t, int64_t>{1, 2},
+                                            std::pair<int64_t, int64_t>{3, 3}));
+      }
+    } else {
+      EXPECT_THAT(while_inst->operand(0)->operand(1), op::Parameter(1));
+    }
   }
 }
 
@@ -352,6 +418,111 @@ ENTRY main {
         CountInstructions(*module->entry_computation(), HloOpcode::kWhile), 1)
         << "max_windowed_einsum_iteration=INT64_MAX should enable windowed "
            "einsum";
+  }
+}
+
+TEST_P(DotHandlerTest,
+       BidirectionalWindowedEinsumPreservesUnsortedDimensionNumbers) {
+  auto partition_bidirectional = [this](absl::string_view hlo_string)
+      -> absl::StatusOr<std::unique_ptr<HloModule>> {
+    HloModuleConfig config = GetModuleConfigForTest(1, /*num_partitions=*/4);
+    config.set_use_spmd_partitioning(true);
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_enable_hlo_sharding_v3(
+        GetParam() == ShardingFormatPicker::ShardingType::kNamed);
+    config.set_debug_options(debug_options);
+
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_string, config));
+    ShardingFormatPicker format_picker(GetParam());
+    ABSL_RETURN_IF_ERROR(format_picker.Run(module.get()).status());
+
+    SpmdPartitionerOptions options;
+    options.threshold_for_windowed_einsum_mib = 0;
+    options.bidirectional_windowed_einsum = true;
+    options.skip_checking_windowed_einsum_users = true;
+
+    HloPassPipeline pass("partitioning");
+    pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                              /*allow_mixed_precision=*/false);
+    pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+    pass.AddPass<SpmdPartitioner>(/*num_partitions=*/4, /*num_replicas=*/1,
+                                  std::move(options));
+    pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                              /*allow_mixed_precision=*/false);
+    ABSL_RETURN_IF_ERROR(pass.Run(module.get()).status());
+    return module;
+  };
+
+  {
+    SCOPED_TRACE("unsorted_contracting_dims");
+    constexpr absl::string_view kHlo = R"hlo(
+HloModule test, num_partitions=4
+
+ENTRY main {
+  lhs = f32[16,2,8]{2,1,0} parameter(0), sharding={devices=[4,1,1]<=[4]}
+  rhs = f32[8,2,16]{2,1,0} parameter(1), sharding={devices=[4,1,1]<=[4]}
+  ROOT dot = f32[16,16]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={2,1}, rhs_contracting_dims={0,1},
+    sharding={devices=[4,1]<=[4]}
+}
+)hlo";
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         partition_bidirectional(kHlo));
+    const HloInstruction* while_inst =
+        FindInstruction(module.get(), HloOpcode::kWhile);
+    ASSERT_NE(while_inst, nullptr);
+    int64_t live_dot_count = 0;
+    for (const HloInstruction* inst :
+         while_inst->while_body()->instructions()) {
+      if (inst->opcode() == HloOpcode::kDot && inst->user_count() > 0) {
+        ++live_dot_count;
+        const DotDimensionNumbers& dnums = inst->dot_dimension_numbers();
+        EXPECT_THAT(dnums.lhs_contracting_dimensions(),
+                    ::testing::ElementsAre(2, 3, 1));
+        EXPECT_THAT(dnums.rhs_contracting_dimensions(),
+                    ::testing::ElementsAre(0, 1, 2));
+      }
+    }
+    EXPECT_EQ(live_dot_count, 2);
+  }
+
+  {
+    SCOPED_TRACE("unsorted_batch_dims");
+    constexpr absl::string_view kHlo = R"hlo(
+HloModule test, num_partitions=4
+
+ENTRY main {
+  lhs = f32[8,2,16,4]{3,2,1,0} parameter(0), sharding={devices=[1,1,4,1]<=[4]}
+  rhs = f32[2,8,4,16]{3,2,1,0} parameter(1), sharding={devices=[1,4,1,1]<=[4]}
+  ROOT dot = f32[2,8,16,16]{3,2,1,0} dot(lhs, rhs),
+    lhs_batch_dims={1,0}, rhs_batch_dims={0,1},
+    lhs_contracting_dims={3}, rhs_contracting_dims={2},
+    sharding={devices=[1,1,4,1]<=[4]}
+}
+)hlo";
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         partition_bidirectional(kHlo));
+    const HloInstruction* while_inst =
+        FindInstruction(module.get(), HloOpcode::kWhile);
+    ASSERT_NE(while_inst, nullptr);
+    int64_t live_dot_count = 0;
+    for (const HloInstruction* inst :
+         while_inst->while_body()->instructions()) {
+      if (inst->opcode() == HloOpcode::kDot && inst->user_count() > 0) {
+        ++live_dot_count;
+        const DotDimensionNumbers& dnums = inst->dot_dimension_numbers();
+        EXPECT_THAT(dnums.lhs_batch_dimensions(),
+                    ::testing::ElementsAre(2, 0, 1));
+        EXPECT_THAT(dnums.rhs_batch_dimensions(),
+                    ::testing::ElementsAre(0, 1, 2));
+        EXPECT_THAT(dnums.lhs_contracting_dimensions(),
+                    ::testing::ElementsAre(4));
+        EXPECT_THAT(dnums.rhs_contracting_dimensions(),
+                    ::testing::ElementsAre(3));
+      }
+    }
+    EXPECT_EQ(live_dot_count, 2);
   }
 }
 
@@ -583,6 +754,186 @@ ENTRY entry {
       module->entry_computation()->root_instruction(),
       op::CustomCall({"__op$block_scaled_dot"}, op::DynamicSlice(),
                      op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
+}
+
+TEST_P(DotHandlerTest, MXCustomCall_MismatchedOperandAndScaleShardings) {
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=2
+
+ENTRY e {
+  lhs = f8e4m3fn[16,64] parameter(0), sharding={devices=[1,2]<=[2]}
+  lhs_scale = f8e8m0fnu[16,2] parameter(1), sharding={replicated}
+  rhs = f8e4m3fn[4,64] parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[4,2] parameter(3), sharding={replicated}
+  ROOT d = f32[16,4] custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/2));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::AllReduce(op::CustomCall(
+                  {"__op$block_scaled_dot"}, op::Parameter(0),
+                  op::DynamicSlice(), op::DynamicSlice(), op::DynamicSlice())));
+}
+
+TEST_P(DotHandlerTest, MXCustomCall_ContractingShardNotMultipleOfBlockSize) {
+  // Each 16-wide lhs shard is smaller than the block size of 32, so the
+  // contracting dimension must be replicated.
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=4
+
+ENTRY e {
+  lhs = f8e4m3fn[16,64] parameter(0), sharding={devices=[1,4]<=[4]}
+  lhs_scale = f8e8m0fnu[16,2] parameter(1), sharding={replicated}
+  rhs = f8e4m3fn[4,64] parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[4,2] parameter(3), sharding={replicated}
+  ROOT d = f32[16,4] custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/4));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::CustomCall({"__op$block_scaled_dot"}, op::AllGather(op::Parameter(0)),
+                     op::Parameter(2), op::Parameter(1), op::Parameter(3)));
+}
+
+TEST_P(DotHandlerTest,
+       MXCustomCall_ContractingShardNotMultipleOfOtherBlockSize) {
+  // The lhs shards hold whole blocks of 16, but resharding rhs to match would
+  // split its blocks of 32, so the contracting dimension must be replicated.
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=4
+
+ENTRY e {
+  lhs = f8e4m3fn[16,64] parameter(0), sharding={devices=[1,4]<=[4]}
+  lhs_scale = f8e8m0fnu[16,4] parameter(1), sharding={devices=[1,4]<=[4]}
+  rhs = f8e4m3fn[4,64] parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[4,2] parameter(3), sharding={replicated}
+  ROOT d = f32[16,4] custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/4));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::CustomCall({"__op$block_scaled_dot"}, op::AllGather(op::Parameter(0)),
+                     op::Parameter(2), op::AllGather(op::Parameter(1)),
+                     op::Parameter(3)));
+}
+
+TEST_P(DotHandlerTest, EinsumDisableRewriteForAgWithMultipleConsumers) {
+  absl::string_view hlo_string = R"(
+HloModule test, entry_computation_layout={(bf16[2,2048,24576]{2,1,0}, bf16[24576,98304]{1,0}, bf16[24576,98304]{1,0})->bf16[2,2048,98304]{2,1,0}}, num_partitions=4
+
+ENTRY main {
+  Arg_0.1 = bf16[2,2048,24576]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  Arg_1.2 = bf16[24576,98304]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  dot.5 = bf16[2,2048,98304]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,4]<=[4]}
+  Arg_2.3 = bf16[24576,98304]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
+  dot.6 = bf16[2,2048,98304]{2,1,0} dot(Arg_0.1, Arg_2.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,4]<=[4]}
+  ROOT add.8 = bf16[2,2048,98304]{2,1,0} add(dot.5, dot.6), sharding={devices=[1,1,4]<=[4]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_partitions=*/4,
+                           /*max_windowed_einsum_iteration=*/32,
+                           /*threshold_for_windowed_einsum_mib=*/0,
+                           /*disable_ag_rewrite_for_multiple_consumers=*/true));
+  EXPECT_EQ(CountInstructions(*module->entry_computation(), HloOpcode::kWhile),
+            1);
+  EXPECT_EQ(CountInstructions(*module->entry_computation(), HloOpcode::kDot),
+            1);
+  EXPECT_EQ(
+      CountInstructions(*module->entry_computation(), HloOpcode::kAllGather),
+      1);
+}
+
+TEST_P(DotHandlerTest, MaxWindowedEinsumIterationPreventsWindowing) {
+  absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  Arg_0.1 = bf16[2,2048,24576]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  Arg_1.2 = bf16[24576,98304]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  ROOT dot.5 = bf16[2,2048,98304]{2,1,0} dot(Arg_0.1, Arg_1.2),
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    sharding={devices=[1,4,1]<=[4]}
+}
+)";
+  {
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_partitions=*/4,
+                             /*max_windowed_einsum_iteration=*/2,
+                             /*threshold_for_windowed_einsum_mib=*/0));
+    EXPECT_EQ(
+        CountInstructions(*module->entry_computation(), HloOpcode::kWhile), 0);
+    EXPECT_GE(
+        CountInstructions(*module->entry_computation(), HloOpcode::kAllGather),
+        1);
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_partitions=*/4,
+                             /*max_windowed_einsum_iteration=*/4,
+                             /*threshold_for_windowed_einsum_mib=*/0));
+    EXPECT_EQ(
+        CountInstructions(*module->entry_computation(), HloOpcode::kWhile), 1);
+  }
+}
+
+TEST_P(DotHandlerTest, TotalBytesThresholdOverridesOperandThreshold) {
+  absl::string_view hlo_string = R"(
+HloModule test, entry_computation_layout={(bf16[2,128,256]{2,1,0}, bf16[256,512]{1,0})->bf16[2,128,512]{2,1,0}}, num_partitions=4
+
+ENTRY main {
+  Arg_0.1 = bf16[2,128,256]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  Arg_1.2 = bf16[256,512]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  ROOT dot.5 = bf16[2,128,512]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,4]<=[4]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_partitions=*/4,
+                           /*max_windowed_einsum_iteration=*/32,
+                           /*threshold_for_windowed_einsum_mib=*/0,
+                           /*disable_ag_rewrite_for_multiple_consumers=*/true,
+                           /*total_bytes_windowed_einsum_threshold=*/1 << 20));
+  EXPECT_EQ(CountInstructions(*module->entry_computation(), HloOpcode::kWhile),
+            0);
+  EXPECT_EQ(
+      CountInstructions(*module->entry_computation(), HloOpcode::kAllGather),
+      1);
+}
+
+TEST_P(DotHandlerTest, TotalBytesThresholdEnablesWindowedEinsum) {
+  absl::string_view hlo_string = R"(
+HloModule test, entry_computation_layout={(bf16[2,128,256]{2,1,0}, bf16[256,512]{1,0})->bf16[2,128,512]{2,1,0}}, num_partitions=4
+
+ENTRY main {
+  Arg_0.1 = bf16[2,128,256]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  Arg_1.2 = bf16[256,512]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  ROOT dot.5 = bf16[2,128,512]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,4]<=[4]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_partitions=*/4,
+                           /*max_windowed_einsum_iteration=*/32,
+                           /*threshold_for_windowed_einsum_mib=*/1000000,
+                           /*disable_ag_rewrite_for_multiple_consumers=*/true,
+                           /*total_bytes_windowed_einsum_threshold=*/1 << 8));
+  EXPECT_EQ(CountInstructions(*module->entry_computation(), HloOpcode::kWhile),
+            1);
+  EXPECT_EQ(
+      CountInstructions(*module->entry_computation(), HloOpcode::kAllGather),
+      0);
 }
 
 std::string TestParamToString(

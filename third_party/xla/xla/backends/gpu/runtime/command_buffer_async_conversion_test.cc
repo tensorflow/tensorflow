@@ -115,7 +115,8 @@ class CommandBufferAsyncConversionTest : public testing::Test {
     options.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::LHS);
     se::DeviceDescription device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
     RejectingAllocator allocator;
-    return CommandBufferConversionPass("test", /*devices_in_process=*/1)
+    return CommandBufferConversionPass("test", /*devices_in_process=*/1,
+                                       /*slice_size=*/0)
         .Run(&thunks, options, /*hlo_module=*/nullptr, device, allocator);
   }
 
@@ -429,6 +430,15 @@ TEST_F(CommandBufferAsyncConversionTest, DuplicateOutstandingStart) {
                                       Thunk::kAsyncDone, Thunk::kAsyncDone,
                                       Thunk::kCommandBuffer));
   }
+}
+
+TEST_F(CommandBufferAsyncConversionTest, KeepsLocalityDomainRegionUncaptured) {
+  ThunkSequence thunks;
+  auto* start = Start(thunks, /*convertible=*/true, LocalityDomainStreamId(0));
+  Done(thunks, start);
+  ASSERT_OK_AND_ASSIGN(bool changed, Convert(thunks));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncDone));
 }
 
 }  // namespace

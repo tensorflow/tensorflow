@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -29,16 +30,72 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "xprof/utils/gpu_event_stats.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+struct GpuEventStats {
+  explicit GpuEventStats(const XEventVisitor* event) {
+    event->ForEachStat([&](const XStatVisitor& stat) {
+      if (!stat.Type().has_value()) {
+        return;
+      }
+      switch (stat.Type().value()) {
+        case StatType::kKernelDetails:
+          kernel_details = stat.StrOrRefValue();
+          break;
+        case StatType::kMemcpyDetails:
+          memcpy_details = stat.StrOrRefValue();
+          break;
+        case StatType::kCorrelationId:
+          correlation_id = stat.IntOrUintValue();
+          break;
+        case StatType::kTfOp:
+          tf_op_fullname = stat.StrOrRefValue();
+          break;
+        default:
+          break;
+      }
+    });
+  }
+
+  bool IsKernel() const { return !kernel_details.empty(); }
+  bool IsMemCpy() const { return !memcpy_details.empty(); }
+  bool IsTfOp() const { return !tf_op_fullname.empty(); }
+
+  absl::string_view tf_op_fullname;
+  absl::string_view kernel_details;
+  absl::string_view memcpy_details;
+  std::optional<int64_t> correlation_id;
+};
+
+struct LaunchEventStats {
+  explicit LaunchEventStats(const XEventVisitor* event) {
+    event->ForEachStat([&](const XStatVisitor& stat) {
+      if (!stat.Type().has_value()) {
+        return;
+      }
+      switch (stat.Type().value()) {
+        case StatType::kDeviceId:
+          device_id = stat.IntOrUintValue();
+          break;
+        case StatType::kCorrelationId:
+          correlation_id = stat.IntOrUintValue();
+          break;
+        default:
+          break;
+      }
+    });
+  }
+
+  std::optional<int64_t> device_id;
+  std::optional<int64_t> correlation_id;
+};
 
 struct CorrelationInfo {
   uint32_t thread_id;

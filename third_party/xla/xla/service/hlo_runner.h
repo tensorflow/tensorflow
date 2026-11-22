@@ -88,6 +88,12 @@ class HloRunner : public HloRunnerInterface {
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
       int64_t num_repeats) override;
 
+  // Executes a given HLO module into a set of replicas, and returns a vector
+  // of size `options.num_devices` indexed by replica number, with the output
+  // Literal populated for each locally addressable device and default
+  // constructed `Literal()` (`NilShape`) for non-addressable devices. If none
+  // are addressable (an idle process in a multi-host run), every entry is a
+  // placeholder.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
       const ReplicatedExecuteOptions& options) override;

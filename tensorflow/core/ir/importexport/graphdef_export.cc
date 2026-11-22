@@ -611,7 +611,7 @@ GraphDefExporter::GetOutputSegment(OpResult result) {
   // Try to find a function for a legacy call. Function output segments have
   // exactly one element each.
   StringRef arg_name;
-  if (auto *table = function_table_.dyn_cast<SymbolTable *>()) {
+  if (auto* table = llvm::dyn_cast<SymbolTable*>(function_table_)) {
     TF_ASSIGN_OR_RETURN(arg_name,
                         GetFunctionOutputName(result_idx, op_name, *table));
   } else {

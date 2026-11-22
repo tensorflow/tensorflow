@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -347,8 +348,8 @@ TEST(CSRSparseMatrix, DecodeRejectsNegativeDenseShapeDimension) {
 
 TEST(CSRSparseMatrix, DecodeRejectsOverflowingDenseShape) {
   // ValidateTypesAndShapes must reject dense_shape dimensions where
-  // num_rows + 1 or batch_size * (num_rows + 1) would overflow signed int64_t
-  // before evaluating the product.
+  // num_rows + 1 or batch_size * (num_rows + 1) would overflow signed int64_t.
+  // ValidateDenseShape bounds each dimension before evaluating the product.
   for (const auto& shape_vals : std::vector<std::vector<int64_t>>{
            {2, std::numeric_limits<int64_t>::max(), 1},
            {2, std::numeric_limits<int64_t>::max() / 2, 1}}) {
@@ -365,7 +366,7 @@ TEST(CSRSparseMatrix, DecodeRejectsOverflowingDenseShape) {
             data.tensors_[3], data.tensors_[4], &created),
         absl_testing::StatusIs(
             tsl::error::Code::INVALID_ARGUMENT,
-            ::testing::HasSubstr("dense_shape dimensions overflow int64")));
+            ::testing::HasSubstr("dense_shape dimensions must be < Int32Max")));
   }
   {
     const auto dense_shape = test::AsTensor<int64_t>(
@@ -382,8 +383,42 @@ TEST(CSRSparseMatrix, DecodeRejectsOverflowingDenseShape) {
                                                col_indices, values, &created),
         absl_testing::StatusIs(
             tsl::error::Code::INVALID_ARGUMENT,
-            ::testing::HasSubstr("dense_shape dimensions overflow int64")));
+            ::testing::HasSubstr("dense_shape dimensions must be < Int32Max")));
   }
+}
+
+TEST(CSRSparseMatrix, ValidateDenseShape) {
+  constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
+  for (const auto& shape_vals : std::vector<std::vector<int64_t>>{
+           {3, 4}, {2, 3, 4}, {0, kInt32Max - 1, 1}, {1, kInt32Max - 1}}) {
+    TF_EXPECT_OK(CSRSparseMatrix::ValidateDenseShape(test::AsTensor<int64_t>(
+        shape_vals, TensorShape({static_cast<int64_t>(shape_vals.size())}))));
+  }
+
+  struct InvalidCase {
+    std::vector<int64_t> shape_vals;
+    std::string error;
+  };
+  for (const auto& [shape_vals, error] : std::vector<InvalidCase>{
+           {{2, 3, 4, 5}, "dense_shape should be a 2- or 3- vector"},
+           {{-1, 2, 3}, "dense_shape has a negative dimension"},
+           {{2, -1}, "dense_shape has a negative dimension"},
+           // (num_rows + 1) * batch_size would wrap around int64 to 8.
+           {{4, 0x4000000000000001, 10}, "dimensions must be < Int32Max"},
+           {{0, kInt32Max, 1}, "dimensions must be < Int32Max"},
+           {{2, kInt32Max}, "dimensions must be < Int32Max"},
+           {{kInt32Max, 1, 1}, "dimensions must be < Int32Max"},
+           {{2, kInt32Max / 2, 1}, "row_pointers size"}}) {
+    EXPECT_THAT(CSRSparseMatrix::ValidateDenseShape(test::AsTensor<int64_t>(
+                    shape_vals,
+                    TensorShape({static_cast<int64_t>(shape_vals.size())}))),
+                absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+                                       ::testing::HasSubstr(error)));
+  }
+  EXPECT_THAT(CSRSparseMatrix::ValidateDenseShape(
+                  test::AsTensor<int32_t>({2, 3}, TensorShape({2}))),
+              absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+                                     ::testing::HasSubstr("!= int64")));
 }
 
 }  // namespace

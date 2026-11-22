@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
@@ -105,6 +104,21 @@ class StreamExecutor {
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream() {
     return CreateStream(std::nullopt);
   }
+
+  // Creates a stream scoped to `locality_domain_id`. Backends without
+  // locality-domain execution support return Unimplemented without falling
+  // back to a generic stream.
+  virtual absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInLocalityDomain(
+      int /*locality_domain_id*/,
+      std::optional<std::variant<StreamPriority, int>> /*priority*/) {
+    return absl::UnimplementedError(
+        "Locality-domain streams are not implemented by this executor");
+  }
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInLocalityDomain(
+      int locality_domain_id) {
+    return CreateStreamInLocalityDomain(locality_domain_id, std::nullopt);
+  }
+
   // Creates an EventBasedTimer for the given stream.
   virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
   CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
@@ -133,6 +147,17 @@ class StreamExecutor {
   virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>>
   CreatePhysicalMemoryAllocation(uint64_t size) {
     return absl::UnimplementedError("Physical allocation is not supported");
+  }
+
+  // Creates a MemoryAllocator whose physical memory is placed on locality
+  // domain `locality_domain_id` of this device. Backends without
+  // locality-domain memory placement return Unimplemented without falling back
+  // to ordinary device memory.
+  virtual absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+  CreateLocalityDomainMemoryAllocator(int /*locality_domain_id*/) {
+    return absl::UnimplementedError(
+        "Locality-domain memory allocators are not implemented by this "
+        "executor");
   }
 
   // Obtains metadata about the underlying device.
@@ -180,12 +205,6 @@ class StreamExecutor {
   // for the loaded module. Otherwise, returns the error which has occurred.
   virtual absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) {
-    return absl::UnimplementedError("Not Implemented");
-  }
-
-  // Creates a shared constant using the content provided.
-  virtual absl::StatusOr<std::shared_ptr<DeviceAddressBase>>
-  CreateOrShareConstant(Stream* stream, absl::Span<const uint8_t> content) {
     return absl::UnimplementedError("Not Implemented");
   }
 

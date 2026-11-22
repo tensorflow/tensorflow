@@ -25,11 +25,11 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -227,9 +227,7 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) override;
-  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
-  using xla::ifrt::Client::MakeArrayFromHostBuffer;
+      std::shared_ptr<const void> host_buffer_hold) override;
 
   absl::StatusOr<std::vector<ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
@@ -273,6 +271,14 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> CopyArraySlices(
+      absl::Span<const ArrayRef> arrays,
+      absl::Span<const IndexDomain> index_domains) override;
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> UpdateArraySlices(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArrayRef> slices,
+      absl::Span<const Index> origins) override;
+
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
   tsl::Future<> DeleteValues(absl::Span<ValueRef> values) override;
@@ -293,46 +299,37 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
   absl::string_view runtime_type() const override { return kRuntimeType; }
 
   absl::string_view platform_name() const override {
-    DCHECK(this);
     return pjrt_client_->platform_name();
   }
   absl::string_view platform_version() const override {
-    DCHECK(this);
     return pjrt_client_->platform_version();
   }
   PlatformId platform_id() const override {
-    DCHECK(this);
     return pjrt_client_->platform_id();
   }
 
   const AttributeMap& Attributes() const override;
 
   int device_count() const override {
-    DCHECK(this);
     return devices_.size();
   }
   int addressable_device_count() const override {
-    DCHECK(this);
     return pjrt_client_->addressable_device_count();
   }
   absl::Span<Device* const> devices() const override {
-    DCHECK(this);
     return devices_;
   }
   absl::Span<Device* const> addressable_devices() const override {
-    DCHECK(this);
     return addressable_devices_;
   }
   int process_index() const override { return my_process_index_; }
 
   absl::Span<Device* const> GetAllDevices() const override {
-    DCHECK(this);
     return devices_;
   }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
-    DCHECK(this);
     return pjrt_client_->GetDefaultDeviceAssignment(num_replicas,
                                                     num_partitions);
   }
@@ -342,22 +339,21 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       int local_hardware_id) const override;
 
   absl::StatusOr<DeviceListRef> MakeDeviceList(
-      absl::Span<Device* const> devices) const override;
+      absl::Span<Device* absl_nonnull const> devices) const override;
 
   Compiler* GetDefaultCompiler() override {
-    DCHECK(this);
     return &default_compiler_;
   }
 
   absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> Load(
       absl::Span<const ExecutableRef> executables,
-      absl::Span<std::unique_ptr<LoadOptions>> options) override;
+      absl::Span<absl_nonnull std::unique_ptr<LoadOptions>> options) override;
 
   absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
       const DeviceListRef& devices) const override;
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultPjRtLayout(
-      DType dtype, absl::Span<const int64_t> dims, Device* device,
+      DType dtype, absl::Span<const int64_t> dims, Device* absl_nonnull device,
       MemoryKind memory_kind) const override;
   absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
       DType dtype, const Shape& shape,
@@ -394,7 +390,7 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
   SubscribeToAttributeChanges(
-      absl::Span<xla::ifrt::Device* const> devices,
+      absl::Span<xla::ifrt::Device* absl_nonnull const> devices,
       std::optional<absl::Span<const std::string>> attribute_names,
       xla::ifrt::OnDeviceAttributeChangeCallback callback) override {
     return absl::UnimplementedError(

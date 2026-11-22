@@ -481,16 +481,20 @@ def _get_tf1_flags(parser):
       dest="post_training_quantize",
       action="store_true",
       help=(
-          "Boolean indicating whether to quantize the weights of the "
-          "converted float model. Model size will be reduced and there will "
-          "be latency improvements (at the cost of accuracy). (default False)"))
+          "Deprecated: quantize the converted float model with LiteRT "
+          "Quantizer instead (https://developers.google.com/edge/litert/"
+          "quantization/tflq_to_litertq_migration). Boolean indicating "
+          "whether to quantize the weights of the converted float model. "
+          "Model size will be reduced and there will be latency improvements "
+          "(at the cost of accuracy). (default False)"))
   parser.add_argument(
       "--quantize_to_float16",
       dest="quantize_to_float16",
       action="store_true",
-      help=("Boolean indicating whether to quantize weights to fp16 instead of "
-            "the default int8 when post-training quantization "
-            "(--post_training_quantize) is enabled. (default False)"))
+      help=("Deprecated, like --post_training_quantize. Boolean indicating "
+            "whether to quantize weights to fp16 instead of the default int8 "
+            "when post-training quantization (--post_training_quantize) is "
+            "enabled. (default False)"))
   # Graph manipulation flags.
   parser.add_argument(
       "--drop_control_dependency",

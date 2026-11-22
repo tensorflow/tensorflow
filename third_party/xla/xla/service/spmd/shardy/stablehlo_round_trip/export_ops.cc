@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // for CopyOp
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace sdy {
@@ -62,6 +64,7 @@ using ::mlir::Pass;
 using ::mlir::StringRef;
 using ::mlir::success;
 using ::mlir::SymbolTable;
+using ::mlir::func::CallOp;
 
 using ::mlir::sdy::AllGatherOp;
 using ::mlir::sdy::AllReduceOp;
@@ -74,6 +77,26 @@ using ::mlir::sdy::ReduceScatterOp;
 using ::mlir::sdy::ReshardOp;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::TensorShardingAttr;
+
+// Converts `func::CallOp` marked with `kIsComputeOnStartAttr` back into
+// `stablehlo::CustomCallOp` with target `"compute-on-start"`.
+class ComputeOnStartCallPattern : public OpConversionPattern<CallOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      CallOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto customCallOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
+        op, op->getResultTypes(), adaptor.getOperands());
+    customCallOp.setCallTargetName(kComputeOnStartTargetName);
+    customCallOp.setCalledComputationsAttr(rewriter.getArrayAttr(
+        mlir::FlatSymbolRefAttr::get(rewriter.getContext(), op.getCallee())));
+    customCallOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+    removeFrontendAttribute(customCallOp, kIsComputeOnStartAttr);
+    return success();
+  }
+};
 
 // Converts `sdy::ConstantOp` to `stablehlo::ConstantOp`.
 class ConstantPattern : public OpConversionPattern<ConstantOp> {
@@ -232,6 +255,8 @@ class ExportOpsPass
                         AllSliceOp, AllToAllOp, CollectivePermuteOp,
                         ReduceScatterOp, ShardingConstraintOp,
                         PropagationBarrierOp>();
+    target.addDynamicallyLegalOp<CallOp>(
+        [](CallOp op) { return !hasFrontendAttr(op, kIsComputeOnStartAttr); });
     target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp,
                       stablehlo::CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);
@@ -239,9 +264,9 @@ class ExportOpsPass
     // should not be deduped via folding. Fortunately, folding only happens in
     // greedy pattern rewriters. ExportHloShardingsPass does a simple walk,
     // which keeps the constants as is.
-    patterns.add<ConstantPattern, AllReducePattern, PropagationBarrierPattern,
-                 CollectivePattern<AllGatherOp>, CollectivePattern<AllSliceOp>,
-                 CollectivePattern<AllToAllOp>,
+    patterns.add<ComputeOnStartCallPattern, ConstantPattern, AllReducePattern,
+                 PropagationBarrierPattern, CollectivePattern<AllGatherOp>,
+                 CollectivePattern<AllSliceOp>, CollectivePattern<AllToAllOp>,
                  CollectivePattern<CollectivePermuteOp>,
                  CollectivePattern<ReduceScatterOp>>(&context);
     patterns

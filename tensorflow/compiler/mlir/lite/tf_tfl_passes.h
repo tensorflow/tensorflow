@@ -33,20 +33,18 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager);
 
-// Adds the first portion of StableHLO->TF passes happening before quantization.
+// Adds the first portion of StableHLO passes happening before quantization.
 // The `pass_manager` that runs on a `mlir::ModuleOp` expects a graph containing
 // a `mlir::TF::XlaCallModuleOp` with serialized StableHLO module. The resulting
-// `mlir::ModuleOp` after running these passes will be an MHLO module, or a
-// StableHLO module if `pass_config.enable_stablehlo_quantizer` is `true`. This
-// is because StableHLO Quantizer accepts StableHLO modules.
+// `mlir::ModuleOp` after running these passes will be a StableHLO module.
 void AddPreQuantizationStableHloToTfPasses(
     mlir::StringRef entry_function_name,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager& pass_manager);
 
-// Adds the second portion of StableHlo->TF passes happening after quantization.
-// The input module is expected to be an MHLO module, or a quantized StableHLO
-// graph (expressed as `mlir::TF::XlaCallModuleOp`s) if
+// Adds the second portion of StableHLO passes happening after quantization.
+// The input module is expected to be a StableHLO module, or a quantized
+// StableHLO graph (expressed as `mlir::TF::XlaCallModuleOp`s) if
 // `pass_config.enable_stablehlo_quantizer` is `true`.
 void AddPostQuantizationStableHloToTfPasses(
     const mlir::TFL::PassConfig& pass_config,

@@ -16,19 +16,27 @@ limitations under the License.
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_value.h"
@@ -41,6 +49,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::Eq;
 using ::testing::IsEmpty;
 using ::testing::IsTrue;
@@ -526,10 +535,12 @@ TEST(ParseIndexMemorySpacePairsTest, InvalidMemorySpace) {
 
 // Helper to find the HloValue color for a given instruction name.
 static int FindColorByName(const HloAliasAnalysis& alias_analysis,
-                           absl::string_view name) {
+                           absl::string_view name,
+                           const ShapeIndex& index = {}) {
   for (const auto& buffer : alias_analysis.buffers()) {
     for (const HloValue* value : buffer.values()) {
-      if (value->instruction()->name() == name) {
+      if (value->instruction()->name() == name &&
+          value->defining_index() == index) {
         return value->color();
       }
     }
@@ -631,6 +642,130 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallTupleResultMemorySpace) {
             << "Tuple element " << idx[0] << " should have color kCollective";
       }
     }
+  }
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       DynamicSliceFusionOperandAndResultMemorySpaces) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m
+
+    fused {
+      p0 = f32[1024]{0} parameter(0)
+      p1 = f32[1024]{0} parameter(1)
+      ROOT call = f32[1024]{0} custom-call(p0, p1),
+        custom_call_target="my_custom_call"
+    }
+
+    ENTRY main {
+      input = f32[1024]{0} parameter(0)
+      weights = f32[1024]{0} parameter(1)
+      ROOT fusion = f32[1024]{0} fusion(input, weights), kind=kCustom, calls=fused,
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_slice_fusion"}}},
+        frontend_attributes={operands_memory_spaces="{0:7}", results_memory_spaces="{0:7}"}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  ASSERT_OK(CreateColorer(module->config().debug_options())(
+      alias_analysis.get(), ordering));
+
+  EXPECT_EQ(FindColorByName(*alias_analysis, "input"),
+            static_cast<int>(MemorySpaceColor::kCollective));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "weights"),
+            static_cast<int>(MemorySpaceColor::kDefault));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "fusion"),
+            static_cast<int>(MemorySpaceColor::kCollective));
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  const DebugOptions& options = module->config().debug_options();
+  EXPECT_TRUE(RequiresCollectiveInput(HloUse(fusion, 0), options));
+  EXPECT_FALSE(RequiresCollectiveInput(HloUse(fusion, 1), options));
+  EXPECT_TRUE(RequiresCollectiveOutput(
+      alias_analysis->dataflow_analysis().GetUniqueValueAt(fusion, {}),
+      options));
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       DynamicSliceFusionTupleResultMemorySpaces) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m
+
+    fused {
+      ROOT call = (f32[1024]{0}, f32[512]{0}) custom-call(),
+        custom_call_target="my_custom_call"
+    }
+
+    ENTRY main {
+      ROOT fusion = (f32[1024]{0}, f32[512]{0}) fusion(), kind=kCustom, calls=fused,
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_slice_fusion"}}},
+        frontend_attributes={results_memory_spaces="{1:7}"}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  ASSERT_OK(CreateColorer(module->config().debug_options())(
+      alias_analysis.get(), ordering));
+
+  EXPECT_EQ(FindColorByName(*alias_analysis, "fusion"),
+            static_cast<int>(MemorySpaceColor::kDefault));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "fusion", {0}),
+            static_cast<int>(MemorySpaceColor::kDefault));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "fusion", {1}),
+            static_cast<int>(MemorySpaceColor::kCollective));
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest, UnrelatedFusionMemorySpacesIgnored) {
+  constexpr absl::string_view kFusionConfigs[] = {
+      "kind=kLoop",
+      "kind=kCustom",
+      R"(kind=kCustom, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"unrelated_fusion"}}})",
+  };
+  for (absl::string_view fusion_config : kFusionConfigs) {
+    SCOPED_TRACE(fusion_config);
+    std::string hlo = absl::StrCat(R"(
+      HloModule m
+
+      fused {
+        p = f32[1024]{0} parameter(0)
+        ROOT neg = f32[1024]{0} negate(p)
+      }
+
+      ENTRY main {
+        input = f32[1024]{0} parameter(0)
+        ROOT fusion = f32[1024]{0} fusion(input), calls=fused,
+    )",
+                                   fusion_config, R"(,
+          frontend_attributes={operands_memory_spaces="{0:7}", results_memory_spaces="{0:7}"}
+      }
+    )");
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    AliasInfo alias_info;
+    ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                         HloAliasAnalysis::Run(module.get(), &alias_info));
+    DependencyHloOrdering ordering(module.get());
+    ASSERT_OK(CreateColorer(module->config().debug_options())(
+        alias_analysis.get(), ordering));
+
+    EXPECT_EQ(FindColorByName(*alias_analysis, "input"),
+              static_cast<int>(MemorySpaceColor::kDefault));
+    EXPECT_EQ(FindColorByName(*alias_analysis, "fusion"),
+              static_cast<int>(MemorySpaceColor::kDefault));
+
+    HloInstruction* fusion = module->entry_computation()->root_instruction();
+    const DebugOptions& options = module->config().debug_options();
+    EXPECT_FALSE(RequiresCollectiveInput(HloUse(fusion, 0), options));
+    EXPECT_FALSE(RequiresCollectiveOutput(
+        alias_analysis->dataflow_analysis().GetUniqueValueAt(fusion, {}),
+        options));
   }
 }
 
@@ -886,6 +1021,431 @@ TEST_F(GpuMemorySpaceAssignmentTest,
             static_cast<int>(MemorySpaceColor::kCollective));
   EXPECT_EQ(cc_out1_val.color(),
             static_cast<int>(MemorySpaceColor::kTempBuffer));
+}
+
+DebugOptions WithCollectiveCommandBuffers(
+    DebugOptions debug_options,
+    DebugOptions::CommandBufferUpdateMode update_mode) {
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  debug_options.set_xla_gpu_command_buffer_update_mode(update_mode);
+  // The keep-collectives-out-of-outputs flag is left as is (unset by default,
+  // which means automatic).
+  return debug_options;
+}
+
+absl::StatusOr<std::unique_ptr<BufferAssignment>> RunGpuBufferAssignment(
+    HloModule* module, const DebugOptions& debug_options) {
+  AliasInfo alias_info;
+  BufferAssigner::Options opts = CreateBufferAssignerOptions(debug_options);
+  opts.allocate_buffers_for_constants = true;
+  return BufferAssigner::Run(
+      module, std::make_unique<SequentialHloOrdering>(module->schedule()),
+      [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+      },
+      &alias_info, [](BufferValue::Color) { return 1; }, std::move(opts));
+}
+
+absl::StatusOr<bool> IsInMaybeLiveOutAllocation(
+    const BufferAssignment& assignment, const HloInstruction* instruction) {
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                   assignment.GetUniqueTopLevelSlice(instruction));
+  return slice.allocation()->maybe_live_out();
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       MustNotLiveOutRequiresCollectiveCommandBuffersAndVaRemapping) {
+  DebugOptions debug_options = GetModuleConfigForTest().debug_options();
+  // The flag is unset by default, which means automatic.
+  EXPECT_FALSE(
+      debug_options
+          .has_xla_gpu_command_buffer_keep_collectives_out_of_outputs());
+  EXPECT_FALSE(CreateMustNotLiveOut(debug_options).has_value());
+  EXPECT_FALSE(
+      CreateMustNotLiveOut(WithCollectiveCommandBuffers(
+                               debug_options, DebugOptions::ALWAYS_UPDATE))
+          .has_value());
+  EXPECT_TRUE(CreateMustNotLiveOut(WithCollectiveCommandBuffers(
+                                       debug_options, DebugOptions::SKIP_TEMP))
+                  .has_value());
+  EXPECT_TRUE(
+      CreateMustNotLiveOut(WithCollectiveCommandBuffers(
+                               debug_options, DebugOptions::SKIP_PROFILED))
+          .has_value());
+
+  debug_options.set_xla_gpu_command_buffer_update_mode(DebugOptions::SKIP_TEMP);
+  EXPECT_FALSE(CreateMustNotLiveOut(debug_options).has_value());
+  EXPECT_FALSE(
+      CreateBufferAssignerOptions(debug_options).must_not_live_out.has_value());
+  EXPECT_TRUE(
+      CreateBufferAssignerOptions(
+          WithCollectiveCommandBuffers(debug_options, DebugOptions::SKIP_TEMP))
+          .must_not_live_out.has_value());
+
+  DebugOptions flag_off =
+      WithCollectiveCommandBuffers(debug_options, DebugOptions::SKIP_TEMP);
+  flag_off.set_xla_gpu_command_buffer_keep_collectives_out_of_outputs(false);
+  EXPECT_FALSE(CreateMustNotLiveOut(flag_off).has_value());
+  EXPECT_FALSE(
+      CreateBufferAssignerOptions(flag_off).must_not_live_out.has_value());
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       MustNotLiveOutExplicitFlagAlwaysTakesPriority) {
+  const DebugOptions base = GetModuleConfigForTest().debug_options();
+  const DebugOptions::CommandBufferUpdateMode kModes[] = {
+      DebugOptions::SKIP_TEMP, DebugOptions::SKIP_PROFILED,
+      DebugOptions::ALWAYS_UPDATE};
+  for (DebugOptions::CommandBufferUpdateMode mode : kModes) {
+    for (bool with_collectives : {true, false}) {
+      DebugOptions options = WithCollectiveCommandBuffers(base, mode);
+      if (!with_collectives) {
+        options.clear_xla_gpu_enable_command_buffer();
+        options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+      }
+      SCOPED_TRACE(absl::StrCat(
+          "update_mode=", DebugOptions::CommandBufferUpdateMode_Name(mode),
+          " with_collectives=", with_collectives));
+      options.set_xla_gpu_command_buffer_keep_collectives_out_of_outputs(true);
+      EXPECT_TRUE(CreateMustNotLiveOut(options).has_value());
+      options.set_xla_gpu_command_buffer_keep_collectives_out_of_outputs(false);
+      EXPECT_FALSE(CreateMustNotLiveOut(options).has_value());
+    }
+  }
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       CollectiveResultAvoidsOutputAllocationWithVaRemapping) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m, replica_count=2, is_scheduled=true
+
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
+
+    ENTRY main {
+      p0 = f32[1024] parameter(0)
+      ar = f32[1024] all-reduce(p0), replica_groups={}, to_apply=add
+      e = f32[1024] exponential(ar)
+      ROOT n = f32[1024] negate(e)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const DebugOptions& debug_options = module->config().debug_options();
+  const HloInstruction* ar = FindInstruction(module.get(), "ar");
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> always_update,
+      RunGpuBufferAssignment(module.get(),
+                             WithCollectiveCommandBuffers(
+                                 debug_options, DebugOptions::ALWAYS_UPDATE)));
+  EXPECT_THAT(IsInMaybeLiveOutAllocation(*always_update, ar),
+              IsOkAndHolds(true));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> skip_temp,
+      RunGpuBufferAssignment(
+          module.get(), WithCollectiveCommandBuffers(debug_options,
+                                                     DebugOptions::SKIP_TEMP)));
+  EXPECT_THAT(IsInMaybeLiveOutAllocation(*skip_temp, ar), IsOkAndHolds(false));
+  EXPECT_THAT(IsInMaybeLiveOutAllocation(*skip_temp,
+                                         FindInstruction(module.get(), "n")),
+              IsOkAndHolds(true));
+
+  DebugOptions flag_off =
+      WithCollectiveCommandBuffers(debug_options, DebugOptions::SKIP_TEMP);
+  flag_off.set_xla_gpu_command_buffer_keep_collectives_out_of_outputs(false);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> skip_temp_flag_off,
+                       RunGpuBufferAssignment(module.get(), flag_off));
+  EXPECT_THAT(IsInMaybeLiveOutAllocation(*skip_temp_flag_off, ar),
+              IsOkAndHolds(true));
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       CollectiveGroupOperandAvoidsOutputAllocationWithVaRemapping) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m, replica_count=2, is_scheduled=true
+
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
+
+    group {
+      a = f32[1024] parameter(0)
+      b = f32[1024] parameter(1)
+      ar0 = f32[1024] all-reduce(a), replica_groups={}, to_apply=add
+      ar1 = f32[1024] all-reduce(b), replica_groups={}, to_apply=add
+      ROOT t = (f32[1024], f32[1024]) tuple(ar0, ar1)
+    }
+
+    ENTRY main {
+      p0 = f32[1024] parameter(0)
+      e0 = f32[1024] exponential(p0)
+      e1 = f32[1024] negate(p0)
+      start = ((f32[1024], f32[1024]), (f32[1024], f32[1024])) async-start(e0, e1),
+        calls=group, frontend_attributes={_collectives_group=""}
+      done = (f32[1024], f32[1024]) async-done(start),
+        frontend_attributes={_collectives_group=""}
+      g0 = f32[1024] get-tuple-element(done), index=0
+      g1 = f32[1024] get-tuple-element(done), index=1
+      x0 = f32[1024] exponential(g0)
+      x1 = f32[1024] exponential(g1)
+      ROOT r = f32[1024] add(x0, x1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const DebugOptions& debug_options = module->config().debug_options();
+  const HloInstruction* e0 = FindInstruction(module.get(), "e0");
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> always_update,
+      RunGpuBufferAssignment(module.get(),
+                             WithCollectiveCommandBuffers(
+                                 debug_options, DebugOptions::ALWAYS_UPDATE)));
+  EXPECT_THAT(IsInMaybeLiveOutAllocation(*always_update, e0),
+              IsOkAndHolds(true));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> skip_temp,
+      RunGpuBufferAssignment(
+          module.get(), WithCollectiveCommandBuffers(debug_options,
+                                                     DebugOptions::SKIP_TEMP)));
+  for (absl::string_view name : {"e0", "e1", "g0", "g1"}) {
+    EXPECT_THAT(IsInMaybeLiveOutAllocation(*skip_temp,
+                                           FindInstruction(module.get(), name)),
+                IsOkAndHolds(false))
+        << name;
+  }
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest, MustNotLiveOutHonorsCollectivesFilter) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m, replica_count=2
+
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
+
+    ENTRY main {
+      p0 = f32[1024] parameter(0)
+      a = f32[1024] exponential(p0)
+      ar = f32[1024] all-reduce(a), replica_groups={}, to_apply=add
+      b = f32[1024] negate(p0)
+      ag = f32[2048] all-gather(b), replica_groups={}, dimensions={0}
+      ROOT t = (f32[1024], f32[2048]) tuple(ar, ag)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  auto matches = [&](const DebugOptions& debug_options,
+                     absl::string_view name) {
+    std::optional<BufferAssigner::MustNotLiveOut> must_not_live_out =
+        CreateMustNotLiveOut(debug_options);
+    return must_not_live_out.has_value() &&
+           (*must_not_live_out)(*alias_analysis,
+                                FindInstruction(module.get(), name), {});
+  };
+
+  DebugOptions all_collectives = WithCollectiveCommandBuffers(
+      module->config().debug_options(), DebugOptions::SKIP_TEMP);
+  EXPECT_TRUE(matches(all_collectives, "a"));
+  EXPECT_TRUE(matches(all_collectives, "b"));
+
+  DebugOptions all_reduce_only = all_collectives;
+  all_reduce_only.clear_xla_gpu_enable_collectives_command_buffer_filter();
+  all_reduce_only.add_xla_gpu_enable_collectives_command_buffer_filter(
+      DebugOptions::ALLREDUCE);
+  EXPECT_TRUE(matches(all_reduce_only, "a"));
+  EXPECT_FALSE(matches(all_reduce_only, "b"));
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       MustNotLiveOutMatchesValuesOfRecordedCollectives) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m, replica_count=2
+
+    ENTRY main {
+      p0 = f32[1024] parameter(0)
+      e = f32[1024] exponential(p0)
+      cb = f32[1024] collective-broadcast(e), replica_groups={{0,1}}
+      tok = token[] after-all()
+      recv = (f32[1024], u32[], token[]) recv(tok), channel_id=1,
+        frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}
+      send = (f32[1024], u32[], token[]) send(cb, tok), channel_id=1,
+        frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}
+      recv-done = (f32[1024], token[]) recv-done(recv), channel_id=1,
+        frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}
+      send-done = token[] send-done(send), channel_id=1,
+        frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}
+      r = f32[1024] get-tuple-element(recv-done), index=0
+      bc = f32[32,32] bitcast(r)
+      n = f32[32,32] negate(bc)
+      ROOT out = f32[32,32] exponential(n)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  std::optional<BufferAssigner::MustNotLiveOut> must_not_live_out =
+      CreateMustNotLiveOut(WithCollectiveCommandBuffers(
+          module->config().debug_options(), DebugOptions::SKIP_TEMP));
+  ASSERT_TRUE(must_not_live_out.has_value());
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  auto matches = [&](absl::string_view name, const ShapeIndex& index = {}) {
+    return (*must_not_live_out)(*alias_analysis,
+                                FindInstruction(module.get(), name), index);
+  };
+
+  EXPECT_TRUE(matches("e"));
+  EXPECT_TRUE(matches("cb"));
+  EXPECT_TRUE(matches("recv", {0}));
+  EXPECT_TRUE(matches("r"));
+  EXPECT_TRUE(matches("bc"));
+  EXPECT_FALSE(matches("recv", {}));
+  EXPECT_FALSE(matches("p0"));
+  EXPECT_FALSE(matches("n"));
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest, MustNotLiveOutSkipsHostTransfers) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m
+
+    ENTRY main {
+      p0 = f32[1024] parameter(0)
+      e = f32[1024] exponential(p0)
+      tok = token[] after-all()
+      send = (f32[1024], u32[], token[]) send(e, tok), channel_id=1,
+        is_host_transfer=true
+      send-done = token[] send-done(send), channel_id=1, is_host_transfer=true
+      recv = (f32[1024], u32[], token[]) recv(send-done), channel_id=2,
+        is_host_transfer=true
+      recv-done = (f32[1024], token[]) recv-done(recv), channel_id=2,
+        is_host_transfer=true
+      r = f32[1024] get-tuple-element(recv-done), index=0
+      ROOT n = f32[1024] negate(r)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  std::optional<BufferAssigner::MustNotLiveOut> must_not_live_out =
+      CreateMustNotLiveOut(WithCollectiveCommandBuffers(
+          module->config().debug_options(), DebugOptions::SKIP_TEMP));
+  ASSERT_TRUE(must_not_live_out.has_value());
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  auto matches = [&](absl::string_view name, const ShapeIndex& index = {}) {
+    return (*must_not_live_out)(*alias_analysis,
+                                FindInstruction(module.get(), name), index);
+  };
+
+  EXPECT_FALSE(matches("e"));
+  EXPECT_FALSE(matches("recv", {0}));
+  EXPECT_FALSE(matches("r"));
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       CollectiveResultThatIsLiveOutKeepsOutputAllocation) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m, replica_count=2, is_scheduled=true
+
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
+
+    ENTRY main {
+      p0 = f32[1024] parameter(0)
+      e = f32[1024] exponential(p0)
+      ROOT ar = f32[1024] all-reduce(e), replica_groups={}, to_apply=add
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  DebugOptions debug_options = WithCollectiveCommandBuffers(
+      module->config().debug_options(), DebugOptions::SKIP_TEMP);
+  const HloInstruction* ar = FindInstruction(module.get(), "ar");
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> assignment,
+                       RunGpuBufferAssignment(module.get(), debug_options));
+  EXPECT_THAT(IsInMaybeLiveOutAllocation(*assignment, ar), IsOkAndHolds(true));
+
+  std::optional<BufferAssigner::MustNotLiveOut> must_not_live_out =
+      CreateMustNotLiveOut(debug_options);
+  ASSERT_TRUE(must_not_live_out.has_value());
+  EXPECT_FALSE((*must_not_live_out)(assignment->alias_analysis(), ar, {}));
+  EXPECT_TRUE((*must_not_live_out)(assignment->alias_analysis(),
+                                   FindInstruction(module.get(), "e"), {}));
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       TwoShotAllGatherFusionColorsOnlyOutputsInCollectiveMemory) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m, replica_count=2
+
+    ag_comp {
+      param_0 = f32[524288]{0} parameter(0)
+      ROOT ag = f32[1048576]{0} all-gather(param_0),
+        dimensions={0},
+        replica_groups={{0,1}},
+        backend_config={"collective_backend_config":{
+          "kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"
+        }}
+    }
+
+    async_comp {
+      param_0 = f32[524288]{0} parameter(0)
+      ROOT ag_fusion = f32[1048576]{0} fusion(param_0),
+        kind=kCustom, calls=ag_comp,
+        backend_config={"fusion_backend_config":{"kind":"__triton_collective"}}
+    }
+
+    ENTRY main {
+      p0 = f32[524288]{0} parameter(0)
+      ag_start = ((f32[524288]{0}), f32[1048576]{0}) async-start(p0),
+        calls=async_comp
+      ROOT ag_done = f32[1048576]{0} async-done(ag_start)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
+
+  HloInstruction* ag_fusion = module->GetComputationWithName("async_comp")
+                                  ->GetInstructionWithName("ag_fusion");
+  const HloInstruction* ag_done =
+      module->entry_computation()->GetInstructionWithName("ag_done");
+  const DebugOptions& options = module->config().debug_options();
+  EXPECT_FALSE(RequiresCollectiveInput(HloUse(ag_fusion, 0), options));
+  EXPECT_TRUE(RequiresCollectiveOutput(
+      alias_analysis->dataflow_analysis().GetUniqueValueAt(ag_fusion, {}),
+      options));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "p0"),
+            static_cast<int>(MemorySpaceColor::kDefault));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "ag_fusion"),
+            static_cast<int>(MemorySpaceColor::kCollective));
+  EXPECT_EQ(alias_analysis->GetUniqueBufferAt(ag_done),
+            alias_analysis->GetUniqueBufferAt(ag_fusion));
 }
 
 }  // namespace

@@ -1,9 +1,23 @@
-func.func @ComplexAbs_platform_elem_type_output_type(%arg0: tensor<*xelem_type>) -> tensor<*xoutput_type> attributes {llvm.emit_c_interface, tf_entry} {
+func.func @ComplexAbs_platform_elem_type_output_type(
+    %arg0: tensor<*xelem_type>) -> tensor<*xoutput_type>
+    attributes {llvm.emit_c_interface, tf_entry} {
   %0 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
   %1 = shape.num_elements %0 : tensor<?xindex> -> index
   %from_elements = tensor.from_elements %1 : tensor<1xindex>
-  %2 = tensor.reshape %arg0(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
-  %3 = mhlo.abs %2 : (tensor<?xelem_type>) -> tensor<?xoutput_type>
-  %4 = tensor.reshape %3(%0) : (tensor<?xoutput_type>, tensor<?xindex>) -> tensor<*xoutput_type>
+  %2 = tensor.reshape %arg0(%from_elements)
+      : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+  %re = mhlo.real %2 : (tensor<?xelem_type>) -> tensor<?xoutput_type>
+  %im = mhlo.imag %2 : (tensor<?xelem_type>) -> tensor<?xoutput_type>
+  %abs_re = mhlo.abs %re : tensor<?xoutput_type>
+  %abs_im = mhlo.abs %im : tensor<?xoutput_type>
+  %re_inf = chlo.is_inf %abs_re : tensor<?xoutput_type> -> tensor<?xi1>
+  %im_inf = chlo.is_inf %abs_im : tensor<?xoutput_type> -> tensor<?xi1>
+  %abs = mhlo.abs %2 : (tensor<?xelem_type>) -> tensor<?xoutput_type>
+  %sel_im = mhlo.select %im_inf, %abs_im, %abs
+      : tensor<?xi1>, tensor<?xoutput_type>
+  %3 = mhlo.select %re_inf, %abs_re, %sel_im
+      : tensor<?xi1>, tensor<?xoutput_type>
+  %4 = tensor.reshape %3(%0)
+      : (tensor<?xoutput_type>, tensor<?xindex>) -> tensor<*xoutput_type>
   return %4 : tensor<*xoutput_type>
 }

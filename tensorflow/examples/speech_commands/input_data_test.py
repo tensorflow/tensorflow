@@ -90,7 +90,7 @@ class InputDataTest(test.TestCase):
       info.linkname = "."
       archive.addfile(info)
       data = b"x"
-      info = tarfile.TarInfo("d/../escaped.txt")
+      info = tarfile.TarInfo("d/../../escaped.txt")
       info.size = len(data)
       archive.addfile(info, io.BytesIO(data))
     dest_dir = os.path.join(tmp_dir, "dest")

@@ -266,14 +266,16 @@ mlir::Value CreateAtomicWriteOps(const AtomicWriteInstruction& instruction,
     mlir::Block* current_block = builder.getBlock();
     mlir::Block* atomic_block =
         current_block->splitBlock(builder.getInsertionPoint());
+    builder.setInsertionPointToStart(atomic_block);
     exit_block = atomic_block->splitBlock(builder.getInsertionPoint());
 
     // Check mask and branch
     builder.setInsertionPointToEnd(current_block);
-    LLVM::ConstantOp zero = LLVM::ConstantOp::create(
-        builder, params.loc, i32_type, builder.getI32IntegerAttr(0));
+    mlir::Type mask_type = mask.getType();
+    LLVM::ConstantOp mask_zero = LLVM::ConstantOp::create(
+        builder, params.loc, mask_type, builder.getIntegerAttr(mask_type, 0));
     LLVM::ICmpOp mask_nonzero = LLVM::ICmpOp::create(
-        builder, params.loc, LLVM::ICmpPredicate::ne, mask, zero);
+        builder, params.loc, LLVM::ICmpPredicate::ne, mask, mask_zero);
     LLVM::CondBrOp::create(builder, params.loc, mask_nonzero, atomic_block,
                            exit_block);
 
@@ -335,8 +337,11 @@ mlir::Value CreateAtomicSpinWaitOps(
     // Masked: conditional branch based on mask (if mask==0, skip loop)
     LLVM::ConstantOp zero = LLVM::ConstantOp::create(
         builder, params.loc, i32_type, builder.getI32IntegerAttr(0));
+    mlir::Type mask_type = mask.getType();
+    LLVM::ConstantOp mask_zero = LLVM::ConstantOp::create(
+        builder, params.loc, mask_type, builder.getIntegerAttr(mask_type, 0));
     LLVM::ICmpOp mask_nonzero = LLVM::ICmpOp::create(
-        builder, params.loc, LLVM::ICmpPredicate::ne, mask, zero);
+        builder, params.loc, LLVM::ICmpPredicate::ne, mask, mask_zero);
     LLVM::CondBrOp::create(builder, params.loc, mask_nonzero, loop_block,
                            mlir::ValueRange{}, exit_block,
                            mlir::ValueRange{zero}, std::nullopt);

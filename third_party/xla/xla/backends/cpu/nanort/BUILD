@@ -65,6 +65,7 @@ xla_cc_test(
         ":nanort_client",
         ":nanort_executable",
         "//xla:array2d",
+        "//xla:custom_options",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -116,6 +117,7 @@ cc_library(
         "//xla/backends/cpu/nanort:nanort_users",
     ]),
     deps = [
+        "//xla:custom_options",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:util",
@@ -203,6 +205,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",

@@ -1225,6 +1225,52 @@ func.func @op_dot_general_algorithm_fp8x4(%arg0: tensor<8x8x16xbf16>, %arg1: ten
 
 // -----
 
+// CHECK-LABEL: "op_dot_general_block_scaling_and_sparsity"
+func.func @op_dot_general_block_scaling_and_sparsity(%arg0: tensor<2x64x64xbf16>, %arg1: tensor<2x256x64xbf16>, %scale: tensor<2x64x2xf8E8M0FNU>, %indices: tensor<2x64x16xi8>) -> tensor<2x64x64xbf16> {
+  //      CHECK: "mhlo.dot_general"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[SCALE:%arg[0-9]+]], [[INDICES:%arg[0-9]+]]) <{
+  // CHECK-SAME:   block_scaling_config = #mhlo.block_scaling_config<lhs = <scale_idx = 2, strides = [1, 1, 32], steps = [1, 1, 16], block_sizes = [1, 1, 32]>>,
+  // CHECK-SAME:   dot_dimension_numbers = #mhlo.dot<
+  // CHECK-SAME:     lhs_batching_dimensions = [0],
+  // CHECK-SAME:     rhs_batching_dimensions = [0],
+  // CHECK-SAME:     lhs_contracting_dimensions = [2],
+  // CHECK-SAME:     rhs_contracting_dimensions = [1]
+  // CHECK-SAME:   >,
+  // CHECK-SAME:   sparsity_config = #mhlo.sparsity_config<lhs = <num_non_zero = 1, block_size = 4, dimension = 2, stride = 1, idx = 3>>
+  // CHECK-SAME: }> : (tensor<2x64x64xbf16>, tensor<2x256x64xbf16>, tensor<2x64x2xf8E8M0FNU>, tensor<2x64x16xi8>) -> tensor<2x64x64xbf16>
+  %0 = "stablehlo.dot_general"(%arg0, %arg1, %scale, %indices) {
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2, strides = [1, 1, 32], steps = [1, 1, 16], block_sizes = [1, 1, 32]>>,
+    sparsity_config = #stablehlo.sparsity_config<lhs = <num_non_zero = 1, block_size = 4, dimension = 2, stride = 1, idx = 3>>
+  } : (tensor<2x64x64xbf16>, tensor<2x256x64xbf16>, tensor<2x64x2xf8E8M0FNU>, tensor<2x64x16xi8>) -> tensor<2x64x64xbf16>
+  func.return %0 : tensor<2x64x64xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: "op_dot_general_zero_point_and_rhs_configs"
+func.func @op_dot_general_zero_point_and_rhs_configs(%arg0: tensor<2x4x8xf32>, %arg1: tensor<2x2x4xf32>, %lhs_scale: tensor<2x4x2xf32>, %lhs_zero: tensor<2x4x2xf32>, %rhs_scale: tensor<2x1x4xf32>, %indices: tensor<2x2x4xi16>) -> tensor<2x4x4xf32> {
+  //      CHECK: "mhlo.dot_general"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[LHS_SCALE:%arg[0-9]+]], [[LHS_ZERO:%arg[0-9]+]], [[RHS_SCALE:%arg[0-9]+]], [[INDICES:%arg[0-9]+]]) <{
+  // CHECK-SAME:   block_scaling_config = #mhlo.block_scaling_config<lhs = <scale_idx = 2, zero_idx = 3>, rhs = <scale_idx = 4>>,
+  // CHECK-SAME:   sparsity_config = #mhlo.sparsity_config<rhs = <num_non_zero = 1, block_size = 4, dimension = 1, stride = 2, idx = 5>>
+  %0 = "stablehlo.dot_general"(%arg0, %arg1, %lhs_scale, %lhs_zero, %rhs_scale, %indices) {
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2, zero_idx = 3>, rhs = <scale_idx = 4>>,
+    sparsity_config = #stablehlo.sparsity_config<rhs = <num_non_zero = 1, block_size = 4, dimension = 1, stride = 2, idx = 5>>
+  } : (tensor<2x4x8xf32>, tensor<2x2x4xf32>, tensor<2x4x2xf32>, tensor<2x4x2xf32>, tensor<2x1x4xf32>, tensor<2x2x4xi16>) -> tensor<2x4x4xf32>
+  func.return %0 : tensor<2x4x4xf32>
+}
+
+// -----
 // CHECK-LABEL: "op_dot"
 func.func @op_dot(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   //      CHECK: "mhlo.dot"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{

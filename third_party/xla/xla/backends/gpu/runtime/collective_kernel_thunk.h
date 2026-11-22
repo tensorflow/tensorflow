@@ -15,6 +15,7 @@ limitations under the License.*/
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -48,6 +49,13 @@ limitations under the License.*/
 #include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
+
+// Symmetric memory of a kLoadStoreAccessible IO parameter and the parameter's
+// byte offset inside it, cached from the last initialization.
+struct CachedIoSymmetricMemory {
+  std::weak_ptr<SymmetricMemory> memory;
+  size_t offset = 0;
+};
 
 // A thunk that runs single-host collective operations in a single shot.
 // Assumes multiple devices are present, but all on the same host.
@@ -96,6 +104,8 @@ class CollectiveKernelThunk : public TracedCommand {
   LaunchDimensions launch_dimensions() const { return launch_dimensions_; }
 
   bool use_pdl() const { return use_pdl_; }
+  std::string ToString(int indent) const override;
+
   const std::optional<std::vector<uint8_t>>& cubin() const { return cubin_; }
 
   // Returns the reason why the collective kernel is not supported.
@@ -144,19 +154,15 @@ class CollectiveKernelThunk : public TracedCommand {
   absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
-  // We use a double buffering strategy for the buffers.
-  // See docs on struct StreamState for more details.
-  static constexpr int64_t kNumBuffers = 2;
-
   // Per-executor state that needs to be synchronized for access.
   struct StreamState {
     int device_ordinal = 0;
     RankId rank = RankId(0);
 
     // Pointer to the collective kernel metadata on device.
-    se::DeviceAddressBase metadata_addr;
-
-    // Pointers to the remote buffers for each parameter.
+    se::DeviceAddressBase metadata;
+    // Host copy of the device peer pointer table. Filled once by rendezvous,
+    // or rewritten whenever the kLoadStoreAccessible symmetric memory changes.
     std::vector<void*> param_to_peers_ptrs;
 
     // Kernel entry for the stream executor.
@@ -169,6 +175,10 @@ class CollectiveKernelThunk : public TracedCommand {
     // `kernel_spec_.scratch_buffers` entry.
     std::vector<se::DeviceAddressBase> scratch_slices;
     tsl::TiedRef<SymmetricMemory> scratch_symmetric_memory;
+    // Symmetric memories of the kLoadStoreAccessible IO parameters from the
+    // last initialization, by row. Used to skip rebuilding the peer pointer
+    // table when the IO buffers did not move.
+    std::vector<CachedIoSymmetricMemory> io_symmetric_memories;
 
     // Constructor to make OSS builds happy.
     StreamState() = default;
@@ -182,11 +192,6 @@ class CollectiveKernelThunk : public TracedCommand {
           scratch_allocation(std::move(scratch_allocation_arg)),
           scratch_slices(std::move(scratch_slices_arg)) {}
   };
-
-  absl::Status AllocateAndInitializeCollectiveMetadata(
-      StreamState* state, se::StreamExecutor* executor, se::Stream* stream,
-      RankId rank, int64_t num_devices, int64_t num_symmetric_parameters,
-      bool requires_multimem);
 
   // Returns the input size in bytes for the collective.
   int64_t GetInputSizeBytes() const;

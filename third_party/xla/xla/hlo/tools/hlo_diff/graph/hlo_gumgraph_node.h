@@ -53,6 +53,20 @@ struct HloInstructionNodeProps {
   // canonical_fingerprint is used to determine if two mapped instructions are
   // changed.
   uint64_t canonical_fingerprint = 0;
+  // Fingerprint of the subgraph rooted at this node by canonical fingerprints:
+  // a node's canonical subgraph fingerprint combines its canonical fingerprint
+  // with the canonical subgraph fingerprints of its children, in operand order.
+  // Parameters that are leaves (e.g. entry parameters) are also identified by
+  // their parameter number; inlined parameters are identified by their child,
+  // the call site operand. Two nodes with equal canonical subgraph fingerprints
+  // compute the same value.
+  // `subgraph_fingerprint` can't be used for this: it is built from
+  // `fingerprint`, which is used for matching, rather than from
+  // `canonical_fingerprint`, which decides whether an instruction is changed.
+  // It also doesn't include the parameter numbers of leaf parameters, so e.g.
+  // x - y and y - x would get the same fingerprint, and swapped parameters
+  // would be considered to compute the same value.
+  uint64_t canonical_subgraph_fingerprint = 0;
 };
 
 // Properties of a computation node in a HloGumgraph.

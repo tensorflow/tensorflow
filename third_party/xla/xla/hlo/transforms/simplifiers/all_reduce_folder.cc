@@ -179,10 +179,10 @@ absl::StatusOr<bool> AllReduceFolder::RunImpl(
 
       // Check if the 2 all-reduce instructions are compatible with the
       // exception of the replica groups.
-      std::optional<AllReduceKey> key0 = GetAllReduceKey(
-          ar0, /*domain_map=*/nullptr, /*ignore_replica_groups=*/true);
-      std::optional<AllReduceKey> key1 = GetAllReduceKey(
-          ar1, /*domain_map=*/nullptr, /*ignore_replica_groups=*/true);
+      std::optional<AllReduceKey> key0 =
+          GetAllReduceKey(ar0, /*ignore_replica_groups=*/true);
+      std::optional<AllReduceKey> key1 =
+          GetAllReduceKey(ar1, /*ignore_replica_groups=*/true);
       if (!key0 || !key1 || *key0 != *key1 || ar0->replica_groups().empty() ||
           ar1->replica_groups().empty()) {
         continue;

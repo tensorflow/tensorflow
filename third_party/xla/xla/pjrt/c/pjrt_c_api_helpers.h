@@ -36,11 +36,13 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"  // IWYU pragma: keep
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/xla_data.pb.h"
 
 namespace pjrt {
@@ -343,6 +345,18 @@ std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
 PJRT_Error* InvokePjRtEventWhenReady(
     const PJRT_Api* api, PJRT_Event* event,
     absl::AnyInvocable<void() &&> on_done_with_event);
+
+PJRT_ProcessState TaskStateToPjRtProcessState(
+    xla::coordination::TaskState state);
+
+xla::coordination::TaskState PjRtProcessStateToTaskState(
+    PJRT_ProcessState state);
+
+void PopulatePjRtDeviceMemoryStats(const tsl::AllocatorStats& stats,
+                                   PJRT_Device_MemoryStats_Args* args);
+
+tsl::AllocatorStats ConvertFromPjRtDeviceMemoryStats(
+    const PJRT_Device_MemoryStats_Args& args);
 
 }  // namespace pjrt
 

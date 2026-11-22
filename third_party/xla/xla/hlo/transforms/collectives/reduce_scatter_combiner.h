@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/transforms/collectives/all_reduce_key.h"
-#include "xla/service/hlo_domain_map.h"
 
 namespace xla {
 
@@ -57,8 +56,7 @@ class ReduceScatterCombiner : public HloModulePass {
   // Returns a key that will be equal for instructions that might be combined,
   // or different if not.
   static std::optional<ReduceScatterCombiner::GroupKey> CombineKey(
-      const HloInstruction* instruction, const HloDomainMap& domain_map,
-      bool combine_by_dim);
+      const HloInstruction* instruction, bool combine_by_dim);
 
   using PostCombineFn = std::function<absl::Status(
       absl::Span<HloInstruction* const>, HloInstruction*)>;
@@ -68,14 +66,14 @@ class ReduceScatterCombiner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
-          const HloInstruction*, const HloDomainMap&, bool)>
+          const HloInstruction*, bool)>
           combine_key);
 
   absl::StatusOr<bool> RunWithKeyCombiner(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
-          const HloInstruction*, const HloDomainMap&, bool)>
+          const HloInstruction*, bool)>
           combine_key,
       PostCombineFn post_combine);
 

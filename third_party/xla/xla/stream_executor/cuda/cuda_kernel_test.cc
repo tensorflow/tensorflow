@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -22,6 +24,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -101,6 +106,64 @@ TEST(CudaKernelTest, DynamicSharedMemoryOptIn) {
   ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
   std::vector<int32_t> expected = {11, 22, 33, 44};
   EXPECT_EQ(dst, expected);
+}
+
+TEST(CudaKernelTest, ArityZeroKernelSkipsArgumentCountCheck) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Load AddI32 without a typed signature, like FFI registered kernels.
+  KernelLoaderSpec add_i32 = GetAddI32PtxKernelSpec();
+  KernelLoaderSpec spec = KernelLoaderSpec::CreateCudaPtxInMemorySpec(
+      add_i32.cuda_ptx_in_memory()->ptx, add_i32.kernel_name(), /*arity=*/0);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                       executor->LoadKernel(spec));
+  EXPECT_EQ(kernel->Arity(), 0);
+
+  constexpr int32_t kLength = 4;
+  constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(kLength, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(kLength, 0);
+  DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(kLength, 0);
+  std::vector<int32_t> a_host = {1, 2, 3, 4};
+  std::vector<int32_t> b_host = {10, 20, 30, 40};
+  ASSERT_OK(stream->Memcpy(&a, a_host.data(), kByteLength));
+  ASSERT_OK(stream->Memcpy(&b, b_host.data(), kByteLength));
+  ASSERT_OK(stream->MemZero(&c, kByteLength));
+
+  std::vector<DeviceAddressBase> args = {a, b, c};
+  ASSERT_OK(kernel->Launch(ThreadDim(kLength, 1, 1), BlockDim(1, 1, 1),
+                           /*cluster_dims=*/std::nullopt, stream.get(),
+                           *PackKernelArgs(args, /*shmem_bytes=*/0)));
+
+  std::vector<int32_t> dst(kLength, 0);
+  ASSERT_OK(stream->Memcpy(dst.data(), c, kByteLength));
+  EXPECT_EQ(dst, std::vector<int32_t>({11, 22, 33, 44}));
+}
+
+TEST(CudaKernelTest, LaunchesWithNonPortableClusterSize) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Requires at least a Hopper GPU.";
+  }
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                       executor->LoadKernel(GetMinimalClusterKernelSpec()));
+  DeviceAddress<uint8_t> dummy = executor->AllocateArray<uint8_t>(256);
+
+  // Clusters larger than 8 blocks need the non-portable cluster attribute.
+  ASSERT_OK(kernel->Launch(ThreadDim(128, 1, 1), BlockDim(16, 1, 1),
+                           ClusterDim(16, 1, 1), stream.get(),
+                           *PackKernelArgs(/*shmem_bytes=*/0, dummy)));
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 
 }  // namespace

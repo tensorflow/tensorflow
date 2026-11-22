@@ -82,6 +82,7 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
   using MatrixMaps = typename Base::MatrixMaps;
   using ConstMatrixMap = typename Base::ConstMatrixMap;
   using ConstMatrixMaps = typename Base::ConstMatrixMaps;
+  using RealScalar = typename Base::RealScalar;
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
@@ -110,10 +111,15 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
     Eigen::BDCSVD<Matrix> svd(inputs[0], options);
     if (svd.info() != Eigen::Success) {
       LOG(ERROR) << "Eigen::BDCSVD failed with error code " << svd.info();
-      outputs->at(0).fill(std::numeric_limits<Scalar>::quiet_NaN());
+      const RealScalar real_nan = std::numeric_limits<RealScalar>::quiet_NaN();
+      Scalar nan_val(real_nan);
+      if constexpr (Eigen::NumTraits<Scalar>::IsComplex) {
+        nan_val = Scalar(real_nan, real_nan);
+      }
+      outputs->at(0).fill(nan_val);
       if (compute_uv_) {
-        outputs->at(1).fill(std::numeric_limits<Scalar>::quiet_NaN());
-        outputs->at(2).fill(std::numeric_limits<Scalar>::quiet_NaN());
+        outputs->at(1).fill(nan_val);
+        outputs->at(2).fill(nan_val);
       }
     } else {
       outputs->at(0) = svd.singularValues().template cast<Scalar>();

@@ -235,6 +235,21 @@ class UniformQuantizedAddOp : public OpKernel {
             "If rhs and output is both per-axis quantized, the "
             "quantization axis must match."));
 
+    // EvalQuantizedAdd requantizes lhs and rhs in their unbroadcasted shapes
+    // using output_scales, so a per-axis output requires both operands to be
+    // per-axis with matching quantization dimension sizes.
+    OP_REQUIRES(
+        context,
+        (output_quantization_axis_ == -1 ||
+         (lhs_quantization_axis_ >= 0 && rhs_quantization_axis_ >= 0 &&
+          lhs.dim_size(lhs_quantization_axis_) ==
+              output_shape.dim_size(output_quantization_axis_) &&
+          rhs.dim_size(rhs_quantization_axis_) ==
+              output_shape.dim_size(output_quantization_axis_))),
+        absl::InvalidArgumentError(
+            "If output is per-axis quantized, both lhs and rhs must be "
+            "per-axis quantized with matching quantization dimension sizes."));
+
     OP_REQUIRES(context,
                 (AllElementsPositive<float>(lhs_scales) &&
                  AllElementsPositive<float>(rhs_scales) &&

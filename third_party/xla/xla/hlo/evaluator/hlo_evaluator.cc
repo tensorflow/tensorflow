@@ -539,7 +539,8 @@ std::optional<bool> PatternMatchLoopCondVarOverride(
 // dynamic.
 std::optional<DynamicOrStaticInteger> EvaluateWhileLoopParamInitValue(
     const HloInstruction* param_instruction, int64_t tuple_index) {
-  if (param_instruction->opcode() != HloOpcode::kTuple) {
+  if (param_instruction->opcode() != HloOpcode::kTuple || tuple_index < 0 ||
+      tuple_index >= param_instruction->operand_count()) {
     return std::nullopt;
   }
   const HloInstruction* element_instruction =
@@ -586,22 +587,12 @@ std::optional<ParsedWhileLoop> HandleNoopLoopCondition(
     }
     std::optional<bool> updated_loop_cond_var = PatternMatchLoopCondVarOverride(
         while_body->root_instruction(), loop_cond_var_index);
-    if (updated_loop_cond_var.has_value()) {
-      if (!*updated_loop_cond_var) {
-        return ParsedWhileLoop{
-            ParsedStaticWhileLoop{/*trip_count=*/1,
-                                  /*induction_var_index=*/loop_cond_var_index,
-                                  /*induction_var_init_value=*/0,
-                                  /*step_size=*/1,
-                                  /*loop_bound=*/1}};
-      }
-
-      // This is an infinite loop and we set trip_count to -1.
+    if (updated_loop_cond_var.has_value() && !*updated_loop_cond_var) {
       return ParsedWhileLoop{
-          ParsedStaticWhileLoop{/*trip_count=*/-1,
+          ParsedStaticWhileLoop{/*trip_count=*/1,
                                 /*induction_var_index=*/loop_cond_var_index,
                                 /*induction_var_init_value=*/0,
-                                /*step_size=*/0,
+                                /*step_size=*/1,
                                 /*loop_bound=*/1}};
     }
   }
@@ -625,29 +616,6 @@ int64_t ComputeTripCountFromComparison(int64_t init, int64_t bound,
     trip_count += 1;
   }
   return trip_count;
-}
-
-std::optional<ParsedWhileLoop> HandleStaticLoopComparison(
-    int64_t lhs, int64_t rhs, Comparison::Direction comparison_direction) {
-  if ((comparison_direction == Comparison::Direction::kLt && lhs < rhs) ||
-      (comparison_direction == Comparison::Direction::kLe && lhs <= rhs) ||
-      (comparison_direction == Comparison::Direction::kGt && lhs > rhs) ||
-      (comparison_direction == Comparison::Direction::kGe && lhs >= rhs) ||
-      (comparison_direction == Comparison::Direction::kEq && lhs == rhs) ||
-      (comparison_direction == Comparison::Direction::kNe && lhs != rhs)) {
-    // This is an infinite loop and we set trip_count to -1.
-    // There is no induction variable.
-    return ParsedWhileLoop{ParsedStaticWhileLoop{/*trip_count=*/-1,
-                                                 /*induction_var_index=*/-1,
-                                                 /*induction_var_init_value=*/0,
-                                                 /*step_size=*/0,
-                                                 /*loop_bound=*/1}};
-  }
-  return ParsedWhileLoop{ParsedStaticWhileLoop{/*trip_count=*/0,
-                                               /*induction_var_index=*/-1,
-                                               /*induction_var_init_value=*/0,
-                                               /*step_size=*/0,
-                                               /*loop_bound=*/0}};
 }
 
 std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
@@ -705,14 +673,10 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   CHECK(!loop_comparison.lhs.value->is_dynamic() ||
         !loop_comparison.rhs.value->is_dynamic());
 
+  // If neither operand is dynamic, there is no loop induction variable.
   if (!loop_comparison.lhs.value->is_dynamic() &&
       !loop_comparison.rhs.value->is_dynamic()) {
-    int64_t lhs_value = *loop_comparison.lhs.value->static_value;
-    int64_t rhs_value = *loop_comparison.rhs.value->static_value;
-    Comparison::Direction comparison_direction =
-        loop_comparison.comparison_direction;
-    return HandleStaticLoopComparison(lhs_value, rhs_value,
-                                      comparison_direction);
+    return std::nullopt;
   }
   std::optional<DynamicOrStaticInteger> induction_var_init;
   std::optional<DynamicOrStaticInteger> induction_var_update;
@@ -834,7 +798,6 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCollectivePermuteStart:
-    case HloOpcode::kDomain:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kOutfeed:
@@ -1169,7 +1132,6 @@ bool IsBufferUnchangedInWhileBodySyntactic(const HloComputation* while_body,
       current = current->operand(0);
     } else if (current->opcode() == HloOpcode::kBitcast ||
                current->opcode() == HloOpcode::kOptimizationBarrier ||
-               current->opcode() == HloOpcode::kDomain ||
                current->opcode() == HloOpcode::kAddDependency ||
                current->opcode() == HloOpcode::kCopy) {
       if (current->operand_count() == 0) {
@@ -1451,8 +1413,12 @@ absl::Status HloEvaluator::HandleSetDimensionSize(
          operand_literal.total_size_bytes());
   const Literal& size_literal =
       GetEvaluatedLiteralFor(set_dimension_size->operand(1));
-  result.SetDynamicSize(set_dimension_size->dimension(),
-                        size_literal.Get<int32_t>({}));
+  const int64_t dimension = set_dimension_size->dimension();
+  // Nothing validates the size operand against the bound; clamp to [0, bound]
+  // so an out-of-contract runtime size cannot trip internal CHECKs.
+  const int32_t size = static_cast<int32_t>(std::clamp<int64_t>(
+      size_literal.Get<int32_t>({}), 0, result.shape().dimensions(dimension)));
+  result.SetDynamicSize(dimension, size);
   SetEvaluatedLiteralFor(set_dimension_size, std::move(result));
   return absl::OkStatus();
 }
@@ -3387,7 +3353,8 @@ absl::StatusOr<std::vector<Literal>> HloEvaluator::ExtractAsyncInputParameters(
     ABSL_ASSIGN_OR_RETURN(Literal sub_literal,
                      Literal::Make(ShapeUtil::GetSubshape(async_literal.shape(),
                                                           sub_index)));
-    ABSL_RETURN_IF_ERROR(sub_literal.CopyFrom(async_literal, /*dest_shape_index=*/{},
+    ABSL_RETURN_IF_ERROR(sub_literal.CopyFrom(async_literal,
+                                         /*dest_shape_index=*/{},
                                          /*src_shape_index=*/sub_index));
     sub_literals.push_back(std::move(sub_literal));
   }
@@ -3898,10 +3865,16 @@ absl::StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
         "Cannot evaluate a while loop's induction variable since the loop "
         "does not match a known loop pattern or the loop is not static.");
   }
-  int64_t induction_var_value =
-      parsed_while_loop->static_while_loop->induction_var_init_value +
-      parsed_while_loop->static_while_loop->trip_count *
-          parsed_while_loop->static_while_loop->step_size;
+  CHECK_GE(parsed_while_loop->static_while_loop->trip_count, 0);
+  CHECK_GE(parsed_while_loop->static_while_loop->induction_var_index, 0);
+  CHECK_LT(parsed_while_loop->static_while_loop->induction_var_index,
+           ShapeUtil::TupleElementCount(while_hlo->shape()));
+  int64_t induction_var_value = static_cast<int64_t>(
+      static_cast<uint64_t>(
+          parsed_while_loop->static_while_loop->induction_var_init_value) +
+      static_cast<uint64_t>(parsed_while_loop->static_while_loop->trip_count) *
+          static_cast<uint64_t>(
+              parsed_while_loop->static_while_loop->step_size));
   Shape result_shape = while_hlo->shape().tuple_shapes(
       parsed_while_loop->static_while_loop->induction_var_index);
   ABSL_ASSIGN_OR_RETURN(
@@ -3943,6 +3916,7 @@ absl::Status HloEvaluator::HandleWhile(const HloInstruction* while_hlo) {
             visitor_shape_index_[0]) {
       return MakeEvalErrorDueToParamOrInfeed(*while_hlo);
     }
+    CHECK_GE(parsed_while_loop->static_while_loop->trip_count, 0);
     Shape induction_var_shape =
         ShapeUtil::GetSubshape(while_hlo->shape(), visitor_shape_index_);
     int64_t induction_var_value = static_cast<int64_t>(
@@ -4961,6 +4935,11 @@ ReturnT ApplyBinaryOp(HloOpcode opcode, ReturnT a, ReturnT b) {
       return static_cast<ReturnT>(
           ElementwiseT(ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs)));
     case HloOpcode::kMaximum:
+      if constexpr (std::is_same_v<ReturnT, tsl::float8_e8m0fnu>) {
+        return Eigen::numext::isnan(a)
+                   ? a
+                   : (Eigen::numext::isnan(b) ? b : std::max(a, b));
+      }
       if constexpr (!is_complex_v<ElementwiseT>) {
         if constexpr (std::numeric_limits<ElementwiseT>::has_quiet_NaN) {
           if (std::isnan(lhs)) {
@@ -4974,6 +4953,11 @@ ReturnT ApplyBinaryOp(HloOpcode opcode, ReturnT a, ReturnT b) {
       }
       break;
     case HloOpcode::kMinimum:
+      if constexpr (std::is_same_v<ReturnT, tsl::float8_e8m0fnu>) {
+        return Eigen::numext::isnan(a)
+                   ? a
+                   : (Eigen::numext::isnan(b) ? b : std::min(a, b));
+      }
       if constexpr (!is_complex_v<ElementwiseT>) {
         if constexpr (std::numeric_limits<ElementwiseT>::has_quiet_NaN) {
           if (std::isnan(lhs)) {
@@ -5595,7 +5579,7 @@ Shape HloEvaluator::GetShapeWithLayout(const Shape& shape) {
 }
 
 absl::Status HloEvaluator::RunElementwiseUnaryOp(
-    const HloInstruction* instruction,
+    const HloInstruction* instruction, PrimitiveType operand_type,
     absl::FunctionRef<absl::Status(
         Literal& result, const Literal& operand_literal, bool same_layout)>
         populate) {
@@ -5604,10 +5588,86 @@ absl::Status HloEvaluator::RunElementwiseUnaryOp(
   TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
   const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
+  // `populate` reads the operand as `operand_type`.
+  TF_RET_CHECK(operand_literal.shape().element_type() == operand_type)
+      << "operand element type mismatch: " << instruction->ToString();
   Literal result(shape);
   bool same_layout =
       LayoutUtil::Equal(operand->shape().layout(), shape.layout());
   ABSL_RETURN_IF_ERROR(populate(result, operand_literal, same_layout));
+  SetEvaluatedLiteralFor(instruction, std::move(result));
+  return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::RunElementwiseBinaryOp(
+    const HloInstruction* instruction,
+    absl::FunctionRef<absl::Status(Literal& result, const Literal& lhs_literal,
+                                   const Literal& rhs_literal,
+                                   bool same_layout)>
+        populate) {
+  Shape shape = GetShapeWithLayout(instruction->shape());
+  const auto* lhs = instruction->operand(0);
+  const auto* rhs = instruction->operand(1);
+  TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
+  TF_RET_CHECK(ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
+
+  const Literal& lhs_literal = GetEvaluatedLiteralFor(lhs);
+  const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
+  // `populate` reads both operands as the element type of the result.
+  TF_RET_CHECK(lhs_literal.shape().element_type() == shape.element_type() &&
+               rhs_literal.shape().element_type() == shape.element_type())
+      << "operand element type mismatch: " << instruction->ToString();
+
+  Literal result(shape);
+
+  // If layout is the same, we can use linear indexing into the literals.
+  const Layout& lhs_layout = lhs_literal.shape().layout();
+  const Layout& rhs_layout = rhs_literal.shape().layout();
+  bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
+                     LayoutUtil::Equal(lhs_layout, shape.layout());
+  ABSL_RETURN_IF_ERROR(populate(result, lhs_literal, rhs_literal, same_layout));
+  SetEvaluatedLiteralFor(instruction, std::move(result));
+  return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::RunElementwiseTernaryOp(
+    const HloInstruction* instruction,
+    absl::FunctionRef<
+        absl::Status(Literal& result, const Literal& lhs_literal,
+                     const Literal& rhs_literal, const Literal& ehs_literal,
+                     bool is_lhs_scalar, bool is_ehs_scalar, bool same_layout)>
+        populate) {
+  Shape shape = GetShapeWithLayout(instruction->shape());
+  const auto* lhs = instruction->operand(0);
+  const auto* rhs = instruction->operand(1);
+  const auto* ehs = instruction->operand(2);
+  const bool is_lhs_scalar = ShapeUtil::IsScalar(lhs->shape());
+  const bool is_ehs_scalar = ShapeUtil::IsScalar(ehs->shape());
+  TF_RET_CHECK(is_lhs_scalar || ShapeUtil::SameDimensions(shape, lhs->shape()));
+  TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
+  TF_RET_CHECK(is_ehs_scalar || ShapeUtil::SameDimensions(shape, ehs->shape()));
+
+  const Literal& lhs_literal = GetEvaluatedLiteralFor(lhs);
+  const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
+  const Literal& ehs_literal = GetEvaluatedLiteralFor(ehs);
+  // `populate` reads all operands as the element type of the result.
+  TF_RET_CHECK(lhs_literal.shape().element_type() == shape.element_type() &&
+               rhs_literal.shape().element_type() == shape.element_type() &&
+               ehs_literal.shape().element_type() == shape.element_type())
+      << "operand element type mismatch: " << instruction->ToString();
+
+  Literal result(shape);
+
+  // If layout is the same, we can use linear indexing into the literals.
+  const Layout& lhs_layout = lhs_literal.shape().layout();
+  const Layout& rhs_layout = rhs_literal.shape().layout();
+  const Layout& ehs_layout = ehs_literal.shape().layout();
+  const bool same_layout =
+      LayoutUtil::Equal(rhs_layout, shape.layout()) &&
+      (is_lhs_scalar || LayoutUtil::Equal(lhs_layout, shape.layout())) &&
+      (is_ehs_scalar || LayoutUtil::Equal(ehs_layout, shape.layout()));
+  ABSL_RETURN_IF_ERROR(populate(result, lhs_literal, rhs_literal, ehs_literal,
+                           is_lhs_scalar, is_ehs_scalar, same_layout));
   SetEvaluatedLiteralFor(instruction, std::move(result));
   return absl::OkStatus();
 }
@@ -6775,6 +6835,11 @@ absl::Status HloEvaluator::HandleRaggedDot(const HloInstruction* dot) {
       },
       elementwise_type));
   return finish();
+}
+
+absl::Status HloEvaluator::HandleDotGeneral(const HloInstruction* dot) {
+  return Unimplemented("dot-general evaluation is not supported: %s",
+                       dot->ToString());
 }
 
 absl::Status HloEvaluator::HandleScaledDot(const HloInstruction* dot) {

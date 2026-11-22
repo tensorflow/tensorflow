@@ -466,6 +466,15 @@ constexpr bool IsFloatingPointType(PrimitiveType type) {
          IsF8Type(type) || IsF6Type(type) || IsMXType(type);
 }
 
+// Returns true if `type` is a floating-point type with `exponent_bits` exponent
+// bits and `mantissa_bits` explicit mantissa bits (excluding the implicit
+// leading bit).
+inline bool HasFloatingPointPrecision(PrimitiveType type, int exponent_bits,
+                                      int mantissa_bits) {
+  return IsFloatingPointType(type) && exponent_bits == ExponentWidth(type) &&
+         mantissa_bits == SignificandWidth(type) - 1;
+}
+
 // Returns true if the given primitive type is a complex type.
 constexpr bool IsComplexType(PrimitiveType type) {
   return type == C64 || type == C128;

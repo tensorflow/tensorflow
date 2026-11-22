@@ -557,7 +557,8 @@ mlir::DenseElementsAttr ExpandComplexDenseAttr(
   return mlir::DenseElementsAttr::get(new_type, llvm::ArrayRef(values));
 }
 
-LogicalResult RewriteConstantOp(ma::ConstantOp op, PatternRewriter& rewriter) {
+template <typename ConstantOpType>
+LogicalResult RewriteConstantOp(ConstantOpType op, PatternRewriter& rewriter) {
   auto tensor_type = mlir::dyn_cast<RankedTensorType>(op.getType());
   if (!tensor_type || !mlir::isa<ComplexType>(tensor_type.getElementType())) {
     return rewriter.notifyMatchFailure(op, "not a complex tensor");
@@ -1085,7 +1086,8 @@ class ExpandXtileComplexOpsPass
     patterns.add(RewriteBroadcastInDimOp);
     patterns.add(RewriteCompareOp);
     patterns.add(RewriteComplexOp);
-    patterns.add(RewriteConstantOp);
+    patterns.add(RewriteConstantOp<ma::ConstantOp>);
+    patterns.add(RewriteConstantOp<shlo::ConstantOp>);
     patterns.add(RewriteConvertOp);
     patterns.add(RewriteDivOp);
     patterns.add(RewriteExtractTileOp);

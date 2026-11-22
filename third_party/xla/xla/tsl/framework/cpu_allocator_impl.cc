@@ -126,7 +126,9 @@ class CPUAllocator : public Allocator {
                              {"id", annotation.pending_step_id},
                              {"region_type", annotation.pending_region_type},
                              {"data_type", annotation.pending_data_type},
-                             {"shape", annotation.pending_shape_func()}});
+                             {"shape", annotation.pending_shape_func != nullptr
+                                           ? annotation.pending_shape_func(0)
+                                           : std::string()}});
         },
         /*level=*/tsl::profiler::TraceMeLevel::kInfo);
   }

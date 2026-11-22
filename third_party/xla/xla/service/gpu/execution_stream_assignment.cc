@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,12 +28,14 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/transforms/collectives/collective_domain.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -48,13 +52,15 @@ namespace xla::gpu {
 namespace {
 
 // Execution scope kinds. kMemcpyD2H and kMemcpyH2D use the dedicated
-// device_to_host_stream / host_to_device_stream from ExecuteParams, which
-// keeps host↔device copies off the compute and collective streams.
+// device_to_host_stream / host_to_device_stream from ExecuteParams, while
+// kMemcpyD2D shares a single ComputationStreamId disjoint from active compute
+// streams.
 enum class ExecutionScopeKind {
   kCompute,
   kCommunication,
   kMemcpyD2H,
   kMemcpyH2D,
+  kMemcpyD2D,
 };
 
 template <typename Sink>
@@ -72,6 +78,9 @@ void AbslStringify(Sink sink, ExecutionScopeKind kind) {
     case ExecutionScopeKind::kMemcpyH2D:
       sink.Append("memcpy_h2d");
       break;
+    case ExecutionScopeKind::kMemcpyD2D:
+      sink.Append("memcpy_d2d");
+      break;
   }
 }
 
@@ -81,9 +90,7 @@ constexpr CommunicationStreamId kPipelinedP2PStreamId1(2);
 // Maps pipelined P2P ops to CommunicationStreamId(1) and (2), running them
 // on separate streams to avoid cyclic deadlocks.
 ExecutionStreamId GetP2PStreamId(const HloInstruction* instruction) {
-  const auto& fe_map = instruction->frontend_attributes().map();
-  auto it = fe_map.find(kSendRecvPipelineAttr);
-  if (it != fe_map.end() && it->second == "1") {
+  if (instruction->get_frontend_attribute(kSendRecvPipelineAttr) == "1") {
     return ExecutionStreamId(kPipelinedP2PStreamId1);
   }
   return ExecutionStreamId(kPipelinedP2PStreamId0);
@@ -119,6 +126,9 @@ class ExecutionStreams {
         return kMemcpyD2HStreamId;
       case ExecutionScopeKind::kMemcpyH2D:
         return kMemcpyH2DStreamId;
+      case ExecutionScopeKind::kMemcpyD2D:
+        LOG(FATAL) << "Unannotated kMemcpyD2D scopes share a single stream "
+                      "assigned after kCompute stream selection";
     }
   }
 
@@ -226,15 +236,18 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
   if (auto* start = DynCast<HloAsyncStartInstruction>(hlo)) {
     // Collective operations run on communication streams.
     if (IsWrappedCollective(start) || IsCustomCollectiveOp(start) ||
-        start->frontend_attributes().map().contains(
-            kCollectiveGroupMarkerAttr)) {
+        start->has_frontend_attribute(kCollectiveGroupMarkerAttr)) {
       return ExecutionScopeKind::kCommunication;
     }
-    // Host↔device memcpy (DUS/DS wrapping host memory) runs on dedicated
-    // memcpy streams rather than the general compute pool.
+    // Host↔device memcpy (DUS/DS wrapping host memory) and device-to-device
+    // dynamic-slice copy fusions run on dedicated memcpy streams rather than
+    // the general compute pool.
     if (enable_dedicated_memcpy_streams) {
       if (auto dir = AsyncHostMemcpyDirection(start)) {
         return dir;
+      }
+      if (IsDynamicSliceCopyFusion(start->async_wrapped_instruction())) {
+        return ExecutionScopeKind::kMemcpyD2D;
       }
     }
     return ExecutionScopeKind::kCompute;
@@ -253,13 +266,14 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
                : std::nullopt;
   }
 
-  // copy-start: D2H and H2D go on their dedicated memcpy streams; D2D stays
-  // on a compute stream.
+  // copy-start: D2H and H2D go on their dedicated host memcpy streams; D2D
+  // shares a single dedicated D2D memcpy stream when enabled.
   if (HloPredicateIsOp<HloOpcode::kCopyStart>(hlo)) {
     if (enable_dedicated_memcpy_streams) {
       if (auto dir = CopyStartDirection(hlo)) {
         return dir;
       }
+      return ExecutionScopeKind::kMemcpyD2D;
     }
     return ExecutionScopeKind::kCompute;
   }
@@ -270,14 +284,26 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
 // Check if instruction has explicit stream assignment via the attributes.
 std::optional<ExecutionStreamId> FindAssignedStreamId(
     const HloInstruction* instr, ExecutionScopeKind kind) {
-  auto& attrs = instr->frontend_attributes().map();
-  if (auto it = attrs.find(kXlaStreamAnnotationAttr);
-      it != attrs.end() &&
-      !absl::EqualsIgnoreCase(it->second, kXlaCollectiveStreamAnnotation)) {
+  if (std::optional<std::string> annotation =
+          instr->get_frontend_attribute(kXlaStreamAnnotationAttr);
+      annotation.has_value() &&
+      !absl::EqualsIgnoreCase(*annotation, kXlaCollectiveStreamAnnotation)) {
+    if (absl::StartsWith(*annotation, "locality_domain")) {
+      CHECK(kind == ExecutionScopeKind::kCompute)
+          << "Locality-domain stream annotation cannot be assigned to a "
+          << kind << " execution scope: " << instr->name();
+      // ExplicitStreamAnnotationAsyncWrapper rejects malformed annotations
+      // with an error status before stream assignment runs.
+      absl::StatusOr<LocalityDomainStreamId> domain_id =
+          ParseLocalityDomainStreamAnnotation(*annotation);
+      CHECK_OK(domain_id.status());
+      return ExecutionStreamId(*domain_id);
+    }
     int32_t assigned_stream_id;
-    CHECK(absl::SimpleAtoi(it->second, &assigned_stream_id));  // Crash OK
+    CHECK(absl::SimpleAtoi(*annotation, &assigned_stream_id));  // Crash OK
     switch (kind) {
       case ExecutionScopeKind::kCompute:
+      case ExecutionScopeKind::kMemcpyD2D:
         return ExecutionStreamId(ComputationStreamId(assigned_stream_id));
       case ExecutionScopeKind::kCommunication:
         return ExecutionStreamId(CommunicationStreamId(assigned_stream_id));
@@ -327,6 +353,8 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module,
   };
   enqueue(module->entry_computation());
 
+  std::vector<std::pair<const HloInstruction*, ExecutionScopeKind>>
+      scope_starts;
   while (!queue.empty()) {
     const HloComputation* computation = queue.front();
     queue.pop_front();
@@ -341,33 +369,7 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module,
       // Only assign execution stream IDs to scope-start operations.
       if (std::optional<ExecutionScopeKind> kind = IsExecutionScopeStart(
               hlo, options.enable_dedicated_memcpy_streams)) {
-        // Prefer an explicitly assigned stream id, then a collective-domain
-        // stream or a dedicated P2P stream for pipelined send/recv. Otherwise,
-        // generate a new stream id for the execution scope.
-        std::optional<ExecutionStreamId> stream_id =
-            FindAssignedStreamId(hlo, *kind);
-        if (!stream_id.has_value()) {
-          std::optional<CollectiveCommunicationDomain> collective_domain =
-              FindCollectiveDomain(hlo, *kind);
-          if (collective_domain.has_value()) {
-            stream_id = execution_streams.NextCollective(*collective_domain);
-          }
-        }
-        if (!stream_id.has_value() && IsPipelinedP2P(hlo) &&
-            options.number_of_communication_execution_streams > 1) {
-          stream_id = GetP2PStreamId(hlo);
-        }
-        if (!stream_id.has_value()) {
-          stream_id = execution_streams.Next(*kind);
-        }
-
-        VLOG(3) << absl::StreamFormat(
-            "Start new %v execution scope: instr=%s stream=%v", *kind,
-            hlo->name(), *stream_id);
-
-        auto [_, emplaced] = async_start_instructions_.emplace(hlo, *stream_id);
-        DCHECK(emplaced) << "Found duplicate execution stream assignment: "
-                         << hlo->name();
+        scope_starts.emplace_back(hlo, *kind);
       }
 
       // For control flow operations keep processing called computations.
@@ -384,6 +386,64 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module,
           enqueue(wrapped);
         }
       }
+    }
+  }
+
+  absl::flat_hash_set<uint64_t> used_compute_stream_ids;
+  std::vector<const HloInstruction*> unannotated_d2d_copies;
+  for (const auto& [hlo, kind] : scope_starts) {
+    // Prefer an explicitly assigned stream id, then a collective-domain stream
+    // or a dedicated P2P stream for pipelined send/recv. Unannotated D2D copies
+    // are deferred so they share one stream disjoint from active compute ops.
+    std::optional<ExecutionStreamId> stream_id =
+        FindAssignedStreamId(hlo, kind);
+    if (kind == ExecutionScopeKind::kMemcpyD2D && !stream_id.has_value()) {
+      unannotated_d2d_copies.push_back(hlo);
+      continue;
+    }
+    if (!stream_id.has_value()) {
+      std::optional<CollectiveCommunicationDomain> collective_domain =
+          FindCollectiveDomain(hlo, kind);
+      if (collective_domain.has_value()) {
+        stream_id = execution_streams.NextCollective(*collective_domain);
+      }
+    }
+    if (!stream_id.has_value() && IsPipelinedP2P(hlo) &&
+        options.number_of_communication_execution_streams > 1) {
+      stream_id = GetP2PStreamId(hlo);
+    }
+    if (!stream_id.has_value()) {
+      stream_id = execution_streams.Next(kind);
+    }
+
+    if (stream_id->is_computation()) {
+      used_compute_stream_ids.insert(stream_id->computation_id().value());
+    }
+
+    VLOG(3) << absl::StreamFormat(
+        "Start new %v execution scope: instr=%s stream=%v", kind, hlo->name(),
+        *stream_id);
+
+    auto [_, emplaced] = async_start_instructions_.emplace(hlo, *stream_id);
+    DCHECK(emplaced) << "Found duplicate execution stream assignment: "
+                     << hlo->name();
+  }
+
+  if (!unannotated_d2d_copies.empty()) {
+    uint64_t d2d_stream_ordinal = 0;
+    while (used_compute_stream_ids.contains(d2d_stream_ordinal)) {
+      ++d2d_stream_ordinal;
+    }
+    const ExecutionStreamId d2d_stream_id{
+        ComputationStreamId{d2d_stream_ordinal}};
+    for (const HloInstruction* hlo : unannotated_d2d_copies) {
+      VLOG(3) << absl::StreamFormat(
+          "Start new %v execution scope: instr=%s stream=%v",
+          ExecutionScopeKind::kMemcpyD2D, hlo->name(), d2d_stream_id);
+      auto [_, emplaced] =
+          async_start_instructions_.emplace(hlo, d2d_stream_id);
+      DCHECK(emplaced) << "Found duplicate execution stream assignment: "
+                       << hlo->name();
     }
   }
 

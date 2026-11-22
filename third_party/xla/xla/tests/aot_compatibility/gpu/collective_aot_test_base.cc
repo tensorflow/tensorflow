@@ -17,13 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -31,31 +29,10 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/aot_compatibility/test_lib.h"
-#include "xla/tests/aot_interception_pjrt_client.h"
-#include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace aot_compatibility {
-namespace {
-
-// Returns the golden target of the current GPU for a target base name, e.g.
-// "p2p_collectives_aot_test_2gpu_h100" for "p2p_collectives_aot_test_2gpu".
-// The result must equal the target name that xla_test generates, since
-// update_goldens.py derives the golden directory from that name.
-std::string GpuGoldenTarget(absl::string_view target_base) {
-  return absl::StrCat(target_base, "_", DetectGpuArchToken());
-}
-
-// INSTANTIATE_TEST_SUITE_P cannot propagate errors, so crash on them.
-std::vector<AotTestParam> ParamsOrDie(
-    absl::StatusOr<std::vector<AotTestParam>> params) {
-  CHECK(params.ok()) << params.status();
-  return *std::move(params);
-}
-
-}  // namespace
 
 absl::StatusOr<std::vector<Literal>> CollectiveAotTestBase::RunReplicated(
     absl::string_view hlo, const HloModuleConfig& config, bool run_hlo_passes) {
@@ -106,23 +83,6 @@ void EnableNcclSymmetricBuffers(DebugOptions& debug_options) {
 
 void DisableCollectiveKernels(DebugOptions& debug_options) {
   debug_options.clear_xla_gpu_experimental_use_collective_kernels();
-}
-
-std::vector<AotTestParam> GpuBackwardsCompatibilityParams(
-    absl::string_view target_base) {
-  return ParamsOrDie(GetAotTestParamsForBackwardsCompatibility(
-      GpuGoldenTarget(target_base), AOTTestPlatform::kGpu));
-}
-
-std::vector<AotTestParam> GpuGoldenFileVerificationParams(
-    absl::string_view target_base) {
-  return ParamsOrDie(GetAotTestParamsForGoldenFileVerification(
-      GpuGoldenTarget(target_base), AOTTestPlatform::kGpu));
-}
-
-std::string AotTestParamName(
-    const ::testing::TestParamInfo<AotTestParam>& info) {
-  return absl::StrCat("v", info.param.version);
 }
 
 }  // namespace aot_compatibility

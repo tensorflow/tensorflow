@@ -33,7 +33,7 @@ inline constexpr int64_t kMaxReduceScatterSizeBytes =
     16 * 1024 * 1024;  // 16 MB
 
 // Maximum number of blocks per grid for the Triton reduce-scatter kernel.
-inline constexpr int64_t kReduceScatterMaxBlocksPerGrid = 64;
+inline constexpr int64_t kReduceScatterMaxBlocksPerGrid = 128;
 
 // Maximum number of operands supported by the variadic Triton reduce-scatter
 // kernel.
@@ -67,14 +67,14 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
 // layout is:
 //   [0, N)       input buffers  (kInputBuffer, index k)
 //   [N, 2N)      output buffers (kOutputBuffer, index k)
-//   [2N]         runtime rank   (kRuntimeRank)
-//   [2N + 1]     signal flags   (kScratchBuffer, index 0)
-//   [2N + 2 + k] remote input buffer pointer table of operand k
-//                (kScratchBuffer, index 1 + k)
-// `scratch_memory_type` is used for all scratch buffers.
+//   [2N + k]    remote input buffer pointer table of operand k
+//               (kScratchBuffer, index 1 + k)
+//   [3N]        signal flags   (kScratchBuffer, index 0)
+//   [3N + 1]    runtime rank   (kRuntimeRank)
+// `symmetric_memory_type` is used for all symmetric scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type);
+    SymmetricMemoryType symmetric_memory_type);
 
 }  // namespace xla::gpu
 

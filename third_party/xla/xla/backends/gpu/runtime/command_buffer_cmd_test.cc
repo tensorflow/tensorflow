@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -36,13 +37,14 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/backends/gpu/runtime/traced_command_buffer.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -61,6 +63,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/xla_data.pb.h"
 
@@ -279,15 +282,17 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  ASSERT_OK(executor.Initialize({stream_executor, source}));
-
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  TestThunkParams thunk_params(stream_executor, /*buffer_allocations=*/nullptr);
+  thunk_params.WithExecutableSource(source);
+  ASSERT_OK(executor.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithBufferAllocations(&allocations)
+      .WithStream(stream.get())
+      .WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -355,15 +360,17 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  ASSERT_OK(executor.Initialize({stream_executor, source}));
-
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  TestThunkParams thunk_params(stream_executor, /*buffer_allocations=*/nullptr);
+  thunk_params.WithExecutableSource(source);
+  ASSERT_OK(executor.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithBufferAllocations(&allocations)
+      .WithStream(stream.get())
+      .WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -545,18 +552,22 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   Thunk::ExecutableSource source_empty = {/*text=*/{}, /*binary=*/{}};
   Thunk::ExecutableSource source_fatbin = {/*text=*/{}, /*binary=*/fatbin};
 
-  ASSERT_OK(exec_a.Initialize({stream_executor, source_empty}));
-  ASSERT_OK(exec_b.Initialize({stream_executor, source_fatbin}));
-  ASSERT_OK(exec_c.Initialize({stream_executor, source_empty}));
+  TestThunkParams thunk_params(stream_executor, /*buffer_allocations=*/nullptr);
+  ASSERT_OK(exec_a.Initialize(
+      thunk_params.WithExecutableSource(source_empty).InitializeParams()));
+  ASSERT_OK(exec_b.Initialize(
+      thunk_params.WithExecutableSource(source_fatbin).InitializeParams()));
+  ASSERT_OK(exec_c.Initialize(
+      thunk_params.WithExecutableSource(source_empty).InitializeParams()));
 
   // Execute params and allocations mapping indices 0=a,1=b,2=c
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b, c}, 0, &allocator);
 
-  Thunk::ExecuteParams exec_params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  thunk_params.WithBufferAllocations(&allocations)
+      .WithStream(stream.get())
+      .WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams exec_params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -589,6 +600,96 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   std::vector<int32_t> dst(length, 0);
   ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
   ASSERT_EQ(dst, std::vector<int32_t>(length, 2));
+}
+
+class AnnotationTracingCmd : public TracedCommand {
+ public:
+  AnnotationTracingCmd(Thunk::ThunkInfo thunk_info,
+                       BufferAllocation::Slice dest,
+                       std::vector<std::string>* trace_annotations)
+      : TracedCommand(Thunk::Kind::kCustomCall, std::move(thunk_info)),
+        dest_(dest),
+        trace_annotations_(trace_annotations) {}
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    trace_annotations_->push_back(
+        std::string(tsl::profiler::AnnotationStack::Get()));
+    se::DeviceAddressBase dst =
+        params.buffer_allocations->GetDeviceAddress(dest_);
+    return params.stream->MemZero(&dst, dest_.size());
+  }
+
+  BufferUses buffer_uses() const override {
+    return {BufferUse::Write(dest_, ShapeUtil::MakeShape(U8, {dest_.size()}))};
+  }
+
+ private:
+  BufferAllocation::Slice dest_;
+  std::vector<std::string>* trace_annotations_;
+};
+
+TEST(CommandBufferCmdTest,
+     TracedCommandPushesAnnotationOnCreateAndCacheMissUpdate) {
+  tsl::profiler::AnnotationStack::Enable(true);
+  absl::Cleanup disable_annotation_stack = [] {
+    tsl::profiler::AnnotationStack::Enable(false);
+  };
+
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto trace_stream, stream_executor->CreateStream());
+
+  constexpr int64_t kByteLength = 16;
+  se::DeviceAddress<int32_t> buf0 =
+      stream_executor->AllocateArray<int32_t>(4, 0);
+  se::DeviceAddress<int32_t> buf1 =
+      stream_executor->AllocateArray<int32_t>(4, 0);
+
+  BufferAllocation alloc(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, kByteLength);
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "custom-call.7";
+  std::vector<std::string> trace_annotations;
+
+  CommandSequence commands;
+  commands.Emplace<AnnotationTracingCmd>(std::move(thunk_info), slice,
+                                         &trace_annotations);
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
+
+  se::StreamExecutorAddressAllocator allocator(stream_executor);
+  BufferAllocations allocations0({buf0}, 0, &allocator);
+  BufferAllocations allocations1({buf1}, 0, &allocator);
+
+  TestThunkParams test_params(stream_executor, &allocations0, stream.get());
+  test_params.WithCommandBufferTraceStream(trace_stream.get());
+  Thunk::ExecuteParams params0 = test_params.ExecuteParams();
+  Thunk::ExecuteParams params1 =
+      test_params.WithBufferAllocations(&allocations1).ExecuteParams();
+
+  CommandStateManager state;
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+
+  // 1. Initial Record (kCreate): traces child command buffer with annotation.
+  Command::RecordParams record_params0 = {state};
+  ASSERT_OK(executor.Record(params0, record_params0, command_buffer.get()));
+  ASSERT_EQ(trace_annotations.size(), 1);
+  EXPECT_EQ(trace_annotations[0], "Thunk:#hlo_op=custom-call.7#");
+
+  // 2. Record (kUpdate) with unchanged buffer address: cache hit, no re-trace.
+  Command::RecordParams record_params_hit = {state};
+  ASSERT_OK(executor.Record(params0, record_params_hit, command_buffer.get()));
+  EXPECT_EQ(trace_annotations.size(), 1);
+
+  // 3. Record (kUpdate) with new buffer address: cache miss re-traces with
+  // annotation even though CommandExecutor::RecordUpdate skips its outer scope.
+  Command::RecordParams record_params_miss = {state};
+  ASSERT_OK(executor.Record(params1, record_params_miss, command_buffer.get()));
+  ASSERT_EQ(trace_annotations.size(), 2);
+  EXPECT_EQ(trace_annotations[1], "Thunk:#hlo_op=custom-call.7#");
 }
 
 //===----------------------------------------------------------------------===//

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,14 +28,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
 
@@ -45,10 +43,17 @@ namespace xla::gpu {
 // Thread safe.
 class KernelReuseCache {
  public:
+  struct Kernel {
+    GpuKernelSpec spec;
+    // Reference counted so that consumers can share the binary instead of
+    // copying it. Default-initialized to an empty vector so `binary` is
+    // non-null even for default-constructed entries.
+    std::shared_ptr<const std::vector<uint8_t>> binary =
+        std::make_shared<const std::vector<uint8_t>>();
+  };
   struct Entry {
     std::string kernel_name;
     LaunchDimensions launch_dimensions;
-    std::optional<se::ClusterDim> cluster_dim;
     int64_t shmem_bytes = 0;
     // Reference counted so that consumers can share the binary instead of
     // copying it. Default-initialized to an empty vector so `binary` is
@@ -57,10 +62,6 @@ class KernelReuseCache {
         std::make_shared<const std::vector<uint8_t>>();
     stream_executor::gpu::TmaMetadata tma_metadata;
     bool use_pdl = false;
-  };
-  struct NamedBinary {
-    std::string name;
-    std::vector<uint8_t> binary;
   };
 
   absl::Status Load(const CompilationCacheProto& proto);
@@ -82,9 +83,9 @@ class KernelReuseCache {
   // Retrieves the cache entry for the given computation, or generates it
   // asynchronously using the given generator function and stores it in the
   // cache.
-  std::pair<tsl::Future<Entry>, bool /*was_cached*/> GetWithStatus(
+  std::pair<tsl::Future<Kernel>, bool /*was_cached*/> GetWithStatus(
       const HloComputation* fused_computation,
-      absl::Span<const emitters::KernelArgument> kernel_arguments,
+      const emitters::KernelArguments& kernel_arguments,
       absl::string_view discriminator,
       absl::FunctionRef<tsl::Future<Entry>()> generator);
 
@@ -94,14 +95,16 @@ class KernelReuseCache {
   //
   // A non-OK status is returned if the entry is not found and the generator
   // failed.
-  std::pair<tsl::Future<Entry>, bool /*was_cached*/> GetWithStatus(
+  std::pair<tsl::Future<Kernel>, bool /*was_cached*/> GetWithStatus(
       std::string fingerprint,
+      const emitters::KernelArguments& kernel_arguments,
       absl::FunctionRef<tsl::Future<Entry>()> generator);
 
  private:
   mutable absl::Mutex m_;
   absl::flat_hash_map<std::string /*fingerprint*/, tsl::Future<Entry>> cache_
       ABSL_GUARDED_BY(m_);
+
   // Track which fingerprints are in use. Unused ones can appear from loading a
   // partially compatible cache file. These should not be exported to avoid
   // linking the corresponding kernels later.

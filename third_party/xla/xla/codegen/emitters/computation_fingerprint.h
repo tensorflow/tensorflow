@@ -19,15 +19,16 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/buffer_assignment.h"
 
 namespace xla::emitters {
+
+// Calculates a fingerprint of `kernel_arguments` for kernel reuse checks.
+std::string GetArgumentFingerprint(
+    absl::Span<const emitters::KernelArgument> kernel_arguments);
 
 // Calculates the fingerprint of a (fused_computation, kernel_arguments,
 // discriminator) tuple.

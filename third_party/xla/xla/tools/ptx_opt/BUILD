@@ -38,8 +38,8 @@ xla_cc_binary(
     deps = [
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
-        "//xla/service/gpu/llvm_gpu_backend:load_ir_module",
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
+        "//xla/backends/gpu/target_lowering:load_ir_module",
+        "//xla/backends/gpu/target_lowering:nvptx_backend",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/util:command_line_flags",

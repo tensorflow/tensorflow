@@ -272,9 +272,6 @@ std::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
     case HloOpcode::kTuple: {
       return std::vector<HloInstruction*>({instruction});
     }
-    case HloOpcode::kDomain: {
-      return GetAllTuples(instruction->operands()[0], visited);
-    }
     case HloOpcode::kParameter: {
       auto maybe_while = WhileFromBodyParameter(instruction);
       if (maybe_while) {

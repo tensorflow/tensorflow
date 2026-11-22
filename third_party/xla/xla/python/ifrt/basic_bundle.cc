@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/basic_bundle.h"
 
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -59,8 +60,12 @@ absl::Status ValidateArrayCopySemantics(ArrayCopySemantics semantics) {
 // Checks if the given `slice_sizes` are valid for the given `num_values`.
 absl::Status ValidateSliceSizes(int num_values,
                                 absl::Span<const int> slice_sizes) {
-  int total_size = 0;
+  int64_t total_size = 0;
   for (int size : slice_sizes) {
+    if (size < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Slice size must be non-negative: ", size));
+    }
     total_size += size;
   }
   if (total_size != num_values) {
@@ -145,7 +150,9 @@ BasicBundle::~BasicBundle() {
       to_delete.push_back(value);
     }
   }
-  client_->DeleteValues(absl::MakeSpan(to_delete));
+  if (!to_delete.empty()) {
+    client_->DeleteValues(absl::MakeSpan(to_delete));
+  }
 }
 
 tsl::Future<> BasicBundle::GetReadyFuture() const {
@@ -164,7 +171,9 @@ tsl::Future<> BasicBundle::Delete() {
   absl::MutexLock lock(mu_);
   if (!delete_future_.IsValid()) {
     std::vector<ValueRef> to_delete = values_;
-    delete_future_ = client_->DeleteValues(absl::MakeSpan(to_delete));
+    delete_future_ = to_delete.empty()
+                         ? tsl::Future<>(absl::OkStatus())
+                         : client_->DeleteValues(absl::MakeSpan(to_delete));
   }
   return delete_future_;
 }
@@ -236,6 +245,12 @@ absl::StatusOr<std::vector<BundleRef>> BasicBundle::Slice(
 absl::StatusOr<BundleRef> BasicBundle::CopyArrays(
     absl::Span<const int> slice_sizes, absl::Span<const CopySpec> copy_specs,
     ArrayCopySemantics semantics) {
+  if (slice_sizes.size() != copy_specs.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Number of slice_sizes does not match number of "
+                     "copy_specs: ",
+                     slice_sizes.size(), " vs ", copy_specs.size()));
+  }
   ABSL_RETURN_IF_ERROR(ValidateSliceSizes(values_.size(), slice_sizes));
 
   std::vector<ValueRef> new_values;

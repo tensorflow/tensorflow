@@ -1104,6 +1104,13 @@ class VersionInfo {
 
 class DnnSupport;
 
+// The device a serialized DnnGraph was compiled for.
+struct DnnGraphTargetDevice {
+  int core_count = 0;
+  // Backend-specific serialized device properties.
+  std::string serialized_device_properties;
+};
+
 class DnnGraph {
  public:
   DnnGraph() = default;
@@ -1503,7 +1510,8 @@ class DnnSupport {
       std::optional<dnn::TensorDescriptor> dbias_descriptor);
 
   virtual absl::StatusOr<std::unique_ptr<DnnGraph>> DeserializeGraph(
-      Stream& stream, absl::string_view) const {
+      Stream& stream, absl::string_view serialized_data,
+      const std::optional<DnnGraphTargetDevice>& target_device) const {
     return absl::UnimplementedError("Graph support requires cuDNN >= 8.1.");
   };
 

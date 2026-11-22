@@ -1,0 +1,311 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/hlo/transforms/scan_loop_accumulator_input_unification.h"
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/while_loop_simplifier.h"
+#include "xla/hlo/transforms/while_loop_unroller.h"
+#include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal_util.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+
+namespace xla {
+namespace {
+
+// This function checks whether the operand of the loop at the given index is
+// read-only.
+bool LoopIndexIsReadOnly(const HloDataflowAnalysis& dataflow_analysis,
+                         HloInstruction* while_instr, int64_t idx) {
+  return !(
+      dataflow_analysis.GetValueSet(while_instr->while_init(), {idx})
+              .values()
+              .size() > 1 ||
+      dataflow_analysis.GetValueSet(while_instr, {idx}).values().size() > 1 ||
+      dataflow_analysis.GetUniqueValueAt(while_instr, {idx}) !=
+          dataflow_analysis.GetUniqueValueAt(while_instr->while_init(), {idx}));
+}
+
+// This function finds the pairs of accumulator-input pairs in the scan loop.
+// An accumulator-input pair is a pair of instructions that satisfy the
+// following conditions:
+// 1. The accumulator is updated in the loop body with a dynamic-update-slice
+//  instruction that covers the whole shape (see the comment for
+//  MatchShapeCoveringDynamicIndexInstruction function).
+// 2. The scan loop itself must be within another loop.
+// 3. The output of the scan loop at accumulator location must be passed as the
+//  input to the scan loop (next iteration of the outer loop)
+// 4. The input is a shape-covering read-only instruction in the loop body.
+std::vector<std::pair<HloInstruction*, HloInstruction*>>
+FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
+                          HloInstruction* while_instr,
+                          const WhileLoopConfig& config) {
+  HloComputation* computation = while_instr->while_body();
+  HloInstruction* body_param = computation->parameter_instruction(0);
+  HloInstruction* root = computation->root_instruction();
+  auto in_root = [&](auto* x) { return absl::c_count(root->operands(), x); };
+  auto is_gte = [](auto* u) { return Match(u, match::GetTupleElement()); };
+  auto all_gte = [&](auto* i) { return absl::c_all_of(i->users(), is_gte); };
+
+  // Finding the accumulator instructions
+  std::vector<HloInstruction*> possible_acc;
+  for (HloInstruction* gte : body_param->users()) {
+    if (gte->opcode() != HloOpcode::kGetTupleElement) {
+      continue;
+    }
+    int64_t param_idx = gte->tuple_index();
+    // HloVerifier ensures that param_idx >= 0.
+    CHECK_GE(param_idx, 0);
+
+    // The accumulator should only be used exactly once as the operand of
+    // dynamic-update-slice.
+    if (gte->user_count() != 1) {
+      continue;
+    }
+    HloInstruction* gte_user = gte->users().at(0);
+    if (MatchShapeCoveringDynamicIndexInstruction(
+            gte_user, gte, HloOpcode::kDynamicUpdateSlice, config)
+            .has_value()) {
+      // The accumulator should be written at the same index
+      if (hlo_query::GetUniqueGteInstruction(body_param, param_idx) == gte &&
+          gte_user->user_count() == 1 && gte_user->operand(1) != gte &&
+          in_root(gte_user) == 1 && root->operand(param_idx) == gte_user) {
+        possible_acc.push_back(gte);
+        VLOG(3) << "accumulator index: " << param_idx << " = " << gte->name();
+      }
+    }
+  }
+
+  // Version of HloInstruction::operand_index that returns -1 if the operand is
+  // not found instead of crashing.
+  auto find_operand_index = [](const HloInstruction* instr,
+                               const HloInstruction* operand) -> int64_t {
+    for (int64_t i = 0; i < instr->operand_count(); ++i) {
+      if (operand == instr->operand(i)) {
+        return i;
+      }
+    }
+    return -1;
+  };
+
+  // Returns the first GTE instruction in the users of the tuple with the form
+  // of get-tuple-element(tuple), index=idx
+  auto find_gte_instr = [](HloInstruction* tuple,
+                           int64_t idx) -> HloInstruction* {
+    for (HloInstruction* user : tuple->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          user->tuple_index() == idx) {
+        return user;
+      }
+    }
+    return nullptr;
+  };
+
+  auto check_single_user_not_null = [](HloInstruction* instr) -> bool {
+    if (instr == nullptr || instr->user_count() != 1) {
+      return false;
+    }
+    return true;
+  };
+
+  // Find corresponding inputs for the possible accumulators.
+  std::vector<std::pair<HloInstruction*, HloInstruction*>> acc_input_pairs;
+  HloComputation* outer_while_body = while_instr->parent();
+  for (HloInstruction* acc : possible_acc) {
+    VLOG(3) << "Looking for corresponding input for " << acc->name();
+    HloInstruction* acc_gte_outer_body =
+        find_gte_instr(while_instr, acc->tuple_index());
+    if (acc_gte_outer_body == nullptr) {
+      continue;
+    }
+    int64_t idx = find_operand_index(outer_while_body->root_instruction(),
+                                     acc_gte_outer_body);
+    VLOG(3) << "Accumulator output of the scan in the outer body = "
+            << acc_gte_outer_body->name() << ", index = " << idx;
+    if (idx == -1) {
+      continue;
+    }
+    HloInstruction* input_gte_outer =
+        find_gte_instr(outer_while_body->parameter_instruction(0), idx);
+    if (!check_single_user_not_null(input_gte_outer)) {
+      continue;
+    }
+    if (input_gte_outer->users().at(0) != while_instr->while_init() ||
+        while_instr->while_init()->user_count() != 1 || !all_gte(body_param) ||
+        while_instr->while_init()->IsRoot() || !all_gte(while_instr)) {
+      continue;
+    }
+    VLOG(3) << "Input parameter outer body = " << input_gte_outer->name()
+            << ", index = " << input_gte_outer->tuple_index();
+
+    // Find the corresponding gte in the body of the inner loop
+    int64_t input_idx_inner =
+        find_operand_index(while_instr->while_init(), input_gte_outer);
+    if (input_idx_inner == -1) {
+      continue;
+    }
+
+    HloInstruction* input_gte_inner =
+        hlo_query::GetUniqueGteInstruction(body_param, input_idx_inner);
+    // An unused loop input is technically valid, skip it.
+    if (input_gte_inner == nullptr) {
+      continue;
+    }
+    if (!LoopIndexIsReadOnly(dataflow_analysis, while_instr, input_idx_inner)) {
+      continue;
+    }
+    VLOG(3) << "Input parameter scan body = " << input_gte_inner->name()
+            << ", index = " << input_gte_inner->tuple_index();
+
+    // Input must have two users, one is the dynamic-slice and the other is the
+    // root of the loop body.
+    if (input_gte_inner->user_count() != 2 || in_root(input_gte_inner) != 1 ||
+        find_gte_instr(while_instr, input_idx_inner) != nullptr) {
+      continue;
+    }
+    // Get the first user of the input and check if it is a shape covering
+    // dynamic-slice.
+    HloInstruction* gte_user =
+        input_gte_inner->users()[input_gte_inner->users()[0] == root];
+    VLOG(3) << "User of the inner loop input = " << gte_user->ToString();
+    std::optional<int64_t> slice_dim =
+        MatchShapeCoveringDynamicIndexInstruction(
+            gte_user, input_gte_inner, HloOpcode::kDynamicSlice, config);
+    std::optional<int64_t> update_dim =
+        MatchShapeCoveringDynamicIndexInstruction(
+            acc->users().at(0), acc, HloOpcode::kDynamicUpdateSlice, config);
+    if (slice_dim.has_value() && slice_dim == update_dim) {
+      acc_input_pairs.emplace_back(acc, input_gte_inner);
+    }
+  }
+  return acc_input_pairs;
+}
+
+// Given a list of unrollable loops and their config, finds all the
+// accumulator/input pairs of nested scan loops and removes the unnecessary
+// accumulator and replace it with the input.
+absl::StatusOr<bool> UnifyAccumulatorWithInput(
+    const HloDataflowAnalysis& dataflow_analysis,
+    std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops) {
+  auto is_while_body = [&](HloComputation* comp) {
+    return comp->root_instruction()->opcode() == HloOpcode::kTuple &&
+           absl::c_any_of(comp->caller_instructions(HloOpcode::kWhile),
+                          [&](auto* w) { return w->while_body() == comp; });
+  };
+
+  std::vector<HloInstruction*> changed_loops;
+  bool unified = false;
+  for (auto& [while_instr, loop_config] : unrollable_loops) {
+    // We only consider nested loops. The overhead of doing copy where there is
+    // not nesting is considered to be negligible.
+    if (!is_while_body(while_instr->parent())) {
+      continue;
+    }
+    // TODO(b/260601110): Properly handle non-flat graphs.
+    if (while_instr->while_body()->caller_instructions().size() > 1) {
+      continue;
+    }
+    auto acc_input_pairs =
+        FindAccumulatorInputPairs(dataflow_analysis, while_instr, loop_config);
+    for (const auto& [acc, input] : acc_input_pairs) {
+      // We only consider accumulators that are allocated inside the loop.
+      // Therefore, we skip accumulators that are passed as the loop input.
+      if (Match(while_instr->while_init()->mutable_operand(acc->tuple_index()),
+                match::GetTupleElement(match::Parameter()))) {
+        continue;
+      }
+      VLOG(3) << while_instr->name() << " -> " << "<accumulator_@"
+              << acc->tuple_index() << ": " << acc->name() << ", " << "input_@"
+              << input->tuple_index() << ": " << input->name() << ">";
+      ABSL_RETURN_IF_ERROR(input->ReplaceAllUsesWith(acc));
+      ABSL_RETURN_IF_ERROR(while_instr->while_init()->ReplaceOperandWith(
+          acc->tuple_index(),
+          while_instr->while_init()->mutable_operand(input->tuple_index())));
+      if (input->user_count() == 0) {
+        ABSL_RETURN_IF_ERROR(while_instr->while_body()->RemoveInstruction(input));
+      }
+      unified = true;
+    }
+  }
+  return unified;
+}
+
+}  // namespace
+
+absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  VLOG(2) << "HLO module before ScanLoopAccumulatorInputUnification:";
+  XLA_VLOG_LINES(2, module->ToString());
+
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/false));
+
+  // This pass can only be applied to unrollable loops since we need to find the
+  // accumulators and inputs that are by definition updated and read fully via
+  // dynamic-update-slice and dynamic-sliced within a loop.
+  std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops =
+      WhileLoopUnroller::GetUnrollableLoops(module, execution_threads,
+                                            /*unroll_config=*/std::nullopt);
+
+  // TODO(b/337883537): We might want to simplify compare instructions before
+  // this. It helps us identify more inputs and accumulators.
+  ABSL_ASSIGN_OR_RETURN(bool changed, UnifyAccumulatorWithInput(*dataflow_analysis,
+                                                           unrollable_loops));
+
+  if (changed) {
+    for (auto& [while_instr, loop_config] : unrollable_loops) {
+      ABSL_RETURN_IF_ERROR(TryRemoveDeadWhileParams(while_instr).status());
+    }
+    ABSL_RETURN_IF_ERROR(TupleSimplifier{}.Run(module).status());
+    ABSL_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+
+    VLOG(2) << "HLO module after ScanLoopAccumulatorInputUnification:";
+    XLA_VLOG_LINES(2, module->ToString());
+  } else {
+    VLOG(2) << "HLO module unchanged after ScanLoopAccumulatorInputUnification";
+  }
+
+  return changed;
+}
+
+}  // namespace xla

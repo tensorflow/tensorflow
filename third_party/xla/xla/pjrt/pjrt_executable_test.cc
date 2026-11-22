@@ -16,10 +16,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/client/executable_build_options.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/device_assignment.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -79,6 +82,69 @@ TEST(CompileOptionsTest, Defaults) {
   EXPECT_EQ(src.parameter_is_tupled_arguments, false);
   EXPECT_EQ(src.allow_in_place_mlir_modification, false);
   EXPECT_EQ(src.matrix_unit_operand_precision, PrecisionConfig::DEFAULT);
+  EXPECT_EQ(src.multi_slice_config, nullptr);
+  EXPECT_EQ(src.get_multi_slice_config(), nullptr);
+}
+
+class FakeMultiSliceConfig : public MultiSliceConfig {
+ public:
+  FakeMultiSliceConfig(std::string serialized, bool* destroyed)
+      : serialized_(std::move(serialized)), destroyed_(destroyed) {}
+
+  ~FakeMultiSliceConfig() override {
+    if (destroyed_ != nullptr) {
+      *destroyed_ = true;
+    }
+  }
+
+  int32_t NumSlices() const override { return 2; }
+  int32_t SliceId() const override { return 0; }
+  absl::flat_hash_map<int32_t, int32_t> NumDevicesPerSlice() const override {
+    return {{0, 4}, {1, 4}};
+  }
+  std::string Serialize() const override { return serialized_; }
+
+ private:
+  std::string serialized_;
+  bool* destroyed_;
+};
+
+TEST(CompileOptionsTest, MultiSliceConfigRCReferenceOwnershipAndAccessors) {
+  bool destroyed = false;
+  CompileOptions copy;
+  {
+    CompileOptions original;
+    original.set_multi_slice_config(
+        tsl::MakeRef<FakeMultiSliceConfig>("test_topology", &destroyed));
+    ASSERT_NE(original.get_multi_slice_config(), nullptr);
+    EXPECT_EQ(original.multi_slice_config.get(),
+              original.get_multi_slice_config());
+    EXPECT_TRUE(original.get_multi_slice_config()->IsUnique());
+
+    copy = original;
+    EXPECT_FALSE(original.get_multi_slice_config()->IsUnique());
+  }
+
+  EXPECT_FALSE(destroyed);
+  ASSERT_NE(copy.get_multi_slice_config(), nullptr);
+  EXPECT_EQ(copy.multi_slice_config.get(), copy.get_multi_slice_config());
+  EXPECT_TRUE(copy.get_multi_slice_config()->IsUnique());
+  EXPECT_EQ(copy.get_multi_slice_config()->NumSlices(), 2);
+  EXPECT_EQ(copy.get_multi_slice_config()->Serialize(), "test_topology");
+
+  MultiSliceConfigRef extra_ref = tsl::FormRef(copy.get_multi_slice_config());
+  EXPECT_FALSE(copy.get_multi_slice_config()->IsUnique());
+
+  ASSERT_OK_AND_ASSIGN(CompileOptionsProto proto, copy.ToProto());
+  EXPECT_EQ(proto.serialized_multi_slice_config(), "test_topology");
+
+  copy.set_multi_slice_config({});
+  EXPECT_EQ(copy.get_multi_slice_config(), nullptr);
+  EXPECT_EQ(copy.multi_slice_config, nullptr);
+  EXPECT_FALSE(destroyed);
+
+  extra_ref.reset();
+  EXPECT_TRUE(destroyed);
 }
 
 TEST(ExecuteOptionsTest, Serialization) {

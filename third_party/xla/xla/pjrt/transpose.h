@@ -44,6 +44,8 @@ limitations under the License.
 
 namespace xla {
 
+struct TransposeOp;
+
 class TransposePlan {
  public:
   // elem_size_in_bytes: size of each element in bytes.
@@ -151,11 +153,19 @@ class TransposePlan {
 
     ChunkContiguity chunk_contiguity = ChunkContiguity::kNone;
 
+    // If set, sets the padding bytes in the tiled output buffer to this value.
+    // When `dest_bits_per_element` is set, the low `dest_bits_per_element` bits
+    // are repeated for each padded sub-byte element and any unused high bits in
+    // the final byte. Zero-element transposes remain a no-op.
+    std::optional<uint8_t> tile_padding = std::nullopt;
+
     // DEPRECATED: Use input_tiling or input_striding instead.
     // This field is only present for backward compatibility.
     // TODO(phawkins): remove me.
     std::optional<std::variant<Tiling, Striding>> input_layout = std::nullopt;
   };
+
+  struct Plan;
 
   static absl::StatusOr<std::unique_ptr<TransposePlan>> Create(Options options);
 
@@ -168,7 +178,7 @@ class TransposePlan {
   // Currently there are no alignment requirements on either `a` or `b`. However
   // performance may be better if either or both are aligned.
   void Execute(const void* a, void* b,
-               std::optional<absl::FunctionRef<void(std::function<void(void)>)>>
+               std::optional<absl::FunctionRef<void(std::function<void()>)>>
                    schedule_work = std::nullopt) const;
 
   // Executes a single chunk of the transposition. To perform a complete
@@ -220,13 +230,11 @@ class TransposePlan {
   absl::Span<int64_t const> InputStrides() const { return original_a_strides_; }
 
   // Returns the number of items of parallel work in the plan.
-  int Parallelism() const { return nodes_.size(); }
+  int Parallelism() const { return chunk_ops_.size(); }
 
   bool inner_kernel_is_memcpy() const {
     return inner_kernel_kind_ == InnerKernelKind::kMemcpy;
   }
-
-  struct Node;
 
  protected:
   // Methods protected so they can be accessed by tests.
@@ -304,10 +312,12 @@ class TransposePlan {
   }
 
  private:
+  struct ChunkPlanBuilder;
+
   // Performs plan initialization.
   absl::Status Initialize();
 
-  void BuildPlanNodes(int chunk_id, std::vector<Node>& nodes);
+  Plan BuildChunkPlan(int chunk_id) const;
 
   // Chooses a parallelism for each loop. Returns the number of separate chunks
   // in the plan, and populates the `parallelism` field of each loop.
@@ -327,13 +337,6 @@ class TransposePlan {
       std::vector<int64_t>& output_chunk_iteration_offsets);
 
   void ComputeChunkSizes();
-
-  // The signature of ExecuteTyped uses char* pointers because we perform
-  // address calculations with strides in bytes; the strides need not be
-  // multiples of the element size.
-  template <typename T, Transformation transformation>
-  void ExecuteTyped(const char* a, char* b, absl::Span<Node const> nodes,
-                    int bits_per_element) const;
 
   void ExecuteChunkInternal(int chunk_id, const void* a, void* b,
                             bool input_is_global, bool output_is_global) const;
@@ -409,9 +412,8 @@ class TransposePlan {
   int64_t max_input_chunk_size_bytes_ = 0;
   int64_t max_output_chunk_size_bytes_ = 0;
 
-  // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
-  // nest. The outer vector is indexed on the thread ID.
-  absl::InlinedVector<std::vector<Node>, 1> nodes_;
+  // Flattened preorder plan ops per chunk (indexed by chunk_id).
+  absl::InlinedVector<std::vector<TransposeOp>, 1> chunk_ops_;
 
   // Which kernel handles the innermost (stride-1) dimensions.
   InnerKernelKind inner_kernel_kind_ = InnerKernelKind::kDefault;
@@ -443,8 +445,10 @@ class TransposePlan {
   bool use_fallback_pack_ = false;
 
   ChunkContiguity chunk_contiguity_ = ChunkContiguity::kNone;
+  std::optional<uint8_t> tile_padding_ = std::nullopt;
 
-  // Size of the per-thread scratch buffer. 0 means "no scratch buffer required"
+  // Maximum per-chunk scratch buffer size in bytes (64-byte aligned). 0 means
+  // no scratch buffer is required.
   int64_t scratch_size_ = 0;
 };
 
@@ -462,6 +466,7 @@ struct TransposePlanCacheKey {
   std::optional<int> dest_bits_per_element;
   int num_threads;
   TransposePlan::ChunkContiguity chunk_contiguity;
+  std::optional<uint8_t> tile_padding;
 
   bool operator==(const TransposePlanCacheKey& other) const;
 };

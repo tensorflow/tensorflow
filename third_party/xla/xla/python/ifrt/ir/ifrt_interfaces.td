@@ -22,7 +22,8 @@ include "mlir/IR/OpBase.td"
 // Op interfaces
 //===---------------------------------------------------------------------------
 
-// Verifies op used in a FuncOp with `ifrt.function` attr.
+// Verifies that the op is directly nested in a `FuncOp` with `ifrt.function` or
+// `ifrt.reshard_function` attr.
 def NestedInIfrtFunc : NativeOpTrait<"xla::ifrt::NestedInIfrtFuncTrait">;
 
 // Verifies callee is a valid symbol ref to callee_op_type.
@@ -30,6 +31,214 @@ def NestedInIfrtFunc : NativeOpTrait<"xla::ifrt::NestedInIfrtFuncTrait">;
 // Concrete type must have a SymbolRefAttr named `callee`.
 class IfrtCallLike<string callee_op_type>
     : ParamNativeOpTrait<"xla::ifrt::IfrtCallLikeTrait", callee_op_type>;
+
+class Ifrt_OpInterface<string name, list<Interface> baseInterfaces = []>
+    : OpInterface<name, baseInterfaces> {
+  let cppNamespace = "::xla::ifrt";
+}
+
+def Ifrt_ControlOpInterface : Ifrt_OpInterface<"IfrtControlOpInterface"> {
+  let description = [{
+    Interface for IFRT operations with variadic control inputs and a single
+    control output.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Returns the control input operands.",
+      /*retTy=*/"::mlir::Operation::operand_range",
+      /*methodName=*/"getControlInputs"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the mutable control input operands.",
+      /*retTy=*/"::mlir::MutableOperandRange",
+      /*methodName=*/"getControlInputsMutable"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the control output result.",
+      /*retTy=*/"::mlir::TypedValue<::xla::ifrt::IfrtControlType>",
+      /*methodName=*/"getControlOutput"
+    >,
+  ];
+}
+
+def Ifrt_ArrayOpInterface
+    : Ifrt_OpInterface<"IfrtArrayOpInterface", [Ifrt_ControlOpInterface]> {
+  let description = [{
+    Interface for IFRT operations with variadic array inputs/outputs, variadic
+    control inputs, and a single control output.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Returns the array input operands.",
+      /*retTy=*/"::mlir::Operation::operand_range",
+      /*methodName=*/"getInputs"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the mutable array input operands.",
+      /*retTy=*/"::mlir::MutableOperandRange",
+      /*methodName=*/"getInputsMutable"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the array output results.",
+      /*retTy=*/"::mlir::Operation::result_range",
+      /*methodName=*/"getOutputs"
+    >,
+  ];
+}
+
+def Ifrt_PairwiseArrayOpInterface
+    : Ifrt_OpInterface<"IfrtPairwiseArrayOpInterface",
+                       [Ifrt_ArrayOpInterface]> {
+  let description = [{
+    Interface for IFRT operations whose array inputs map pairwise to array
+    outputs (`inputs[i]` -> `outputs[i]`). Verified operations have at least one
+    input array (`!getInputs().empty()`) and equal numbers of input and output
+    arrays (`getInputs().size() == getOutputs().size()`).
+  }];
+
+  let verify = [{
+    return ::xla::ifrt::detail::VerifyPairwiseArrayOp($_op);
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Returns whether the input arrays are donated.",
+      /*retTy=*/"bool",
+      /*methodName=*/"getDonated"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the pairwise input operand corresponding to array output `out`.",
+      /*retTy=*/"::mlir::Value",
+      /*methodName=*/"getInputForOutput",
+      /*args=*/(ins "::mlir::OpResult":$out),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        assert(out.getOwner() == $_op.getOperation() &&
+               out.getResultNumber() < $_op.getInputs().size());
+        return $_op.getInputs()[out.getResultNumber()];
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Clones the op at `rewriter`'s current insertion point with `loc`,
+        `inputs`, `output_types`, and `control_inputs`, preserving op
+        properties and discardable attributes.
+      }],
+      /*retTy=*/"::xla::ifrt::IfrtPairwiseArrayOpInterface",
+      /*methodName=*/"cloneWithNewInputsAndOutputs",
+      /*args=*/(ins
+        "::mlir::RewriterBase&":$rewriter,
+        "::mlir::Location":$loc,
+        "::mlir::ValueRange":$inputs,
+        "::mlir::TypeRange":$output_types,
+        "::mlir::ValueRange":$control_inputs
+      ),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return ::xla::ifrt::detail::ClonePairwiseArrayOpWithNewInputsAndOutputs(
+            $_op, rewriter, loc, inputs, output_types, control_inputs);
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Clones the op keeping only `(inputs[i], outputs[i])` where `keep[i]` is
+        true. Returns nullptr if `keep.none()`.
+      }],
+      /*retTy=*/"::xla::ifrt::IfrtPairwiseArrayOpInterface",
+      /*methodName=*/"cloneWithKeptOutputs",
+      /*args=*/(ins
+        "::mlir::RewriterBase&":$rewriter,
+        "const ::llvm::BitVector&":$keep
+      ),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return ::xla::ifrt::detail::ClonePairwiseArrayOpWithKeptOutputs(
+            $_op, rewriter, keep);
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Replaces the op keeping only `(inputs[i], outputs[i])` where `keep[i]`
+        is true. If `keep.none()`, forwards `control_inputs` to users of
+        `control_output`, erases the op, and returns nullptr.
+      }],
+      /*retTy=*/"::xla::ifrt::IfrtPairwiseArrayOpInterface",
+      /*methodName=*/"replaceWithKeptOutputs",
+      /*args=*/(ins
+        "::mlir::RewriterBase&":$rewriter,
+        "const ::llvm::BitVector&":$keep
+      ),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return ::xla::ifrt::detail::ReplacePairwiseArrayOpWithKeptOutputs(
+            $_op, rewriter, keep);
+      }]
+    >,
+  ];
+}
+
+def Ifrt_CallOpInterface
+    : Ifrt_OpInterface<"IfrtCallOpInterface", [Ifrt_ArrayOpInterface]> {
+  let description = [{
+    Interface for IFRT call operations (`ifrt.Call` and
+    `ifrt.CallLoadedExecutable`) sharing callee references, `io_aliases`,
+    `donated_input_indices`, and argument/result attribute dictionaries.
+    Verified operations have valid `io_aliases` and `donated_input_indices`
+    (in-bounds, unique, and compatible dtypes and per-shard shapes), and when
+    present, `arg_attrs` and `res_attrs` match `getInputs().size()` and
+    `getOutputs().size()`, respectively.
+  }];
+
+  let verify = [{
+    return ::xla::ifrt::detail::VerifyCallOp($_op);
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Returns the callee `SymbolRefAttr`.",
+      /*retTy=*/"::mlir::SymbolRefAttr",
+      /*methodName=*/"getCalleeAttr"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Sets the callee `SymbolRefAttr`.",
+      /*retTy=*/"void",
+      /*methodName=*/"setCalleeAttr",
+      /*args=*/(ins "::mlir::SymbolRefAttr":$attr)
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the raw `io_aliases` array attribute.",
+      /*retTy=*/"::mlir::ArrayAttr",
+      /*methodName=*/"getIoAliases"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the donated input indices.",
+      /*retTy=*/"::llvm::ArrayRef<int32_t>",
+      /*methodName=*/"getDonatedInputIndices"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the optional per-argument dictionary array attribute.",
+      /*retTy=*/"::mlir::ArrayAttr",
+      /*methodName=*/"getArgAttrsAttr"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the optional per-result dictionary array attribute.",
+      /*retTy=*/"::mlir::ArrayAttr",
+      /*methodName=*/"getResAttrsAttr"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the parsed `(input_index, output_index)` `IoAlias` pairs.",
+      /*retTy=*/"::llvm::SmallVector<::xla::ifrt::IoAlias, 4>",
+      /*methodName=*/"getIoAliasPairs",
+      /*args=*/(ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return ::xla::ifrt::GetIoAliases($_op.getIoAliases());
+      }]
+    >,
+  ];
+}
 
 //===---------------------------------------------------------------------------
 // Attribute interfaces

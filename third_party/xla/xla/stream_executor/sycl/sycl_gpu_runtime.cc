@@ -719,7 +719,7 @@ absl::StatusOr<void*> SyclMallocDevice(int device_ordinal, size_t byte_count) {
                    SyclStreamPool::GetDefaultStream(device_ordinal));
   try {
     // Use the default stream to allocate memory
-    void* ptr = ::sycl::aligned_alloc_device(/*alignment=*/64, byte_count,
+    void* ptr = ::sycl::aligned_alloc_device(kUsmAlignBytes, byte_count,
                                              *stream_handle);
     return ptr;
   } catch (const std::exception& e) {
@@ -740,8 +740,8 @@ absl::StatusOr<void*> SyclMallocHost(int device_ordinal, size_t byte_count) {
                    SyclStreamPool::GetDefaultStream(device_ordinal));
   try {
     // Use the default stream to allocate memory
-    void* ptr = ::sycl::aligned_alloc_host(/*alignment=*/64, byte_count,
-                                           *stream_handle);
+    void* ptr =
+        ::sycl::aligned_alloc_host(kUsmAlignBytes, byte_count, *stream_handle);
     return ptr;
   } catch (const std::exception& e) {
     return absl::InternalError(absl::StrCat(
@@ -761,7 +761,7 @@ absl::StatusOr<void*> SyclMallocShared(int device_ordinal, size_t byte_count) {
                    SyclStreamPool::GetDefaultStream(device_ordinal));
   try {
     // Use the default stream to allocate memory
-    void* ptr = ::sycl::aligned_alloc_shared(/*alignment=*/64, byte_count,
+    void* ptr = ::sycl::aligned_alloc_shared(kUsmAlignBytes, byte_count,
                                              *stream_handle);
     return ptr;
   } catch (const std::exception& e) {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -58,10 +59,24 @@ bool IsPowerOfTwo(int32_t x) { return x > 0 && (x & (x - 1)) == 0; }
 absl::Status ValidateInputs(const Tensor& indices_or_row_splits,
                             const Tensor& values, const Tensor& weights,
                             int sample_count) {
+  if (sample_count <= 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "sample_count must be positive. But got ", sample_count, "."));
+  }
+  if (indices_or_row_splits.dtype() != DataTypeToEnum<int32_t>::v()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("indices_or_row_splits must have dtype int32, got ",
+                     DataTypeString(indices_or_row_splits.dtype()), "."));
+  }
   if (values.dims() != 1) {
     return absl::InvalidArgumentError(
         absl::StrCat("Values input should have dimension 1. But got dimension ",
                      values.dims(), "."));
+  }
+  if (values.NumElements() > std::numeric_limits<int32_t>::max()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Values input element count exceeds int32 range: ",
+                     values.NumElements(), "."));
   }
   switch (weights.dims()) {
     case 0:
@@ -98,15 +113,47 @@ absl::Status ValidateInputs(const Tensor& indices_or_row_splits,
     // NOTE(mrry): Checking logic for SparseTensor inputs is in
     // `ComputeRowIdsBeforePadding()`, to avoid an extra traversal of the
     // indices matrix.
+    // Each value needs at least a 2-D coordinate (row, col) and one row per
+    // value. An empty SparseTensor has no coordinates to check.
+    if (indices_or_row_splits.dim_size(0) > 0 &&
+        indices_or_row_splits.dim_size(1) < 2) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid indices_or_row_splits input for SparseTensor, the second "
+          "dimension of the indices of "
+          "SparseTensor should be equal or greater than 2. But got ",
+          indices_or_row_splits.dim_size(1), "."));
+    }
+    if (indices_or_row_splits.dim_size(0) != values.NumElements()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Sparse tensor input should have indices rows number the same as "
+          "the values elements number. But got ",
+          indices_or_row_splits.dim_size(0), " rows for indices and ",
+          values.NumElements(), " elements for values."));
+    }
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {
     // Ragged tensor.
-    if (indices_or_row_splits.NumElements() != sample_count + 1) {
+    if (indices_or_row_splits.NumElements() !=
+        static_cast<int64_t>(sample_count) + 1) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Ragged tensor input should have row_splits elements number the same "
           "as the sample count + 1. But got ",
           indices_or_row_splits.NumElements(),
           " elements for row_splits and sample count as ", sample_count, "."));
+    }
+    const int32_t* row_splits = indices_or_row_splits.flat<int32_t>().data();
+    if (row_splits[0] != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Ragged tensor input should have row_splits starting with 0. But "
+          "got ",
+          row_splits[0], "."));
+    }
+    if (row_splits[sample_count] != values.NumElements()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Ragged tensor input should have row_splits ending with the values "
+          "elements number. But got ",
+          row_splits[sample_count], " for the last row_split and ",
+          values.NumElements(), " elements for values."));
     }
   } else {
     return absl::InvalidArgumentError(
@@ -122,30 +169,70 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
                                         const int32_t sample_count,
                                         int32_t* row_ids_before_padding,
                                         std::vector<int> shape_strides) {
+  if (total_id_count < 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "total_id_count must be non-negative. But got ", total_id_count, "."));
+  }
+  if (sample_count <= 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "sample_count must be positive. But got ", sample_count, "."));
+  }
+  if (total_id_count > 0 && row_ids_before_padding == nullptr) {
+    return absl::InvalidArgumentError(
+        "row_ids_before_padding must be non-null when total_id_count > 0.");
+  }
+  if (indices_or_row_splits.dtype() != DataTypeToEnum<int32_t>::v()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("indices_or_row_splits must have dtype int32, got ",
+                     DataTypeString(indices_or_row_splits.dtype()), "."));
+  }
   // The only difference between dense tensor, sparse tensor and ragged tensor
   // is the row ids output.
-  if (indices_or_row_splits.NumElements() == 0) {
-    // Dense tensor to COO format.
-    // Row ids are just the index ids.
-    // Note: this path is also taken when the input is a ragged/sparse tensor
-    // with 0 elements. In that case, the row_ids will just be empty as well.
+  if (indices_or_row_splits.dims() == 1 &&
+      indices_or_row_splits.NumElements() == 0) {
+    // Dense tensor to COO format (including an empty 1-D dense tensor).
+    // Row ids are just the index ids. Empty sparse tensors take the 2-D
+    // branch below, and ragged tensors have sample_count + 1 row_splits.
+    if (total_id_count != 0 && total_id_count != sample_count) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Dense tensor input should have values elements number the same as "
+          "the sample count. But got ",
+          total_id_count, " elements for values and sample count as ",
+          sample_count, "."));
+    }
     for (int32_t i = 0; i < total_id_count; ++i) {
       *(row_ids_before_padding + i) = i;
     }
-  } else if (indices_or_row_splits.dims() == 2 &&
-             indices_or_row_splits.NumElements() > 0) {
+  } else if (indices_or_row_splits.dims() == 2) {
     // Sparse tensor to COO format.
     // TODO(pineapplejuice233): should we support arbitrary rank of sparse tensor and
     // convert it to 2D?
     // For 2D sparse tensor, as we always combine on the last dimension.
     // The row ids are just the sample ids which is the first dim of the
     // indices.
+    if (indices_or_row_splits.dim_size(0) != total_id_count) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Sparse tensor input should have indices rows number the same as "
+          "the values elements number. But got ",
+          indices_or_row_splits.dim_size(0), " rows for indices and ",
+          total_id_count, " elements for values."));
+    }
+    if (total_id_count == 0) {
+      // An empty SparseTensor has no row ids to compute, whatever its rank.
+      return absl::OkStatus();
+    }
     auto indices_matrix = indices_or_row_splits.matrix<int32_t>();
     // TODO(b/432045101): remove this once the bug is fixed.
     if (indices_matrix.dimension(1) == 2) {
       int32_t previous_row_id = -1;
       for (int32_t i = 0; i < total_id_count; ++i) {
         int32_t current_row_id = indices_matrix(i, 0);
+        if (current_row_id < 0) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid indices_or_row_splits input, indices of SparseTensor "
+              "contained a negative row_id ",
+              current_row_id, "."));
+        }
         if (current_row_id < previous_row_id) {
           return absl::InvalidArgumentError(
               "Invalid indices_or_row_splits input, indices of SparseTensor "
@@ -173,12 +260,34 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
             "Invalid shape_strides input, expected non-empty shape_strides for "
             "SparseTensor with rank > 2.");
       }
+      const int64_t rank = indices_matrix.dimension(1) - 1;
+      for (int64_t j = 0; j < rank; ++j) {
+        if (shape_strides[j] < 0) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid shape_strides input, stride at index ", j,
+              " must be non-negative, but got ", shape_strides[j], "."));
+        }
+      }
       int32_t previous_row_id = -1;
-      int32_t rank = indices_matrix.dimension(1) - 1;
       for (int32_t i = 0; i < total_id_count; ++i) {
-        int32_t current_row_id = 0;
-        for (int32_t j = 0; j < indices_matrix.dimension(1) - 1; ++j) {
-          current_row_id += indices_matrix(i, rank - j - 1) * shape_strides[j];
+        int64_t current_row_id = 0;
+        for (int64_t j = 0; j < rank; ++j) {
+          const int32_t coordinate = indices_matrix(i, rank - j - 1);
+          if (coordinate < 0) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Invalid indices_or_row_splits input, indices of SparseTensor "
+                "contained a negative coordinate ",
+                coordinate, "."));
+          }
+          const int64_t contribution =
+              static_cast<int64_t>(coordinate) * shape_strides[j];
+          if (current_row_id >
+              std::numeric_limits<int32_t>::max() - contribution) {
+            return absl::InvalidArgumentError(
+                "Invalid indices_or_row_splits input, computed SparseTensor "
+                "row_id exceeds the int32 range.");
+          }
+          current_row_id += contribution;
         }
         if (current_row_id < previous_row_id) {
           return absl::InvalidArgumentError(
@@ -192,8 +301,8 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
               current_row_id, " that was >= the sample count (", sample_count,
               ")."));
         }
-        *(row_ids_before_padding + i) = current_row_id;
-        previous_row_id = current_row_id;
+        *(row_ids_before_padding + i) = static_cast<int32_t>(current_row_id);
+        previous_row_id = static_cast<int32_t>(current_row_id);
       }
     } else {
       return absl::InvalidArgumentError(absl::StrCat(
@@ -205,14 +314,39 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {
     // Ragged tensor to COO format.
-    const int32_t* indices_or_row_splits_ptr =
-        indices_or_row_splits.flat<int32_t>().data();
-    int32_t current_row_id = -1;
-    for (int32_t i = 0; i < total_id_count; ++i) {
-      while (i == *(indices_or_row_splits_ptr + 1 + current_row_id)) {
-        current_row_id += 1;
+    if (indices_or_row_splits.NumElements() !=
+        static_cast<int64_t>(sample_count) + 1) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Ragged tensor input should have row_splits elements number the same "
+          "as the sample count + 1. But got ",
+          indices_or_row_splits.NumElements(),
+          " elements for row_splits and sample count as ", sample_count, "."));
+    }
+    const int32_t* row_splits = indices_or_row_splits.flat<int32_t>().data();
+    if (row_splits[0] != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Ragged tensor input should have row_splits starting with 0. But "
+          "got ",
+          row_splits[0], "."));
+    }
+    if (row_splits[sample_count] != total_id_count) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Ragged tensor input should have row_splits ending with the values "
+          "elements number. But got ",
+          row_splits[sample_count], " for the last row_split and ",
+          total_id_count, " elements for values."));
+    }
+    for (int32_t row = 0; row < sample_count; ++row) {
+      const int32_t row_start = row_splits[row];
+      const int32_t row_end = row_splits[row + 1];
+      if (row_end < row_start || row_end > total_id_count) {
+        return absl::InvalidArgumentError(
+            "Invalid indices_or_row_splits input, ragged row_splits must be "
+            "sorted in ascending (non-decreasing) order.");
       }
-      *(row_ids_before_padding + i) = current_row_id;
+      for (int32_t i = row_start; i < row_end; ++i) {
+        row_ids_before_padding[i] = row;
+      }
     }
   } else {
     return absl::InvalidArgumentError(

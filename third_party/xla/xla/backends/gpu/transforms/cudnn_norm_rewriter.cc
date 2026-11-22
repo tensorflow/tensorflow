@@ -937,6 +937,19 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
         return absl::OkStatus();
       }
 
+      // The operand of the reduction can differ from the input by degenerate
+      // dimensions. As the dimensions of the reduction are applied to the input
+      // below, verify that they describe the same dimensions of the input.
+      const Shape& x_shape = x.instr()->shape();
+      if (absl::c_any_of(norm_dims,
+                         [&](int64_t norm_dim) {
+                           return norm_dim >= x_shape.dimensions().size();
+                         }) ||
+          AdjustedDimensions(x_shape, norm_dims) != norm_dims_adjusted) {
+        VLOG(1) << "Layer norm reduction dimensions not supported.";
+        return absl::OkStatus();
+      }
+
       // Verify the broadcasts of scale and bias.
       if (!ShapeUtil::EqualIgnoringElementType(
               ShapeUtil::DropDegenerateDimensions(reduce->operand(0)->shape()),

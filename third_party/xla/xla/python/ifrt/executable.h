@@ -142,6 +142,11 @@ struct ExecuteOptions {
   // an invalid future.
   bool fill_status = false;
 
+  // If true, populate `ExecuteResult::recovery_future`. Otherwise, the recovery
+  // future is left as an invalid future. Runtimes that do not support donation
+  // recovery must return `absl::UnimplementedError` when this is true.
+  bool fill_recovery_future = false;
+
   // Execution stream ID identifies the series of executions that must be
   // executed in program order.  Executions with different execution stream IDs
   // may be executed in any order and concurrently.
@@ -274,6 +279,12 @@ class LoadedExecutable : public RTTIExtends<LoadedExecutable, RTTIRoot> {
     tsl::Future<> status;
     // Output arrays.
     std::vector<ArrayRef> outputs;
+    // Future resolving to vector of size args.size():
+    // - Success: empty vector.
+    // - Recoverable failure: ArrayRef at donated indices, nullptr at others.
+    // - Unrecoverable failure: non-OK status.
+    // Filled only if `ExecuteOptions::fill_recovery_future` is true.
+    tsl::Future<std::vector<ArrayRef>> recovery_future;
     // Handle that can be passed to `CancelExecution` to perform best-effort
     // cancellation of the enqueued execution. May be `nullptr` in which case
     // cancellation will be ignored.
@@ -296,6 +307,7 @@ class LoadedExecutable : public RTTIExtends<LoadedExecutable, RTTIRoot> {
     // cancellation will be ignored.
     CancellationHandle cancellation_handle;
   };
+
   // Executes the executable on devices.
   //
   // The runtime expects input arrays to be present on the execution devices.

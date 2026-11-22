@@ -134,8 +134,15 @@ func.func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 }
 
 // CHECK-LABEL: func @real_div
-func.func @real_div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = mhlo.divide %arg0, %arg0 : tensor<2xi32>
+func.func @real_div(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-NEXT:  %0 = mhlo.divide %arg0, %arg0 : tensor<2xf32>
+  %0 = "tf.RealDiv"(%arg0, %arg0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0: tensor<2xf32>
+}
+
+// CHECK-LABEL: func @real_div_int
+func.func @real_div_int(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK-NEXT:  %0 = "tf.RealDiv"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   %0 = "tf.RealDiv"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   func.return %0: tensor<2xi32>
 }

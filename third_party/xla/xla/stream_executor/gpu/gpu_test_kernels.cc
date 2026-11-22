@@ -132,7 +132,7 @@ KernelLoaderSpec GetTmaPtxKernelSpec() {
   // test configuration:
   // m_1024_n_1024_k_512_dtype_float16_bm_128_bn_128_bk_32_gm_8
   // autotuner config:
-  // --xla_gpu_override_gemm_autotuner='16 block_n: 16 block_k: 128
+  // --xla_gpu_override_triton_config='16 block_n: 16 block_k: 128
   // num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true '
   static constexpr absl::string_view kTmaKernelPtx = R"(
 .version 8.2

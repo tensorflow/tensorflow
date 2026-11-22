@@ -334,5 +334,48 @@ TEST_F(HloQueryTest, IsCollectiveCommunicationOpCollectiveReduce) {
   EXPECT_TRUE(hlo_query::IsCollectiveCommunicationOp(cr->opcode()));
 }
 
+TEST_F(HloQueryTest, IsScaledAndIsSparseConvolution) {
+  constexpr absl::string_view kHloString = R"(
+  HloModule test
+
+  ENTRY entry {
+    lhs = f8e4m3fn[16,256] parameter(0)
+    rhs = f8e4m3fn[256,128] parameter(1)
+    lhs_scale = f8e8m0fnu[16,16] parameter(2)
+    rhs_scale = f8e8m0fnu[16,128] parameter(3)
+    sparse_rhs = f8e4m3fn[64,128] parameter(4)
+    idx = u8[64,128] parameter(5)
+    dense = f32[16,128] convolution(lhs, rhs), dim_labels=bf_io->bf
+    lhs_scaled = f32[16,128] convolution(lhs, rhs, lhs_scale),
+      dim_labels=bf_io->bf,
+      block_scaling_config={lhs={strides=0x128 steps=0x8 scale_idx=2}}
+    rhs_scaled = f32[16,128] convolution(lhs, rhs, rhs_scale),
+      dim_labels=bf_io->bf,
+      block_scaling_config={rhs={strides=128x0 steps=8x0 scale_idx=2}}
+    sparse = f32[16,128] convolution(lhs, sparse_rhs, idx),
+      dim_labels=bf_io->bf,
+      sparsity_config={rhs={sparsity=1x4 dimension=0 idx=2}}
+    ROOT tuple = (f32[16,128], f32[16,128], f32[16,128], f32[16,128])
+      tuple(dense, lhs_scaled, rhs_scaled, sparse)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloString));
+  HloComputation* entry = module->entry_computation();
+  auto get = [&](absl::string_view name) -> const HloInstruction& {
+    return *entry->GetInstructionWithName(name);
+  };
+
+  EXPECT_FALSE(hlo_query::IsScaledConvolution(get("dense")));
+  EXPECT_TRUE(hlo_query::IsScaledConvolution(get("lhs_scaled")));
+  EXPECT_TRUE(hlo_query::IsScaledConvolution(get("rhs_scaled")));
+  EXPECT_FALSE(hlo_query::IsScaledConvolution(get("sparse")));
+  EXPECT_FALSE(hlo_query::IsScaledConvolution(get("tuple")));
+
+  EXPECT_FALSE(hlo_query::IsSparseConvolution(get("dense")));
+  EXPECT_FALSE(hlo_query::IsSparseConvolution(get("lhs_scaled")));
+  EXPECT_TRUE(hlo_query::IsSparseConvolution(get("sparse")));
+  EXPECT_FALSE(hlo_query::IsSparseConvolution(get("tuple")));
+}
+
 }  // namespace
 }  // namespace xla

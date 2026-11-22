@@ -1854,23 +1854,22 @@ absl::Status GcsFileSystem::GetChildrenBounded(
     ABSL_RETURN_IF_ERROR(CreateHttpRequest(&request));
     auto uri = absl::StrCat(kGcsUriBase, "b/", bucket, "/o");
     if (recursive) {
-      uri = absl::StrCat(uri, "?fields=items%2Fname%2CnextPageToken");
+      absl::StrAppend(&uri, "?fields=items%2Fname%2CnextPageToken");
     } else {
       // Set "/" as a delimiter to ask GCS to treat subfolders as children
       // and return them in "prefixes".
-      uri =
-          absl::StrCat(uri, "?fields=items%2Fname%2Cprefixes%2CnextPageToken");
-      uri = absl::StrCat(uri, "&delimiter=%2F");
+      absl::StrAppend(&uri, "?fields=items%2Fname%2Cprefixes%2CnextPageToken");
+      absl::StrAppend(&uri, "&delimiter=%2F");
     }
     if (!object_prefix.empty()) {
-      uri = absl::StrCat(uri, "&prefix=", request->EscapeString(object_prefix));
+      absl::StrAppend(&uri, "&prefix=", request->EscapeString(object_prefix));
     }
     if (!nextPageToken.empty()) {
-      uri = absl::StrCat(uri,
-                         "&pageToken=", request->EscapeString(nextPageToken));
+      absl::StrAppend(&uri,
+                      "&pageToken=", request->EscapeString(nextPageToken));
     }
     if (max_results - retrieved_results < kGetChildrenDefaultPageSize) {
-      uri = absl::StrCat(uri, "&maxResults=", max_results - retrieved_results);
+      absl::StrAppend(&uri, "&maxResults=", max_results - retrieved_results);
     }
     request->SetUri(uri);
     request->SetResultBuffer(&output_buffer);

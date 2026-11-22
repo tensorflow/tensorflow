@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_dump/hlo_dump_utils.h"
+#include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_isolation/hlo_isolation_api.h"
 #include "xla/tsl/platform/env.h"
@@ -587,10 +589,21 @@ class DelegatingRunner : public HloRunnerInterface {
   HloRunnerInterface* delegate_;
   bool last_run_hlo_passes_ = false;
   int last_hlo_output_callbacks_size_ = -1;
+  absl::flat_hash_map<std::string, std::vector<HloOpcode>> scheduled_opcodes_;
 
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override {
     last_run_hlo_passes_ = run_hlo_passes;
+    if (module->has_schedule()) {
+      std::vector<HloOpcode>& opcodes = scheduled_opcodes_[module->name()];
+      opcodes.clear();
+      for (const HloInstruction* inst :
+           module->schedule()
+               .sequence(module->entry_computation())
+               .instructions()) {
+        opcodes.push_back(inst->opcode());
+      }
+    }
     return delegate_->CreateExecutable(std::move(module), run_hlo_passes);
   }
 
@@ -1065,6 +1078,8 @@ ENTRY main {
 
     EXPECT_FALSE(expected_literals->contains("add"));
     EXPECT_EQ(test_result.numeric_checks_size(), 0);
+    ASSERT_EQ(test_result.verified_instructions_size(), 1);
+    EXPECT_EQ(test_result.verified_instructions(0), "add");
   }
 
   // 2. Mismatch: differing literal records numeric check failure and evicts
@@ -1099,6 +1114,7 @@ ENTRY main {
     ASSERT_EQ(test_result.numeric_checks_size(), 1);
     EXPECT_EQ(test_result.numeric_checks(0).name(), "FusionDebugger:add");
     EXPECT_TRUE(test_result.numeric_checks(0).has_top_mismatch());
+    EXPECT_EQ(test_result.verified_instructions_size(), 0);
   }
 
   // 3. Incompatible Shape: logs warning and returns early without recording
@@ -1124,6 +1140,7 @@ ENTRY main {
     }
 
     EXPECT_EQ(test_result.numeric_checks_size(), 0);
+    EXPECT_EQ(test_result.verified_instructions_size(), 0);
   }
 
   // 4. Edge cases: missing key, null map, empty/null literals
@@ -1469,6 +1486,143 @@ ENTRY %fusion.660 (parameter.0: bf16[2], parameter.1: bf16[2], parameter.2: bf16
   }
   ASSERT_OK_AND_ASSIGN(Literal output, Execute(std::move(module), arg_ptrs));
   EXPECT_FALSE(LiteralContainsInfOrNan(output));
+}
+
+TEST_F(HloIsolationTest, RunAndVerifySparseCoreGatherAndInPlaceScatter) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule SparseCoreEndToEndModule
+
+gather_program {
+  table = f32[8,4]{1,0} parameter(0)
+  indices = s32[2,1]{1,0} parameter(1)
+  ROOT gathered = f32[2,4]{1,0} gather(table, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,4}
+}, execution_thread="sparsecore"
+
+gather_wrapped {
+  table = f32[8,4]{1,0} parameter(0)
+  indices = s32[2,1]{1,0} parameter(1)
+  ROOT caller = f32[2,4]{1,0} custom-call(table, indices), custom_call_target="TODO(embedded_program)", called_computations={gather_program}
+}, execution_thread="sparsecore"
+
+dus_wrapped {
+  dst = f32[2,4]{1,0} parameter(0)
+  upd = f32[1,4]{1,0} parameter(1)
+  c0 = s32[] constant(0)
+  ROOT updated = f32[2,4]{1,0} dynamic-update-slice(dst, upd, c0, c0)
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  table = f32[8,4]{1,0} parameter(0)
+  indices = s32[2,1]{1,0} parameter(1)
+  upd = f32[1,4]{1,0} parameter(2)
+  scaled = f32[8,4]{1,0} multiply(table, table)
+  gather_start = ((f32[8,4]{1,0}, s32[2,1]{1,0}), f32[2,4]{1,0}) async-start(scaled, indices), async_execution_thread="sparsecore", calls=gather_wrapped
+  gather_done = f32[2,4]{1,0} async-done(gather_start)
+  dus_start = ((), (), (f32[2,4]{1,0})) async-start(), async_execution_thread="sparsecore", calls=dus_wrapped
+  dus_update = ((f32[2,4]{1,0}, f32[1,4]{1,0}), f32[2,4]{1,0}, (f32[2,4]{1,0})) async-update(dus_start, gather_done, upd)
+  ROOT dus_done = f32[2,4]{1,0} async-done(dus_update)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloString));
+  RunAndVerifyIsolationTest(*module);
+
+  DelegatingRunner test_runner(&this->test_runner());
+  ASSERT_OK_AND_ASSIGN(std::vector<HloIsolationTestResult> results,
+                       RunIsolationPipeline(*module, &test_runner,
+                                            &this->reference_runner(), {}));
+  ASSERT_EQ(results.size(), 3);
+  EXPECT_EQ(
+      test_runner.scheduled_opcodes_["dus_done"],
+      (std::vector<HloOpcode>{HloOpcode::kParameter, HloOpcode::kParameter,
+                              HloOpcode::kAsyncStart, HloOpcode::kAsyncUpdate,
+                              HloOpcode::kAsyncDone}));
+  absl::flat_hash_map<std::string, HloIsolationTestResult> by_name;
+  for (const HloIsolationTestResult& r : results) {
+    by_name[r.module_name()] = r;
+  }
+  ASSERT_TRUE(by_name.contains("scaled"));
+  EXPECT_EQ(by_name["scaled"].state(), State::SUCCESS);
+  ASSERT_TRUE(by_name.contains("gather_done"));
+  EXPECT_EQ(by_name["gather_done"].state(), State::SUCCESS);
+  EXPECT_EQ(by_name["gather_done"].reason(), "STAGE_2_INTERPRETER_SUCCESS");
+  ASSERT_TRUE(by_name.contains("dus_done"));
+  EXPECT_EQ(by_name["dus_done"].state(), State::SUCCESS);
+  EXPECT_EQ(by_name["dus_done"].reason(), "STAGE_2_INTERPRETER_SUCCESS");
+}
+
+TEST_F(HloIsolationTest, SparseCoreSkipReasonsInPipeline) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule SparseCoreSkipModule
+
+routing_wrapped {
+  x = f32[4]{0} parameter(0)
+  ROOT b = f32[4]{0} bitcast(x)
+}, execution_thread="sparsecore"
+
+rng_wrapped {
+  x = f32[4]{0} parameter(0)
+  c0 = f32[] constant(0)
+  c1 = f32[] constant(1)
+  r = f32[4]{0} rng(c0, c1), distribution=rng_uniform
+  ROOT sum = f32[4]{0} add(x, r)
+}, execution_thread="sparsecore"
+
+mosaic_wrapped {
+  x = f32[4]{0} parameter(0)
+  ROOT k = f32[4]{0} custom-call(x), custom_call_target="tpu_custom_call"
+}, execution_thread="sparsecore"
+
+custom_wrapped {
+  x = f32[4]{0} parameter(0)
+  ROOT k = f32[4]{0} custom-call(x), custom_call_target="UnknownOp"
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  x = f32[4]{0} parameter(0)
+  start_routing = ((f32[4]{0}), f32[4]{0}) async-start(x), async_execution_thread="sparsecore", calls=routing_wrapped
+  routing_done = f32[4]{0} async-done(start_routing)
+  start_rng = ((f32[4]{0}), f32[4]{0}) async-start(x), async_execution_thread="sparsecore", calls=rng_wrapped
+  rng_done = f32[4]{0} async-done(start_rng)
+  start_mosaic = ((f32[4]{0}), f32[4]{0}) async-start(x), async_execution_thread="sparsecore", calls=mosaic_wrapped
+  mosaic_done = f32[4]{0} async-done(start_mosaic)
+  start_custom = ((f32[4]{0}), f32[4]{0}) async-start(x), async_execution_thread="sparsecore", calls=custom_wrapped
+  custom_done = f32[4]{0} async-done(start_custom)
+  ROOT root = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(routing_done, rng_done, mosaic_done, custom_done)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+
+  DelegatingRunner test_runner(&this->test_runner());
+  PipelineIsolationOptions options;
+  options.module_options.run_module_fn =
+      [&test_runner](
+          std::unique_ptr<HloModule> m, HloRunnerInterface* runner,
+          absl::Span<const Literal> input_data,
+          const RunModuleOptions& run_opts) -> absl::StatusOr<Literal> {
+    if (runner == &test_runner && m->name() == "custom_done") {
+      return LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f});
+    }
+    return RunModule(std::move(m), runner, input_data, run_opts);
+  };
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<HloIsolationTestResult> results,
+      RunIsolationPipeline(*module, &test_runner, &this->reference_runner(),
+                           options));
+  absl::flat_hash_map<std::string, HloIsolationTestResult> by_name;
+  for (const HloIsolationTestResult& r : results) {
+    by_name[r.module_name()] = r;
+  }
+  ASSERT_EQ(by_name.size(), 4);
+  EXPECT_EQ(by_name["routing_done"].state(), State::SKIPPED);
+  EXPECT_EQ(by_name["routing_done"].reason(), "NO_WORK_IN_SPARSECORE_OFFLOAD");
+  EXPECT_EQ(by_name["rng_done"].state(), State::SKIPPED);
+  EXPECT_EQ(by_name["rng_done"].reason(), "CONTAINS_RNG");
+  EXPECT_EQ(by_name["mosaic_done"].state(), State::SKIPPED);
+  EXPECT_EQ(by_name["mosaic_done"].reason(), "CONTAINS_MOSAIC_KERNEL");
+  EXPECT_EQ(by_name["custom_done"].state(), State::SKIPPED);
+  EXPECT_EQ(by_name["custom_done"].reason(), "REFERENCE_UNIMPLEMENTED");
 }
 
 }  // namespace

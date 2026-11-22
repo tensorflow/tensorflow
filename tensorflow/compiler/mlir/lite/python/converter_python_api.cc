@@ -36,11 +36,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/python/converter_flags_to_v2_options.h"
 #include "tensorflow/compiler/mlir/lite/python/flatbuffer_to_mlir.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/python/mlir_bytecode_to_tflite.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
@@ -585,7 +587,7 @@ PyObject* ConvertMlirBytecode(PyObject* converter_flags_proto_txt_raw,
   }
 
   absl::Status status = tensorflow::internal::ConvertMlirBytecodeToTFLite(
-      converter_flags, model_dir, output_file_path);
+      ToConverterV2Options(converter_flags), model_dir, output_file_path);
 
   if (!status.ok()) {
     PyErr_SetString(PyExc_Exception, absl::StatusMessageAsCStr(status));

@@ -229,11 +229,12 @@ cc_library(
         "//xla:autotune_cache_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla:status_macros",
+        "//xla/backends/gpu/autotuner:autotuner_status_key",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:dump",
-        "//xla/service/gpu/autotuning:autotuner_status_key",
         "//xla/tools:hlo_decomposer_lib",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:env",
@@ -508,6 +509,7 @@ cc_library(
     hdrs = ["config_runner.h"],
     deps = [
         ":autotuning_proto_cc",
+        ":backends_proto_cc",
         ":codegen_backend",
         ":codegen_orchestrator",
         ":profiler",
@@ -532,6 +534,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:any_cc_proto",
     ],
 )
@@ -541,6 +544,7 @@ xla_cc_test(
     srcs = ["config_runner_test.cc"],
     deps = [
         ":autotuning_proto_cc",
+        ":backends_proto_cc",
         ":config_runner",
         ":mock_codegen_backend",
         ":profiler",

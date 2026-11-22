@@ -22,16 +22,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -116,6 +119,7 @@ class GpuCodegenBackend : public CodegenBackend {
       instruction_to_tune = hlo_module->entry_computation()->root_instruction();
     }
     ABSL_RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
+    ABSL_RETURN_IF_ERROR(ClearDynamicSliceConfigs(*hlo_module));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
     AdjustDebugOptionsForAutotuning(
@@ -132,6 +136,31 @@ class GpuCodegenBackend : public CodegenBackend {
 
   bool CanProduceWrongResults() const override { return false; }
 
+  // Clears all `DynamicSliceConfig`s in `module`. Extracted autotuning modules
+  // have no enclosing while loop and synthetic offset operands, so slice
+  // offsets must be computed from the operands.
+  static absl::Status ClearDynamicSliceConfigs(HloModule& module) {
+    for (HloComputation* computation : module.computations()) {
+      for (HloInstruction* instr : computation->instructions()) {
+        if (instr->opcode() != HloOpcode::kDynamicSlice &&
+            instr->opcode() != HloOpcode::kDynamicUpdateSlice) {
+          continue;
+        }
+        if (!instr->has_backend_config()) {
+          continue;
+        }
+        ABSL_ASSIGN_OR_RETURN(GpuBackendConfig backend_config,
+                         instr->backend_config<GpuBackendConfig>());
+        if (!backend_config.has_dynamic_slice_config()) {
+          continue;
+        }
+        backend_config.clear_dynamic_slice_config();
+        ABSL_RETURN_IF_ERROR(instr->set_backend_config(backend_config));
+      }
+    }
+    return absl::OkStatus();
+  }
+
   static void AdjustDebugOptionsForAutotuning(DebugOptions& debug_options) {
     debug_options.set_xla_enable_dumping(false);
     debug_options.set_xla_gpu_dump_llvmir(false);
@@ -142,6 +171,11 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.clear_xla_gpu_enable_command_buffer();
     // Avoid using async dot as we don't want to measure event overheads.
     debug_options.set_xla_gpu_async_dot(false);
+    // Extracted autotuning modules are single instructions, so skip latency
+    // hiding and cost-model stats collection instead of rebuilding the SoL
+    // latency estimator for every candidate.
+    debug_options.set_xla_gpu_enable_latency_hiding_scheduler(false);
+    debug_options.set_xla_gpu_collect_cost_model_stats(false);
     debug_options.set_xla_embed_ir_in_executable(false);
     debug_options.set_xla_gpu_kernel_cache_file("");
     debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
@@ -151,8 +185,10 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_executable_embed_debug_info(false);
     // Avoid dumping compilation steps.
     debug_options.set_xla_gpu_dump_autotune_results_to("");
+    debug_options.set_xla_dump_autotune_cache_to("");
     debug_options.set_xla_gpu_load_autotune_results_from("");
-    debug_options.set_xla_gpu_dump_autotune_logs_to("");
+    debug_options.set_xla_load_autotune_cache_from("");
+    debug_options.set_xla_dump_autotune_logs_to("");
     debug_options.clear_xla_run_hlo_passes_starting_from();
   }
 

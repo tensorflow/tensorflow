@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_GRPC_DISPATCHER_IMPL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_GRPC_DISPATCHER_IMPL_H_
 
+#include <string>
+
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_impl.h"
@@ -40,6 +42,8 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   size_t NumActiveIterations();
 
   DispatcherStateExport ExportState() const;
+
+  DataServiceDispatcherImpl& impl() { return impl_; }
 
 #define HANDLER(method)                                 \
   ::grpc::Status method(::grpc::ServerContext* context, \
@@ -67,6 +71,7 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
 
  private:
   DataServiceDispatcherImpl impl_;
+  const std::string protocol_;
 
   GrpcDispatcherImpl(const GrpcDispatcherImpl&) = delete;
   void operator=(const GrpcDispatcherImpl&) = delete;

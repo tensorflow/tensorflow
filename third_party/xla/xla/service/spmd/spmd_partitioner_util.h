@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -170,6 +171,16 @@ inline HloInstruction* CreateLastWithType(PrimitiveType type, T* b) {
 // Create a binary add computation of the given type and add to the module.
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module);
 
+// Bitcasts `x` to `t` when its element type differs, allowing zeroless
+// floating point types such as F8E8M0FNU to use U8 zero masked AllReduce sums.
+inline HloInstruction* BitcastTo(SpmdBuilder* b, HloInstruction* x,
+                                 PrimitiveType t) {
+  return x->shape().element_type() == t
+             ? x
+             : b->AddInstruction(HloInstruction::CreateBitcastConvert(
+                   ShapeUtil::ChangeElementType(x->shape(), t), x));
+}
+
 // Returns true if the shape can be evenly partitioned for the given sharding.
 // All tile sharded dimensions should be evenly divisible and there should be no
 // single-device sharding. Replicate sharding is considered even partition.
@@ -201,10 +212,30 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
                                           const HloSharding& sharding,
                                           int64_t partition_id);
 
+// Returns S64 if any dimension in `dimensions` is >= INT32_MAX, otherwise S32.
+inline PrimitiveType GetOffsetType(absl::Span<const int64_t> dimensions) {
+  return absl::c_any_of(dimensions,
+                        [](int64_t dim) {
+                          return dim >= std::numeric_limits<int32_t>::max();
+                        })
+             ? S64
+             : S32;
+}
+
+inline PrimitiveType GetOffsetType(const Shape& shape) {
+  return GetOffsetType(shape.dimensions());
+}
+
 // Generates the HLO instructions that represent the dimension offsets on any
 // device. The size of the returned vector is the rank of the given shape.
 // If `dims` is non-empty, the generated offsets will only be non-zero for those
 // dimensions.
+// If `offset_type` is not specified, it is inferred from `shape` via
+// `GetOffsetType(shape)`.
+std::vector<HloInstruction*> MakePartitionOffsets(
+    const Shape& shape, const HloSharding& sharding,
+    HloInstruction* partition_id, SpmdBuilder* b, PrimitiveType offset_type,
+    absl::Span<const int64_t> dims = {});
 std::vector<HloInstruction*> MakePartitionOffsets(
     const Shape& shape, const HloSharding& sharding,
     HloInstruction* partition_id, SpmdBuilder* b,
@@ -242,6 +273,11 @@ HloInstruction* PadToShape(HloInstruction* hlo, const Shape& padded_shape, T* b,
 // Returns the padded shape when combining all partitions.
 Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
                                           const HloSharding& sharding);
+
+inline PrimitiveType GetOffsetType(const Shape& shape,
+                                   const HloSharding& sharding) {
+  return GetOffsetType(GetPaddedShapeForUnevenPartitioning(shape, sharding));
+}
 
 // Pads the HLO (with base shape) for uneven tiled partition to make it evenly
 // partitionable.
@@ -458,10 +494,14 @@ HloSharding AlignShardingOnDims(const HloSharding& sharding,
                                 const HloSharding& reference,
                                 absl::Span<const int64_t> reference_dims);
 
-// AlignShardingOnDims only if it doesn't change the sharding when ungrouped.
+// Aligns device groups with `reference` only if all groups share a single
+// within group device permutation. When `ignore_group_order` is false, group
+// order must also match `reference` (preserving the ungrouped sharding); when
+// true, groups may be reordered if each matches a `reference` group.
 std::optional<hlo_sharding_util::GroupedSharding> AlignGroupsWithIfCompatible(
     hlo_sharding_util::GroupedSharding grouped_sharding,
-    const hlo_sharding_util::GroupedSharding& reference);
+    const hlo_sharding_util::GroupedSharding& reference,
+    bool ignore_group_order = false);
 
 // Returns the per-group base shape, i.e., before applying the in-group
 // sharding.

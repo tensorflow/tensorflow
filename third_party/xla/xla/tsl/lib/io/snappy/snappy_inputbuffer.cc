@@ -48,6 +48,10 @@ SnappyInputBuffer::SnappyInputBuffer(
 
 absl::Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read,
                                            tstring* result) {
+  if (bytes_to_read < 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't read a negative number of bytes: ", bytes_to_read));
+  }
   result->clear();
   result->resize_uninitialized(bytes_to_read);
 
@@ -128,7 +132,12 @@ absl::Status SnappyInputBuffer::Inflate() {
   DCHECK_EQ(avail_out_, 0);
 
   // Output buffer must be large enough to fit the uncompressed block.
-  DCHECK_GE(output_buffer_capacity_, uncompressed_length);
+  if (uncompressed_length > output_buffer_capacity_) {
+    return absl::ResourceExhaustedError(
+        absl::StrCat("Output buffer(size: ", output_buffer_capacity_,
+                     " bytes) too small. Should be larger than ",
+                     uncompressed_length, " bytes."));
+  }
   next_out_ = output_buffer_.get();
 
   bool status = port::Snappy_Uncompress(next_in_, compressed_block_length,

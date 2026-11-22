@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
 
 namespace xla {
@@ -139,7 +140,8 @@ absl::StatusOr<bool> ReshapeReshapeForwarding(HloInstruction* reshape) {
     return false;
   }
 
-  if (!Shape::Equal()(reshape->shape(), reshape_2->operand(0)->shape())) {
+  if (!Shape::Equal().IgnoreLayout()(reshape->shape(),
+                                     reshape_2->operand(0)->shape())) {
     return false;
   }
   ABSL_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(reshape_2->mutable_operand(0)));
@@ -153,7 +155,7 @@ absl::StatusOr<bool> IdentityConvertRemoving(HloInstruction* convert) {
     return false;
   }
   auto operand = convert->mutable_operand(0);
-  if (Shape::Equal()(convert->shape(), operand->shape())) {
+  if (Shape::Equal().IgnoreLayout()(convert->shape(), operand->shape())) {
     ABSL_RETURN_IF_ERROR(convert->ReplaceAllUsesWith(operand));
     return true;
   }
@@ -166,7 +168,7 @@ absl::StatusOr<bool> IdentityReshapeRemoving(HloInstruction* reshape) {
     return false;
   }
   auto operand = reshape->mutable_operand(0);
-  if (Shape::Equal()(reshape->shape(), operand->shape())) {
+  if (Shape::Equal().IgnoreLayout()(reshape->shape(), operand->shape())) {
     ABSL_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(operand));
     return true;
   }

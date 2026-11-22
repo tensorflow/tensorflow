@@ -30,7 +30,6 @@ func.func @test_bytecode_customizations(
                  #mhlo<comparison_type FLOAT>,
                  #mhlo<fft_type RFFT>,
                  #mhlo<fusion_kind kCustom>,
-                 #mhlo<kind sharding>,
                  #mhlo<precision DEFAULT>,
                  #mhlo<transpose NO_TRANSPOSE>],
   channel = #mhlo.channel_handle<handle = 0, type = 0>,

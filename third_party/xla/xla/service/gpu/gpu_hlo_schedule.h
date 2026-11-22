@@ -23,18 +23,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/service/gpu/alias_info.h"
-#include "xla/service/latency_hiding_scheduler.h"
+#include "xla/hlo/transforms/hlo_scheduling/latency_hiding_scheduler.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 namespace gpu {
-
-inline constexpr absl::string_view kFingerprintBeforeLHS =
-    "fingerprint_before_lhs";
 
 // Converts sync collective instructions to a pair of async start and done
 // instructions.

@@ -16,20 +16,29 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/python/pjrt_ifrt/xla_sharding_spec.h"
+#include "xla/python/pjrt_ifrt/xla_sharding_spec.pb.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 using ShardingSpecSerDesTestParam = std::tuple<SerDesVersion, int>;
 
@@ -58,6 +67,131 @@ TEST_P(ShardingSpecSerDesTest, HloShardingSpecRoundTrip) {
   ASSERT_NE(deserialized_spec, nullptr);
   EXPECT_EQ(deserialized_spec->num_shards(), num_shards());
   EXPECT_EQ(deserialized_spec->xla_hlo_sharding(), xla_hlo_sharding);
+}
+
+TEST_P(ShardingSpecSerDesTest, RejectZeroOrNegativeNumShards) {
+  HloShardingSpecProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  proto.set_num_shards(0);
+  *proto.mutable_xla_op_sharding() = xla::HloSharding::Replicate().ToProto();
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloShardingSpec");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires at least 1 shard")));
+}
+
+TEST_P(ShardingSpecSerDesTest, RejectOutOfRangeOrTupleShardingOnDeserialize) {
+  HloShardingSpecProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  proto.set_num_shards(num_shards());
+  xla::OpSharding* op_sharding = proto.mutable_xla_op_sharding();
+  op_sharding->set_type(xla::OpSharding::OTHER);
+  op_sharding->add_tile_assignment_dimensions(num_shards());
+  for (int i = 0; i < num_shards() - 1; ++i) {
+    op_sharding->add_tile_assignment_devices(i);
+  }
+  op_sharding->add_tile_assignment_devices(num_shards());
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloShardingSpec");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must be in [0,")));
+
+  op_sharding->Clear();
+  op_sharding->set_type(xla::OpSharding::TUPLE);
+  *op_sharding->add_tuple_shardings() = xla::HloSharding::Replicate().ToProto();
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support tuple sharding")));
+}
+
+TEST_P(ShardingSpecSerDesTest, RejectHloShardingV3Deserialization) {
+  HloShardingSpecProto v3_proto;
+  v3_proto.set_version_number(SerDesVersionNumber(0).value());
+  v3_proto.set_num_shards(num_shards());
+  v3_proto.mutable_xla_op_sharding()->mutable_named_sharding();
+  Serialized v3_wrapper;
+  v3_wrapper.set_type_name("xla::ifrt::HloShardingSpec");
+  v3_wrapper.set_data(v3_proto.SerializeAsString());
+  EXPECT_THAT(
+      Deserialize<HloShardingSpec>(v3_wrapper, /*options=*/nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("XLA HloShardingV3 format is not supported for "
+                         "deserialization")));
+
+  HloShardingSpecProto tuple_v3_proto;
+  tuple_v3_proto.set_version_number(SerDesVersionNumber(0).value());
+  tuple_v3_proto.set_num_shards(num_shards());
+  tuple_v3_proto.mutable_xla_op_sharding()->set_type(xla::OpSharding::TUPLE);
+  tuple_v3_proto.mutable_xla_op_sharding()
+      ->add_tuple_shardings()
+      ->mutable_named_sharding();
+  v3_wrapper.set_data(tuple_v3_proto.SerializeAsString());
+  EXPECT_THAT(
+      Deserialize<HloShardingSpec>(v3_wrapper, /*options=*/nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("XLA HloShardingV3 format is not supported for "
+                         "deserialization")));
+}
+
+TEST_P(ShardingSpecSerDesTest,
+       RejectUnknownAndShardGroupShardingsOnDeserialize) {
+  HloShardingSpecProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  proto.set_num_shards(num_shards());
+  *proto.mutable_xla_op_sharding() = xla::HloSharding::Unknown().ToProto();
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloShardingSpec");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support unknown sharding")));
+
+  xla::OpSharding* negative_shard_group_op = proto.mutable_xla_op_sharding();
+  negative_shard_group_op->Clear();
+  negative_shard_group_op->set_type(xla::OpSharding::REPLICATED);
+  negative_shard_group_op->set_is_shard_group(true);
+  negative_shard_group_op->set_shard_group_id(-1);
+  negative_shard_group_op->set_shard_group_type(xla::OpSharding::AS);
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support shard-group sharding")));
+
+  xla::HloSharding shard_group = xla::HloSharding::Replicate();
+  shard_group.SetShardGroup(xla::HloSharding::ShardAs(/*shard_group_id=*/0));
+  *proto.mutable_xla_op_sharding() = shard_group.ToProto();
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support shard-group sharding")));
+}
+
+TEST_P(ShardingSpecSerDesTest, RejectNegativeSingleDeviceOnDeserialize) {
+  HloShardingSpecProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  proto.set_num_shards(num_shards());
+  xla::OpSharding* op = proto.mutable_xla_op_sharding();
+  op->set_type(xla::OpSharding::MAXIMAL);
+  op->add_tile_assignment_devices(-1);
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloShardingSpec");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(
+      Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("SingleDevice index -1 must be non-negative")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

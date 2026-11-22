@@ -23,6 +23,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/rocm/rocm_vmm_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
@@ -34,8 +35,12 @@ class RocmRawMemoryAllocation : public MemoryAllocation {
  public:
   // Creates a physical memory allocation of at least `size` bytes using
   // hipMemCreate. StreamExecutor is used only for context activation.
+  //
+  // `options` must match the reservation this allocation is mapped into: the
+  // handle type feeds the granularity the two are padded to.
   static absl::StatusOr<std::unique_ptr<RocmRawMemoryAllocation>> Create(
-      StreamExecutor* executor, uint64_t size);
+      StreamExecutor* executor, uint64_t size,
+      const RocmVmmAllocator::Options& options = {});
 
   // Returns a DeviceAddressBase whose opaque() holds the raw
   // hipMemGenericAllocationHandle_t cast to void*, and size() is the

@@ -25,6 +25,30 @@ index e3f1ec8..373e52d 100644
  
  #include "cudnn_frontend_ConvDesc.h"
  #include "cudnn_frontend_Heuristics.h"
+diff --git a/include/cudnn_frontend_Heuristics.h b/include/cudnn_frontend_Heuristics.h
+index 06b4ecc..9dd893a 100644
+--- a/include/cudnn_frontend_Heuristics.h
++++ b/include/cudnn_frontend_Heuristics.h
+@@ -271,15 +271,12 @@ class EngineHeuristicsBuilder_v8 {
+         }
+ #endif
+ 
+-        if (m_heuristics.mode == CUDNN_HEUR_MODE_B) {
+-            EngineHeuristics_v8::get_heur_b_mutex().lock();
+-        }
+-
+         // Finalizing the descriptor
+-        status = detail::finalize(m_heuristics.pointer->get_backend_descriptor());
+-
+         if (m_heuristics.mode == CUDNN_HEUR_MODE_B) {
+-            EngineHeuristics_v8::get_heur_b_mutex().unlock();
++            std::lock_guard<std::mutex> lock(EngineHeuristics_v8::get_heur_b_mutex());
++            status = detail::finalize(m_heuristics.pointer->get_backend_descriptor());
++        } else {
++            status = detail::finalize(m_heuristics.pointer->get_backend_descriptor());
+         }
+ 
+         if (status != CUDNN_STATUS_SUCCESS) {
 diff --git a/include/cudnn_frontend/backend/backend_descriptor.h b/include/cudnn_frontend/backend/backend_descriptor.h
 index 47387a1..3864c1d 100644
 --- a/include/cudnn_frontend/backend/backend_descriptor.h

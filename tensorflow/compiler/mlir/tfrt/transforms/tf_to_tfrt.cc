@@ -954,8 +954,8 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
       return mlir::failure();
     }
 
-    auto callee =
-        op.getCallableForCallee().template dyn_cast<mlir::SymbolRefAttr>();
+    auto callee = llvm::dyn_cast_if_present<mlir::SymbolRefAttr>(
+        op.getCallableForCallee());
     if (!callee) return failure();
 
     llvm::SmallVector<mlir::Value, 4> new_operands;

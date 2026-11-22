@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -30,7 +31,7 @@ namespace ifrt {
 // tsl::RCReference<T>. This forwarding facilitates using tsl::RCReference<T>
 // with Abseil containers and logging.
 template <typename T>
-class RCReferenceWrapper {
+class ABSL_NULLABILITY_COMPATIBLE RCReferenceWrapper {
  public:
   using element_type = T;  // cf. `unique_ptr::element_type`
 

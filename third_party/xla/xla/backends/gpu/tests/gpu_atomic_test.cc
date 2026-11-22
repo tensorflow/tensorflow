@@ -46,7 +46,10 @@ TEST_F(GpuAtomicTest, TestStore) {
     }
 )";
 
-  ASSERT_OK(CompileAndVerifyIr(hlo_string, R"(
+  ASSERT_OK(CompileAndVerifyIr(hlo_string, IsBuiltWithRocm() ? R"(
+CHECK: store atomic{{.*}}syncscope("agent-one-as") monotonic, align 4
+)"
+                                                             : R"(
 CHECK: store atomic{{.*}}unordered, align 4
 )"));
 }
@@ -74,7 +77,7 @@ TEST_F(GpuAtomicTest, TestStoreNoAtomic) {
 )";
 
   ASSERT_OK(CompileAndVerifyIr(hlo_string, R"(
-CHECK-NOT: store atomic{{.*}}unordered, align 4
+CHECK-NOT: store atomic
 )"));
 }
 
@@ -218,6 +221,66 @@ CHECK: atomicrmw fadd ptr %[[ADDR:.*]], double %[[VALUE:.*]] syncscope("agent-on
 )"
                                                              : R"(
 CHECK: atomicrmw fadd ptr %[[ADDR:.*]], double %[[VALUE:.*]] monotonic{{.*}}!atomic.ignore.denormal.mode
+)"));
+}
+
+// complex<f32> only has the ABI alignment of f32, so the 64 bit atomic word
+// relies on the alignment of the kernel argument that holds the operand.
+TEST_F(GpuAtomicTest, TestStoreC64) {
+  const char* hlo_string = R"(
+    HloModule TensorFlowScatterV1
+
+    update_c64 (lhs: c64[], rhs: c64[]) -> c64[] {
+      lhs = c64[] parameter(0)
+      ROOT rhs = c64[] parameter(1)
+    }
+
+    ENTRY main {
+      operand = c64[3,3] parameter(0)
+      indices = s32[2] parameter(1)
+      updates = c64[2,3] parameter(2)
+      ROOT scatter = c64[3,3] scatter(operand, indices, updates),
+          to_apply=update_c64,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1, unique_indices=false
+    }
+)";
+
+  ASSERT_OK(CompileAndVerifyIr(hlo_string, IsBuiltWithRocm() ? R"(
+CHECK: store atomic i64 {{.*}}syncscope("agent-one-as") monotonic, align 8
+)"
+                                                             : R"(
+CHECK: store atomic i64 {{.*}}unordered, align 8
+)"));
+}
+
+TEST_F(GpuAtomicTest, TestAddAtomicC64) {
+  const char* hlo_string = R"(
+    HloModule TensorFlowScatterV1
+
+    update_c64 (lhs: c64[], rhs: c64[]) -> c64[] {
+      lhs = c64[] parameter(0)
+      rhs = c64[] parameter(1)
+      ROOT add = c64[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      operand = c64[3,3] parameter(0)
+      indices = s32[2] parameter(1)
+      updates = c64[2,3] parameter(2)
+      ROOT scatter = c64[3,3] scatter(operand, indices, updates),
+          to_apply=update_c64,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1, unique_indices=false
+    }
+)";
+
+  ASSERT_OK(CompileAndVerifyIr(hlo_string, R"(
+CHECK: cmpxchg ptr %[[ADDR:.*]], i64 %[[OLD:.*]], i64 %[[NEW:.*]] monotonic monotonic
 )"));
 }
 

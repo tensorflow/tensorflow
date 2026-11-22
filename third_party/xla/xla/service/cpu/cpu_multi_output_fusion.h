@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/multi_output_fusion.h"
+#include "xla/hlo/transforms/multi_output_fusion.h"
 
 namespace xla::cpu {
 

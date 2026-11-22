@@ -30,10 +30,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
-#include "xla/backends/gpu/transforms/fusion_wrapper.h"
-#include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/backends/gpu/autotuner/gpu_default_backend_policy.h"
+#include "xla/backends/gpu/cost_model/combined_gpu_performance_model.h"
+#include "xla/backends/gpu/cost_model/fusion_analysis_cache.h"
+#include "xla/backends/gpu/cost_model/gpu_hlo_cost_analysis.h"
+#include "xla/backends/gpu/cost_model/gpu_indexing_performance_model.h"
+#include "xla/backends/gpu/cost_model/gpu_performance_model_base.h"
+#include "xla/backends/gpu/transforms/fusion/fusion_wrapper.h"
+#include "xla/backends/gpu/transforms/fusion/priority_fusion.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -42,16 +49,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/mlir_context_pool.h"
-#include "xla/service/gpu/model/fusion_analysis_cache.h"
-#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
-#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/xla.pb.h"
 
@@ -236,6 +242,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
 
 absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
                                          const BackendConfig& config) {
+  if (!IsSupported(instr)) {
+    return absl::InvalidArgumentError(
+        "FissionBackend does not support this instruction.");
+  }
   HloModule* module = instr.GetModule();
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    GetFissionedAndRewrittenModule(instr));
@@ -275,19 +285,28 @@ absl::StatusOr<absl::Duration> FissionBackend::EstimateFissionPrologueEpilogue(
     std::unique_ptr<HloModule> fissioned_and_rewritten_module) const {
   ABSL_RETURN_IF_ERROR(RunPriorityFusion(fissioned_and_rewritten_module.get()));
 
+  const stream_executor::DeviceDescription& device_info =
+      target_config().device_description;
+
   // Wrap leftover instructions into fusions so that we can estimate them.
-  FusionWrapper fusion_wrapper(target_config().device_description);
+  FusionWrapper fusion_wrapper(device_info);
   ABSL_RETURN_IF_ERROR(
       fusion_wrapper.Run(fissioned_and_rewritten_module.get()).status());
 
+  HloCostAnalysis::Options cost_analysis_options;
+  cost_analysis_options.count_multiple_input_accesses = true;
+
+  GpuHloCostAnalysis cost_analysis(cost_analysis_options, device_info);
+  ABSL_RETURN_IF_ERROR(fissioned_and_rewritten_module->entry_computation()->Accept(
+      &cost_analysis));
+
   ABSL_ASSIGN_OR_RETURN(MlirContextPool::BorrowedObject mlir_context,
                    mlir_context_pool_->GetOrCreate());
-  const stream_executor::DeviceDescription& device_info =
-      target_config().device_description;
+
   HloFusionAnalysisCache fusion_analysis_cache{device_info};
-  GpuPerformanceModelWithIndexingAnalysis indexing_cost_model{
-      &device_info, &fusion_analysis_cache, HloCostAnalysis::DefaultShapeSize,
-      mlir_context->get(),
+  CombinedGpuPerformanceModel performance_model{
+      device_info, fusion_analysis_cache, **mlir_context,
+      HloCostAnalysis::DefaultShapeSize,
       /*enable_same_shape_multi_output_fusion=*/
       debug_options()
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion(),
@@ -307,30 +326,47 @@ absl::StatusOr<absl::Duration> FissionBackend::EstimateFissionPrologueEpilogue(
       VLOG(10) << "Skipping (not a fusion): " << instr->ToShortString();
       continue;
     }
-    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(instr);
-    ABSL_ASSIGN_OR_RETURN(
-        TiledRunTimeDataOrError tiled_data_or_decision,
-        indexing_cost_model.TryFindBestTilingForFusionAsync(*fusion_adaptor)
-            .Await());
-
-    if (const auto* tiled_data =
-            std::get_if<TiledRunTimeData>(&tiled_data_or_decision)) {
-      VLOG(10) << instr->ToShortString()
-               << " estimate: " << tiled_data->runtime_data.exec_time;
-      total_exec_time += tiled_data->runtime_data.exec_time +
-                         GpuPerformanceModelBase::kKernelLaunchOverhead;
-    } else {
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Failed to find valid tiling for fusion instruction ", instr->name(),
-          ": ", std::get<FusionDecision>(tiled_data_or_decision).Explain()));
+    // Fusions assigned to the block-level emitter by GetDefaultBackend are
+    // estimated with the tiled model; other fusions are estimated with
+    // EstimateRunTimeForInstruction.
+    std::optional<absl::Duration> exec_time;
+    if (GetDefaultBackend(*instr) == autotuner::Backend::BLOCK_LEVEL_EMITTER) {
+      std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
+          HloFusionAdaptor::ForInstruction(instr);
+      ABSL_ASSIGN_OR_RETURN(
+          TiledRunTimeDataOrError tiled_data,
+          performance_model.TryFindBestTilingForFusionAsync(*fusion_adaptor)
+              .Await());
+      if (const auto* tiled = std::get_if<TiledRunTimeData>(&tiled_data)) {
+        exec_time = tiled->runtime_data.exec_time;
+      }
     }
+    if (!exec_time.has_value()) {
+      ABSL_ASSIGN_OR_RETURN(EstimateRunTimeData runtime_data,
+                       performance_model.EstimateRunTimeForInstruction(
+                           instr, &cost_analysis));
+      exec_time = runtime_data.exec_time;
+    }
+    VLOG(10) << instr->ToShortString() << " estimate: " << *exec_time;
+    total_exec_time +=
+        *exec_time + GpuPerformanceModelBase::kKernelLaunchOverhead;
   }
 
   return total_exec_time;
 }
 
 bool FissionBackend::IsSupported(const HloInstruction& instr) {
-  return instr.opcode() == HloOpcode::kFusion;
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  if (hlo_query::ContainsInstrWithOpcode(instr.fused_instructions_computation(),
+                                         {HloOpcode::kScaledDot})) {
+    // The scale operands of a cuDNN scaled dot fusion are already padded and
+    // swizzled, so its computation is not a plain kScaledDot to rewrite.
+    return !IsCudnnFusion(instr);
+  }
+  // cuDNN fission only rewrites scaled dots.
+  return codegen_backend_->backend() != autotuner::Backend::CUDNN;
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>

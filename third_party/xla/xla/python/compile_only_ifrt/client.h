@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -46,6 +47,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -197,16 +200,19 @@ class CompileOnlyIfRtClient final
       std::optional<absl::Span<const int64_t>> byte_strides,
       xla::ifrt::ShardingRef sharding, xla::ifrt::LayoutRef layout,
       HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) override {
+      std::shared_ptr<const void> host_buffer_hold) override {
     return Unimplemented(
         "MakeArrayFromHostBuffer not available with compile-only client.");
   }
-  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
-  using xla::ifrt::Client::MakeArrayFromHostBuffer;
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics) override {
+    for (MakeArraysFromHostBufferShardsSpec& spec : specs) {
+      for (auto& [shard_indices, host_buffer] : spec.buffers) {
+        host_buffer.hold.reset();
+      }
+    }
     return Unimplemented(
         "MakeArraysFromHostBufferShards not available with compile-only "
         "client.");
@@ -279,6 +285,21 @@ class CompileOnlyIfRtClient final
       xla::ifrt::ArrayCopySemantics semantics) override {
     return Unimplemented(
         "ReshardArrays not available with compile-only client.");
+  }
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> CopyArraySlices(
+      absl::Span<const xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::IndexDomain> index_domains) override {
+    return Unimplemented(
+        "CopyArraySlices not available with compile-only client.");
+  }
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> UpdateArraySlices(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArrayRef> slices,
+      absl::Span<const xla::ifrt::Index> origins) override {
+    return Unimplemented(
+        "UpdateArraySlices not available with compile-only client.");
   }
 
   tsl::Future<> GetReadyFuture(
@@ -357,7 +378,7 @@ class CompileOnlyIfRtClient final
   }
 
   absl::StatusOr<ifrt::DeviceListRef> MakeDeviceList(
-      absl::Span<ifrt::Device* const> devices) const override {
+      absl::Span<ifrt::Device* absl_nonnull const> devices) const override {
     return ifrt::BasicDeviceList::Create(devices);
   }
 
@@ -365,7 +386,8 @@ class CompileOnlyIfRtClient final
 
   absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>> Load(
       absl::Span<const ifrt::ExecutableRef> executables,
-      absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) override {
+      absl::Span<absl_nonnull std::unique_ptr<ifrt::LoadOptions>> options)
+      override {
     return Unimplemented("Load not available with compile-only client.");
   }
 
@@ -379,7 +401,8 @@ class CompileOnlyIfRtClient final
   }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultPjRtLayout(
-      ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
+      ifrt::DType dtype, absl::Span<const int64_t> dims,
+      ifrt::Device* absl_nonnull device,
       ifrt::MemoryKind memory_kind) const override {
     if (memory_kind == ifrt::MemoryKind(UnpinnedHostMemorySpace::kKind)) {
       return std::make_shared<PjRtLayout>(
@@ -405,7 +428,7 @@ class CompileOnlyIfRtClient final
 
   absl::StatusOr<std::unique_ptr<ifrt::DeviceAttributeSubscription>>
   SubscribeToAttributeChanges(
-      absl::Span<ifrt::Device* const> devices,
+      absl::Span<ifrt::Device* absl_nonnull const> devices,
       std::optional<absl::Span<const std::string>> attribute_names,
       ifrt::OnDeviceAttributeChangeCallback callback) override {
     return Unimplemented(

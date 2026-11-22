@@ -60,6 +60,10 @@ ABSL_FLAG(int32_t, num_executions, 1,
 ABSL_FLAG(bool, aot_compiled_execution, false,
           "If true, when running the benchmark, the HLO will be compiled AOT.");
 
+ABSL_FLAG(bool, use_real_time, false,
+          "If true, use wall time instead of process CPU time to determine "
+          "the number of benchmark iterations.");
+
 ABSL_FLAG(std::string, xla_flags, "", "Flags to append to XLA_FLAGS");
 
 namespace xla::cpu {
@@ -147,18 +151,26 @@ void BM_CompileHloModule(benchmark::State& state, absl::string_view hlo_path) {
 
 void RegisterBenchmarks() {
   std::vector<std::string> hlo_paths = absl::GetFlag(FLAGS_hlo_paths);
+  bool use_real_time = absl::GetFlag(FLAGS_use_real_time);
 
   for (const std::string& path : hlo_paths) {
-    benchmark::RegisterBenchmark(
-        absl::StrCat("BM_HloModule/", tsl::io::BasenamePrefix(path)),
-        BM_HloModule, path)
-        ->MeasureProcessCPUTime();
+    auto* bm = benchmark::RegisterBenchmark(
+                   absl::StrCat("BM_HloModule/", tsl::io::BasenamePrefix(path)),
+                   BM_HloModule, path)
+                   ->MeasureProcessCPUTime();
+    if (use_real_time) {
+      bm->UseRealTime();
+    }
   }
   for (const std::string& path : hlo_paths) {
-    benchmark::RegisterBenchmark(
-        absl::StrCat("BM_CompileHloModule/", tsl::io::BasenamePrefix(path)),
-        BM_CompileHloModule, path)
-        ->MeasureProcessCPUTime();
+    auto* bm =
+        benchmark::RegisterBenchmark(
+            absl::StrCat("BM_CompileHloModule/", tsl::io::BasenamePrefix(path)),
+            BM_CompileHloModule, path)
+            ->MeasureProcessCPUTime();
+    if (use_real_time) {
+      bm->UseRealTime();
+    }
   }
 }
 

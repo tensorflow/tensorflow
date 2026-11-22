@@ -801,6 +801,33 @@ TEST_F(DynamicDimensionInferenceTest, WhileTest) {
             nullptr);
 }
 
+TEST_F(DynamicDimensionInferenceTest, NonTupleWhileTest) {
+  // A while whose loop state is a bare array with a dynamic dimension is not
+  // supported; the inference must report that instead of crashing.
+  const char* hlo = R"(
+HloModule module
+
+body {
+  ROOT param = s32[<=4, 2] parameter(0)
+}
+
+condition {
+  param = s32[<=4, 2] parameter(0)
+  ROOT stop = pred[] constant(false)
+}
+
+ENTRY entry {
+  zero = s32[] constant(0)
+  input = s32[4, 2] parameter(0)
+  input_dynamic = s32[<=4, 2] set-dimension-size(input, zero), dimensions={0}
+  ROOT while = s32[<=4, 2] while(input_dynamic), body=body, condition=condition
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_EQ(RunInference().code(), absl::StatusCode::kUnimplemented);
+}
+
 TEST_F(DynamicDimensionInferenceTest, ConditionalInputTest) {
   // Test the ability to trace into conditional loops.
   auto builder = HloComputation::Builder(TestName());

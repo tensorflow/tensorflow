@@ -57,6 +57,9 @@ class WorkerThread {
     return !work_queue_.empty() || is_running_;
   }
 
+  // Returns true if the caller is currently running on this worker thread.
+  bool IsCurrentThread() const;
+
  private:
   bool WorkAvailable() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();

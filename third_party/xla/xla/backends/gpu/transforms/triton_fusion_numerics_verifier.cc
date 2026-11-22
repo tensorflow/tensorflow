@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
-#include "xla/backends/gpu/transforms/fusion_wrapper.h"
-#include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/backends/gpu/transforms/fusion/fusion_wrapper.h"
+#include "xla/backends/gpu/transforms/fusion/priority_fusion.h"
 #include "xla/backends/gpu/transforms/tree_reduction_rewriter.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -43,15 +43,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/call_inliner.h"
+#include "xla/hlo/transforms/simplifiers/hlo_cse.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/service/call_inliner.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -83,6 +83,12 @@ absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
       gpu_config.fusion_backend_config();
   if (backend_config.kind() == kTritonFusionKind ||
       backend_config.kind() == kTritonNestedGemmFusionKind) {
+    // The reference module is built by extracting the fused computation and
+    // re-fusing it, which leaves a bare kRaggedDot that no other emitter
+    // supports. Ragged-dot fusions therefore cannot be cross-checked here.
+    if (IsRaggedDotTritonFusion(*fusion)) {
+      return nullptr;
+    }
     return fusion;
   }
   return nullptr;
@@ -263,8 +269,8 @@ absl::Status TritonFusionNumericsVerifier::VerifyTritonFusion(
                        /*disable_triton=*/true, stream_executor_, allocator_,
                        alias_info_, mlir_context_));
 
-  auto status = profiler.CheckOutputBuffer(
-      triton_result, emitters_result, debug_opts.xla_gpu_autotune_gemm_rtol());
+  auto status = profiler.CheckOutputBuffer(triton_result, emitters_result,
+                                           debug_opts.xla_autotune_rtol());
   VLOG(2) << "CompareBuffers result: " << status;
   if (!status.ok()) {
     LOG(ERROR) << "Triton numerics verification failed with: "

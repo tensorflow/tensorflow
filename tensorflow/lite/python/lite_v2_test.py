@@ -194,8 +194,12 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
+  @parameterized.named_parameters(
+      ('RankReduction', '_experimental_rank_reduction'),
+      ('DeprecatedAlias', '_experimental_unsafe_single_batch_rank_reduction'),
+  )
   @test_util.run_v2_only
-  def testUnsafeSingleBatchRankReductionConcatReshapeInterleave(self):
+  def testRankReductionConcatReshapeInterleave(self, flag_attr):
     @tf.function(
         input_signature=[
             tf.TensorSpec(shape=[1, 2, 2, 4, 1], dtype=tf.float32),
@@ -212,7 +216,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func], root
     )
-    converter._experimental_unsafe_single_batch_rank_reduction = True
+    setattr(converter, flag_attr, True)
     tflite_model = converter.convert()
 
     a = tf.constant(
@@ -227,6 +231,123 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     my_signature = interp.get_signature_runner()
     actual_value = list(my_signature(a=a, b=b).values())[0]
     self.assertAllClose(expected_value.numpy(), actual_value)
+    # The values are the same whether or not the pass runs, so also check that
+    # it did: only the rank-5 model inputs are left above rank 4.
+    self.assertLessEqual(self._maxNonInputRank(interp), 4)
+
+  def _maxNonInputRank(self, interp):
+    """Returns the highest rank among the tensors that are not model inputs."""
+    input_indices = {d['index'] for d in interp.get_input_details()}
+    return max(
+        len(d['shape'])
+        for d in interp.get_tensor_details()
+        if d['index'] not in input_indices
+    )
+
+  @test_util.run_v2_only
+  def testRankReductionAndGpuCompatibilityFlagsAreSeparate(self):
+    root = self._getSimpleVariableModel()
+    concrete_func = root.f.get_concrete_function(
+        tf.TensorSpec(shape=[1], dtype=tf.float32)
+    )
+
+    def flags(**attrs):
+      converter = lite.TFLiteConverterV2.from_concrete_functions(
+          [concrete_func], root
+      )
+      for k, v in attrs.items():
+        setattr(converter, k, v)
+      return convert.build_conversion_flags(
+          **converter._get_base_converter_args()
+      )
+
+    off = flags()
+    self.assertFalse(off.rank_reduction)
+    self.assertFalse(off.unsafe_gpu_compatibility)
+
+    rank_only = flags(_experimental_rank_reduction=True)
+    self.assertTrue(rank_only.rank_reduction)
+    self.assertFalse(rank_only.unsafe_gpu_compatibility)
+
+    gpu_only = flags(_experimental_unsafe_gpu_compatibility=True)
+    self.assertFalse(gpu_only.rank_reduction)
+    self.assertTrue(gpu_only.unsafe_gpu_compatibility)
+
+    # The deprecated name keeps its old meaning: both passes.
+    legacy = flags(_experimental_unsafe_single_batch_rank_reduction=True)
+    self.assertTrue(legacy.rank_reduction)
+    self.assertTrue(legacy.unsafe_gpu_compatibility)
+
+  @parameterized.named_parameters(
+      ('NeitherFlag', {}, False, False),
+      (
+          'RankReductionOnly',
+          {'_experimental_rank_reduction': True},
+          True,
+          False,
+      ),
+      (
+          'GpuCompatibilityOnly',
+          {'_experimental_unsafe_gpu_compatibility': True},
+          False,
+          True,
+      ),
+      (
+          'DeprecatedAlias',
+          {'_experimental_unsafe_single_batch_rank_reduction': True},
+          True,
+          True,
+      ),
+  )
+  @test_util.run_v2_only
+  def testRankReductionAndGpuCompatibilityPassesRunSeparately(
+      self, converter_attrs, expect_rank_reduction, expect_gpu_compatibility
+  ):
+    # `interleaved` goes through a rank-5 concatenation, which only
+    # RankReductionPass brings down to rank 4. `broadcast` is a BROADCAST_TO,
+    # which only GpuCompatibilityPass rewrites into a TILE.
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=[1, 2, 2, 4, 1], dtype=tf.float32),
+            tf.TensorSpec(shape=[1, 2, 2, 4, 1], dtype=tf.float32),
+            tf.TensorSpec(shape=[1, 3], dtype=tf.float32),
+        ]
+    )
+    def func(a, b, c):
+      interleaved = tf.reshape(tf.concat([a, b], axis=4), [1, 2, 2, 8])
+      broadcast = tf.broadcast_to(c, [2, 3])
+      return interleaved, broadcast
+
+    root = autotrackable.AutoTrackable()
+    root.f = func
+    concrete_func = root.f.get_concrete_function()
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], root
+    )
+    for name, value in converter_attrs.items():
+      setattr(converter, name, value)
+    # Without the default delegates, so that the op list is the converter's.
+    interp = interpreter.Interpreter(
+        model_content=converter.convert(),
+        experimental_op_resolver_type=(
+            interpreter.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES
+        ),
+    )
+    interp.allocate_tensors()
+
+    max_rank = self._maxNonInputRank(interp)
+    if expect_rank_reduction:
+      self.assertLessEqual(max_rank, 4)
+    else:
+      self.assertEqual(max_rank, 5)
+
+    op_names = {op['op_name'] for op in interp._get_ops_details()}
+    if expect_gpu_compatibility:
+      self.assertIn('TILE', op_names)
+      self.assertNotIn('BROADCAST_TO', op_names)
+    else:
+      self.assertIn('BROADCAST_TO', op_names)
+      self.assertNotIn('TILE', op_names)
 
   @test_util.run_v2_only
   def testMultiFunctionModel(self):

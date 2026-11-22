@@ -158,8 +158,6 @@ void WriteClassDecl(const OpInfo& op_info, WritableFile* h) {
 
 void GetOutput(const OpInfo& op_info, std::string* out) {
   const std::string scope_str = op_info.arg_names[0];
-  std::string return_on_error =
-      absl::StrCat("if (!", scope_str, ".ok()) return;");
 
   absl::StrAppend(out, "  this->operation = Operation(ret);\n");
 

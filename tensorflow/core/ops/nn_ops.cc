@@ -820,7 +820,7 @@ REGISTER_OP("AvgPool3D")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: {half, bfloat16, float, double}")
-    .SetShapeFn(shape_inference::Pool3DShape);
+    .SetShapeFn(shape_inference::AvgPool3DShape);
 
 REGISTER_OP("AvgPool3DGrad")
     .Input("orig_input_shape: int32")

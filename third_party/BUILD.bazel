@@ -3,4 +3,8 @@ licenses(["notice"])  # Apache 2.0
 exports_files([
     "darts_clone.BUILD",
     "cppitertools.BUILD",
+    "google_cloud_cpp.patch",
+    "pybind11_abseil.patch",
+    "rules_android.patch",
+    "rules_closure.patch",
 ])

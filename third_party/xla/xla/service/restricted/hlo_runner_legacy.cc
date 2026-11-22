@@ -655,34 +655,34 @@ absl::StatusOr<std::vector<Literal>> HloRunnerLegacy::ExecuteReplicated(
           const std::vector<absl::Span<const ShapedBuffer* const>>&
               argument_buffer_slices)
           -> absl::StatusOr<std::vector<ScopedShapedBuffer>> {
-          absl::Mutex mutex;
-          std::vector<absl::StatusOr<ScopedShapedBuffer>> thread_results(
-              options.num_devices);
-          {
-            VLOG(1) << "Creating thread pool for " << options.num_devices
-                    << " replicas";
-            tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
-                                         options.num_devices);
-            for (int64_t i = 0; i < options.num_devices; ++i) {
-              pool.Schedule([&, i] {
-                auto result = executable->ExecuteOnStream(
-                    &service_run_options[i], argument_buffer_slices[i]);
-                absl::MutexLock lock(mutex);
-                thread_results[i] = std::move(result);
-              });
-            }
+        absl::Mutex mutex;
+        std::vector<absl::StatusOr<ScopedShapedBuffer>> thread_results(
+            options.num_devices);
+        {
+          VLOG(1) << "Creating thread pool for " << options.num_devices
+                  << " replicas";
+          tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
+                                       options.num_devices);
+          for (int64_t i = 0; i < options.num_devices; ++i) {
+            pool.Schedule([&, i] {
+              auto result = executable->ExecuteOnStream(
+                  &service_run_options[i], argument_buffer_slices[i]);
+              absl::MutexLock lock(mutex);
+              thread_results[i] = std::move(result);
+            });
+          }
 
-            // Note: the thread pool destructor guarantees it completes all
-            // work before we leave this scope.
+          // Note: the thread pool destructor guarantees it completes all
+          // work before we leave this scope.
+        }
+        std::vector<ScopedShapedBuffer> results;
+        for (absl::StatusOr<ScopedShapedBuffer>& thread_result :
+             thread_results) {
+          if (!thread_result.ok()) {
+            return thread_result.status();
           }
-          std::vector<ScopedShapedBuffer> results;
-          for (absl::StatusOr<ScopedShapedBuffer>& thread_result :
-               thread_results) {
-            if (!thread_result.ok()) {
-              return thread_result.status();
-            }
-            results.push_back(std::move(thread_result).value());
-          }
+          results.push_back(std::move(thread_result).value());
+        }
         return results;
       },
       [&](int64_t replica) { return options.arguments.size(); },
@@ -833,8 +833,9 @@ ServiceExecutableRunOptions HloRunnerLegacy::GetServiceRunOptionsForDevice(
     run_options.set_device_assignment(device_assignment);
   }
   run_options.set_run_id(run_id);
-  return ServiceExecutableRunOptions(run_options,
-                                     backend().StreamBorrowerWithPriority());
+  return ServiceExecutableRunOptions(
+      run_options, backend().StreamBorrowerWithPriority(),
+      backend().LocalityDomainStreamBorrowerWithPriority());
 }
 
 Backend& HloRunnerLegacy::backend() { return *backend_; }

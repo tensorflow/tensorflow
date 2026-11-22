@@ -21,19 +21,20 @@ gpu_device_info {
   shared_memory_per_block: 49152
   shared_memory_per_core: 233472
   threads_per_core_limit: 2048
-  core_count: 158
+  core_count: 148
   fpus_per_core: 128
   block_dim_limit_x: 2147483647
   block_dim_limit_y: 65535
   block_dim_limit_z: 65535
-  memory_bandwidth: 7936000000000
-  l2_cache_size: 135528448
-  clock_rate_ghz: 1.965
-  device_memory_size: 297021865984
+  memory_bandwidth: 7672320000000
+  l2_cache_size: 132644864
+  clock_rate_ghz: 2.032
+  device_memory_size: 287416123392
   shared_memory_per_block_optin: 232448
   cuda_compute_capability {
     major: 10
     minor: 3
+    feature_extension: ACCELERATED_FEATURES
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
@@ -41,7 +42,7 @@ gpu_device_info {
     rate_infos {
       key: 4
       value {
-        clock_rate_ghz: 1.965
+        clock_rate_ghz: 2.032
         units_per_core: 64
         ops_per_clock: 1
       }
@@ -49,7 +50,7 @@ gpu_device_info {
     rate_infos {
       key: 8
       value {
-        clock_rate_ghz: 1.965
+        clock_rate_ghz: 2.032
         units_per_core: 64
         ops_per_clock: 1
       }
@@ -57,7 +58,7 @@ gpu_device_info {
     rate_infos {
       key: 10
       value {
-        clock_rate_ghz: 1.965
+        clock_rate_ghz: 2.032
         units_per_core: 128
         ops_per_clock: 1
       }
@@ -65,7 +66,7 @@ gpu_device_info {
     rate_infos {
       key: 11
       value {
-        clock_rate_ghz: 1.965
+        clock_rate_ghz: 2.032
         units_per_core: 128
         ops_per_clock: 1
       }
@@ -73,7 +74,7 @@ gpu_device_info {
     rate_infos {
       key: 12
       value {
-        clock_rate_ghz: 1.965
+        clock_rate_ghz: 2.032
         units_per_core: 64
         ops_per_clock: 1
       }
@@ -81,7 +82,7 @@ gpu_device_info {
     rate_infos {
       key: 16
       value {
-        clock_rate_ghz: 1.965
+        clock_rate_ghz: 2.032
         units_per_core: 128
         ops_per_clock: 1
       }
@@ -91,7 +92,7 @@ gpu_device_info {
     rate_infos {
       key: 2
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -99,7 +100,7 @@ gpu_device_info {
     rate_infos {
       key: 6
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -107,7 +108,7 @@ gpu_device_info {
     rate_infos {
       key: 10
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 1024
       }
@@ -115,7 +116,7 @@ gpu_device_info {
     rate_infos {
       key: 11
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 512
       }
@@ -123,7 +124,7 @@ gpu_device_info {
     rate_infos {
       key: 12
       value {
-        clock_rate_ghz: 1.965
+        clock_rate_ghz: 2.032
         units_per_core: 4
         ops_per_clock: 16
       }
@@ -131,7 +132,7 @@ gpu_device_info {
     rate_infos {
       key: 16
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 1024
       }
@@ -139,7 +140,7 @@ gpu_device_info {
     rate_infos {
       key: 19
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -147,7 +148,7 @@ gpu_device_info {
     rate_infos {
       key: 20
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -155,7 +156,7 @@ gpu_device_info {
     rate_infos {
       key: 23
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -163,7 +164,7 @@ gpu_device_info {
     rate_infos {
       key: 24
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -171,7 +172,7 @@ gpu_device_info {
     rate_infos {
       key: 25
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -179,7 +180,7 @@ gpu_device_info {
     rate_infos {
       key: 28
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -187,7 +188,7 @@ gpu_device_info {
     rate_infos {
       key: 29
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -195,7 +196,7 @@ gpu_device_info {
     rate_infos {
       key: 32
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 4096
       }
@@ -203,7 +204,7 @@ gpu_device_info {
     rate_infos {
       key: 33
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -211,7 +212,7 @@ gpu_device_info {
     rate_infos {
       key: 35
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
@@ -219,20 +220,33 @@ gpu_device_info {
     rate_infos {
       key: 36
       value {
-        clock_rate_ghz: 1.8353101
+        clock_rate_ghz: 1.89788806
         units_per_core: 4
         ops_per_clock: 2048
       }
     }
   }
+  driver_version: "13.0.0"
+  runtime_version: "13.2.0"
+  compile_time_toolkit_version: "13.2.0"
+  dnn_version: "9.23.0"
+  cub_version: "3.1.2"
+  device_interconnect_info {
+    active_links: 18
+  }
+  device_vendor: "NVIDIA Corporation"
+  platform_version: "Compute Capability 10.3a"
+  name: "NVIDIA B300 SXM6 AC"
+  model_str: "sm_10.3a with 287416123392B RAM, 148 cores, 2032000KHz clock, 3996000KHz mem clock, 132644864B L2$"
   thread_dim_limit_x: 1024
   thread_dim_limit_y: 1024
   thread_dim_limit_z: 64
-  driver_version: "13.0.0"
-  runtime_version: "12.8.0"
-  compile_time_toolkit_version: "12.8.0"
-  dnn_version: "9.10.0"
-  cub_version: "3.1.2"
+  device_address_bits: 64
+  pcie_bandwidth: 137438953472
+  ecc_enabled: true
+  mem_clock_ghz: 3.996
+  reserved_shared_memory_per_block: 1024
+  max_blocks_per_multiprocessor: 32
   collective_memory_granularity: 2097152
 }
 platform_name: "CUDA"

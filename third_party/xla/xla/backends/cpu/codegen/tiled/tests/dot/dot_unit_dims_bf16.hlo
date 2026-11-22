@@ -1,0 +1,38 @@
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-xtile-to-vector --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s \
+// RUN:   --abs_error_bound=1e-2 --rel_error_bound=1e-2
+
+fusion {
+  p0 = bf16[1,16,32] parameter(0)
+  p1 = bf16[1,32,1] parameter(1)
+  ROOT dot = bf16[1,16,1] dot(p0, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    backend_config={sizes:[8]}
+}
+
+// CHECK-VECTOR: wrapped_fusion
+// CHECK-VECTOR: vector.contract {indexing_maps = [{{.*}}], iterator_types = ["parallel", "reduction", "parallel", "parallel"], kind = #vector.kind<add>} %{{.*}}, %{{.*}}, %{{.*}} : vector<1x8x8xbf16>, vector<1x8x1xbf16> into vector<1x8x1xf32>
+
+ENTRY main {
+  p0 = bf16[1,16,32] parameter(0)
+  p1 = bf16[1,32,1] parameter(1)
+  ROOT fusion = bf16[1,16,1] fusion(p0, p1), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "8", "1"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM: llvm.intr.fmuladd({{.*}}) : (vector<8xf32>, vector<8xf32>, vector<8xf32>) -> vector<8xf32>
+// CHECK-LLVM-NOT: llvm.alloc

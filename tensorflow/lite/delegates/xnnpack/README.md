@@ -14,7 +14,7 @@ floating-point inference.
 ### Enable XNNPACK via Java API on Android (recommended on Android)
 
 Pre-built
-[nightly TensorFlow Lite binaries for Android](https://www.tensorflow.org/lite/guide/android#use_the_tensorflow_lite_aar_from_mavencentral)
+[nightly TensorFlow Lite binaries for Android](https://developers.google.com/edge/litert/android/lite_build#use_nightly_snapshots)
 include XNNPACK, albeit it is disabled by default. Use the `setUseXNNPACK`
 method in `Interpreter.Options` class to enable it:
 
@@ -27,7 +27,7 @@ Interpreter interpreter = new Interpreter(model, interpreterOptions);
 ### Enable XNNPACK via Swift/Objective-C API on iOS (recommended on iOS)
 
 Pre-built
-[nightly TensorFlow Lite CocoaPods](https://www.tensorflow.org/lite/guide/ios#specifying_versions)
+[nightly TensorFlow Lite CocoaPods](https://developers.google.com/edge/litert/ios/quickstart#specifying_versions)
 include XNNPACK, but do not enable it by default. Swift developers can use
 `InterpreterOptions` object to enable XNNPACK:
 
@@ -224,8 +224,8 @@ instead of saving it to disk.
 
 You will lose advantages 1 and 4 but can still profit from 2 and 3.
 
-Note: Currently, this is only accessible on systems that have the `memfd_create`
-system call.
+Because the cache isn't memory mapped, `weight_cache_lock_memory` has no effect
+on it.
 
 ```c++
 std::unique_ptr<tflite::Interpreter> interpreter;

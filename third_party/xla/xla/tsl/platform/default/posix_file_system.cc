@@ -21,6 +21,7 @@ limitations under the License.
 #include <sys/mman.h>
 
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -141,10 +142,11 @@ class PosixWritableFile : public WritableFile {
  private:
   std::string filename_;
   FILE* file_;
+  const bool append_mode_;
 
  public:
-  PosixWritableFile(const std::string& fname, FILE* f)
-      : filename_(fname), file_(f) {}
+  PosixWritableFile(const std::string& fname, FILE* f, bool append_mode)
+      : filename_(fname), file_(f), append_mode_(append_mode) {}
 
   ~PosixWritableFile() override {
     if (file_ != nullptr) {
@@ -208,13 +210,32 @@ class PosixWritableFile : public WritableFile {
 
   absl::Status Tell(int64_t* position) override {
     absl::Status s;
-    *position = ftell(file_);
+    *position = ftello(file_);
 
     if (*position == -1) {
       s = IOError(filename_, errno);
     }
 
     return s;
+  }
+
+  absl::Status Seek(int64_t position) override {
+    if (file_ == nullptr) {
+      return IOError(filename_, EBADF);
+    }
+    if (append_mode_) {
+      return absl::FailedPreconditionError("Cannot seek in append mode");
+    }
+    if (position < 0) {
+      return IOError(filename_, EINVAL);
+    }
+    if (position > static_cast<int64_t>(std::numeric_limits<off_t>::max())) {
+      return IOError(filename_, EOVERFLOW);
+    }
+    if (fseeko(file_, static_cast<off_t>(position), SEEK_SET) != 0) {
+      return IOError(filename_, errno);
+    }
+    return absl::OkStatus();
   }
 };
 
@@ -254,7 +275,8 @@ absl::Status PosixFileSystem::NewWritableFile(
   if (f == nullptr) {
     s = IOError(fname, errno);
   } else {
-    result->reset(new PosixWritableFile(translated_fname, f));
+    result->reset(
+        new PosixWritableFile(translated_fname, f, /*append_mode=*/false));
   }
   return s;
 }
@@ -267,7 +289,8 @@ absl::Status PosixFileSystem::NewAppendableFile(
   if (f == nullptr) {
     s = IOError(fname, errno);
   } else {
-    result->reset(new PosixWritableFile(translated_fname, f));
+    result->reset(
+        new PosixWritableFile(translated_fname, f, /*append_mode=*/true));
   }
   return s;
 }

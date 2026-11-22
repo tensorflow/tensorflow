@@ -134,6 +134,12 @@ TEST(MemFractionTest, StartIsThePreallocatedFraction) {
   EXPECT_EQ(MemFractionStart(FixedMemFraction{0.3}), 0.3);
 }
 
+TEST(MemFractionTest, LeftIsWhatTheStartFractionLeaves) {
+  EXPECT_EQ(MemFractionLeft(FixedMemFraction{0.75}), 0.25);
+  EXPECT_EQ(MemFractionLeft(FlexMemFraction{0.5, 0.75}), 0.5);
+  EXPECT_EQ(MemFractionLeft(FixedMemFraction{1.5}), 0.0);
+}
+
 TEST(MemFractionTest, ToStringRoundTrips) {
   for (const char* spec :
        {"0.75", "0.75+", "0.75-1.0", "0.75-0.85", "0.75-0.75", "0.5", "1.5",

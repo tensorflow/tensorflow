@@ -3,7 +3,7 @@
 xtile.entry_func @add(%arg0: memref<128x256xcomplex<f32>>,
                       %arg1: memref<128x256xcomplex<f32>>,
                       %arg2: memref<128x256xcomplex<f32>>,
-                      %arg3: index) attributes {num_opaque_args = 0 : i32} {
+                      %arg3: index) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %lhs = xtile.extract %arg0[%c0, %c0] [1, 4] [1, 1]
@@ -31,7 +31,7 @@ xtile.entry_func @add(%arg0: memref<128x256xcomplex<f32>>,
 xtile.entry_func @subtract(%arg0: memref<1xcomplex<f32>>,
                            %arg1: memref<1xcomplex<f32>>,
                            %arg2: memref<1xcomplex<f32>>,
-                           %arg3: index) attributes {num_opaque_args = 0 : i32} {
+                           %arg3: index) {
   %c0 = arith.constant 0 : index
   %lhs = xtile.extract %arg0[%c0] [1] [1]
     : memref<1xcomplex<f32>> -> tensor<1xcomplex<f32>>
@@ -54,7 +54,7 @@ xtile.entry_func @subtract(%arg0: memref<1xcomplex<f32>>,
 // -----
 
 xtile.entry_func @real(%arg0: memref<1xcomplex<f32>>, %arg1: memref<1xf32>,
-                       %arg2: index) attributes {num_opaque_args = 0 : i32} {
+                       %arg2: index) {
   %c0 = arith.constant 0 : index
   %lhs = xtile.extract %arg0[%c0] [1] [1]
     : memref<1xcomplex<f32>> -> tensor<1xcomplex<f32>>
@@ -75,7 +75,7 @@ xtile.entry_func @real(%arg0: memref<1xcomplex<f32>>, %arg1: memref<1xf32>,
 // -----
 
 xtile.entry_func @imag(%arg0: memref<1xcomplex<f32>>, %arg1: memref<1xf32>,
-                       %arg2: index) attributes {num_opaque_args = 0 : i32} {
+                       %arg2: index) {
   %c0 = arith.constant 0 : index
   %lhs = xtile.extract %arg0[%c0] [1] [1]
     : memref<1xcomplex<f32>> -> tensor<1xcomplex<f32>>
@@ -97,7 +97,7 @@ xtile.entry_func @imag(%arg0: memref<1xcomplex<f32>>, %arg1: memref<1xf32>,
 
 xtile.entry_func @complex(%arg0: memref<1xf32>, %arg1: memref<1xf32>,
                           %arg2: memref<1xcomplex<f32>>,
-                          %arg3: index) attributes {num_opaque_args = 0 : i32} {
+                          %arg3: index) {
   %c0 = arith.constant 0 : index
   %real = xtile.extract %arg0[%c0] [1] [1] : memref<1xf32> -> tensor<1xf32>
   %imag = xtile.extract %arg1[%c0] [1] [1] : memref<1xf32> -> tensor<1xf32>
@@ -119,11 +119,12 @@ xtile.entry_func @complex(%arg0: memref<1xf32>, %arg1: memref<1xf32>,
 
 // -----
 
-xtile.entry_func @constants(%arg0: memref<1xcomplex<f32>>, %arg1: index)
-    attributes {num_opaque_args = 0 : i32} {
+xtile.entry_func @constants(%arg0: memref<1xcomplex<f32>>, %arg1: index) {
   %c0 = arith.constant 0 : index
   %c_arith = arith.constant dense<(1.0, 2.0)> : tensor<1xcomplex<f32>>
-  xtile.insert %c_arith into %arg0[%c0] [1] [1]
+  %c_shlo = stablehlo.constant dense<(3.0, 4.0)> : tensor<1xcomplex<f32>>
+  %add = stablehlo.add %c_arith, %c_shlo : tensor<1xcomplex<f32>>
+  xtile.insert %add into %arg0[%c0] [1] [1]
     : tensor<1xcomplex<f32>> -> memref<1xcomplex<f32>>
   xtile.return
 }
@@ -131,14 +132,16 @@ xtile.entry_func @constants(%arg0: memref<1xcomplex<f32>>, %arg1: index)
 // CHECK-SAME: (%[[ARG0:[a-zA-Z0-9_]*]]: memref<1x2xf32>, %[[ARG1:[a-zA-Z0-9_]*]]: index)
 
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[C_ARITH:.*]] = arith.constant dense<{{.*}}> : tensor<1x2xf32>
-// CHECK: xtile.insert %[[C_ARITH]] into %[[ARG0]][%[[C0]], %[[C0]]] [1, 2] [1, 1] : tensor<1x2xf32> -> memref<1x2xf32>
+// CHECK-DAG: %[[C_ARITH:.*]] = arith.constant dense<{{.*}}1.000000e+00, 2.000000e+00{{.*}}> : tensor<1x2xf32>
+// CHECK-DAG: %[[C_SHLO:.*]] = arith.constant dense<{{.*}}3.000000e+00, 4.000000e+00{{.*}}> : tensor<1x2xf32>
+// CHECK: %[[ADD:.*]] = stablehlo.add %[[C_ARITH]], %[[C_SHLO]] : tensor<1x2xf32>
+// CHECK: xtile.insert %[[ADD]] into %[[ARG0]][%[[C0]], %[[C0]]] [1, 2] [1, 1] : tensor<1x2xf32> -> memref<1x2xf32>
 
 // -----
 
 xtile.entry_func @reshape(%arg0: memref<128x256xcomplex<f32>>,
                           %arg1: memref<32768xcomplex<f32>>,
-                          %arg2: index) attributes {num_opaque_args = 0 : i32} {
+                          %arg2: index) {
   %c0 = arith.constant 0 : index
   %lhs = xtile.extract %arg0[%c0, %c0] [1, 4] [1, 1]
     : memref<128x256xcomplex<f32>> -> tensor<1x4xcomplex<f32>>
@@ -162,7 +165,7 @@ xtile.entry_func @reshape(%arg0: memref<128x256xcomplex<f32>>,
 
 xtile.entry_func @transpose(%arg0: memref<128x256xcomplex<f32>>,
                             %arg1: memref<128x256xcomplex<f32>>,
-                            %arg2: index) attributes {num_opaque_args = 0 : i32} {
+                            %arg2: index) {
   %c0 = arith.constant 0 : index
   %lhs = xtile.extract %arg0[%c0, %c0] [1, 4] [1, 1]
     : memref<128x256xcomplex<f32>> -> tensor<1x4xcomplex<f32>>
@@ -186,7 +189,7 @@ xtile.entry_func @transpose(%arg0: memref<128x256xcomplex<f32>>,
 
 xtile.entry_func @convert_real_to_complex(%arg0: memref<1xi32>,
     %arg1: memref<1xcomplex<f32>>,
-    %arg2: index) attributes {num_opaque_args = 0 : i32} {
+    %arg2: index) {
   %c0 = arith.constant 0 : index
   %lhs = xtile.extract %arg0[%c0] [1] [1] : memref<1xi32> -> tensor<1xi32>
   %conv = stablehlo.convert %lhs : (tensor<1xi32>) -> tensor<1xcomplex<f32>>
@@ -218,7 +221,7 @@ xtile.entry_func @convert_real_to_complex(%arg0: memref<1xi32>,
 
 xtile.entry_func @convert_complex_to_complex(%arg0: memref<1xcomplex<f32>>,
       %arg1: memref<1xcomplex<f64>>,
-      %arg2: index) attributes {num_opaque_args = 0 : i32} {
+      %arg2: index) {
   %c0 = arith.constant 0 : index
   %lhs = xtile.extract %arg0[%c0] [1] [1]
     : memref<1xcomplex<f32>> -> tensor<1xcomplex<f32>>
@@ -244,7 +247,7 @@ xtile.entry_func @convert_complex_to_complex(%arg0: memref<1xcomplex<f32>>,
 xtile.entry_func @transpose_with_layout(
     %arg0: memref<128x256xcomplex<f32>, #xtile.layout<[0, 1]>>,
      %arg1: memref<128x256xcomplex<f32>>,
-     %arg2: index) attributes {num_opaque_args = 0 : i32} {
+     %arg2: index) {
   %c0 = arith.constant 0 : index
   %lhs = xtile.extract %arg0[%c0, %c0] [1, 4] [1, 1]
     : memref<128x256xcomplex<f32>, #xtile.layout<[0, 1]>> -> tensor<1x4xcomplex<f32>>

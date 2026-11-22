@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LLVMContext.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
+#include "xla/backends/gpu/hlo/analysis/nvptx_alias_info.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/collectives/all_gather_optimizer.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_converter.h"
@@ -37,8 +39,8 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dot_dimension_sorter.h"
 #include "xla/backends/gpu/transforms/dot_normalizer.h"
 #include "xla/backends/gpu/transforms/dot_operand_converter.h"
+#include "xla/backends/gpu/transforms/fusion/gemm_fusion.h"
 #include "xla/backends/gpu/transforms/gemm_broadcast_folding_rewriter.h"
-#include "xla/backends/gpu/transforms/gemm_fusion.h"
 #include "xla/backends/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/backends/gpu/transforms/reduction_degenerate_dim_remover.h"
 #include "xla/backends/gpu/transforms/reduction_dimension_grouper.h"
@@ -49,21 +51,19 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
+#include "xla/hlo/transforms/copy_insertion.h"
 #include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/simplifiers/gemv_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/compiler.h"
-#include "xla/service/copy_insertion.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -185,7 +185,7 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::DotAlgorithmRewriter>(gpu_compute_capability);
     RegisterPass<gpu::DotDimensionSorter>();
     RegisterPass<gpu::DotNormalizer>();
-    RegisterPass<gpu::DotOperandConverter>();
+    RegisterPass<gpu::DotOperandConverter>(gpu_compute_capability);
     RegisterPass<gpu::GemmBroadcastFoldingRewriter>();
     RegisterPass<gpu::GemmFusion>(device_description_or_default);
     RegisterPass<gpu::ReduceScatterCreator>();
@@ -194,7 +194,7 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::ReductionLayoutNormalizer>();
     RegisterPass<gpu::SanitizeConstantNames>();
     RegisterPass<gpu::TopKSplitter>();
-    RegisterPass<gpu::TopkSpecializer>(gpu_compute_capability);
+    RegisterPass<gpu::TopkSpecializer>(device_description_or_default);
     RegisterPass<gpu::WindowedEinsumHandler>();
     // go/keep-sorted end
     if (debug_config.xla_gpu_experimental_collective_cse_distance_threshold() >
@@ -246,19 +246,27 @@ class GpuOptProvider : public CompiledOptProvider {
 
     llvm::LLVMContext context;
     std::vector<std::unique_ptr<llvm::Module>> modules;
+    absl::Status clone_status;
+    auto clone_into_context = [&](const llvm::Module& module) {
+      absl::StatusOr<std::unique_ptr<llvm::Module>> clone =
+          llvm_ir::CloneModuleToContext(module, context,
+                                        module.getModuleIdentifier());
+      if (!clone.ok()) {
+        clone_status.Update(clone.status());
+        return;
+      }
+      modules.push_back(*std::move(clone));
+    };
     if (optimized) {
-      llvm_compiler->SetPostOptimizationHook([&](const llvm::Module& module) {
-        modules.push_back(gpu::CopyToContext(module, context));
-      });
+      llvm_compiler->SetPostOptimizationHook(clone_into_context);
     } else {
-      llvm_compiler->SetPreOptimizationHook([&](const llvm::Module& module) {
-        modules.push_back(gpu::CopyToContext(module, context));
-      });
+      llvm_compiler->SetPreOptimizationHook(clone_into_context);
     }
 
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
         compiler->RunBackend(std::move(optimized_module), executor, opts));
+    ABSL_RETURN_IF_ERROR(clone_status);
 
     std::sort(modules.begin(), modules.end(),
               [](const std::unique_ptr<llvm::Module>& m1,

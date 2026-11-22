@@ -13,12 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 
 namespace tensorflow {
@@ -311,6 +318,46 @@ TEST(ObjectGraphTraversalTest, ObjectNotFound) {
   EXPECT_FALSE(node.has_value());
 }
 
+TEST(ObjectGraphTraversalTest, NegativeChildNodeIdIsRejected) {
+  SavedObjectGraph object_graph = ParseSavedObjectGraph(R"(
+nodes {
+  children {
+    node_id: -1
+    local_name: "foo"
+  }
+  user_object {
+    identifier: "_generic_user_object"
+    version {
+      producer: 1
+      min_consumer: 1
+    }
+  }
+}
+)");
+  std::optional<int> node = internal::FindNodeAtPath("foo", object_graph);
+  EXPECT_FALSE(node.has_value());
+}
+
+TEST(ObjectGraphTraversalTest, OutOfRangeChildNodeIdIsRejected) {
+  SavedObjectGraph object_graph = ParseSavedObjectGraph(R"(
+nodes {
+  children {
+    node_id: 1
+    local_name: "foo"
+  }
+  user_object {
+    identifier: "_generic_user_object"
+    version {
+      producer: 1
+      min_consumer: 1
+    }
+  }
+}
+)");
+  std::optional<int> node = internal::FindNodeAtPath("foo", object_graph);
+  EXPECT_FALSE(node.has_value());
+}
+
 TEST(ObjectGraphTraversalTest, CaseSensitiveMismatch) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kSingleChildFoo);
   std::optional<int> node = internal::FindNodeAtPath("FOO", object_graph);
@@ -364,6 +411,52 @@ TEST(ObjectGraphTraversalTest, CyclesAreOK) {
 
   EXPECT_EQ(*foo, *foo_bar_parent);
   EXPECT_EQ(*foo_bar, *foo_bar_parent_bar);
+}
+
+TEST(GetSignaturesMapTest, NegativeSignaturesChildNodeIdIsRejected) {
+  SavedObjectGraph object_graph = ParseSavedObjectGraph(R"(
+nodes {
+  children {
+    node_id: -1
+    local_name: "signatures"
+  }
+  user_object {
+    identifier: "_generic_user_object"
+    version {
+      producer: 1
+      min_consumer: 1
+    }
+  }
+}
+)");
+  gtl::FlatMap<std::string, int> signatures_map;
+  absl::Status status =
+      internal::GetSignaturesMap(object_graph, &signatures_map);
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("out of range"));
+}
+
+TEST(GetSignaturesMapTest, OutOfRangeSignaturesChildNodeIdIsRejected) {
+  SavedObjectGraph object_graph = ParseSavedObjectGraph(R"(
+nodes {
+  children {
+    node_id: 1
+    local_name: "signatures"
+  }
+  user_object {
+    identifier: "_generic_user_object"
+    version {
+      producer: 1
+      min_consumer: 1
+    }
+  }
+}
+)");
+  gtl::FlatMap<std::string, int> signatures_map;
+  absl::Status status =
+      internal::GetSignaturesMap(object_graph, &signatures_map);
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("out of range"));
 }
 
 }  // namespace

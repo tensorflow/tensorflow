@@ -40,6 +40,21 @@ TEST(PjRtCApiStatusUtilsTest, PjrtErrorToStatusPayloadTest) {
   EXPECT_EQ(*payload, "test_value");
 }
 
+TEST(PjRtCApiStatusUtilsTest, PjrtErrorToStatusForeignVtablePayloadTest) {
+  absl::Status status = absl::ResourceExhaustedError("oom error");
+  status.SetPayload("type_url_1", absl::Cord("payload_1"));
+  status.SetPayload("type_url_2", absl::Cord("payload_2"));
+  PJRT_Error* error = StatusToPjRtError(status);
+  static const PJRT_Error_FunctionTable kForeignVtable = *error->vtable;
+  error->vtable = &kForeignVtable;
+
+  absl::Status result = PjrtErrorToStatus(error);
+  EXPECT_EQ(result.code(), absl::StatusCode::kResourceExhausted);
+  EXPECT_EQ(result.message(), "oom error");
+  EXPECT_EQ(result.GetPayload("type_url_1"), "payload_1");
+  EXPECT_EQ(result.GetPayload("type_url_2"), "payload_2");
+}
+
 TEST(PjRtCApiStatusUtilsTest, PjrtErrorToStatusNullError) {
   const PJRT_Api* api = GetPjrtApi();
   absl::Status result = PjrtErrorToStatus(nullptr, api);

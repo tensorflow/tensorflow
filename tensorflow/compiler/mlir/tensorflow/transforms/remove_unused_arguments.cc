@@ -215,7 +215,7 @@ void RemoveUnusedArgumentsPass::runOnOperation() {
   // Find all callers
   module->walk([&](CallOpInterface op) {
     auto callable = op.getCallableForCallee();
-    mlir::SymbolRefAttr sym = callable.dyn_cast<mlir::SymbolRefAttr>();
+    auto sym = llvm::dyn_cast_if_present<mlir::SymbolRefAttr>(callable);
     if (!sym) return;
     Operation* func = mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
     if (!args_to_erase.count(func)) return;

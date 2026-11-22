@@ -90,7 +90,8 @@ class Sharding : public RTTIExtends<Sharding, Serializable> {
  public:
   using DeserializeOptions = DeserializeShardingOptions;
 
-  // All devices in this sharding. Devices may appear more than once.
+  // All devices in this sharding. Guaranteed to be non-empty. Devices may
+  // appear more than once.
   const DeviceListRef& devices() const { return devices_; }
 
   // Returns the memory kind for all shards in this sharding.
@@ -105,7 +106,8 @@ class Sharding : public RTTIExtends<Sharding, Serializable> {
   // Returns if this sharding is equal to `other`.
   bool operator==(const Sharding& other) const;
 
-  // Returns the sharding spec projected from this sharding.
+  // Returns the sharding spec projected from this sharding. Always satisfies
+  // `sharding_spec()->num_shards() == devices()->size()`.
   virtual ShardingSpecRef sharding_spec() const = 0;
 
   // Returns a shard shape if the sharding always has the equal shape for all
@@ -181,7 +183,7 @@ class Sharding : public RTTIExtends<Sharding, Serializable> {
   // Note that `Sharding` serialization uses `SerDes` to handle an open set of
   // `Sharding` subclasses. See `serdes.h`.
   static absl::StatusOr<ShardingRef> FromProto(
-      Client* client, const ShardingProto& sharding_proto);
+      Client* absl_nonnull client, const ShardingProto& sharding_proto);
 
   // Converts `Sharding` into a protobuf.
   absl::Status ToProto(
@@ -246,8 +248,8 @@ class SingleDeviceSharding final
     : public RTTIExtends<SingleDeviceSharding, Sharding> {
  public:
   // Creates a single-device sharding.
-  static std::unique_ptr<SingleDeviceSharding> Create(Device* device,
-                                                      MemoryKind memory_kind);
+  static std::unique_ptr<SingleDeviceSharding> Create(
+      Device* absl_nonnull device, MemoryKind memory_kind);
 
   // Sharding implementation.
 
@@ -297,8 +299,13 @@ class SingleDeviceSharding final
 // a logical shape and per-device shapes, and device placements.
 class OpaqueSharding : public RTTIExtends<OpaqueSharding, Sharding> {
  public:
+  // Creates an opaque sharding. Returns `InvalidArgumentError` if `devices` is
+  // empty.
+  static absl::StatusOr<std::unique_ptr<OpaqueSharding>> CreateIfValid(
+      DeviceListRef devices, MemoryKind memory_kind);
+
   // Creates an opaque sharding. `Disassemble()` will fail.
-  // REQUIRES: !devices.empty()
+  // REQUIRES: !devices->empty()
   static std::unique_ptr<OpaqueSharding> Create(DeviceListRef devices,
                                                 MemoryKind memory_kind);
 
@@ -352,8 +359,16 @@ class OpaqueSharding : public RTTIExtends<OpaqueSharding, Sharding> {
 class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
  public:
   // Creates a concrete sharding that may contain non-identical shard shapes.
+  // Returns `InvalidArgumentError` if `devices` is empty or if
+  // `shard_shapes.size()` exceeds `INT_MAX`.
+  static absl::StatusOr<std::unique_ptr<ConcreteSharding>> CreateIfValid(
+      DeviceListRef devices, MemoryKind memory_kind, Shape shape,
+      std::vector<Shape> shard_shapes,
+      std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains);
+
+  // Creates a concrete sharding that may contain non-identical shard shapes.
   // REQUIRES: devices->AddressableDeviceList()->size() == shard_shapes.size()
-  // REQUIRES: !devices.empty()
+  // REQUIRES: !devices->empty()
   static std::unique_ptr<ConcreteSharding> Create(
       DeviceListRef devices, MemoryKind memory_kind, Shape shape,
       std::vector<Shape> shard_shapes,
@@ -361,20 +376,26 @@ class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
           std::nullopt);
 
   // Creates a concrete sharding that may contain non-identical shard dynamic
+  // shapes. Returns `InvalidArgumentError` if `devices` is empty or if
+  // `shard_dynamic_shapes.size()` exceeds `INT_MAX`.
+  static absl::StatusOr<std::unique_ptr<ConcreteSharding>> CreateIfValid(
+      DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
+      std::vector<DynamicShape> shard_dynamic_shapes);
+
+  // Creates a concrete sharding that may contain non-identical shard dynamic
   // shapes.
-  // REQUIRES: devices->AddressableDeviceList()->size() == shard_shapes.size()
-  // REQUIRES: !devices.empty()
+  // REQUIRES: devices->AddressableDeviceList()->size() ==
+  // shard_dynamic_shapes.size()
+  // REQUIRES: !devices->empty()
   static std::unique_ptr<ConcreteSharding> Create(
       DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
       std::vector<DynamicShape> shard_dynamic_shapes);
 
   bool has_dynamic_shape() const {
-    DCHECK(this);
     return sharding_spec_->has_dynamic_shape();
   }
 
   bool has_static_shape() const {
-    DCHECK(this);
     return sharding_spec_->has_static_shape();
   }
 
@@ -389,18 +410,15 @@ class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
   }
 
   const std::vector<Shape>& shard_shapes() const {
-    DCHECK(this);
     return sharding_spec_->shard_shapes();
   }
 
   const std::vector<DynamicShape>& shard_dynamic_shapes() const {
-    DCHECK(this);
     return sharding_spec_->shard_dynamic_shapes();
   }
 
   const std::optional<std::vector<xla::ifrt::IndexDomain>>& index_domains()
       const {
-    DCHECK(this);
     return sharding_spec_->index_domains();
   }
 
@@ -453,20 +471,26 @@ class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
 class ConcreteEvenSharding
     : public RTTIExtends<ConcreteEvenSharding, Sharding> {
  public:
+  // Creates a concrete even sharding. Returns `InvalidArgumentError` if
+  // `devices` is empty or if `is_fully_replicated` is true and
+  // `shape != shard_shape`.
+  static absl::StatusOr<std::unique_ptr<ConcreteEvenSharding>> CreateIfValid(
+      DeviceListRef devices, MemoryKind memory_kind, Shape shape,
+      Shape shard_shape, bool is_fully_replicated);
+
   // Creates a concrete even sharding.
   // TODO(hyeontaek): Remove the default value of `is_fully_replicated` once all
   // callers are updated to provide it explicitly.
-  // REQUIRES: !devices.empty()
+  // REQUIRES: `!devices->empty()`, and `!is_fully_replicated || shape ==
+  // shard_shape`.
   static std::unique_ptr<ConcreteEvenSharding> Create(
       DeviceListRef devices, MemoryKind memory_kind, Shape shape,
       Shape shard_shape, bool is_fully_replicated = false);
 
   Shape shape() const {
-    DCHECK(this);
     return sharding_spec_->shape();
   }
   const Shape& shard_shape() const {
-    DCHECK(this);
     return sharding_spec_->shard_shape();
   }
 
@@ -518,11 +542,12 @@ class ConcreteEvenSharding
 // must remain valid during deserialization.
 struct DeserializeShardingOptions
     : RTTIExtends<DeserializeShardingOptions, DeserializeOptions> {
-  explicit DeserializeShardingOptions(Client* client) : client(client) {}
+  explicit DeserializeShardingOptions(Client* absl_nonnull client)
+      : client(client) {}
 
   static char ID;  // NOLINT
 
-  Client* client;
+  Client* absl_nonnull client;
 };
 
 }  // namespace ifrt

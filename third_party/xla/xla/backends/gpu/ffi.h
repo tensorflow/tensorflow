@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/ffi.h"  // IWYU pragma: export
@@ -54,6 +55,7 @@ struct CollectiveCliques {};           //  xla::gpu::CollectiveCliques*
 struct CollectiveMemory {};            //  xla::gpu::CollectiveMemory*
 struct TargetGpuComputeCapability {};  //  const se::GpuComputeCapability*
 struct CpuTargetMachineOptions {};     //  const xla::cpu::TargetMachineOptions*
+struct CommandBufferRequests {};       //  xla::gpu::CommandBufferRequests*
 
 // Parametrized type tags for binding additional streams. A single stream id
 // binds as se::Stream*, while multiple ids bind as std::array<se::Stream*, N>.
@@ -325,6 +327,26 @@ struct CtxDecoding<CpuTargetMachineOptions> {
         "cpu target machine options");
   }
 };
+
+template <>
+struct CtxDecoding<CommandBufferRequests> {
+  using Type = xla::gpu::CommandBufferRequests*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_InvokeContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_CommandBufferRequests_Get,
+        "command buffer requests");
+  }
+};
+
+namespace internal {
+template <ExecutionStage stage>
+struct IsStageCompatibleCtx<CommandBufferRequests, stage>
+    : std::bool_constant<stage == ExecutionStage::kPrepare> {};
+}  // namespace internal
 
 }  // namespace xla::ffi
 

@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/cudnn.h"
 
+#include <optional>
+
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/target_config/cudnn_device_props_json.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -44,7 +47,9 @@ AsyncThunkSequence CuDnnFusion::Emit(IrEmitterContext& ir_emitter_context,
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
       kernel_arguments.GetArgumentShapedSlices(),
-      kernel_arguments.GetArgumentOutputFlags());
+      kernel_arguments.GetArgumentOutputFlags(),
+      /*should_memzero=*/false, /*sdpa_dropout_seed=*/std::nullopt,
+      GetCudnnGraphTargetDevice(ir_emitter_context.gpu_device_info()));
 }
 
 }  // namespace gpu

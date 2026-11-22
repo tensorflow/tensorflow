@@ -27,13 +27,11 @@ def python_init_rules(extra_patches = []):
 
     tf_http_archive(
         name = "rules_python",
-        sha256 = "e11d2e1efce1589e5bdfa93986712c74fc7467a0f093143d489d2ef5ebb1ed2a",
-        strip_prefix = "rules_python-2.2.0",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_python/releases/download/2.2.0/rules_python-2.2.0.tar.gz"),
-        # TODO(phawkins): Remove this filter once JAX removes rules_python_site_init_retry.patch.
-        # rules_python 2.2.0 has the Windows retry fix upstreamed.
+        sha256 = "05088402fa356af097064dbccd7082a061171ef39fbd748fab946e9775f46a16",
+        strip_prefix = "rules_python-2.4.5",
+        urls = tf_mirror_urls("https://github.com/bazel-contrib/rules_python/releases/download/2.4.5/rules_python-2.4.5.tar.gz"),
         patch_file = [
             "@xla//third_party/py:rules_python_scope.patch",
             "@xla//third_party/py:rules_python_freethreaded.patch",
-        ] + [p for p in extra_patches if "site_init_retry" not in str(p)],
+        ] + extra_patches,
     )

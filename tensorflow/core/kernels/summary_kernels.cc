@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_handle.h"
@@ -28,6 +31,22 @@ limitations under the License.
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
+
+namespace {
+
+absl::Status GetSingleElementInput(OpKernelContext* ctx, absl::string_view name,
+                                   const Tensor** t) {
+  TF_RETURN_IF_ERROR(ctx->input(name, t));
+  const Tensor* tensor = *t;
+  if (tensor->NumElements() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " must contain exactly one element, got shape ",
+                     tensor->shape().DebugString()));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 REGISTER_KERNEL_BUILDER(Name("SummaryWriter").Device(DEVICE_CPU),
                         ResourceHandleOp<SummaryWriterInterface>);
@@ -78,13 +97,13 @@ class CreateSummaryDbWriterOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("db_uri", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "db_uri", &tmp));
     const std::string db_uri = tmp->scalar<tstring>()();
-    OP_REQUIRES_OK(ctx, ctx->input("experiment_name", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "experiment_name", &tmp));
     const std::string experiment_name = tmp->scalar<tstring>()();
-    OP_REQUIRES_OK(ctx, ctx->input("run_name", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "run_name", &tmp));
     const std::string run_name = tmp->scalar<tstring>()();
-    OP_REQUIRES_OK(ctx, ctx->input("user_name", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "user_name", &tmp));
     const std::string user_name = tmp->scalar<tstring>()();
 
     core::RefCountPtr<SummaryWriterInterface> s;
@@ -148,11 +167,11 @@ class WriteSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &s));
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "step", &tmp));
     const int64_t step = tmp->scalar<int64_t>()();
-    OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "tag", &tmp));
     const std::string& tag = tmp->scalar<tstring>()();
-    OP_REQUIRES_OK(ctx, ctx->input("summary_metadata", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "summary_metadata", &tmp));
     const std::string& serialized_metadata = tmp->scalar<tstring>()();
 
     const Tensor* t;
@@ -213,7 +232,7 @@ class ImportEventOp : public OpKernel {
     OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &s));
     const Tensor* t;
-    OP_REQUIRES_OK(ctx, ctx->input("event", &t));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "event", &t));
     std::unique_ptr<Event> event{new Event};
     if (!ParseProtoUnlimited(event.get(), t->scalar<tstring>()())) {
       ctx->CtxFailureWithWarning(
@@ -235,17 +254,13 @@ class WriteScalarSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &s));
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "step", &tmp));
     const int64_t step = tmp->scalar<int64_t>()();
-    OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "tag", &tmp));
     const std::string& tag = tmp->scalar<tstring>()();
 
     const Tensor* t;
-    OP_REQUIRES_OK(ctx, ctx->input("value", &t));
-    OP_REQUIRES(ctx, t->NumElements() == 1,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "value must contain exactly one element, got shape ",
-                    t->shape().DebugString())));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "value", &t));
 
     OP_REQUIRES_OK(ctx, s->WriteScalar(step, *t, tag));
   }
@@ -263,9 +278,9 @@ class WriteHistogramSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &s));
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "step", &tmp));
     const int64_t step = tmp->scalar<int64_t>()();
-    OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "tag", &tmp));
     const std::string& tag = tmp->scalar<tstring>()();
 
     const Tensor* t;
@@ -293,9 +308,9 @@ class WriteImageSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &s));
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "step", &tmp));
     const int64_t step = tmp->scalar<int64_t>()();
-    OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "tag", &tmp));
     const std::string& tag = tmp->scalar<tstring>()();
     const Tensor* bad_color;
     OP_REQUIRES_OK(ctx, ctx->input("bad_color", &bad_color));
@@ -370,9 +385,9 @@ class WriteGraphSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &s));
     const Tensor* t;
-    OP_REQUIRES_OK(ctx, ctx->input("step", &t));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "step", &t));
     const int64_t step = t->scalar<int64_t>()();
-    OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "tensor", &t));
     std::unique_ptr<GraphDef> graph{new GraphDef};
     if (!ParseProtoUnlimited(graph.get(), t->scalar<tstring>()())) {
       ctx->CtxFailureWithWarning(

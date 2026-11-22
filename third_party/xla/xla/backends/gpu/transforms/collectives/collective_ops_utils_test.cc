@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 #include <gmock/gmock.h>
@@ -26,8 +27,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/device_assignment.h"
@@ -1035,6 +1038,47 @@ TEST(OpcodesForTritonCollectivesTest,
                   HloOpcode::kAllReduce, HloOpcode::kAllReduceStart,
                   HloOpcode::kAllGather, HloOpcode::kReduceScatter,
                   HloOpcode::kAllToAll)));
+}
+
+TEST(IsTritonTwoShotAllGatherTest, MatchesDirectAndCustomFusedTwoShot) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m, replica_count=2
+
+    two_shot_comp {
+      p0 = f32[8] parameter(0)
+      ROOT ag = f32[16] all-gather(p0), replica_groups={{0,1}}, dimensions={0},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+    }
+
+    one_shot_comp {
+      p0 = f32[8] parameter(0)
+      ROOT ag = f32[16] all-gather(p0), replica_groups={{0,1}}, dimensions={0},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
+    }
+
+    ENTRY e {
+      p0 = f32[8] parameter(0)
+      ag_unconfigured = f32[16] all-gather(p0), replica_groups={{0,1}}, dimensions={0}
+      f_two_shot = f32[16] fusion(p0), kind=kCustom, calls=two_shot_comp
+      f_one_shot = f32[16] fusion(p0), kind=kCustom, calls=one_shot_comp
+      ROOT out = (f32[16], f32[16], f32[16]) tuple(ag_unconfigured, f_two_shot, f_one_shot)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const HloInstruction* two_shot_ag =
+      module->GetComputationWithName("two_shot_comp")->root_instruction();
+  const HloInstruction* one_shot_ag =
+      module->GetComputationWithName("one_shot_comp")->root_instruction();
+  HloComputation* entry = module->entry_computation();
+  EXPECT_TRUE(IsTritonTwoShotAllGather(*two_shot_ag));
+  EXPECT_FALSE(IsTritonTwoShotAllGather(*one_shot_ag));
+  EXPECT_FALSE(IsTritonTwoShotAllGather(
+      *entry->GetInstructionWithName("ag_unconfigured")));
+  EXPECT_TRUE(
+      IsTritonTwoShotAllGather(*entry->GetInstructionWithName("f_two_shot")));
+  EXPECT_FALSE(
+      IsTritonTwoShotAllGather(*entry->GetInstructionWithName("f_one_shot")));
 }
 
 }  // namespace

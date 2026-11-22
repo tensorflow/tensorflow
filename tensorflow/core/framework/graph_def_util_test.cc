@@ -364,5 +364,49 @@ TEST(StrippedOpListForGraphTest, NestedFunctionTest) {
   }
 }
 
+TEST(AddDefaultAttrsToGraphDefTest, ValidNodeOffsetAddsDefaults) {
+  OpList op_list;
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("WithDefault").Attr("a: int = 7"),
+                             op_list.add_op()));
+  OpListOpRegistry registry(&op_list);
+
+  GraphDef graph_def;
+  NodeDef* first = graph_def.add_node();
+  first->set_name("n0");
+  first->set_op("WithDefault");
+  NodeDef* second = graph_def.add_node();
+  second->set_name("n1");
+  second->set_op("WithDefault");
+
+  TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, registry, 1));
+  EXPECT_EQ(graph_def.node(0).attr_size(), 0);
+  ASSERT_EQ(graph_def.node(1).attr_size(), 1);
+  EXPECT_EQ(graph_def.node(1).attr().at("a").i(), 7);
+  TF_EXPECT_OK(
+      AddDefaultAttrsToGraphDef(&graph_def, registry, graph_def.node_size()));
+}
+
+TEST(AddDefaultAttrsToGraphDefTest, NegativeNodeOffsetRejected) {
+  OpList op_list;
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("WithDefault").Attr("a: int = 7"),
+                             op_list.add_op()));
+  OpListOpRegistry registry(&op_list);
+
+  GraphDef empty_graph;
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      AddDefaultAttrsToGraphDef(&empty_graph, registry, -1, true)));
+
+  GraphDef one_node_graph;
+  NodeDef* node = one_node_graph.add_node();
+  node->set_name("n0");
+  node->set_op("WithDefault");
+  GraphDef expected = one_node_graph;
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      AddDefaultAttrsToGraphDef(&one_node_graph, registry, -1)));
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      AddDefaultAttrsToGraphDef(&one_node_graph, registry, -1, true)));
+  TF_EXPECT_GRAPH_EQ(expected, one_node_graph);
+}
+
 }  // namespace
 }  // namespace tensorflow

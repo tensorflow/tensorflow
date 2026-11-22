@@ -18,22 +18,24 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
@@ -65,6 +67,7 @@ class FusionInfoCache {
     num_unnested_reductions_.erase(instr);
     contains_scan_.erase(instr);
     contains_significant_reduce_.erase(instr);
+    min_reduce_input_elements_.erase(instr);
   }
 
   // Returns expected shared memory usage of a given instruction in bytes.
@@ -82,6 +85,12 @@ class FusionInfoCache {
   // Returns whether the instruction is a significant reduction (reducing by a
   // factor of at least 16) or, in the case of a fusion, contains one.
   bool ContainsSignificantReduce(const HloInstruction& instr)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Returns the minimum positive input element count among all array `kReduce`
+  // instructions in `instr` (or `instr` itself if it is a `kReduce`), or
+  // `std::nullopt` if none exist.
+  std::optional<int64_t> GetMinReduceInputElements(const HloInstruction& instr)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
@@ -128,6 +137,8 @@ class FusionInfoCache {
       ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<const HloInstruction*, bool> contains_significant_reduce_
       ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<const HloInstruction*, std::optional<int64_t>>
+      min_reduce_input_elements_ ABSL_GUARDED_BY(mutex_);
 };
 
 // Returns the computations within `module` whose instructions can still be
@@ -186,6 +197,10 @@ bool IsNestableVariadicReduceWindow(const HloInstruction& instr);
 // is either an unfused scatter op or a scatter input fusion.
 bool IsInputFusibleScatter(const HloInstruction& instr);
 
+// Whether `instr` is an input fusion whose heroes are all concatenates. Loop
+// fusions can also use the concatenate emitter but do not count.
+bool IsConcatenateFusion(const HloInstruction& instr);
+
 // Determines whether the combination of `instr1` and `instr2` into a (possibly
 // multi-output) fusion fits within the maximum number of parameters that can be
 // passed to a kernel. If the fusion is a producer/consumer fusion and `instr1`
@@ -222,9 +237,9 @@ FusionDecision FusionHeroesAreCompatible(
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-consumer multi-output
 // fusion.
-// So far, multi-output fusion is supported for loop fusions and reduce
-// input fusions only. It is up to the caller to ensure the instructions
-// themselves are fusible!
+// So far, multi-output fusion is supported for loop, reduce, transpose and
+// concatenate input fusions only. It is up to the caller to ensure the
+// instructions themselves are fusible!
 FusionDecision ShapesCompatibleForMultiOutputFusion(
     const HloInstruction& instr1, const HloInstruction& instr2,
     const se::DeviceDescription& device_info);
@@ -296,10 +311,12 @@ bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion);
 // Returns the max loop unroll factor.
 int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis = nullptr);
 
-int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis);
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
+                            bool unroll_small_inputs = false);
 
 int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
-                            const Shape& shape);
+                            const Shape& shape,
+                            bool unroll_small_inputs = false);
 
 // Returns whether the instruction is a scan or, in the case of a fusion,
 // contains a scan operation.
@@ -310,6 +327,18 @@ bool ContainsScan(const HloInstruction& instr,
 // factor of at least 16) or, in the case of a fusion, contains one.
 bool ContainsSignificantReduce(const HloInstruction& instr,
                                FusionInfoCache* cache = nullptr);
+
+// Returns the minimum positive input element count among all array `kReduce`
+// instructions in `instr` (or `instr` itself if it is a `kReduce`), or
+// `std::nullopt` if none exist.
+std::optional<int64_t> GetMinReduceInputElements(
+    const HloInstruction& instr,
+    FusionInfoCache* absl_nullable cache = nullptr);
+
+// Returns the maximum input element count among all `kReduce` instructions in
+// `fusion`, or `std::nullopt` if `fusion` contains no `kReduce` instructions.
+std::optional<int64_t> GetMaxReduceInputElements(
+    const HloFusionAdaptor& fusion);
 
 }  // namespace gpu
 }  // namespace xla

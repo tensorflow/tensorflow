@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
@@ -54,15 +53,15 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/ir/utils.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
-#include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
@@ -103,6 +102,29 @@ ArrayHandle ToArrayHandle(mlir::Value value) {
 std::string PrettyPrintGeneric(mlir::Operation* op) {
   return absl::StrCat(op->getName().getStringRef().str(), " from:\n",
                       GetPrettyLocation(op->getLoc()));
+}
+
+void PopulateInputHandlesAndDeadInputs(
+    IfrtArrayOpInterface op, const mlir::Liveness& liveness,
+    std::vector<ArrayHandle>& input_handles,
+    absl::flat_hash_set<ArrayHandle>& dead_inputs) {
+  input_handles.reserve(op.getInputs().size());
+  for (mlir::Value input : op.getInputs()) {
+    ArrayHandle handle = ToArrayHandle(input);
+    input_handles.push_back(handle);
+    if (liveness.isDeadAfter(input, op)) {
+      dead_inputs.insert(handle);
+    }
+  }
+}
+
+void PopulateOutputHandles(IfrtArrayOpInterface op,
+                           std::vector<ArrayHandle>& output_handles) {
+  output_handles.reserve(op.getOutputs().size());
+  for (mlir::Value output : op.getOutputs()) {
+    output_handles.push_back(output.use_empty() ? kArrayNotUsed
+                                                : ToArrayHandle(output));
+  }
 }
 
 }  // namespace
@@ -516,12 +538,8 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     // Insert the aliased input to the set.
     state.donated_arg_idxs.insert(io_alias.asArrayRef()[0]);
   }
-  for (const auto input : call_loaded_op.getInputs()) {
-    state.input_handles.push_back(ToArrayHandle(input));
-    if (liveness_.isDeadAfter(input, call_loaded_op)) {
-      state.dead_inputs.insert(ToArrayHandle(input));
-    }
-  }
+  PopulateInputHandlesAndDeadInputs(call_loaded_op, liveness_,
+                                    state.input_handles, state.dead_inputs);
 
   if (auto module_type = call_loaded_op->getAttrOfType<mlir::StringAttr>(
           kIfrtModuleTypeAttrName);
@@ -531,12 +549,9 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     state.is_mpmd_reshard = false;
   }
 
+  PopulateOutputHandles(call_loaded_op, state.output_handles);
   state.is_leaf_op = true;
   for (const auto output : call_loaded_op.getOutputs()) {
-    const ArrayHandle handle =
-        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
-    state.output_handles.push_back(handle);
-
     if (state.is_leaf_op) {
       for (mlir::OpOperand& use : output.getUses()) {
         // An ifrt.CallOp is not a leaf if any of its outputs are not returned.
@@ -552,104 +567,6 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
 }
 
 namespace {
-
-absl::StatusOr<DeviceListRef> ComputeDeviceListFromIntervals(
-    Client* client, const DeviceListRef& device_list, int64_t count,
-    absl::Span<const IfrtIntervalAttr> intervals) {
-  TF_RET_CHECK(count >= 0);
-  std::vector<Device*> devices;
-  devices.reserve(count);
-  for (const IfrtIntervalAttr& interval : intervals) {
-    TF_RET_CHECK(interval.getStep() > 0);
-    int64_t index = interval.getStart();
-    while (index < interval.getEnd()) {
-      TF_RET_CHECK(index >= 0 && index < device_list->size());
-      devices.push_back(device_list->devices()[index]);
-      index += interval.getStep();
-    }
-  }
-  TF_RET_CHECK(devices.size() == count);
-  return client->MakeDeviceList(devices);
-}
-
-absl::StatusOr<
-    absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>>
-ComputeInputDevicesForOutputMap(Client* client,
-                                absl::Span<const ArraySpec> input_specs,
-                                absl::Span<const ArraySpec> output_specs,
-                                RemapArraysOp remap_op) {
-  // A list of intervals along with the sum of entries across all the intervals.
-  struct IntervalsAndCount {
-    std::vector<IfrtIntervalAttr> intervals;
-    int64_t count = 0;
-  };
-
-  // Map from output array index to all its input contributors.
-  //
-  // The value is a map from input array index to the intervals of that input
-  // array that contribute to the given output.
-  // Using btree_map ensures deterministic iteration order across compiler runs.
-  absl::btree_map<int, absl::btree_map<int, IntervalsAndCount>>
-      output_to_inputs_and_intervals;
-  for (const auto& array_mapping : remap_op.getMappings()) {
-    const auto array_mapping_attr =
-        llvm::cast<IfrtArrayMappingAttr>(array_mapping);
-    int in_array = array_mapping_attr.getInArrayIndex();
-    int out_array = array_mapping_attr.getOutArrayIndex();
-    TF_RET_CHECK(in_array >= 0 && in_array < input_specs.size());
-    TF_RET_CHECK(out_array >= 0 && out_array < output_specs.size());
-
-    IntervalsAndCount& intervals =
-        output_to_inputs_and_intervals[out_array][in_array];
-    for (const auto& m : array_mapping_attr.getMappings()) {
-      const auto mapping_attr = llvm::cast<IfrtMappingAttr>(m);
-      IfrtIntervalAttr from_shards = mapping_attr.getFromShards();
-      intervals.intervals.push_back(from_shards);
-      intervals.count += from_shards.size();
-    }
-  }
-
-  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
-      input_devices_for_output_map;
-  input_devices_for_output_map.reserve(output_specs.size());
-  for (int out_array = 0; out_array < output_specs.size(); ++out_array) {
-    input_devices_for_output_map.insert({out_array, {}});
-  }
-
-  for (const auto& [out_array, input_intervals] :
-       output_to_inputs_and_intervals) {
-    TF_RET_CHECK(out_array >= 0 && out_array < output_specs.size());
-    const DeviceListRef& out_devices =
-        output_specs[out_array].sharding->devices();
-    std::vector<RemapPlan::InputDeviceRange>& out_input_devices =
-        input_devices_for_output_map[out_array];
-    for (const auto& [in_array, intervals] : input_intervals) {
-      TF_RET_CHECK(in_array >= 0 && in_array < input_specs.size());
-      const DeviceListRef& in_devices =
-          input_specs[in_array].sharding->devices();
-      TF_RET_CHECK(intervals.count >= 0 &&
-                   intervals.count <= out_devices->size());
-      TF_RET_CHECK(intervals.count >= 0 &&
-                   intervals.count <= in_devices->size());
-      DeviceListRef interval_device_list;
-      if (intervals.count == in_devices->size() &&
-          intervals.intervals.size() == 1 &&
-          intervals.intervals[0].getStart() == 0 &&
-          intervals.intervals[0].getStep() == 1) {
-        interval_device_list = in_devices;
-      } else {
-        ABSL_ASSIGN_OR_RETURN(
-            interval_device_list,
-            ComputeDeviceListFromIntervals(client, in_devices, intervals.count,
-                                           intervals.intervals));
-      }
-      out_input_devices.push_back(RemapPlan::InputDeviceRange{
-          /*in_array=*/in_array,
-          /*input_devices=*/std::move(interval_device_list)});
-    }
-  }
-  return input_devices_for_output_map;
-}
 
 struct RemapArraysOpState {
   std::string pretty_print;
@@ -763,42 +680,13 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   RemapArraysOpState state;
   state.pretty_print = PrettyPrint(remap_op);
 
-  // Get the input specs of the remap plan and the input arrays.
-  std::vector<ArraySpec> input_specs;
-  input_specs.reserve(remap_op.getInputs().size());
-  for (const mlir::Value input : remap_op.getInputs()) {
-    state.input_handles.push_back(ToArrayHandle(input));
-    ABSL_ASSIGN_OR_RETURN(ArraySpec spec,
-                     ArraySpecFromMlirType(input.getType(), client_, devices_));
-    input_specs.push_back(std::move(spec));
-    if (liveness_.isDeadAfter(input, remap_op)) {
-      state.dead_inputs.insert(ToArrayHandle(input));
-    }
-  }
-
-  // Get the output specs of the remap plan.
-  std::vector<ArraySpec> output_specs;
-  output_specs.reserve(remap_op.getOutputs().size());
-  for (const mlir::Value output : remap_op.getOutputs()) {
-    ABSL_ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(output.getType(),
-                                                           client_, devices_));
-    output_specs.push_back(std::move(spec));
-  }
-
-  ABSL_ASSIGN_OR_RETURN(auto input_devices_for_output_map,
-                   ComputeInputDevicesForOutputMap(client_, input_specs,
-                                                   output_specs, remap_op));
-
-  state.remap_plan = RemapPlan(std::move(input_specs), std::move(output_specs),
-                               std::move(input_devices_for_output_map));
-  ABSL_RETURN_IF_ERROR(state.remap_plan.Validate());
+  PopulateInputHandlesAndDeadInputs(remap_op, liveness_, state.input_handles,
+                                    state.dead_inputs);
+  ABSL_ASSIGN_OR_RETURN(state.remap_plan,
+                   BuildRemapPlan(client_, devices_, remap_op));
   state.remap_is_donated = remap_op.getDonated();
 
-  for (const auto output : remap_op.getOutputs()) {
-    const ArrayHandle handle =
-        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
-    state.output_handles.push_back(handle);
-  }
+  PopulateOutputHandles(remap_op, state.output_handles);
 
   return absl::bind_front(&RemapArraysOpState::Run, std::move(state));
 }
@@ -809,7 +697,6 @@ struct BitcastArraysOpState {
 
   std::vector<ArrayHandle> input_handles;
   absl::flat_hash_set<ArrayHandle> dead_inputs;
-  bool bitcast_is_donated;
 
   std::vector<ArrayHandle> output_handles;
   std::vector<ArraySpec> output_specs;
@@ -846,12 +733,10 @@ struct BitcastArraysOpState {
       }
 
       // The default buffer donation semantic is finalized at compilation time.
-      // Users can override the donation semantic at runtime. In the meantime,
-      // the IFRT client BitcastArrays API requires all input arrays have the
-      // same donation semantic. Insert a CopyArrays op if BitcastArrays
-      // requires all input arrays to be donated, but some of the input arrays
-      // have been marked as non-donatable.
-      if (bitcast_is_donated && !array_it->second.can_be_donated) {
+      // Users can override the donation semantic at runtime. Since
+      // `BitcastArraysOp` requires all input arrays to be donated, clone any
+      // input array that has been marked as non-donatable at runtime.
+      if (!array_it->second.can_be_donated) {
         ArrayRef array = array_it->second.array;
         LOG_FIRST_N(WARNING, 5)
             << "Array is cloned because is have been marked as non-donatable "
@@ -865,12 +750,11 @@ struct BitcastArraysOpState {
             env.client->CopyArrays(
                 absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
                 /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
-        inputs.push_back(std::move(copied_arrays[0]));
+        inputs.push_back(std::move(copied_arrays.front()));
       } else {
         inputs.push_back(array_it->second.array);
       }
-      if ((bitcast_is_donated && array_it->second.can_be_donated) ||
-          dead_inputs.contains(handle)) {
+      if (array_it->second.can_be_donated || dead_inputs.contains(handle)) {
         arrays_to_remove.push_back(handle);
       }
     }
@@ -878,13 +762,11 @@ struct BitcastArraysOpState {
     ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> bitcast_arrays,
                      env.client->BitcastArrays(
                          absl::MakeSpan(inputs), absl::MakeSpan(output_specs),
-                         bitcast_is_donated ? ArrayCopySemantics::kDonateInput
-                                            : ArrayCopySemantics::kReuseInput));
+                         ArrayCopySemantics::kDonateInput));
 
-    for (const auto handle : arrays_to_remove) {
-      // Donated bitcast arrays are proactively deleted, and aliased arrays
-      // cannot be deleted later. Thus, remove the arrays from the deletable
-      // program arguments set.
+    for (const ArrayHandle handle : arrays_to_remove) {
+      // Donated bitcast arrays are proactively deleted, so remove them from
+      // the deletable program arguments set.
       env.deletable_program_arguments.erase(handle);
       env.handle_to_array.erase(handle);
     }
@@ -913,18 +795,11 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   BitcastArraysOpState state;
   state.pretty_print = PrettyPrint(bitcast_op);
 
-  for (const auto [idx, input] : llvm::enumerate(bitcast_op.getInputs())) {
-    state.input_handles.push_back(ToArrayHandle(input));
-    if (liveness_.isDeadAfter(input, bitcast_op)) {
-      state.dead_inputs.insert(ToArrayHandle(input));
-    }
-  }
-  state.bitcast_is_donated = bitcast_op.getDonated();
-
+  PopulateInputHandlesAndDeadInputs(bitcast_op, liveness_, state.input_handles,
+                                    state.dead_inputs);
+  PopulateOutputHandles(bitcast_op, state.output_handles);
+  state.output_specs.reserve(bitcast_op.getOutputs().size());
   for (const auto output : bitcast_op.getOutputs()) {
-    const ArrayHandle handle =
-        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
-    state.output_handles.push_back(handle);
     ABSL_ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(output.getType(),
                                                            client_, devices_));
     state.output_specs.push_back(std::move(spec));
@@ -1061,12 +936,8 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   CopyArraysOpState state;
   state.pretty_print = PrettyPrint(copy_arrays_op);
 
-  for (const auto [idx, input] : llvm::enumerate(copy_arrays_op.getInputs())) {
-    state.input_handles.push_back(ToArrayHandle(input));
-    if (liveness_.isDeadAfter(input, copy_arrays_op)) {
-      state.dead_inputs.insert(ToArrayHandle(input));
-    }
-  }
+  PopulateInputHandlesAndDeadInputs(copy_arrays_op, liveness_,
+                                    state.input_handles, state.dead_inputs);
 
   if (copy_arrays_op.getDonated()) {
     state.copy_semantics = ArrayCopySemantics::kDonateInput;
@@ -1081,11 +952,7 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
                        GetArrayType(copy_arrays_op.getOutputs().front()),
                        client_, devices_));
 
-  for (const auto output : copy_arrays_op.getOutputs()) {
-    const ArrayHandle handle =
-        output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
-    state.output_handles.push_back(handle);
-  }
+  PopulateOutputHandles(copy_arrays_op, state.output_handles);
 
   return absl::bind_front(&CopyArraysOpState::Run, std::move(state));
 }

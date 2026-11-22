@@ -19,6 +19,7 @@ limitations under the License.
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 include "xla/mosaic/dialect/tpu/tpu.td"
+include "xla/mosaic/dialect/tpu/tpu_type_base.td"
 
 class TPU_Type<string name, string mnemonic_, list<Trait> traits = [],
                string baseCppType = "::mlir::Type">
@@ -26,22 +27,6 @@ class TPU_Type<string name, string mnemonic_, list<Trait> traits = [],
   let mnemonic = mnemonic_;
 }
 
-def TPU_Float8EXMYType : TPU_Type<"Float8EXMY", "float8_exmy",
-                            [DeclareTypeInterfaceMethods<FloatTypeInterface, ["getFloatSemantics"]>]> {
-    let summary = "EXMY type in a 8 bit container";
-    let description = [{
-      EXMY type in a 8 bit container. Meaningful bits are aligned to LSB, and
-      bits higher than the underlying exmy type in the container are considered
-      as ignored. See https://arxiv.org/abs/2405.13938 for more details.
-    }];
-
-    let parameters = (ins
-      TypeParameter<"::mlir::FloatType", "Underlying EXMY type">:$underlying_type
-    );
-
-    let assemblyFormat = [{
-      `<` $underlying_type `>`
-    }];
-}
+def TPU_Float8EXMYType : TPU_Float8EXMYTypeBase<TPU_Dialect>;
 
 #endif  // TPU_TYPES

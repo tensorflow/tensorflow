@@ -39,29 +39,6 @@ namespace gpu {
 
 namespace {
 
-// Checks if a constant literal is losslessly convertible to S8.
-bool LiteralFitsInS8(const Literal& literal) {
-  if (!literal.shape().IsArray()) {
-    return false;
-  }
-  PrimitiveType type = literal.shape().element_type();
-  if (type == S8) {
-    return true;
-  }
-
-  absl::StatusOr<Literal> converted1 = literal.Convert(S8);
-  if (!converted1.ok()) {
-    return false;
-  }
-
-  absl::StatusOr<Literal> converted2 = converted1->Convert(type);
-  if (!converted2.ok()) {
-    return false;
-  }
-
-  return literal == *converted2;
-}
-
 // Canonicalizes an s32 convolution operand into `s32 convert(s8_node)`.
 absl::StatusOr<HloInstruction*> CanonicalizeOperandToS8Convert(
     HloComputation* comp, HloInstruction* operand) {
@@ -71,7 +48,7 @@ absl::StatusOr<HloInstruction*> CanonicalizeOperandToS8Convert(
 
   // 1. s32 constant -> s32 convert(s8 constant)
   if (operand->opcode() == HloOpcode::kConstant &&
-      LiteralFitsInS8(operand->literal())) {
+      operand->literal().IsLosslesslyConvertibleTo(S8)) {
     absl::StatusOr<Literal> s8_literal = operand->literal().Convert(S8);
     if (!s8_literal.ok()) {
       return operand;
@@ -108,7 +85,7 @@ absl::StatusOr<HloInstruction*> CanonicalizeOperandToS8Convert(
       if (operand->opcode() == HloOpcode::kPad && s8_operands.size() > 1) {
         HloInstruction* pad_val = s8_operands[1];
         if (pad_val->opcode() == HloOpcode::kConstant &&
-            LiteralFitsInS8(pad_val->literal())) {
+            pad_val->literal().IsLosslesslyConvertibleTo(S8)) {
           auto s8_lit = pad_val->literal().Convert(S8);
           if (s8_lit.ok()) {
             s8_operands[1] = comp->AddInstruction(

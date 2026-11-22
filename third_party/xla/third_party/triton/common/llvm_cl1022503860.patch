@@ -1,0 +1,131 @@
+Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
+
+--- a/include/triton/Tools/LLVMOptions.h
++++ b/include/triton/Tools/LLVMOptions.h
+@@ -6,6 +6,10 @@
+ #include <utility>
+ #include <vector>
+ 
++namespace llvm::cl {
++class LibraryOptionsContext;
++} // namespace llvm::cl
++
+ namespace mlir::triton::tools {
+ 
+ // LLVM command line options (cl::opt and TableGen library options) are
+@@ -41,6 +45,8 @@ public:
+   ScopedLLVMOptions(const ScopedLLVMOptions &) = delete;
+   ScopedLLVMOptions &operator=(const ScopedLLVMOptions &) = delete;
+ 
++  static const llvm::cl::LibraryOptionsContext &getLibraryOptions();
++
+ private:
+   // A forked child starts with a fresh registry. Objects inherited from the
+   // parent must therefore leave that registry alone when they are destroyed.
+
+--- a/lib/Tools/LLVMOptions.cpp
++++ b/lib/Tools/LLVMOptions.cpp
+@@ -1,6 +1,7 @@
+ #include "triton/Tools/LLVMOptions.h"
+ 
+ #include "llvm/Support/CommandLine.h"
++#include "llvm/Support/LibraryOptionsContext.h"
+ #include "llvm/Support/raw_ostream.h"
+ 
+ #include <condition_variable>
+@@ -25,6 +26,7 @@ struct Registry {
+   // The override set currently applied to LLVM's registries. Empty whenever
+   // `users` is zero.
+   Settings active;
++  llvm::cl::LibraryOptionsContext libraryOptions;
+   // Live scopes sharing `active`.
+   unsigned users = 0;
+   // Scopes waiting to replace `active`. While any is pending, new scopes do not
+@@ -101,13 +103,15 @@ void applySettings(Registry &reg, Settings settings) {
+   // handles TableGen library options, including codegen's start/stop passes,
+   // and owns any argument strings retained by those options. Keep ignoring
+   // unknown options, which may differ between LLVM revisions.
+-  llvm::cl::ParseCommandLineOptions(argv.size(), argv.data(), "",
++  reg.libraryOptions = llvm::cl::LibraryOptionsContext();
++  llvm::cl::parseCommandLineOptions(reg.libraryOptions, argv, "",
+                                     &llvm::nulls());
+   reg.active = std::move(settings);
+ }
+ 
+ void restoreSettings(Registry &reg) {
+   llvm::cl::ResetAllOptionOccurrences();
++  reg.libraryOptions = llvm::cl::LibraryOptionsContext();
+   reg.active.clear();
+ }
+ 
+@@ -152,6 +156,11 @@ ScopedLLVMOptions::~ScopedLLVMOptions() {
+   reg.changed.notify_all();
+ }
+ 
++const llvm::cl::LibraryOptionsContext &
++ScopedLLVMOptions::getLibraryOptions() {
++  return registry().libraryOptions;
++}
++
+ ExclusiveLLVMOptionAccess::ExclusiveLLVMOptionAccess() {
+   Registry &reg = registry();
+   std::unique_lock<std::mutex> lock(reg.mutex);
+@@ -168,6 +177,7 @@ ExclusiveLLVMOptionAccess::~ExclusiveLLVMOptionAccess() {
+   if (registryGeneration != reg.generation)
+     return;
+   llvm::cl::ResetAllOptionOccurrences();
++  reg.libraryOptions = llvm::cl::LibraryOptionsContext();
+   reg.exclusiveHeld = false;
+   reg.changed.notify_all();
+ }
+
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -231,6 +231,7 @@ createTargetMachine(llvm::Module *module, std::string proc,
+   opt.MCOptions.AsmVerbose = true;
+   opt.MCOptions.PreserveAsmComments = true;
+   opt.MCOptions.ABIName = abi;
++  opt.MCOptions.LibraryOptions = &ScopedLLVMOptions::getLibraryOptions();
+   std::unique_ptr<llvm::TargetMachine> machine{target->createTargetMachine(
+       module->getTargetTriple(), proc, features, opt, llvm::Reloc::PIC_,
+       std::nullopt,
+@@ -599,6 +600,7 @@ void init_triton_llvm(py::module_ &m) {
+         }
+         llvm::TargetOptions opt;
+         opt.MCOptions.ABIName = abi;
++        opt.MCOptions.LibraryOptions = &ScopedLLVMOptions::getLibraryOptions();
+         // Target machine is only used to create the data layout.
+         std::unique_ptr<llvm::TargetMachine> machine{
+             target->createTargetMachine(targetTriple, proc, features, opt,
+
+--- a/third_party/amd/backend/codegen/amdgpu_codegen.cc
++++ b/third_party/amd/backend/codegen/amdgpu_codegen.cc
+@@ -194,6 +194,8 @@ createTargetMachine(llvm::Module &module, const CodegenOptions *options,
+   targetOptions.MCOptions.AsmVerbose = true;
+   targetOptions.MCOptions.PreserveAsmComments = true;
+   targetOptions.MCOptions.ABIName = options->abi;
++  targetOptions.MCOptions.LibraryOptions =
++      &ScopedLLVMOptions::getLibraryOptions();
+ 
+   std::unique_ptr<llvm::TargetMachine> machine(target->createTargetMachine(
+       module.getTargetTriple(), options->processor, options->features,
+
+--- a/unittest/Tools/LLVMOptionsTest.cpp
++++ b/unittest/Tools/LLVMOptionsTest.cpp
+@@ -64,9 +64,15 @@ class DummyTargetMachine : public llvm::TargetMachine {
+ public:
+   DummyTargetMachine()
+       : llvm::TargetMachine(target(), "", llvm::Triple(), "", "",
+-                            llvm::TargetOptions()) {}
++                            targetOptions()) {}
+ 
+ private:
++  static llvm::TargetOptions targetOptions() {
++    llvm::TargetOptions options;
++    options.MCOptions.LibraryOptions = &ScopedLLVMOptions::getLibraryOptions();
++    return options;
++  }
++
+   static const llvm::Target &target() {
+     static const llvm::Target instance{};
+     return instance;

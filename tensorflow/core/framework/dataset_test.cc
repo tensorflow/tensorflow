@@ -17,13 +17,17 @@ limitations under the License.
 
 #include <memory>
 #include <tuple>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -230,6 +234,21 @@ TEST(DatasetTest, MemoryCheckpointWrites) {
   std::tie(_, key) = id_registry->Get(id);
 
   EXPECT_EQ(key, "key_baz");
+}
+
+TEST(DatasetTest, WrappedDatasetVariantDecodeRejectsEmptyTensors) {
+  // A crafted DT_VARIANT value naming the WrappedDatasetVariant decoder but
+  // carrying no tensors must be rejected instead of indexing an empty tensor
+  // list. DecodeUnaryVariant looks up the decode function by the supplied
+  // type_name and runs it before its post-decode type-name mismatch check, so
+  // the decode must guard tensors_size() itself.
+  constexpr char kTypeName[] = "tensorflow::data::WrappedDatasetVariant";
+  ASSERT_NE(UnaryVariantOpRegistry::Global()->GetDecodeFn(kTypeName), nullptr);
+  VariantTensorDataProto proto;
+  proto.set_type_name(kTypeName);
+  Variant encoded = std::move(proto);
+  EXPECT_FALSE(DecodeUnaryVariant(&encoded));
+  EXPECT_TRUE(encoded.is_empty());
 }
 
 }  // namespace data

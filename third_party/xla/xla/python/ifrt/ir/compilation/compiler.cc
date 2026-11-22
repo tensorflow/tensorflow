@@ -1,0 +1,200 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/python/ifrt/ir/compilation/compiler.h"
+
+#include <memory>
+#include <utility>
+
+#include "absl/base/nullability.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/compiled_ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/ifrt_ir_executable.h"
+#include "xla/python/ifrt/ir/ifrt_ir_executable_version.h"
+#include "xla/python/ifrt/ir/ifrt_ir_loaded_executable.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/serialization_utils.h"
+#include "xla/python/ifrt/ir/version.h"
+#include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
+#include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/with_user_context.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/util.h"
+#include "tsl/profiler/lib/traceme.h"
+
+namespace xla {
+namespace ifrt {
+
+namespace {
+
+std::unique_ptr<IfrtIrExecutableVersion> GetCurrentIfrtIrExecutableVersion() {
+  // Only the version number is needed here for compatibility checking.
+  return std::make_unique<IfrtIrExecutableVersion>(
+      Version::getCurrentVersion());
+}
+
+}  // namespace
+
+char IfrtIrProgramCompiler::ID = 0;
+
+IfrtIrProgramCompiler::IfrtIrProgramCompiler(
+    Client* absl_nonnull client,
+    AtomProgramCompilerFactory atom_program_compiler_factory)
+    : client_(client),
+      atom_program_compiler_factory_(std::move(atom_program_compiler_factory)) {
+}
+
+template <typename ResultT, typename CompileFn>
+tsl::Future<ResultT> IfrtIrProgramCompiler::ScheduleCompilation(
+    std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options,
+    CompileFn compile_fn) {
+  if (!isa_and_nonnull<IfrtIRProgram>(program.get())) {
+    return absl::InvalidArgumentError(
+        "IFRT IR compiler requires an IFRT IR program");
+  }
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<IfrtIRCompileOptions> ifrt_ir_compile_options,
+      GetIfrtIRCompileOptions(std::move(options)));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<AtomProgramCompiler> atom_program_compiler,
+                   atom_program_compiler_factory_(*ifrt_ir_compile_options));
+
+  auto [promise, future] = tsl::MakePromise<ResultT>();
+  // `client_` outlives all `Compile` tasks per `xla::ifrt::Compiler`'s lifetime
+  // contract (callers must await all returned compilation futures before
+  // destroying the compiler and client).
+  tsl::Env::Default()->SchedClosure(WithCurrentUserContext(
+      [client = client_,
+       ifrt_ir_program = cast<IfrtIRProgram>(std::move(program)),
+       ifrt_ir_compile_options = std::move(ifrt_ir_compile_options),
+       atom_program_compiler = std::move(atom_program_compiler),
+       compile_fn = std::move(compile_fn),
+       promise = std::move(promise)]() mutable {
+        compile_fn(std::move(ifrt_ir_program),
+                   std::move(ifrt_ir_compile_options), client,
+                   std::move(atom_program_compiler))
+            .OnReady([promise = std::move(promise)](
+                         absl::StatusOr<ResultT> result) mutable {
+              promise.Set(std::move(result));
+            });
+      }));
+  return future;
+}
+
+tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>>
+IfrtIrProgramCompiler::Compile(std::unique_ptr<Program> program,
+                               std::unique_ptr<CompileOptions> options) {
+  tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::Compile");
+  return ScheduleCompilation<std::shared_ptr<CompiledIfrtIrProgram>>(
+      std::move(program), std::move(options), CompiledIfrtIrProgram::Create);
+}
+
+tsl::Future<LoadedExecutableRef> IfrtIrProgramCompiler::CompileAndLoad(
+    std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
+  tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::CompileAndLoad");
+
+  auto [promise, future] = tsl::MakePromise<LoadedExecutableRef>();
+  // `client_` outlives all `CompileAndLoad` tasks per `xla::ifrt::Compiler`'s
+  // lifetime contract.
+  Compile(std::move(program), std::move(options))
+      .OnReady(WithCurrentUserContext(
+          [client = client_, promise = std::move(promise)](
+              absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>>
+                  compiled_program) mutable {
+            if (compiled_program.ok()) {
+              promise.Set(IfrtIrLoadedExecutable::Create(
+                  client, *std::move(compiled_program)));
+            } else {
+              promise.Set(compiled_program.status());
+            }
+          }));
+  return future;
+}
+
+tsl::Future<ExecutableRef> IfrtIrProgramCompiler::Compile(
+    std::unique_ptr<Program> program, const Topology& topology,
+    std::unique_ptr<CompileOptions> options) {
+  tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::Compile");
+  return ScheduleCompilation<ExecutableRef>(
+      std::move(program), std::move(options), IfrtIrExecutable::Create);
+}
+
+absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(
+    const ExecutableVersion& version, const DeviceListRef&) const {
+  const IfrtIrExecutableVersion* executable_version =
+      dyn_cast<IfrtIrExecutableVersion>(&version);
+  if (!executable_version) {
+    return absl::InvalidArgumentError(
+        "Executable version is an unsupported type");
+  }
+
+  absl::Status compatibility =
+      GetCurrentIfrtIrExecutableVersion()->IsCompatibleWith(
+          *client_, *executable_version);
+  if (!compatibility.ok()) {
+    tsl::errors::AppendToMessage(
+        &compatibility,
+        absl::StrCat("Incompatible IFRT IR executable version: current: ",
+                     GetCurrentIfrtIrExecutableVersion()->ToString(), " vs ",
+                     executable_version->ToString()));
+    return compatibility;
+  }
+  return absl::OkStatus();
+}
+
+tsl::Future<LoadedExecutableRef>
+IfrtIrProgramCompiler::DeserializeLoadedExecutable(
+    const absl::Cord& serialized,
+    absl_nullable std::unique_ptr<DeserializeExecutableOptions> options) {
+  tsl::profiler::TraceMe traceme(
+      "IfrtIrProgramCompiler::DeserializeLoadedExecutable");
+
+  std::unique_ptr<DeserializeIfrtIRProgramOptions> deserialize_options;
+  if (options != nullptr) {
+    if (isa_and_nonnull<DeserializeIfrtIRProgramOptions>(options.get())) {
+      deserialize_options =
+          xla::unique_ptr_down_cast<DeserializeIfrtIRProgramOptions>(
+              std::move(options));
+    } else {
+      return absl::InvalidArgumentError(
+          "Options must be of type DeserializeIfrtIRProgramOptions");
+    }
+  }
+
+  ABSL_ASSIGN_OR_RETURN(DeserializedIfrtIRProgram deserialized_ifrt_executable,
+                   DeserializeIfrtIrExecutable(client_, serialized,
+                                               std::move(deserialize_options)));
+
+  return CompileAndLoad(
+      std::unique_ptr<IfrtIRProgram>(
+          std::move(deserialized_ifrt_executable.program)),
+      std::move(deserialized_ifrt_executable.compile_options));
+}
+
+}  // namespace ifrt
+}  // namespace xla

@@ -1058,6 +1058,60 @@ TEST(HloShardingUtilTest,
   EXPECT_EQ(result, output_sharding);
 }
 
+TEST(HloShardingUtilTest, PropagateReshapeShardingSizeOnePartitioned) {
+  // Collapsed size 1 sharded dimension inside a subinterval (start_dim = 1).
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 1, 4});
+    Shape output_shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+    HloSharding input_sharding = HloSharding::IotaTile({2, 1, 2, 2});
+    HloSharding expected = HloSharding::PartialTile(
+        TileAssignment({1, 1, 2, 4}, {2, 2, 2}, {2, 0, 1}));
+    EXPECT_EQ(PropagateShardingThroughReshape(input_shape, output_shape,
+                                              input_sharding),
+              expected);
+  }
+  // Existing partial replication, end_dim < rank, and cyclic device perm.
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 1, 4, 8});
+    Shape output_shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 2, 4});
+    HloSharding input_sharding = HloSharding::PartialTile(
+        TileAssignment({2, 1, 2, 2, 3, 2}, {2, 3, 2, 2, 2}, {2, 0, 1, 3, 4}));
+    std::optional<HloSharding> expected = ReshapeSharding(
+        input_shape, output_shape,
+        PartiallyReplicateTiledShardingOnDims(input_sharding, {0, 4}));
+    ASSERT_TRUE(expected.has_value());
+    EXPECT_EQ(PropagateShardingThroughReshape(input_shape, output_shape,
+                                              input_sharding),
+              *expected);
+  }
+  // Preserved matching size 1 sharded dim alongside collapsed size 1 dims.
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 1, 2, 1, 1, 4});
+    Shape output_shape = ShapeUtil::MakeShape(F32, {2, 3, 1, 2, 4});
+    HloSharding input_sharding = HloSharding::IotaTile({2, 1, 2, 1, 3, 5, 2});
+    std::optional<HloSharding> expected = ReshapeSharding(
+        input_shape, output_shape,
+        PartiallyReplicateTiledShardingOnDims(input_sharding, {0}));
+    ASSERT_TRUE(expected.has_value());
+    EXPECT_EQ(PropagateShardingThroughReshape(input_shape, output_shape,
+                                              input_sharding),
+              *expected);
+  }
+  // Manual subgroup with collapsed size 1 sharded dim.
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 1, 4});
+    Shape output_shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+    HloSharding input_sharding = HloSharding::Subgroup(
+        TileAssignment({2, 1, 2, 2, 2}), {OpSharding::MANUAL});
+    HloSharding expected = HloSharding::Subgroup(
+        TileAssignment({1, 1, 2, 2, 4}, {2, 2, 2, 2}, {2, 3, 0, 1}),
+        {OpSharding::MANUAL, OpSharding::REPLICATED});
+    EXPECT_EQ(PropagateShardingThroughReshape(input_shape, output_shape,
+                                              input_sharding),
+              expected);
+  }
+}
+
 TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers1) {
   HloSharding source_sharding = HloSharding::IotaTile({2, 3, 5, 7, 11});
   std::vector<int64_t> source_dims = {2, 4, 1};
@@ -2221,6 +2275,32 @@ TEST_F(HloShardingUtilTestWithHlo, MultipleCallSitesForIota) {
                               ->root_instruction(),
                           *call_graph),
       std::nullopt);
+}
+
+TEST(HloShardingUtilTest, NonTiledLeafShardingSpecificityAndImprovement) {
+  const HloSharding unreduced = HloSharding::Unreduced();
+  const HloSharding named_unreduced(NamedSharding::Unreduced(Mesh({2}, {"x"})));
+  const HloSharding unknown = HloSharding::Unknown();
+  const HloSharding tiled = HloSharding::IotaTile({2});
+  const HloSharding replicated = HloSharding::Replicate();
+  const Shape shape = ShapeUtil::MakeShape(F32, {8});
+
+  for (const HloSharding& s : {unreduced, named_unreduced, unknown}) {
+    EXPECT_FALSE(IsShardingMoreSpecific(s, s));
+    EXPECT_FALSE(IsShardingMoreSpecific(s, tiled));
+    EXPECT_FALSE(IsShardingMoreSpecific(tiled, s));
+    EXPECT_FALSE(IsShardingMoreSpecific(s, replicated));
+    EXPECT_EQ(UntileShape(s, shape), shape);
+    EXPECT_EQ(TileShape(s, shape), shape);
+    EXPECT_EQ(ReturnImprovedShardingImpl(s, /*to_improved=*/nullptr, shape,
+                                         /*may_combine_partial_sharding=*/true,
+                                         /*allow_aggressive_resharding=*/true),
+              std::nullopt);
+    EXPECT_EQ(ReturnImprovedShardingImpl(s, &replicated, shape,
+                                         /*may_combine_partial_sharding=*/true,
+                                         /*allow_aggressive_resharding=*/true),
+              std::nullopt);
+  }
 }
 
 }  // namespace

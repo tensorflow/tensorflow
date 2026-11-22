@@ -28,11 +28,13 @@ namespace stream_executor {
 struct Dim3D {
   uint64_t x, y, z;
 
-  bool operator==(const Dim3D& other) const {
+  constexpr bool operator==(const Dim3D& other) const {
     return x == other.x && y == other.y && z == other.z;
   }
 
-  bool operator!=(const Dim3D& other) const { return !(*this == other); }
+  constexpr bool operator!=(const Dim3D& other) const {
+    return !(*this == other);
+  }
 
   Dim3DProto ToProto() const;
   static absl::StatusOr<Dim3D> FromProto(const Dim3DProto& proto);
@@ -51,7 +53,7 @@ struct ThreadDim : Dim3D {
                                uint64_t z_arg = 1)
       : Dim3D({x_arg, y_arg, z_arg}) {}
 
-  explicit ThreadDim(const Dim3D& other) : Dim3D(other) {}
+  explicit constexpr ThreadDim(const Dim3D& other) : Dim3D(other) {}
 
   std::string ToString() const {
     return absl::StrCat("ThreadDim{", x, ", ", y, ", ", z, "}");
@@ -68,7 +70,7 @@ struct BlockDim : Dim3D {
                               uint64_t z_arg = 1)
       : Dim3D({x_arg, y_arg, z_arg}) {}
 
-  explicit BlockDim(const Dim3D& other) : Dim3D(other) {}
+  explicit constexpr BlockDim(const Dim3D& other) : Dim3D(other) {}
 
   std::string ToString() const {
     return absl::StrCat("BlockDim{", x, ", ", y, ", ", z, "}");
@@ -80,11 +82,11 @@ struct BlockDim : Dim3D {
 
 // Cluster dimensionality for use in a kernel launch.
 struct ClusterDim : Dim3D {
-  explicit ClusterDim(uint64_t x_arg = 1, uint64_t y_arg = 1,
-                      uint64_t z_arg = 1)
+  explicit constexpr ClusterDim(uint64_t x_arg = 1, uint64_t y_arg = 1,
+                                uint64_t z_arg = 1)
       : Dim3D({x_arg, y_arg, z_arg}) {}
 
-  explicit ClusterDim(const Dim3D& other) : Dim3D(other) {}
+  explicit constexpr ClusterDim(const Dim3D& other) : Dim3D(other) {}
 
   std::string ToString() const {
     return absl::StrCat("ClusterDim{", x, ", ", y, ", ", z, "}");

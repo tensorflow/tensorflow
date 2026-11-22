@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -45,7 +47,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
   Shape matrix = ShapeUtil::MakeShape(F32, {2, 3});
@@ -1835,6 +1840,28 @@ void BM_MakeValidatedShape(::testing::benchmark::State& state) {
 
 BENCHMARK(BM_MakeValidatedShape);
 
+void BM_MakeValidatedShapeR4(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    tsl::testing::DoNotOptimize(
+        ShapeUtil::MakeValidatedShape(F32, {8, 16, 32, 64}));
+  }
+}
+
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_MakeValidatedShapeR4);
+
+void BM_MakeValidatedShapeWithDescendingLayout(
+    ::testing::benchmark::State& state) {
+  for (auto s : state) {
+    tsl::testing::DoNotOptimize(
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32,
+                                                          {8, 16, 32, 64}));
+  }
+}
+
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_MakeValidatedShapeWithDescendingLayout);
+
 Shape ShapeForBenchmark(::testing::benchmark::State& state) {
   Shape shape;
   switch (state.range(0)) {
@@ -2049,6 +2076,160 @@ TEST(ShapeUtilTest, GetNormalizedLogicalTransposeShape_InvalidLayout) {
   EXPECT_FALSE(ShapeUtil::GetNormalizedLogicalTransposeShape(
                    input_shape, output_shape, dimensions, permutation)
                    .ok());
+}
+
+struct MakeValidatedShapeArrayTestCase {
+  std::string test_name;
+  std::vector<int64_t> dimensions;
+  std::vector<bool> expected_dynamic_dimensions;
+  std::vector<int64_t> expected_minor_to_major;
+};
+
+using MakeValidatedShapeArrayTest =
+    ::testing::TestWithParam<MakeValidatedShapeArrayTestCase>;
+
+TEST_P(MakeValidatedShapeArrayTest, CreatesValidatedShapeWithDescendingLayout) {
+  const MakeValidatedShapeArrayTestCase& tc = GetParam();
+
+  ASSERT_OK_AND_ASSIGN(Shape shape,
+                       ShapeUtil::MakeValidatedShape(F32, tc.dimensions));
+  EXPECT_EQ(shape.element_type(), F32);
+  EXPECT_THAT(shape.dimensions(), ElementsAreArray(tc.dimensions));
+  EXPECT_THAT(shape.dynamic_dimensions(),
+              ElementsAreArray(tc.expected_dynamic_dimensions));
+  ASSERT_TRUE(shape.has_layout());
+  EXPECT_THAT(shape.layout().minor_to_major(),
+              ElementsAreArray(tc.expected_minor_to_major));
+
+  ASSERT_OK_AND_ASSIGN(
+      Shape descending_shape,
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32, tc.dimensions));
+  EXPECT_EQ(descending_shape, shape);
+  EXPECT_EQ(descending_shape,
+            ShapeUtil::MakeShapeWithDescendingLayout(F32, tc.dimensions));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MakeValidatedShapeArrayTests, MakeValidatedShapeArrayTest,
+    ::testing::ValuesIn<MakeValidatedShapeArrayTestCase>({
+        {"StaticRank3", {2, 3, 4}, {false, false, false}, {2, 1, 0}},
+        {"UnboundedDynamic",
+         {2, Shape::kUnboundedSize, 4},
+         {false, true, false},
+         {2, 1, 0}},
+        {"Rank8",
+         {1, 2, 3, 4, 5, 6, 7, 8},
+         {false, false, false, false, false, false, false, false},
+         {7, 6, 5, 4, 3, 2, 1, 0}},
+        {"Scalar", {}, {}, {}},
+    }),
+    [](const ::testing::TestParamInfo<MakeValidatedShapeArrayTest::ParamType>&
+           info) { return info.param.test_name; });
+
+TEST(ShapeUtilTest, MakeValidatedShapeNonArrayAndInvalidInputs) {
+  ASSERT_OK_AND_ASSIGN(Shape token_shape,
+                       ShapeUtil::MakeValidatedShape(TOKEN, {}));
+  EXPECT_TRUE(token_shape.IsToken());
+
+  ASSERT_OK_AND_ASSIGN(Shape opaque_shape,
+                       ShapeUtil::MakeValidatedShape(OPAQUE_TYPE, {}));
+  EXPECT_TRUE(opaque_shape.IsOpaque());
+
+  EXPECT_THAT(ShapeUtil::MakeValidatedShape(TOKEN, {1}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Invalid dimensions size")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShape(TUPLE, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: TUPLE")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShape(BUFFER, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: BUFFER")));
+  EXPECT_THAT(
+      ShapeUtil::MakeValidatedShape(PRIMITIVE_TYPE_INVALID, {}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Unsupported element type: PRIMITIVE_TYPE_INVALID")));
+  EXPECT_THAT(
+      ShapeUtil::MakeValidatedShape(static_cast<PrimitiveType>(9999), {}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Unsupported element type: 9999")));
+
+  ASSERT_OK_AND_ASSIGN(Shape token_dynamic_shape,
+                       ShapeUtil::MakeValidatedShape(TOKEN, {}, {}));
+  EXPECT_TRUE(token_dynamic_shape.IsToken());
+  EXPECT_THAT(ShapeUtil::MakeValidatedShape(F32, {2, 3}, {false}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("dynamic dimensions size")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShape(F32, {-2}, {true}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Invalid dimension size")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShape(TOKEN, {1}, {false}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Invalid dimensions size")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShape(TUPLE, {}, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: TUPLE")));
+
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDescendingLayout(TOKEN, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: TOKEN")));
+  EXPECT_THAT(
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(OPAQUE_TYPE, {}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Unsupported element type: OPAQUE_TYPE")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDescendingLayout(TUPLE, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: TUPLE")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDescendingLayout(BUFFER, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: BUFFER")));
+  EXPECT_THAT(
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(PRIMITIVE_TYPE_INVALID,
+                                                        {}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Unsupported element type: PRIMITIVE_TYPE_INVALID")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                  static_cast<PrimitiveType>(9999), {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: 9999")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDenseLayout(TOKEN, {}, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: TOKEN")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDenseLayout(OPAQUE_TYPE, {}, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: OPAQUE_TYPE")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDenseLayout(BUFFER, {}, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: BUFFER")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDenseLayout(
+                  static_cast<PrimitiveType>(9999), {}, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported element type: 9999")));
+  EXPECT_THAT(
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32, {2, -2, 4}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Invalid dimension size")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                  F32, {1LL << 31, 1LL << 31}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("overflow in static extent product")));
+  EXPECT_THAT(
+      ShapeUtil::MakeValidatedShapeWithDenseLayout(F32, {2, -2, 4}, {2, 1, 0}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Invalid dimension size")));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDenseLayout(
+                  F32, {1LL << 31, 1LL << 31}, {1, 0}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("overflow in static extent product")));
+  ASSERT_OK_AND_ASSIGN(Shape dense_unbounded,
+                       ShapeUtil::MakeValidatedShapeWithDenseLayout(
+                           F32, {2, Shape::kUnboundedSize, 4}, {0, 2, 1}));
+  EXPECT_THAT(dense_unbounded.dynamic_dimensions(),
+              ElementsAre(false, true, false));
+  ASSERT_TRUE(dense_unbounded.has_layout());
+  EXPECT_THAT(dense_unbounded.layout().minor_to_major(), ElementsAre(0, 2, 1));
+  EXPECT_THAT(ShapeUtil::MakeValidatedShapeWithDenseLayout(F32, {2, 3}, {0, 0}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("duplicate values")));
 }
 
 }  // namespace

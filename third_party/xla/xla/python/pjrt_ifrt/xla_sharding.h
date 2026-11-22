@@ -51,10 +51,16 @@ class XlaCompatibleSharding
 class HloSharding final
     : public RTTIExtends<HloSharding, XlaCompatibleSharding> {
  public:
-  // Creates an `HloSharding` wrapper. This bypasses consistency checks against
-  // devices to optimize the common path of passing it to the user or to a
-  // lower-level runtime. It is instead validated when the information in the
-  // sharding is used within IFRT, e.g., in `Disassemble()`.
+  // Creates an `HloSharding` wrapper. Returns `InvalidArgumentError` if
+  // `devices` is empty, if `xla_hlo_sharding` is an unsupported kind (tuple, V3
+  // `NamedSharding`, unknown, or shard-group), or if `xla_hlo_sharding` is
+  // incompatible with `devices->size()`.
+  static absl::StatusOr<std::unique_ptr<HloSharding>> CreateIfValid(
+      DeviceListRef devices, MemoryKind memory_kind,
+      xla::HloSharding xla_hlo_sharding);
+
+  // Creates an `HloSharding` wrapper. `CHECK`-fails if `CreateIfValid` returns
+  // an error.
   static std::unique_ptr<HloSharding> Create(DeviceListRef devices,
                                              MemoryKind memory_kind,
                                              xla::HloSharding xla_hlo_sharding);

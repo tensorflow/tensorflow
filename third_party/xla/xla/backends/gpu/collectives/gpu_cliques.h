@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/lockable.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
@@ -112,6 +113,21 @@ absl::Status AbortAllCliques();
 // cliques that include its incarnation. No-op if the global task state is not
 // known yet.
 absl::Status AbortTaskCliques(int failed_task_id, absl::Status error);
+
+// Drops the symmetric memory cached for base address `addr.opaque()` on the
+// communicators of all live GPU cliques that run on `device_id`. Only the base
+// address is matched: `addr.size()` is ignored, and windows that merely overlap
+// `addr` are not released. Meant to be called when the allocator frees `addr`.
+// Thread-safe, and doesn't wait for the process clique lock, but may block
+// until pending work on the affected communicators finishes. Doesn't extend
+// the lifetime of any clique.
+//
+// Unlike `AllocatorMemoryRegistration`, which registers allocator ranges
+// eagerly and tracks the registrations itself, symmetric windows are acquired
+// lazily by collectives, so the allocator can't know which cliques hold them
+// and the release goes to all cliques.
+void ReleaseSymmetricMemory(LocalDeviceId device_id,
+                            se::DeviceAddressBase addr);
 
 namespace internal {
 // Destroys all cliques that were acquired for the given process. This is

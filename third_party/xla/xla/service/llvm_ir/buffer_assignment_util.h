@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
@@ -36,11 +37,17 @@ std::string ConstantNameToGlobalName(absl::string_view name);
 
 // Returns the Literal corresponding to `allocation`, which must be a constant
 // allocation.
+ABSL_DEPRECATED("Use the BufferAssignment overload instead.")
 const Literal& LiteralForConstantAllocation(const BufferAllocation& allocation);
+const Literal& LiteralForConstantAllocation(const BufferAssignment& assignment,
+                                            const BufferAllocation& allocation);
 // Returns the constant HloInstruction corresponding to `allocation`, which must
 // be a constant allocation.
+ABSL_DEPRECATED("Use the BufferAssignment overload instead.")
 const HloInstruction& InstrForConstantBufferAllocation(
     const BufferAllocation& allocation);
+const HloInstruction& InstrForConstantBufferAllocation(
+    const BufferAssignment& assignment, const BufferAllocation& allocation);
 }  // namespace llvm_ir
 }  // namespace xla
 

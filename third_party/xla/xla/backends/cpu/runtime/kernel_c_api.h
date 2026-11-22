@@ -56,7 +56,7 @@ typedef struct XLA_CPU_NumWorkGroups {
   uint64_t x;
   uint64_t y;
   uint64_t z;
-} XLA_CPU_NumWorkGrousm;
+} XLA_CPU_NumWorkGroups;
 
 // Workgroup id for an XLA:CPU kernel invocation.
 typedef struct XLA_CPU_WorkGroupId {

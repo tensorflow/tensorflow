@@ -218,24 +218,38 @@ absl::Status DecomposeCollectivePermuteCycle(
   HloInstruction* fwd_cp =
       AddCP(cp, computation, fwd_pairs, "-fwd", attrs.second, fwd_channel_id);
 
-  // Calculate the received data as follows:
+  // Calculate the received data by testing whether the current partition (or
+  // replica) is any of the back-edge receivers in `back_pairs` (there is one
+  // back edge per disjoint cycle in `source_target_pairs`):
   //   %partition = u32[] partition-id()
-  //   %bwd_recv_id = u32[] constant(bwd-recv-partition-id)
-  //   compare = pred[] compare(%partition, %bwd_recv_id), direction=EQ
-  //   recv-data = type[?] select(compare, cp1_done, cp2_done)
+  //   %bwd_recv_id_0 = u32[] constant(bwd-recv-partition-id-0)
+  //   %cmp_0 = pred[] compare(%partition, %bwd_recv_id_0), direction=EQ
+  //   ...
+  //   %compare = pred[] or(%cmp_0, %cmp_1, ...)  // %cmp_0 if single cycle
+  //   %recv_data = type[?] select(%compare, %cp_bwd, %cp_fwd)
   // If the collective is across replicas, then `partition` is replaced by
   // `replica = u32[] replica-id()`.
   ABSL_ASSIGN_OR_RETURN(HloInstruction * partition_or_replica,
                    CreatePartitionOrReplicaId(computation, mode, cp_name));
-  int64_t bwd_recv_id = back_pairs.back().second;
-  HloInstruction* constant = computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(U32, bwd_recv_id)),
-      absl::StrCat(cp_name, "-bwd-recv-id"));
-  HloInstruction* compare = computation->AddInstruction(
-      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}),
-                                    partition_or_replica, constant,
-                                    Comparison::Direction::kEq),
-      absl::StrCat(cp_name, "-cmp"));
+  HloInstruction* compare = nullptr;
+  for (const std::pair<int64_t, int64_t>& back_pair : back_pairs) {
+    HloInstruction* constant = computation->AddInstruction(
+        HloInstruction::CreateConstant(
+            LiteralUtil::CreateR0(U32, back_pair.second)),
+        absl::StrCat(cp_name, "-bwd-recv-id"));
+    HloInstruction* is_bwd_recv = computation->AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}),
+                                      partition_or_replica, constant,
+                                      Comparison::Direction::kEq),
+        absl::StrCat(cp_name, "-cmp"));
+    compare = compare == nullptr
+                  ? is_bwd_recv
+                  : computation->AddInstruction(
+                        HloInstruction::CreateBinary(
+                            ShapeUtil::MakeShape(PRED, {}), HloOpcode::kOr,
+                            compare, is_bwd_recv),
+                        absl::StrCat(cp_name, "-cmp-or"));
+  }
 
   // Later in the pipeline, CollectivePermuteDecomposer uses post order
   //  to chain the send/recv instructions. It's important that the back

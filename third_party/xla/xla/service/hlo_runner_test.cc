@@ -35,17 +35,21 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/device_assignment.h"
+#include "xla/service/fake_multi_host_pjrt_client.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/test_compilation_environment.pb.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/casts.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/path.h"
 
@@ -297,6 +301,89 @@ TEST_F(ExecutePhaseHloRunnerTest,
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   ASSERT_OK(runner.CreateExecutable(m->Clone(""), /*run_hlo_passes=*/false));
   EXPECT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false));
+}
+
+TEST(HloRunnerMultiHostTest, ExecuteReplicatedSkipsNonAddressableDevices) {
+  auto client = std::make_unique<FakeMultiHostClient>(
+      absl::Span<const bool>{false, false, true, true});
+  FakeMultiHostClient* raw_client = client.get();
+  HloRunner runner(std::move(client));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(FakeMultiHostClient::kIdentityHlo));
+  DeviceAssignment device_assignment(4, 1);
+  device_assignment.FillIota(0);
+
+  Literal arg_literal = LiteralUtil::CreateR0<int32_t>(5);
+  Literal infeed_literal = LiteralUtil::CreateR0<int32_t>(7);
+  std::vector<Literal> outfeed_literals;
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.num_devices = 4;
+  options.arguments = {&arg_literal};
+  options.infeed_steps = 1;
+  options.infeed_values = std::vector<const Literal*>(4, &infeed_literal);
+  options.outfeed_shape = ShapeUtil::MakeShape(S32, {});
+  options.outfeed_values = &outfeed_literals;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      runner.ExecuteReplicated(std::move(m), options, &device_assignment));
+
+  ASSERT_EQ(results.size(), 4);
+  ASSERT_EQ(outfeed_literals.size(), 4);
+  for (int i : {0, 1}) {
+    SCOPED_TRACE(i);
+    EXPECT_EQ(raw_client->device(i).execute_count(), 0);
+    EXPECT_EQ(raw_client->device(i).infeed_count(), 0);
+    EXPECT_EQ(raw_client->device(i).outfeed_count(), 0);
+    EXPECT_TRUE(ShapeUtil::IsEmptyTuple(results[i].shape()));
+    EXPECT_TRUE(ShapeUtil::IsEmptyTuple(outfeed_literals[i].shape()));
+  }
+  for (int i : {2, 3}) {
+    SCOPED_TRACE(i);
+    EXPECT_EQ(raw_client->device(i).execute_count(), 1);
+    EXPECT_EQ(raw_client->device(i).infeed_count(), 1);
+    EXPECT_EQ(raw_client->device(i).outfeed_count(), 1);
+    EXPECT_EQ(results[i], LiteralUtil::CreateR0<int32_t>(10 + i));
+    EXPECT_EQ(outfeed_literals[i], LiteralUtil::CreateR0<int32_t>(100 + i));
+  }
+}
+
+TEST(HloRunnerMultiHostTest,
+     ExecuteReplicatedReturnsPlaceholdersWhenNoDevicesAreAddressable) {
+  auto client = std::make_unique<FakeMultiHostClient>(
+      absl::Span<const bool>{false, false});
+  FakeMultiHostClient* raw_client = client.get();
+  HloRunner runner(std::move(client));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
+  DeviceAssignment device_assignment(2, 1);
+  device_assignment.FillIota(0);
+
+  Literal infeed_literal = LiteralUtil::CreateR0<int32_t>(7);
+  std::vector<Literal> outfeed_literals;
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.num_devices = 2;
+  options.infeed_steps = 1;
+  options.infeed_values = std::vector<const Literal*>(2, &infeed_literal);
+  options.outfeed_shape = ShapeUtil::MakeShape(S32, {});
+  options.outfeed_values = &outfeed_literals;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      runner.ExecuteReplicated(std::move(m), options, &device_assignment));
+
+  ASSERT_EQ(results.size(), 2);
+  ASSERT_EQ(outfeed_literals.size(), 2);
+  for (int i : {0, 1}) {
+    SCOPED_TRACE(i);
+    EXPECT_EQ(raw_client->device(i).execute_count(), 0);
+    EXPECT_EQ(raw_client->device(i).infeed_count(), 0);
+    EXPECT_EQ(raw_client->device(i).outfeed_count(), 0);
+    EXPECT_TRUE(ShapeUtil::IsEmptyTuple(results[i].shape()));
+    EXPECT_TRUE(ShapeUtil::IsEmptyTuple(outfeed_literals[i].shape()));
+  }
 }
 
 }  // namespace

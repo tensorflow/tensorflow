@@ -88,8 +88,7 @@ CollectiveBackendConfig::CollectiveKernelStrategy ToProtoStrategy(
 }
 
 bool HasCollectivesGroupAttribute(const HloInstruction* instruction) {
-  return instruction->frontend_attributes().map().contains(
-      kCollectiveGroupMarkerAttr);
+  return instruction->has_frontend_attribute(kCollectiveGroupMarkerAttr);
 }
 
 // Tries to determine the collective kernel strategy for `instr` and writes the

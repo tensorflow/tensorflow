@@ -24,24 +24,30 @@ limitations under the License.
 #include <random>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "google/protobuf/text_format.h"
+#include "google/protobuf/unknown_field_set.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/executable_run_options.h"
@@ -50,9 +56,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiler.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
@@ -60,9 +69,13 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cublas_lt_matmul_algorithm.h"
+#include "xla/stream_executor/cuda/cublas_lt_matmul_algorithm.pb.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.pb.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -79,8 +92,9 @@ limitations under the License.
 namespace xla::gpu {
 
 namespace {
-using absl_testing::IsOkAndHolds;
-using tsl::proto_testing::EqualsProto;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::tsl::proto_testing::EqualsProto;
 
 class GpuBlasLtMatmulThunkTest : public HloTestBaseLegacy {
  public:
@@ -222,14 +236,14 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
   ServiceExecutableRunOptions run_options;
 
   auto thread_func = [&](se::Stream* stream) -> absl::Status {
-    auto thunk_params = Thunk::ExecuteParams::Create(
-        run_options, *allocs, stream, stream, nullptr, nullptr, nullptr);
-
-    Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+    TestThunkParams thunk_params(executor, allocs.get(), stream);
+    thunk_params.WithRunOptions(&run_options)
+        .WithCommandBufferTraceStream(stream);
+    Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
+    Thunk::InitializeParams init_params = thunk_params.InitializeParams();
     for (auto& thunk : gemm_thunks) {
-      ABSL_RETURN_IF_ERROR(
-          thunk->Initialize({executor, source, allocs.get(), stream, stream}));
-      ABSL_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
+      ABSL_RETURN_IF_ERROR(thunk->Initialize(init_params));
+      ABSL_RETURN_IF_ERROR(thunk->ExecuteOnStream(execute_params));
     }
     ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     return absl::OkStatus();
@@ -356,6 +370,54 @@ ENTRY AddDotsFunc {
   EXPECT_EQ(blas_lt->GetMatmulPlanCacheSize(), 1);
 }
 
+TEST_F(GpuBlasLtMatmulThunkTest,
+       CompileGemmHloGeneratesThunkWithAlgorithmDescriptor) {
+  if (!gpu_comp().IsCuda()) {
+    GTEST_SKIP() << "cuBLASLt algorithm descriptors are only populated on CUDA";
+  }
+
+  constexpr absl::string_view kGemmHlo = R"(
+HloModule SimpleGemm
+
+ENTRY AddDotsFunc {
+  x = f32[128,128] parameter(0)
+  y = f32[128,128] parameter(1)
+  ROOT dot_a = f32[128,128] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions& debug_opts = config.mutable_debug_options();
+  debug_opts.set_xla_gpu_autotune_level(1);
+  debug_opts.set_xla_gpu_enable_triton_gemm(false);
+  debug_opts.clear_xla_gpu_enable_command_buffer();
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kGemmHlo, config));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Compiler> compiler,
+      Compiler::GetForPlatform(default_exec()->GetPlatform()->id()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> compiled_module,
+                       compiler->RunHloPasses(std::move(module), default_exec(),
+                                              /*device_allocator=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler->RunBackend(std::move(compiled_module), default_exec(),
+                           /*device_allocator=*/nullptr));
+  const auto* gpu_executable =
+      absl::down_cast<GpuExecutable*>(executable.get());
+  ASSERT_NE(gpu_executable, nullptr);
+
+  const ThunkSequence& thunks = gpu_executable->thunk_executor().thunks();
+  ASSERT_EQ(thunks.size(), 1);
+  ASSERT_EQ(thunks[0]->kind(), Thunk::kCublasLtMatmul);
+  const auto* matmul_thunk =
+      absl::down_cast<const CublasLtMatmulThunk*>(thunks[0].get());
+  ASSERT_TRUE(matmul_thunk->blas_lt_algorithm().has_value());
+  EXPECT_GT(matmul_thunk->blas_lt_algorithm()->library_version, 0);
+  EXPECT_TRUE(std::holds_alternative<se::cuda::CublasLtMatmulAlgorithm>(
+      matmul_thunk->blas_lt_algorithm()->algorithm));
+}
+
 TEST_F(GpuBlasLtMatmulThunkTest, GroupedGemmWithAutotuneOneCacheEntry) {
   auto* rocm = gpu_comp().rocm_compute_capability();
   if (rocm == nullptr || !rocm->gfx9_mi300_series()) {
@@ -413,6 +475,20 @@ struct MockMatmulPlan : public se::gpu::BlasLt::MatmulPlan {
   // On a real backend GetAlgorithms is the solution heuristic, which is what
   // the plan caches; tests assert it does not re-run per call.
   mutable int get_algorithms_calls = 0;
+  mutable int get_matmul_algorithm_calls = 0;
+  int set_algorithm_calls = 0;
+  bool fail_get_matmul_algorithm = false;
+
+  absl::StatusOr<se::gpu::BlasLt::MatmulAlgorithm> GetMatmulAlgorithm(
+      const se::gpu::BlasLtMatmulAlgorithm& algorithm,
+      size_t max_workspace_size) const override {
+    ++get_matmul_algorithm_calls;
+    if (fail_get_matmul_algorithm) {
+      return absl::InvalidArgumentError("Invalid algorithm");
+    }
+    return se::gpu::BlasLt::MatmulAlgorithm{/*opaque_algo=*/{},
+                                            /*workspace_size=*/0};
+  }
 
   absl::StatusOr<std::vector<se::gpu::BlasLt::MatmulAlgorithm>> GetAlgorithms(
       size_t max_algorithm_count, size_t max_workspace_size) const override {
@@ -425,6 +501,7 @@ struct MockMatmulPlan : public se::gpu::BlasLt::MatmulPlan {
   }
 
   absl::Status SetAlgorithm(const se::gpu::BlasLt::MatmulAlgorithm&) override {
+    ++set_algorithm_calls;
     return absl::OkStatus();
   }
 
@@ -563,6 +640,66 @@ TEST_F(GpuBlasLtMatmulThunkTest, WorkspaceChangeRefetchesAlgorithms) {
   EXPECT_EQ(static_cast<MockMatmulPlan*>(plan)->get_algorithms_calls, 2);
 }
 
+TEST_F(GpuBlasLtMatmulThunkTest,
+       AlgorithmDescriptorUsedAndCachedWithoutCallingGetAlgorithms) {
+  MockBlasLt blas_lt;
+  auto create_func = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr> {
+    return std::make_unique<MockMatmulPlan>();
+  };
+
+  se::cuda::CublasLtMatmulAlgorithm cublaslt_algo;
+  cublaslt_algo.algo_id = 23;
+  cublaslt_algo.tile_id = 15;
+  se::gpu::BlasLtMatmulAlgorithm algorithm{
+      /*library_version=*/120800,
+      /*algorithm=*/cublaslt_algo,
+  };
+
+  se::gpu::BlasLt::MatmulPlan* plan = nullptr;
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_OK_AND_ASSIGN(plan, blas_lt.GetOrCreateMatmulPlanWithAlgorithm(
+                                   "gemm_with_proto", create_func, algorithm,
+                                   /*max_workspace_size=*/4194304));
+  }
+
+  auto* mock_plan = static_cast<MockMatmulPlan*>(plan);
+  EXPECT_EQ(mock_plan->get_matmul_algorithm_calls, 1);
+  EXPECT_EQ(mock_plan->set_algorithm_calls, 1);
+  EXPECT_EQ(mock_plan->get_algorithms_calls, 0);
+
+  // Changing the algorithm descriptor or workspace size must invalidate the
+  // cached algorithm and re-run GetMatmulAlgorithm and SetAlgorithm.
+  cublaslt_algo.tile_id = 16;
+  algorithm.algorithm = cublaslt_algo;
+  ASSERT_OK_AND_ASSIGN(plan, blas_lt.GetOrCreateMatmulPlanWithAlgorithm(
+                                 "gemm_with_proto", create_func, algorithm,
+                                 /*max_workspace_size=*/4194304));
+  EXPECT_EQ(mock_plan->get_matmul_algorithm_calls, 2);
+  EXPECT_EQ(mock_plan->set_algorithm_calls, 2);
+
+  ASSERT_OK_AND_ASSIGN(plan, blas_lt.GetOrCreateMatmulPlanWithAlgorithm(
+                                 "gemm_with_proto", create_func, algorithm,
+                                 /*max_workspace_size=*/8388608));
+  EXPECT_EQ(mock_plan->get_matmul_algorithm_calls, 3);
+  EXPECT_EQ(mock_plan->set_algorithm_calls, 3);
+  EXPECT_EQ(mock_plan->get_algorithms_calls, 0);
+
+  // Switching to the index overload and back on the same cached plan must
+  // re-apply SetAlgorithm in both directions.
+  ASSERT_OK_AND_ASSIGN(
+      plan, blas_lt.GetOrCreateMatmulPlanWithAlgorithm(
+                "gemm_with_proto", create_func, /*algorithm_idx=*/0,
+                /*num_algorithms=*/128, /*max_workspace_size=*/8388608));
+  EXPECT_EQ(mock_plan->get_algorithms_calls, 1);
+  EXPECT_EQ(mock_plan->set_algorithm_calls, 4);
+
+  ASSERT_OK_AND_ASSIGN(plan, blas_lt.GetOrCreateMatmulPlanWithAlgorithm(
+                                 "gemm_with_proto", create_func, algorithm,
+                                 /*max_workspace_size=*/8388608));
+  EXPECT_EQ(mock_plan->get_matmul_algorithm_calls, 4);
+  EXPECT_EQ(mock_plan->set_algorithm_calls, 5);
+}
+
 TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerialization) {
   constexpr absl::string_view kCublasLtMatmulThunkProtoText = R"pb(
     gemm_config {
@@ -637,9 +774,9 @@ TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerialization) {
       BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
   };
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Thunk> thunk,
-      CublasLtMatmulThunk::FromProto(thunk_info, proto, allocations));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> thunk,
+                       CublasLtMatmulThunk::FromProto(
+                           thunk_info, proto, allocations, DebugOptions()));
 
   ThunkProto reference_thunk_proto;
   *reference_thunk_proto.mutable_thunk_info() = thunk_info.ToProto();
@@ -716,9 +853,9 @@ TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerializationGroupedMatmul) {
       BufferAllocation(/*index=*/6, /*size=*/8, /*color=*/0),
   };
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Thunk> thunk,
-      CublasLtMatmulThunk::FromProto(thunk_info, proto, allocations));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> thunk,
+                       CublasLtMatmulThunk::FromProto(
+                           thunk_info, proto, allocations, DebugOptions()));
 
   ThunkProto reference_thunk_proto;
   *reference_thunk_proto.mutable_thunk_info() = thunk_info.ToProto();
@@ -835,13 +972,15 @@ class CublasLtMatmulThunkCmdBufTest : public ::testing::Test {
         {a_buf_, b_buf_, c_buf_, d_buf_, workspace_buf_}, 0, allocator_.get()));
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-    ASSERT_OK(thunk_->Initialize(
-        {executor_, source, allocations_.get(), stream_.get()}));
+    thunk_params_.WithExecutor(executor_)
+        .WithBufferAllocations(allocations_.get())
+        .WithStream(stream_.get())
+        .WithRunOptions(&run_options_)
+        .WithExecutableSource(source)
+        .WithCommandBufferTraceStream(trace_stream_.get());
+    ASSERT_OK(thunk_->Initialize(thunk_params_.InitializeParams()));
 
-    params_.emplace(Thunk::ExecuteParams::Create(
-        run_options_, *allocations_, stream_.get(), trace_stream_.get(),
-        /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-        /*collective_memory=*/nullptr));
+    params_.emplace(thunk_params_.ExecuteParams());
   }
 
   se::StreamExecutor* executor_ = nullptr;
@@ -863,8 +1002,9 @@ class CublasLtMatmulThunkCmdBufTest : public ::testing::Test {
   std::unique_ptr<se::StreamExecutorAddressAllocator> allocator_;
   std::unique_ptr<BufferAllocations> allocations_;
   ServiceExecutableRunOptions run_options_;
-  // params_ must be declared last: it holds references to allocations_,
-  // stream_, and trace_stream_, all of which must outlive it.
+  TestThunkParams thunk_params_;
+  // params_ must be declared last: it holds references to thunk_params_,
+  // allocations_, stream_, and trace_stream_, all of which must outlive it.
   std::optional<Thunk::ExecuteParams> params_;
 };
 
@@ -950,6 +1090,117 @@ TEST_F(CublasLtMatmulThunkCmdBufTest, BufferUses) {
             BufferUse::Scratch(
                 BufferAllocation::Slice(&alloc_workspace_, 0, kWorkspaceLength),
                 ShapeUtil::MakeShape(U8, {1024, 1024})));
+}
+
+// Command buffers decide whether a recorded command is stale based on the
+// allocations reported by buffer_uses(), so it must list every buffer that
+// ExecuteOnStream reads, including the group sizes of a grouped matmul.
+TEST(CublasLtGroupedMatmulThunkTest, BufferUsesIncludeGroupSizes) {
+  BufferAllocation alloc_a(/*index=*/0, /*size=*/32, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, /*size=*/48, /*color=*/0);
+  BufferAllocation alloc_d(/*index=*/2, /*size=*/48, /*color=*/0);
+  BufferAllocation alloc_group_sizes(/*index=*/3, /*size=*/8, /*color=*/0);
+
+  ShapedSlice a{BufferAllocation::Slice(&alloc_a, 0, 32),
+                ShapeUtil::MakeShape(F32, {4, 2})};
+  ShapedSlice b{BufferAllocation::Slice(&alloc_b, 0, 48),
+                ShapeUtil::MakeShape(F32, {2, 2, 3})};
+  ShapedSlice d{BufferAllocation::Slice(&alloc_d, 0, 48),
+                ShapeUtil::MakeShape(F32, {4, 3})};
+  ShapedSlice group_sizes{BufferAllocation::Slice(&alloc_group_sizes, 0, 8),
+                          ShapeUtil::MakeShape(S32, {2})};
+
+  CublasLtMatmulThunk thunk(
+      Thunk::ThunkInfo(), /*canonical_hlo=*/"", se::gpu::GroupedGemmConfig{},
+      se::gpu::BlasLt::Epilogue::kDefault, /*algorithm_idx=*/0,
+      /*autotune_workspace_size=*/0, a, b, /*c=*/d, d, group_sizes,
+      /*bias=*/std::nullopt, /*aux=*/std::nullopt, /*a_scale=*/std::nullopt,
+      /*b_scale=*/std::nullopt, /*c_scale=*/std::nullopt,
+      /*d_scale=*/std::nullopt, /*d_amax=*/std::nullopt,
+      /*workspace=*/std::nullopt);
+
+  ASSERT_TRUE(thunk.is_grouped());
+  EXPECT_THAT(thunk.buffer_uses(), ::testing::Contains(BufferUse::Read(
+                                       group_sizes.slice, group_sizes.shape)));
+}
+
+TEST_F(CublasLtMatmulThunkCmdBufTest,
+       ExecuteOnStreamRequireExactAlgorithmAndFallback) {
+  ASSERT_OK_AND_ASSIGN(ThunkProto thunk_proto, thunk_->ToProto());
+  std::vector<BufferAllocation> allocations = {alloc_a_, alloc_b_, alloc_c_,
+                                               alloc_d_, alloc_workspace_};
+
+  DebugOptions exact_options;
+  exact_options.set_xla_gpu_require_exact_blas_lt_algorithm(true);
+  DebugOptions fallback_options;
+  fallback_options.set_xla_gpu_require_exact_blas_lt_algorithm(false);
+
+  // Missing algorithm_proto with require_exact_algorithm=true fails.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> exact_missing_proto_thunk,
+      CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo(),
+                                     thunk_proto.cublas_lt_matmul_thunk(),
+                                     allocations, exact_options));
+  EXPECT_THAT(exact_missing_proto_thunk->ExecuteOnStream(*params_),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  // Invalid algorithm_proto with require_exact_algorithm=true fails.
+  CublasLtMatmulThunkProto invalid_proto = thunk_proto.cublas_lt_matmul_thunk();
+  invalid_proto.mutable_algorithm_proto()->mutable_cublaslt()->set_algo_id(
+      -999999);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> exact_invalid_proto_thunk,
+      CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo(), invalid_proto,
+                                     allocations, exact_options));
+  EXPECT_THAT(exact_invalid_proto_thunk->ExecuteOnStream(*params_),
+              ::testing::Not(absl_testing::IsOk()));
+
+  // Invalid algorithm_proto with require_exact_algorithm=false falls back to
+  // algorithm_idx and succeeds, even when the serialized proto had
+  // require_exact_algorithm=true.
+  invalid_proto.set_require_exact_algorithm(true);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> fallback_thunk,
+      CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo(), invalid_proto,
+                                     allocations, fallback_options));
+  EXPECT_OK(fallback_thunk->ExecuteOnStream(*params_));
+}
+
+// An algorithm_proto whose algorithm kind this build does not know (added by a
+// newer XLA, so it parses as an unknown field) loads like a missing one: the
+// heuristic algorithm index runs, or require-exact reports it.
+TEST_F(CublasLtMatmulThunkCmdBufTest, UnknownAlgorithmProtoKindFallsBack) {
+  ASSERT_OK_AND_ASSIGN(ThunkProto thunk_proto, thunk_->ToProto());
+  std::vector<BufferAllocation> allocations = {alloc_a_, alloc_b_, alloc_c_,
+                                               alloc_d_, alloc_workspace_};
+  CublasLtMatmulThunkProto proto = thunk_proto.cublas_lt_matmul_thunk();
+  se::gpu::BlasLtMatmulAlgorithmProto* algorithm_proto =
+      proto.mutable_algorithm_proto();
+  algorithm_proto->set_library_version(1);
+  algorithm_proto->GetReflection()
+      ->MutableUnknownFields(algorithm_proto)
+      ->AddLengthDelimited(/*number=*/15, /*value=*/"\x08\x05");
+
+  DebugOptions exact_options;
+  exact_options.set_xla_gpu_require_exact_blas_lt_algorithm(true);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> exact_thunk,
+      CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo(), proto, allocations,
+                                     exact_options));
+  EXPECT_THAT(exact_thunk->ExecuteOnStream(*params_),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  DebugOptions fallback_options;
+  fallback_options.set_xla_gpu_require_exact_blas_lt_algorithm(false);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> fallback_thunk,
+      CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo(), proto, allocations,
+                                     fallback_options));
+  ASSERT_OK(fallback_thunk->ExecuteOnStream(*params_));
+  ASSERT_OK(stream_->BlockHostUntilDone());
+  std::vector<float> dst(6, 0);
+  ASSERT_OK(stream_->Memcpy(dst.data(), d_buf_, kDLength));
+  EXPECT_EQ(dst, std::vector<float>({11, 11, 11, 27, 27, 27}));
 }
 
 }  // namespace

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -48,12 +49,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
+#include "xla/hlo/transforms/sharding_propagation.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/shape_inference.h"
-#include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/convolution_handler.h"
 #include "xla/service/spmd/custom_call_handler.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -160,7 +161,7 @@ class CreateShardedDotFunctor final
     HloInstruction* sharded_dot = b->AddInstruction(HloInstruction::CreateDot(
         sharded_dot_shape, l, r, dot_->dot_dimension_numbers(),
         dot_->precision_config()));
-    if (dot_->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    if (dot_->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
       sharded_dot->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
     }
     return sharded_dot;
@@ -224,7 +225,7 @@ absl::Status SpmdPartitioningVisitor::HandleDotWithoutConflicts(
   Shape pshape = MakePartitionedShape(hlo->shape(), hlo->sharding());
   HloInstruction* phlo = b_.AddInstruction(HloInstruction::CreateDot(
       pshape, lhs.hlo(), rhs.hlo(), dot_dnums, hlo->precision_config()));
-  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+  if (hlo->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
     phlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
   }
 
@@ -289,20 +290,20 @@ void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64_t reshaped_dim,
                   bool lhs) {
   auto update_dims =
       [&reshaped_dim](tsl::protobuf::RepeatedField<int64_t>* dims) {
-        bool add_reshaped_dim = false;
-        if (absl::c_linear_search(*dims, reshaped_dim)) {
-          add_reshaped_dim = true;
+        std::optional<int64_t> insert_pos;
+        if (auto it = absl::c_find(*dims, reshaped_dim); it != dims->end()) {
+          insert_pos = it - dims->begin();
         }
         for (int64_t& dim : *dims) {
           if (reshaped_dim <= dim) {
             dim += 1;
           }
         }
-        if (add_reshaped_dim) {
+        if (insert_pos.has_value()) {
           dims->Add(reshaped_dim);
-          // Sort the dimensions (assumes they were sorted before the addition)
-          for (int64_t i = dims->size() - 1;
-               i >= 1 && dims->at(i) < dims->at(i - 1); i--) {
+          // Contracting and batch dimensions pair by list position, so insert
+          // at the original position rather than sorting by dimension index.
+          for (int64_t i = dims->size() - 1; i > *insert_pos; --i) {
             dims->SwapElements(i - 1, i);
           }
         }
@@ -549,12 +550,13 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
           PartitionedHlo(partitioned_rhs->hlo(), partitioned_rhs->base_shape(),
                          partitioned_rhs->state());
 
-      // Check if contracting dimension sharding requires lhs/rhs resharding.
-      if (RequiresTransposeSharding(lhs->sharding(), rhs->sharding(),
-                                    dims_mapping.contracting_dims) &&
-          rhs_sharding_transposed_to_match_lhs.has_value() &&
-          lhs_sharding_transposed_to_match_rhs.has_value()) {
-        if (ShapeSizeInBytes(lhs->shape()) < ShapeSizeInBytes(rhs->shape())) {
+      // Check if contracting dimension sharding requires lhs/rhs resharding due
+      // to differing dimension shard counts or device order.
+      if (rhs_sharding_transposed_to_match_lhs.has_value() &&
+          lhs_sharding_transposed_to_match_rhs.has_value() &&
+          lhs_sharding != *rhs_sharding_transposed_to_match_lhs) {
+        if (ShapeSizeInBytes(new_lhs.hlo()->shape()) <
+            ShapeSizeInBytes(new_rhs.hlo()->shape())) {
           new_lhs = new_lhs.Reshard(*rhs_sharding_transposed_to_match_lhs);
         } else {
           new_rhs = new_rhs.Reshard(*lhs_sharding_transposed_to_match_rhs);
@@ -930,11 +932,12 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
     rhs = rhs.PadWithZero();
   }
 
-  // Check if contracting dimension sharding requires lhs/rhs resharding.
-  if (RequiresTransposeSharding(lhs.hlo()->sharding(), rhs.hlo()->sharding(),
-                                dims_mapping.contracting_dims) &&
+  // Check if contracting dimension sharding requires lhs/rhs resharding due to
+  // differing dimension shard counts or device order.
+  if (operands_sharded_at_contracting_dims &&
       rhs_sharding_transposed_to_match_lhs.has_value() &&
-      lhs_sharding_transposed_to_match_rhs.has_value()) {
+      lhs_sharding_transposed_to_match_rhs.has_value() &&
+      lhs.sharding() != *rhs_sharding_transposed_to_match_lhs) {
     if (ShapeSizeInBytes(lhs.hlo()->shape()) <
         ShapeSizeInBytes(rhs.hlo()->shape())) {
       lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
@@ -1956,10 +1959,9 @@ absl::StatusOr<HloInstruction*> PartitionBaseCaseBeforePartialMatch(
            partitioned_hlo_maybe_mx.hlo()->opcode() == HloOpcode::kBitcast ||
            partitioned_hlo_maybe_mx.hlo()->opcode() == HloOpcode::kTranspose;
   };
-  const auto& attrs = original_hlo->frontend_attributes().map();
   bool should_skip_windowed_einsum =
-      attrs.contains(kXlaCollectiveMatmulAttr) &&
-      attrs.at(kXlaCollectiveMatmulAttr) == kXlaCollectiveMatmulNone;
+      original_hlo->get_frontend_attribute(kXlaCollectiveMatmulAttr) ==
+      kXlaCollectiveMatmulNone;
   if (!should_skip_windowed_einsum &&
       options.disable_ag_rewrite_for_multiple_consumers) {
     auto lhs_operand =
@@ -2747,15 +2749,20 @@ GetDotGroupPartitionContractingOutputShardings(
                  output_sharding, lhs_grouped.device_groups)) {
     output_slice_dims = std::move(*found_dims);
     if (!output_slice_dims.empty()) {
-      // FindMatchingPartitionedDimsForGrouping already makes sure the groups
-      // are compatible with LHS/RHS. We avoid AlignGroupsWith/UngroupSharding
-      // because that could change the group order causing a reshard with
-      // collective-permute, which is unnecessary since these groups will be
-      // all-reduced upon anyway for contracting-dim sharding.
+      // Align within group device order to lhs_grouped while preserving group
+      // order when all groups share a single within group permutation.
       auto grouped = hlo_sharding_util::GroupShardingOnDims(output_sharding,
                                                             output_slice_dims);
-      inner_output_sharding = grouped.sharding;
+      if (auto aligned = AlignGroupsWithIfCompatible(
+              grouped, lhs_grouped, /*ignore_group_order=*/true)) {
+        inner_output_sharding = std::move(aligned->sharding);
       outer_output_tmp_sharding = output_sharding;
+      } else {
+        grouped = AlignGroupsWith(std::move(grouped), lhs_grouped,
+                                  /*ignore_group_order=*/true);
+        outer_output_tmp_sharding = UngroupSharding(grouped);
+        inner_output_sharding = std::move(grouped.sharding);
+      }
     }
   } else if (!output_sharding.IsReplicated()) {
     if (output_lhs_non_contracting_partitions == group_count) {
@@ -4379,8 +4386,35 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
           HloSharding::V3ToV2Sharding(v2_output_sharding.named_sharding());
     }
 
-    PartitionedHloMX lhs_mx(lhs_operand, lhs_scale);
-    PartitionedHloMX rhs_mx(rhs_operand, rhs_scale);
+    // The sharded block-scaled dot infers the block size from the shard shapes,
+    // so each shard along the contracting dimension must hold whole blocks.
+    // Check against both scales since PartitionDot may reshard one operand to
+    // the other's contracting sharding. Otherwise, replicate that dimension.
+    const int64_t k_dim = lhs_operand.base_shape().dimensions().size() - 1;
+    const int64_t k = lhs_operand.base_shape().dimensions(k_dim);
+    auto holds_whole_blocks = [&](const PartitionedHlo& scale,
+                                  int64_t k_shards) {
+      const int64_t scale_k = scale.base_shape().dimensions(k_dim);
+      return scale_k > 0 && k % scale_k == 0 && scale_k % k_shards == 0;
+    };
+    auto reshard_to_whole_blocks = [&](const PartitionedHlo& operand) {
+      if (!operand.sharding().IsTiled()) {
+        return operand;
+      }
+      const int64_t k_shards = ShardCountAtDim(operand.sharding(), k_dim);
+      if (k_shards == 1 || (holds_whole_blocks(lhs_scale, k_shards) &&
+                            holds_whole_blocks(rhs_scale, k_shards))) {
+        return operand;
+      }
+      return operand.Reshard(
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              operand.sharding(), {k_dim}));
+    };
+    const PartitionedHlo lhs = reshard_to_whole_blocks(lhs_operand);
+    const PartitionedHlo rhs = reshard_to_whole_blocks(rhs_operand);
+
+    PartitionedHloMX lhs_mx(lhs, lhs_scale.Reshard(lhs.sharding()));
+    PartitionedHloMX rhs_mx(rhs, rhs_scale.Reshard(rhs.sharding()));
 
     ABSL_ASSIGN_OR_RETURN(
         partitioned_dot,
@@ -5042,17 +5076,29 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       }
       // Mask off invalid data in collapsed dimensions.
       for (int64_t dim : dims_to_mask) {
+        int64_t dim_size = reduce_outside->operand(0)->shape().dimensions(dim);
+        HloInstruction* slice_offset = slice_offsets[dim];
+        PrimitiveType index_type =
+            (dim_size >= std::numeric_limits<int32_t>::max() ||
+             padded_shape.dimensions(dim) >=
+                 std::numeric_limits<int32_t>::max() ||
+             slice_offset->shape().element_type() == S64)
+                ? S64
+                : S32;
         auto* iota = body->AddInstruction(HloInstruction::CreateIota(
-            ShapeUtil::ChangeElementType(operand0->shape(), S32), dim));
+            ShapeUtil::ChangeElementType(operand0->shape(), index_type), dim));
+        if (slice_offset->shape().element_type() != index_type) {
+          slice_offset = body->AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::MakeShape(index_type, {}), slice_offset));
+        }
         auto* add = body->AddInstruction(HloInstruction::CreateBinary(
             iota->shape(), HloOpcode::kAdd, iota,
             body->AddInstruction(HloInstruction::CreateBroadcast(
-                iota->shape(), slice_offsets[dim], {}))));
+                iota->shape(), slice_offset, {}))));
         auto* limit = body->AddInstruction(HloInstruction::CreateBroadcast(
             iota->shape(),
-            body->AddInstruction(
-                HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
-                    reduce_outside->operand(0)->shape().dimensions(dim)))),
+            body->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0(index_type, dim_size))),
             {}));
         auto* compare = body->AddInstruction(HloInstruction::CreateCompare(
             ShapeUtil::ChangeElementType(iota->shape(), PRED), add, limit,

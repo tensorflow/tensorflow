@@ -396,5 +396,71 @@ ENTRY entry {
                   Pair("entry", ComputationMatchType::kExact)));
 }
 
+TEST_F(HloCallGraphMatcherTest, SignatureMatchesIgnoreParameterNames) {
+  // Two identical callees on the left; one of them is changed on the right, so
+  // they can't be matched by fingerprint. Parameter names differ between the
+  // two modules, which must not prevent signature matching.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+region_a {
+  Arg_0.1 = f32[4] parameter(0)
+  ROOT negate.1 = f32[4] negate(Arg_0.1)
+}
+
+region_b {
+  Arg_0.2 = f32[4] parameter(0)
+  ROOT negate.2 = f32[4] negate(Arg_0.2)
+}
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  call.1 = f32[4] call(p0), to_apply=region_a
+  call.2 = f32[4] call(p0), to_apply=region_b
+  ROOT add = f32[4] add(call.1, call.2)
+}
+)"));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+computation_x {
+  parameter.1 = f32[4] parameter(0)
+  ROOT abs.1 = f32[4] abs(parameter.1)
+}
+
+computation_y {
+  parameter.2 = f32[4] parameter(0)
+  ROOT negate.2 = f32[4] negate(parameter.2)
+}
+
+ENTRY entry {
+  parameter.0 = f32[4] parameter(0)
+  call.1 = f32[4] call(parameter.0), to_apply=computation_x
+  call.2 = f32[4] call(parameter.0), to_apply=computation_y
+  ROOT add = f32[4] add(call.1, call.2)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                          HloGumgraph::Create(left_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                          HloGumgraph::Create(right_module.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+
+  MatchCallGraphs(*left_gumgraph, *right_gumgraph, *mappings);
+
+  EXPECT_THAT(ExtractMappedComputationNames(*mappings),
+              UnorderedElementsAre(Pair("region_a", "computation_x"),
+                                   Pair("region_b", "computation_y"),
+                                   Pair("entry", "entry")));
+  EXPECT_THAT(
+      ExtractComputationMatchType(*mappings),
+      UnorderedElementsAre(Pair("region_a", ComputationMatchType::kSignature),
+                           Pair("region_b", ComputationMatchType::kSignature),
+                           Pair("entry", ComputationMatchType::kExact)));
+}
+
 }  // namespace
 }  // namespace xla::hlo_diff

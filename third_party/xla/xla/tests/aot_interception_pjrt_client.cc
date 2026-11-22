@@ -278,11 +278,25 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
           // The runtime still reads the HLO module (constants, called
           // computations), but nearly every compiler change rewrites it, so
           // comparing it costs a golden update per change. The thunks and the
-          // module `config` are still compared.
+          // module `config` are still compared. Also ignores the CPU-optimized
+          // module embedded in HostExecuteStartThunk.
           FieldByPath(gpu::GpuExecutableProto::descriptor(),
                       {"hlo_module_with_config", "hlo_module"}),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName("binary"),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName("asm_text"),
+          // The XLA:CPU executable embedded in HostExecuteStartThunk holds the
+          // compile host's machine code and CPU name and features.
+          cpu::CompilationResultProto::descriptor()->FindFieldByName(
+              "object_files"),
+          cpu::CompilationResultProto::descriptor()->FindFieldByName(
+              "target_machine_options"),
+          // Module ids come from a process-wide counter. IgnoreField applies
+          // per message type, so this ignores HloModuleProto.id everywhere.
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"thunks", "host_execute_start_thunk", "executable_proto",
+                       "hlo_module", "id"}),
+          FieldByPath(cpu::CompilationResultProto::descriptor(),
+                      {"thunk_sequence", "thunks", "info", "module_id"}),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName(
               "buffer_allocations"),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName(
@@ -297,10 +311,13 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
               "ptx"),
           stream_executor::KernelLoaderSpecProto::descriptor()->FindFieldByName(
               "cubin"),
-          // Opaque collective-kernel binary, same as the KernelLoaderSpecProto
-          // payloads above.
+          // Opaque collective-kernel binary and its compiler-computed dynamic
+          // shared-memory size, same as the KernelLoaderSpecProto payloads
+          // above.
           gpu::CollectiveKernelThunkProto::descriptor()->FindFieldByName(
               "cubin"),
+          gpu::CollectiveKernelThunkProto::descriptor()->FindFieldByName(
+              "shmem_bytes"),
           stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
               descriptor()
                   ->FindFieldByName("cuda_toolkit_version"),

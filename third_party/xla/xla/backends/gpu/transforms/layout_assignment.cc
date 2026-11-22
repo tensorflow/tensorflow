@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/layout_assignment.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/layout_assignment.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/shape.h"
@@ -188,6 +188,14 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       return kAllNCHW;
     }
     return kAllNHWC;
+  }
+  if (gpu_version.IsOneAPI()) {
+    // For oneAPI, NHWC layout is currently only supported for 2D convolutions;
+    // use NCHW (NCDHW) for other spatial dimensions.
+    if (num_spatial_dimensions == 2) {
+      return kAllNHWC;
+    }
+    return kAllNCHW;
   }
 
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
@@ -550,6 +558,29 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
   return absl::OkStatus();
 }
 
+absl::Status GpuLayoutAssignment::AddScaledDotBackendConstraints(
+    LayoutConstraints* constraints, HloScaledDotInstruction* instruction) {
+  for (int operand_no : {0, 1}) {
+    ABSL_ASSIGN_OR_RETURN(DotOperandDims dims,
+                     DotOperandDims::FromDotOperand(instruction, operand_no));
+    ABSL_RETURN_IF_ERROR(SetDotOperandLayoutToMinorContracting(
+        instruction, operand_no, dims.Indices(DotOperandDims::kBatch),
+        dims.Indices(DotOperandDims::kContracting),
+        dims.Indices(DotOperandDims::kNonContracting)));
+    const int scale_no = operand_no + 2;
+    if (ShapeUtil::IsScalar(instruction->operand(scale_no)->shape())) {
+      continue;
+    }
+    const Layout& operand_layout =
+        constraints->OperandLayout(instruction, operand_no)->layout();
+    // Copy only minor_to_major, not the sub-byte element size of FP4 operands.
+    ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(
+        LayoutUtil::MakeLayout(operand_layout.minor_to_major()), instruction,
+        scale_no));
+  }
+  return SetDotLayout(instruction, constraints);
+}
+
 absl::Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   // Add convolution constraints in reverse postorder that the earliest
@@ -576,6 +607,9 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
     } else if (HloPredicateIsOp<HloOpcode::kDot>(instruction)) {
       ABSL_RETURN_IF_ERROR(AddDotBackendConstraints(
           constraints, Cast<HloDotInstruction>(instruction)));
+    } else if (HloPredicateIsOp<HloOpcode::kScaledDot>(instruction)) {
+      ABSL_RETURN_IF_ERROR(AddScaledDotBackendConstraints(
+          constraints, Cast<HloScaledDotInstruction>(instruction)));
     } else if (HloPredicateIsOp<HloOpcode::kRaggedDot>(instruction)) {
       Shape op0_shape = instruction->operand(0)->shape();
       Shape op1_shape = instruction->operand(1)->shape();
@@ -785,7 +819,8 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       *new_shape.mutable_tuple_shapes(1) =
           called_computation->ComputeProgramShape().result();
       ABSL_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
-                                           /*mandatory=*/true, /*dfs=*/true,
+                                           /*mandatory=*/true,
+                                           /*dfs=*/true,
                                            /*allow_alias=*/true));
     } else if (instruction->opcode() == HloOpcode::kAsyncDone) {
       HloComputation* called_computation =
@@ -799,7 +834,8 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       Shape new_shape = called_computation->root_instruction()->shape();
 
       ABSL_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
-                                           /*mandatory=*/true, /*dfs=*/true,
+                                           /*mandatory=*/true,
+                                           /*dfs=*/true,
                                            /*allow_alias=*/true));
     }
   }

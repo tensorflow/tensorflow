@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_event.h"
 
+#include <memory>
+#include <optional>
 #include <utility>
 
 #include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/rocm/rocm_stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -44,6 +49,29 @@ TEST(RocmEventTest, CreateEvent) {
   hipEvent_t handle = event.GetHandle();
   RocmEvent event2 = std::move(event);
   EXPECT_EQ(event2.GetHandle(), handle);
+}
+
+TEST(RocmEventTest, Synchronize) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       stream_executor::PlatformManager::PlatformWithId(
+                           stream_executor::rocm::kROCmPlatformId));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  ASSERT_OK_AND_ASSIGN(RocmEvent event,
+                       RocmEvent::Create(executor, /*allow_timing=*/false));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                       RocmStream::Create(executor, /*priority=*/std::nullopt));
+
+  // Record the event on the stream.
+  ASSERT_OK(stream->RecordEvent(&event));
+
+  // Synchronize on the event (blocks until the event is recorded).
+  EXPECT_THAT(event.Synchronize(), absl_testing::IsOk());
+
+  // After synchronization, the event should be complete.
+  EXPECT_EQ(event.PollForStatus(), Event::Status::kComplete);
 }
 
 }  // namespace

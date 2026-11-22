@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.pb.h"
+#include "xla/python/pjrt_ifrt/xla_sharding_serdes_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -39,7 +41,7 @@ namespace ifrt {
 namespace {
 
 // Serialization/deserialization for `HloSharding`.
-class HloShardingSerDes : public RTTIExtends<HloSharding, SerDes> {
+class HloShardingSerDes : public RTTIExtends<HloShardingSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::HloSharding";
@@ -56,11 +58,6 @@ class HloShardingSerDes : public RTTIExtends<HloSharding, SerDes> {
     }
 
     const HloSharding& sharding = cast<HloSharding>(serializable);
-    if (sharding.xla_hlo_sharding().UseNamedShardingLeaf()) {
-      return absl::InvalidArgumentError(
-          "HloSharding with XLA HloShardingV3 format is not supported for "
-          "serialization");
-    }
 
     HloShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
@@ -99,10 +96,20 @@ class HloShardingSerDes : public RTTIExtends<HloSharding, SerDes> {
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());
     }
-    ABSL_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
+    // Reject V3 `NamedSharding` protos (including nested tuple elements) before
+    // `xla::HloSharding::FromProto`, as `xla::Mesh::FromProto` `CHECK`-fails on
+    // malformed wire meshes.
+    if (ContainsNamedSharding(proto.xla_op_sharding())) {
+      return absl::InvalidArgumentError(
+          "HloSharding with XLA HloShardingV3 format is not supported for "
+          "deserialization");
+    }
+    ABSL_ASSIGN_OR_RETURN(xla::HloSharding xla_hlo_sharding,
                      xla::HloSharding::FromProto(proto.xla_op_sharding()));
-    return HloSharding::Create(std::move(devices), memory_kind,
-                               std::move(xla_hlo_sharding));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloSharding> sharding,
+                     HloSharding::CreateIfValid(std::move(devices), memory_kind,
+                                                std::move(xla_hlo_sharding)));
+    return sharding;
   }
 
   static char ID;  // NOLINT

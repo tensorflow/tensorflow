@@ -20,15 +20,15 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
-
-// WARNING: This header (and a build target) should have minimal dependencies as
-// it's included into all device kernel implementations, and we want to minimize
-// the number of (very expensive!) recompilations.
 
 namespace xla::gpu {
 namespace se = ::stream_executor;  // NOLINT
@@ -41,29 +41,26 @@ namespace se = ::stream_executor;  // NOLINT
 // export CUTLASS gemm kernels as custom kernels to XLA), so that XLA can only
 // implement generic interfaces, e.g. command buffer implementation for CUDA
 // can automatically add a kernel node to a graph for arbitrary custom kernel.
-//
-// TODO(ezhulenev): Add custom kernel signature to track number and types of
-// buffer arguments, and a way to mark one of an arguments as a workspace and
-// define if it has to be zeroed first.
 class CustomKernel {
  public:
-  CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
-               se::BlockDim block_dims, se::ThreadDim thread_dims,
-               size_t shared_memory_bytes);
-
-  CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
-               se::BlockDim block_dims, se::ThreadDim thread_dims,
-               se::ClusterDim cluster_dims, size_t shared_memory_bytes);
+  CustomKernel(const GpuKernelSpec& spec, se::KernelLoaderSpec kernel_spec);
 
   absl::string_view name() const;
 
-  const se::KernelLoaderSpec& kernel_spec() const;
+  ABSL_DEPRECATE_AND_INLINE()
+  const se::KernelLoaderSpec& kernel_spec() const {
+    return kernel_loader_spec();
+  }
 
-  se::BlockDim block_dims() const;
+  const se::KernelLoaderSpec& kernel_loader_spec() const {
+    return loader_spec_;
+  }
 
-  se::ThreadDim thread_dims() const;
+  const se::BlockDim& block_dims() const;
 
-  std::optional<se::ClusterDim> cluster_dims() const;
+  const se::ThreadDim& thread_dims() const;
+
+  const std::optional<se::ClusterDim>& cluster_dims() const;
 
   size_t shared_memory_bytes() const;
 
@@ -73,16 +70,13 @@ class CustomKernel {
 
   static absl::StatusOr<CustomKernel> FromProto(
       const CustomKernelProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
       const std::optional<se::KernelLoaderSpec::SymbolResolver>&
           symbol_resolver = std::nullopt);
 
  private:
-  std::string name_;
-  se::KernelLoaderSpec kernel_spec_;
-  se::BlockDim block_dims_;
-  se::ThreadDim thread_dims_;
-  std::optional<se::ClusterDim> cluster_dims_;
-  size_t shared_memory_bytes_;
+  se::KernelLoaderSpec loader_spec_;
+  GpuKernelSpec spec_;
 };
 
 }  // namespace xla::gpu

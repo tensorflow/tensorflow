@@ -19,13 +19,9 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 
 namespace mlir {
 namespace odml {
-
-void PopulateReduceArgMinMaxTFPatterns(MLIRContext* ctx,
-                                       RewritePatternSet& patterns);
 
 void PopulateReducePatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                             ConversionTarget& target);

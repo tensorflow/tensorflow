@@ -94,6 +94,20 @@ namespace gpu_plugin {
 
 const PJRT_Api* GetGpuPjrtApi();
 
+namespace {
+
+std::optional<std::set<int>> GetVisibleDevicesFromOptions(
+    const absl::flat_hash_map<std::string, xla::PjRtValueType>& options) {
+  auto it = options.find("visible_devices");
+  if (it == options.end()) {
+    return std::nullopt;
+  }
+  const auto& vec = std::get<std::vector<int64_t>>(it->second);
+  return std::set<int>(vec.begin(), vec.end());
+}
+
+}  // namespace
+
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
@@ -181,12 +195,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
     }
     allocator_config.memory_fraction_policy = *fraction;
   }
-  std::optional<std::set<int>> visible_devices;
-  if (auto it = create_options.find("visible_devices");
-      it != create_options.end()) {
-    const auto& vec = std::get<std::vector<int64_t>>(it->second);
-    visible_devices.emplace(vec.begin(), vec.end());
-  }
+  std::optional<std::set<int>> visible_devices =
+      GetVisibleDevicesFromOptions(create_options);
   int node_id = 0;
   if (auto it = create_options.find("node_id"); it != create_options.end()) {
     node_id = std::get<int64_t>(it->second);
@@ -333,9 +343,11 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
   if (target_config_proto.has_value()) {
     return {{*target_config_proto, *host_target_machine_options, {}}};
   }
-  ABSL_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
-                   xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
-                                        /*allowed_devices=*/std::nullopt));
+  ABSL_ASSIGN_OR_RETURN(
+      xla::LocalClient * xla_client,
+      xla::GetGpuXlaClient(
+          /*platform_name=*/std::nullopt,
+          /*allowed_devices=*/GetVisibleDevicesFromOptions(options)));
   stream_executor::StreamExecutor* executor =
       xla_client->backend().default_stream_executor();
   std::vector<int> device_ids;
@@ -582,7 +594,8 @@ PJRT_Stream_Extension stream{
 };
 
 static PJRT_Error* RegisterCustomCall(PJRT_Gpu_Register_Custom_Call_Args* args,
-                                      XLA_FFI_Handler_Traits traits) {
+                                      XLA_FFI_Handler_Traits traits,
+                                      XLA_FFI_Handler* record) {
   std::string function_name(args->function_name, args->function_name_size);
   switch (args->api_version) {
     case 0:
@@ -601,7 +614,8 @@ static PJRT_Error* RegisterCustomCall(PJRT_Gpu_Register_Custom_Call_Args* args,
                   reinterpret_cast<XLA_FFI_Handler*>(args->handler_instantiate),
                   reinterpret_cast<XLA_FFI_Handler*>(args->handler_prepare),
                   reinterpret_cast<XLA_FFI_Handler*>(args->handler_initialize),
-                  reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute)},
+                  reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute),
+                  record},
               traits)));
     default:
       return StatusToPjRtError(absl::UnimplementedError(
@@ -624,7 +638,14 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
       PJRT_STRUCT_SIZE(PJRT_Gpu_Register_Custom_Call_Args, traits)) {
     traits = args->traits;
   }
-  return RegisterCustomCall(args, traits);
+  // `handler_record` was appended in extension v4; honor it when the caller's
+  // struct covers it, otherwise default to nullptr (pre-v4 callers omit it).
+  XLA_FFI_Handler* record = nullptr;
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Gpu_Register_Custom_Call_Args, handler_record)) {
+    record = reinterpret_cast<XLA_FFI_Handler*>(args->handler_record);
+  }
+  return RegisterCustomCall(args, traits, record);
 }
 
 const PJRT_Api* GetGpuPjrtApi() {
@@ -636,6 +657,7 @@ const PJRT_Api* GetGpuPjrtApi() {
       },
       /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
       /*custom_call_handles_traits=*/true,
+      /*custom_call_handles_record=*/true,
   };
 
   static PJRT_Layouts_Extension layouts_extension =

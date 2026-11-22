@@ -118,12 +118,10 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
   // PjRtCompatibleArray implementation.
 
   absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() override {
-    DCHECK(this);
     return pjrt_buffers_;
   }
   absl::StatusOr<absl::Span<std::shared_ptr<PjRtBuffer>>> mutable_pjrt_buffers()
       override {
-    DCHECK(this);
     return absl::MakeSpan(pjrt_buffers_);
   }
 
@@ -135,7 +133,6 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
   ~PjRtArray() override = default;
 
   PjRtCompatibleClient* client() const override {
-    DCHECK(this);
     return client_;
   }
 
@@ -145,17 +142,14 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
   }
 
   DType dtype() const override {
-    DCHECK(this);
     return array_spec_.dtype;
   }
 
   bool has_dynamic_shape() const {
-    DCHECK(this);
     return dynamic_shape_ != std::nullopt;
   }
 
   bool has_static_shape() const {
-    DCHECK(this);
     return dynamic_shape_ == std::nullopt;
   }
 
@@ -170,11 +164,9 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
   }
 
   const Sharding& sharding() const override {
-    DCHECK(this);
     return *array_spec_.sharding;
   }
   ShardingRef shared_ptr_sharding() const override {
-    DCHECK(this);
     return array_spec_.sharding;
   }
 

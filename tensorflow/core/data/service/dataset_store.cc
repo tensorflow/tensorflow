@@ -19,8 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/utils.h"
+#include "tensorflow/core/data/service/validate_utils.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/env.h"
@@ -36,6 +38,7 @@ FileSystemDatasetStore::FileSystemDatasetStore(const std::string& datasets_dir)
 
 absl::Status FileSystemDatasetStore::Put(const std::string& key,
                                          const DatasetDef& dataset) {
+  TF_RETURN_IF_ERROR(ValidateDatasetId(key));
   std::string path_to_write = io::JoinPath(datasets_dir_, key);
   TF_RETURN_IF_ERROR(WriteDatasetDef(path_to_write, dataset));
   return absl::OkStatus();
@@ -43,6 +46,7 @@ absl::Status FileSystemDatasetStore::Put(const std::string& key,
 
 absl::Status FileSystemDatasetStore::Get(
     const std::string& key, std::shared_ptr<const DatasetDef>& dataset_def) {
+  TF_RETURN_IF_ERROR(ValidateDatasetId(key));
   std::string path = io::JoinPath(datasets_dir_, key);
   TF_RETURN_IF_ERROR(Env::Default()->FileExists(path));
   DatasetDef def;
@@ -53,6 +57,7 @@ absl::Status FileSystemDatasetStore::Get(
 
 absl::Status MemoryDatasetStore::Put(const std::string& key,
                                      const DatasetDef& dataset) {
+  TF_RETURN_IF_ERROR(ValidateDatasetId(key));
   auto& stored_dataset = datasets_[key];
   stored_dataset = std::make_shared<const DatasetDef>(dataset);
   return absl::OkStatus();
@@ -60,6 +65,7 @@ absl::Status MemoryDatasetStore::Put(const std::string& key,
 
 absl::Status MemoryDatasetStore::Get(
     const std::string& key, std::shared_ptr<const DatasetDef>& dataset_def) {
+  TF_RETURN_IF_ERROR(ValidateDatasetId(key));
   auto& stored_dataset = datasets_[key];
   if (!stored_dataset) {
     return absl::NotFoundError(

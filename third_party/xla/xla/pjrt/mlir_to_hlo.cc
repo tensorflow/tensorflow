@@ -182,7 +182,8 @@ absl::Status MlirToXlaComputation(
 
     VLOG(5) << "MHLO module after lowering, before HLO import ";
     if (VLOG_IS_ON(5)) {
-      module->dump();
+      module->print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
+      llvm::errs() << "\n";
     }
   }
 

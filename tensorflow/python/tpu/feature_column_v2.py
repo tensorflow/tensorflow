@@ -86,20 +86,20 @@ def embedding_column_v2(categorical_column,
 
   Args:
     categorical_column: A categorical column returned from
-        `categorical_column_with_identity`, `weighted_categorical_column`,
-        `categorical_column_with_vocabulary_file`,
-        `categorical_column_with_vocabulary_list`,
-        `sequence_categorical_column_with_identity`,
-        `sequence_categorical_column_with_vocabulary_file`,
-        `sequence_categorical_column_with_vocabulary_list`
+      `categorical_column_with_identity`, `weighted_categorical_column`,
+      `categorical_column_with_vocabulary_file`,
+      `categorical_column_with_vocabulary_list`,
+      `sequence_categorical_column_with_identity`,
+      `sequence_categorical_column_with_vocabulary_file`,
+      `sequence_categorical_column_with_vocabulary_list`
     dimension: An integer specifying dimension of the embedding, must be > 0.
-    combiner: A string specifying how to reduce if there are multiple entries
-      in a single row for a non-sequence column. For more information, see
+    combiner: A string specifying how to reduce if there are multiple entries in
+      a single row for a non-sequence column. For more information, see
       `tf.feature_column.embedding_column`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and
-      standard deviation `1/sqrt(dimension)`.
+      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and standard
+      deviation `1/sqrt(dimension)`.
     max_sequence_length: An non-negative integer specifying the max sequence
       length. Any sequence shorter then this will be padded with 0 embeddings
       and any sequence longer will be truncated. This must be positive for
@@ -107,23 +107,23 @@ def embedding_column_v2(categorical_column,
     learning_rate_fn: A function that takes global step and returns learning
       rate for the embedding table. If you intend to use the same learning rate
       for multiple embedding tables, please ensure that you pass the exact same
-      python function to all calls of embedding_column, otherwise performence
+      python function to all calls of embedding_column, otherwise performance
       may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
-      Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core".
-      If specifying "tpu_tensor_core", a tensor_core_shape must be supplied.
-      If not specified, the default behavior is embedding lookup on
-      "tpu_embedding_core" for training and "cpu" for inference.
-      Valid options for training : ["tpu_embedding_core", "tpu_tensor_core"]
-      Valid options for serving :  ["cpu", "tpu_tensor_core"]
-      For training, tpu_embedding_core is good for large embedding vocab (>1M),
-      otherwise, tpu_tensor_core is often sufficient.
-      For serving, doing embedding lookup on tpu_tensor_core during serving is
-      a way to reduce host cpu usage in cases where that is a bottleneck.
-    tensor_core_shape: If supplied, a list of integers which specifies
-      the intended dense shape to run embedding lookup for this feature on
-      TensorCore. The batch dimension can be left None or -1 to indicate
-      a dynamic shape. Only rank 2 shapes currently supported.
+      Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core". If
+      specifying "tpu_tensor_core", a tensor_core_shape must be supplied. If not
+      specified, the default behavior is embedding lookup on
+      "tpu_embedding_core" for training and "cpu" for inference. Valid options
+      for training : ["tpu_embedding_core", "tpu_tensor_core"] Valid options for
+      serving :  ["cpu", "tpu_tensor_core"] For training, tpu_embedding_core is
+      good for large embedding vocab (>1M), otherwise, tpu_tensor_core is often
+      sufficient. For serving, doing embedding lookup on tpu_tensor_core during
+      serving is a way to reduce host cpu usage in cases where that is a
+      bottleneck.
+    tensor_core_shape: If supplied, a list of integers which specifies the
+      intended dense shape to run embedding lookup for this feature on
+      TensorCore. The batch dimension can be left None or -1 to indicate a
+      dynamic shape. Only rank 2 shapes currently supported.
     use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
       instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
       there are no empty rows and all weights and ids are positive at the
@@ -273,18 +273,18 @@ def shared_embedding_columns_v2(categorical_columns,
       rate for the embedding table. If you intend to use the same learning rate
       for multiple embedding tables, please ensure that you pass the exact same
       python function to all calls of shared_embedding_columns, otherwise
-      performence may suffer.
+      performance may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
       Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core". If
       specifying "tpu_tensor_core", a tensor_core_shape must be supplied.
       Defaults to "cpu". If not specified, the default behavior is embedding
-      lookup on "tpu_embedding_core" for training and "cpu" for inference.
-      Valid options for training : ["tpu_embedding_core", "tpu_tensor_core"]
-      Valid options for serving :  ["cpu", "tpu_tensor_core"]
-      For training, tpu_embedding_core is good for large embedding vocab (>1M),
-      otherwise, tpu_tensor_core is often sufficient.
-      For serving, doing embedding lookup on tpu_tensor_core during serving is
-      a way to reduce host cpu usage in cases where that is a bottleneck.
+      lookup on "tpu_embedding_core" for training and "cpu" for inference. Valid
+      options for training : ["tpu_embedding_core", "tpu_tensor_core"] Valid
+      options for serving :  ["cpu", "tpu_tensor_core"] For training,
+      tpu_embedding_core is good for large embedding vocab (>1M), otherwise,
+      tpu_tensor_core is often sufficient. For serving, doing embedding lookup
+      on tpu_tensor_core during serving is a way to reduce host cpu usage in
+      cases where that is a bottleneck.
     tensor_core_shape: If supplied, a list of integers which specifies the
       intended dense shape to run embedding lookup for this feature on
       TensorCore. The batch dimension can be left None or -1 to indicate a

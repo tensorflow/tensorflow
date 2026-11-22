@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/call_inliner.h"
+#include "xla/hlo/transforms/call_inliner.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -154,7 +154,7 @@ class WhileUtil {
   // Modifies the trip count of the loop by the given increment.
   // Requires loop body to be incrementing the induction variable by exactly 1.
   static absl::Status IncrementWhileLoopTripCount(
-      const HloInstruction& while_instruction, int32_t increment);
+      const HloInstruction& while_instruction, int64_t increment);
   // Ensure that the output of an in-place update operation (like a DUS) is not
   // read before being returned from its computation. It must only feed the
   // computation root or another valid in-place update operation. This is used

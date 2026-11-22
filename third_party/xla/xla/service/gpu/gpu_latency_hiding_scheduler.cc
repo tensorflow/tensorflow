@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/hlo_scheduling/latency_hiding_scheduler.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_ops_utils.h"
@@ -48,12 +50,12 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -91,6 +93,9 @@ bool IsNopInstruction(const HloInstruction& hlo) {
     case HloOpcode::kReplicaId:
     case HloOpcode::kOptimizationBarrier:
       return true;
+    case HloOpcode::kCustomCall:
+      // Only reserves a buffer; launches nothing.
+      return hlo.IsCustomCall("AllocateBuffer");
     default:
       return hlo.IsEffectiveBitcast();
   }
@@ -111,8 +116,7 @@ bool IsAsyncComputeDoneOp(const HloInstruction& hlo) {
 // Returns the pipeline stream for a P2P instruction recorded in a frontend
 // attribute.
 int64_t GetPipelineStream(const HloInstruction& start) {
-  auto it = start.frontend_attributes().map().find(kSendRecvPipelineAttr);
-  if (it != start.frontend_attributes().map().end() && it->second == "1") {
+  if (start.get_frontend_attribute(kSendRecvPipelineAttr) == "1") {
     return 1;
   }
   return 0;
@@ -183,7 +187,7 @@ bool IsDynamicSliceCopyFusionAsyncOp(const HloInstruction& hlo) {
 
 bool IsCollectivesGroupAsyncStartOp(const HloInstruction& hlo) {
   return HloPredicateIsOp<HloOpcode::kAsyncStart>(&hlo) &&
-         hlo.frontend_attributes().map().contains(kCollectiveGroupMarkerAttr);
+         hlo.has_frontend_attribute(kCollectiveGroupMarkerAttr);
 }
 
 bool IsCollectivesGroupAsyncDoneOp(const HloInstruction& hlo) {
@@ -578,7 +582,7 @@ static bool IsLargeIndependentFill(const HloInstruction& instr) {
     return false;
   }
   // Scheduling groups are placed as a unit by the annotation scheduler.
-  if (instr.frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr)) {
+  if (instr.has_frontend_attribute(kXlaSchedulingGroupIdAttr)) {
     return false;
   }
   if (instr.has_backend_config()) {
@@ -629,7 +633,7 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
     // for RecvDone can be eliminated.
     if (debug_options.xla_gpu_enable_pipelined_p2p() &&
         inst->opcode() == HloOpcode::kRecv &&
-        inst->frontend_attributes().map().count(kSendRecvPipelineAttr) > 0) {
+        inst->has_frontend_attribute(kSendRecvPipelineAttr)) {
       HloGraphNode& node = schedule_graph->GetNode(inst);
       node.SetForceEarly(true);
       VLOG(5) << "Setting force early for instruction: " << inst->ToString();
@@ -683,10 +687,8 @@ static bool IsAnnotatedForGpuAsyncStreamCollectivesP2P(
       GpuGetCanonicalAsyncOp(instr).outer == HloOpcode::kAsyncDone
           ? *instr.operand(0)
           : instr;
-  auto it =
-      start_instr.frontend_attributes().map().find(kCollectiveStreamAttrName);
-  if (it == start_instr.frontend_attributes().map().end()) return false;
-  return it->second == kCollectiveStreamP2P;
+  return start_instr.get_frontend_attribute(kCollectiveStreamAttrName) ==
+         kCollectiveStreamP2P;
 }
 
 GpuResourceType GetCollectiveResource(const HloInstruction& instruction) {
@@ -1004,11 +1006,41 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::GetLatencyBetween(
 // GPUProfileStatisticsAggregator
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+// Whether `instruction` is in the condition of while loops that all have a
+// known trip count. The GPU runtime runs the body of such a loop the given
+// number of times without evaluating the condition, so its instructions are
+// never profiled.
+bool IsInUnevaluatedLoopCondition(const HloInstruction& instruction) {
+  const HloComputation* computation = instruction.parent();
+  if (computation == nullptr) {
+    return false;
+  }
+  bool is_loop_condition = false;
+  for (const HloInstruction* loop :
+       computation->caller_instructions(HloOpcode::kWhile)) {
+    if (loop->while_condition() != computation) {
+      continue;
+    }
+    is_loop_condition = true;
+    absl::StatusOr<WhileLoopBackendConfig> config =
+        loop->backend_config<WhileLoopBackendConfig>();
+    if (!config.ok() || !config->has_known_trip_count()) {
+      return false;
+    }
+  }
+  return is_loop_condition;
+}
+
+}  // namespace
+
 void GPUProfileStatisticsAggregator::HandleMissingInstructionCost(
     const HloInstruction& instruction) {
   if (!IsNopInstruction(instruction) &&
       HloPredicateIsNotOp<HloOpcode::kWhile>(&instruction) &&
-      HloPredicateIsNotOp<HloOpcode::kCopy>(&instruction)) {
+      HloPredicateIsNotOp<HloOpcode::kCopy>(&instruction) &&
+      !IsInUnevaluatedLoopCondition(instruction)) {
     missing_instructions_.insert(&instruction);
   }
 }
@@ -1035,9 +1067,9 @@ bool IsCustomCollectiveOp(const HloInstruction* instr) {
   if (!HloPredicateIsOp<HloOpcode::kAsyncStart, HloOpcode::kAsyncDone>(instr)) {
     return false;
   }
-  const auto& attrs = instr->frontend_attributes().map();
-  if (auto it = attrs.find(kXlaStreamAnnotationAttr); it != attrs.end()) {
-    return absl::EqualsIgnoreCase(it->second, kXlaCollectiveStreamAnnotation);
+  if (std::optional<std::string> annotation =
+          instr->get_frontend_attribute(kXlaStreamAnnotationAttr)) {
+    return absl::EqualsIgnoreCase(*annotation, kXlaCollectiveStreamAnnotation);
   }
   return false;
 }

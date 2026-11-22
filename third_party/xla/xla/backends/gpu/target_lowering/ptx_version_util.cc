@@ -1,0 +1,60 @@
+/* Copyright 2017 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/target_lowering/ptx_version_util.h"
+
+namespace xla::gpu::nvptx {
+
+namespace {
+constexpr stream_executor::SemanticVersion kFallbackPtxVersion{6, 5, 0};
+constexpr stream_executor::SemanticVersion kMaxPtxVersion{9, 4, 0};
+}  // namespace
+
+stream_executor::SemanticVersion
+DetermineHighestSupportedPtxVersionFromCudaVersion(
+    stream_executor::SemanticVersion cuda_version,
+    int compute_capability_major) {
+  stream_executor::SemanticVersion ptx_version = kMaxPtxVersion;
+
+  if (cuda_version < stream_executor::SemanticVersion{11, 0, 0}) {
+    // For everything below CUDA 11 we just fall back to PTX 6.5.
+    // We don't support CUDA below 11 anymore.
+    ptx_version = kFallbackPtxVersion;
+  } else if (cuda_version >= stream_executor::SemanticVersion{12, 6, 0} &&
+             cuda_version < stream_executor::SemanticVersion{12, 10, 0}) {
+    // Examples:
+    // CUDA 12.6 -> PTX 8.5
+    // CUDA 12.9 -> PTX 8.8
+    ptx_version = {cuda_version.major_version() - 4,
+                   cuda_version.minor_version() - 1, 0};
+  } else if (cuda_version < stream_executor::SemanticVersion{13, 4, 0}) {
+    // Examples:
+    // CUDA 11.0 -> PTX 7.0
+    // CUDA 12.4 -> PTX 8.4
+    // CUDA 13.0 -> PTX 9.0
+    ptx_version = {cuda_version.major_version() - 4,
+                   cuda_version.minor_version(), 0};
+  }
+
+  // sm_120 (Blackwell) requires at least PTX 8.7
+  if (compute_capability_major >= 12) {
+    if (ptx_version < stream_executor::SemanticVersion{8, 7, 0}) {
+      ptx_version = {8, 7, 0};
+    }
+  }
+
+  return ptx_version;
+}
+}  // namespace xla::gpu::nvptx

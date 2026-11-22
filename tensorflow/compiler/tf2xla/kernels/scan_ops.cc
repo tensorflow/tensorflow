@@ -34,10 +34,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 8> kSumAndProductTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64,
-     DT_COMPLEX64, DT_COMPLEX128}};
-
 constexpr std::array<DataType, 4> kLogSumExpTypes = {
     {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE}};
 
@@ -144,7 +140,7 @@ class CumsumOp : public ScanOp {
   explicit CumsumOp(OpKernelConstruction* ctx) : ScanOp(ctx, Reducer::kSum) {}
 };
 REGISTER_XLA_OP(Name("Cumsum")
-                    .TypeConstraint("T", kSumAndProductTypes)
+                    .TypeConstraint("T", kNumericTypes)
                     .CompileTimeConstantInput("axis"),
                 CumsumOp);
 
@@ -154,7 +150,7 @@ class CumprodOp : public ScanOp {
       : ScanOp(ctx, Reducer::kProduct) {}
 };
 REGISTER_XLA_OP(Name("Cumprod")
-                    .TypeConstraint("T", kSumAndProductTypes)
+                    .TypeConstraint("T", kNumericTypes)
                     .CompileTimeConstantInput("axis"),
                 CumprodOp);
 

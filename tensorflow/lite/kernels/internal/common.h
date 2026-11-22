@@ -73,6 +73,18 @@ inline T WrappingAdd(T a, T b) {
 }
 
 template <typename T>
+inline T WrappingSub(T a, T b) {
+  if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
+    using U = std::make_unsigned_t<T>;
+    using P = std::common_type_t<U, unsigned int>;
+    return static_cast<T>(static_cast<U>(static_cast<P>(static_cast<U>(a)) -
+                                         static_cast<P>(static_cast<U>(b))));
+  } else {
+    return a - b;
+  }
+}
+
+template <typename T>
 inline T WrappingMul(T a, T b) {
   if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
     using U = std::make_unsigned_t<T>;

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_CORE_COLLECTIVES_SYMMETRIC_MEMORY_H_
 #define XLA_CORE_COLLECTIVES_SYMMETRIC_MEMORY_H_
 
+#include <atomic>
+#include <cstdint>
 #include <string>
 
 #include "absl/status/status.h"
@@ -66,10 +68,24 @@ class SymmetricMemory {
   using PackedKernelArg = void*;
   virtual PackedKernelArg PackKernelArg() const = 0;
 
+  // Returns a process-unique id of this symmetric memory. Unlike the object
+  // address, ids are never reused, so they can be used to detect that a
+  // symmetric memory was released and re-created (e.g. by a cache keyed by
+  // its device address).
+  uint64_t id() const { return id_; }
+
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const SymmetricMemory& mem) {
     absl::Format(&sink, "%s", mem.ToString());
   }
+
+ private:
+  static uint64_t NextId() {
+    static std::atomic<uint64_t> next_id{1};
+    return next_id.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  const uint64_t id_ = NextId();
 };
 
 }  // namespace xla

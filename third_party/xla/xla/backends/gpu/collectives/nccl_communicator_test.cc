@@ -12,32 +12,52 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <thread>  // NOLINT
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/globals.h"
 #include "absl/log/log.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/collectives_test_util.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
+#include "xla/core/collectives/symmetric_memory.h"
+#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -53,10 +73,182 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
+using ::testing::_;
+using ::testing::Contains;
+using ::testing::Each;
+using ::testing::Gt;
+using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Not;
 
 static constexpr GlobalDeviceId kD0(0);
 static constexpr GlobalDeviceId kD1(1);
+
+struct CapturedGraphInfo {
+  std::vector<std::string> kernel_names;
+  int num_memcpy_nodes = 0;
+  int num_batch_mem_op_nodes = 0;
+};
+
+absl::StatusOr<CapturedGraphInfo> CaptureCollectiveGraph(
+    se::StreamExecutor* executor, se::Stream* stream,
+    absl::FunctionRef<absl::Status()> collective_fn) {
+  auto activate = executor->Activate();
+  CUstream cu_stream =
+      reinterpret_cast<CUstream>(stream->platform_specific_handle().stream);
+  if (CUresult res =
+          cuStreamBeginCapture(cu_stream, CU_STREAM_CAPTURE_MODE_RELAXED);
+      res != CUDA_SUCCESS) {
+    return absl::InternalError(
+        absl::StrFormat("cuStreamBeginCapture failed: %d", res));
+  }
+  absl::Status status = collective_fn();
+  CUgraph graph = nullptr;
+  if (CUresult res = cuStreamEndCapture(cu_stream, &graph);
+      res != CUDA_SUCCESS) {
+    return absl::InternalError(
+        absl::StrFormat("cuStreamEndCapture failed: %d", res));
+  }
+  absl::Cleanup destroy_graph = [graph] {
+    if (graph != nullptr) {
+      cuGraphDestroy(graph);
+    }
+  };
+  ABSL_RETURN_IF_ERROR(status);
+
+  size_t num_nodes = 0;
+  if (CUresult res = cuGraphGetNodes(graph, nullptr, &num_nodes);
+      res != CUDA_SUCCESS) {
+    return absl::InternalError(
+        absl::StrFormat("cuGraphGetNodes failed: %d", res));
+  }
+  std::vector<CUgraphNode> nodes(num_nodes);
+  if (CUresult res = cuGraphGetNodes(graph, nodes.data(), &num_nodes);
+      res != CUDA_SUCCESS) {
+    return absl::InternalError(
+        absl::StrFormat("cuGraphGetNodes failed: %d", res));
+  }
+
+  CapturedGraphInfo info;
+  for (CUgraphNode node : nodes) {
+    CUgraphNodeType type;
+    if (CUresult res = cuGraphNodeGetType(node, &type); res != CUDA_SUCCESS) {
+      return absl::InternalError(
+          absl::StrFormat("cuGraphNodeGetType failed: %d", res));
+    }
+    if (type == CU_GRAPH_NODE_TYPE_KERNEL) {
+      CUDA_KERNEL_NODE_PARAMS params;
+      if (CUresult res = cuGraphKernelNodeGetParams(node, &params);
+          res != CUDA_SUCCESS) {
+        return absl::InternalError(
+            absl::StrFormat("cuGraphKernelNodeGetParams failed: %d", res));
+      }
+      const char* name = nullptr;
+      if (CUresult res = cuFuncGetName(&name, params.func);
+          res != CUDA_SUCCESS) {
+        return absl::InternalError(
+            absl::StrFormat("cuFuncGetName failed: %d", res));
+      }
+      if (name != nullptr) {
+        info.kernel_names.emplace_back(name);
+      }
+    } else if (type == CU_GRAPH_NODE_TYPE_MEMCPY) {
+      ++info.num_memcpy_nodes;
+    } else if (type == CU_GRAPH_NODE_TYPE_BATCH_MEM_OP) {
+      ++info.num_batch_mem_op_nodes;
+    }
+  }
+  return info;
+}
+
+// Register a large buffer from the normal allocator and verify the transfer.
+TEST(NcclCommunicatorTest, LargeBufferRegistration) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires two GPUs";
+  }
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1]) ||
+      !executors[1]->CanEnablePeerAccessTo(executors[0])) {
+    GTEST_SKIP() << "Test requires peer access between GPUs";
+  }
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<GpuCommunicator>> comms,
+      CreateCommunicators(executors, {kD0, kD1}, /*blocking=*/true));
+
+  constexpr uint64_t kGiB = uint64_t{1} << 30;
+  constexpr uint64_t kSize = 4 * kGiB;
+  constexpr uint32_t kPattern = 0x5a17c3e9;
+  for (se::StreamExecutor* executor : executors) {
+    int64_t free_memory = 0;
+    int64_t total_memory = 0;
+    ASSERT_TRUE(executor->DeviceMemoryUsage(&free_memory, &total_memory));
+    if (free_memory < static_cast<int64_t>(kSize + kGiB / 2)) {
+      GTEST_SKIP() << "Need 4.5 GiB of free GPU memory on each GPU, found "
+                   << free_memory << " on GPU " << executor->device_ordinal();
+    }
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<se::MemoryAllocator>> allocators,
+      CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::MemoryAllocation> send_alloc,
+                       allocators[0]->Allocate(kSize));
+  se::DeviceAddressBase send_addr(send_alloc->address().opaque(), kSize);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::MemoryAllocation> recv_alloc,
+                       allocators[1]->Allocate(kSize));
+  se::DeviceAddressBase recv_addr(recv_alloc->address().opaque(), kSize);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream0,
+                       executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream1,
+                       executors[1]->CreateStream());
+
+  // Use distinct per-GiB patterns to expose repeated or misplaced chunks.
+  // Registration and the transfer below still cover the entire buffer.
+  for (uint64_t chunk = 0; chunk < kSize / kGiB; ++chunk) {
+    se::DeviceAddressBase part(
+        static_cast<char*>(send_addr.opaque()) + chunk * kGiB, kGiB);
+    ASSERT_OK(stream0->Memset32(&part, kPattern + chunk, kGiB));
+  }
+  ASSERT_OK(stream1->MemZero(&recv_addr, kSize));
+  ASSERT_OK(stream0->BlockHostUntilDone());
+  ASSERT_OK(stream1->BlockHostUntilDone());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RegisteredMemory> send_registration,
+                       comms[0]->CreateRegisteredMemory(send_addr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RegisteredMemory> recv_registration,
+                       comms[1]->CreateRegisteredMemory(recv_addr));
+  GpuCollectives* collectives = GpuCollectives::Default("GPU");
+  std::vector<const GpuCommunicator*> group_comms = {comms[0].get(),
+                                                     comms[1].get()};
+  ASSERT_OK(collectives->GroupLaunch(group_comms, [&]() -> absl::Status {
+    GpuCollectives::Executor executor0(stream0.get());
+    GpuCollectives::Executor executor1(stream1.get());
+    ABSL_RETURN_IF_ERROR(comms[0]->LaunchSend(
+        send_addr, U32, kSize / sizeof(uint32_t), RankId(1), executor0));
+    return comms[1]->LaunchRecv(recv_addr, U32, kSize / sizeof(uint32_t),
+                                RankId(0), executor1);
+  }));
+  ASSERT_OK(stream0->BlockHostUntilDone());
+  ASSERT_OK(stream1->BlockHostUntilDone());
+
+  // Sample both sides of every GiB boundary to check transfers across backing
+  // mappings without copying the entire 4 GiB buffer back to the host.
+  for (uint64_t chunk = 0; chunk < kSize / kGiB; ++chunk) {
+    for (uint64_t offset :
+         {chunk * kGiB, (chunk + 1) * kGiB - sizeof(uint32_t)}) {
+      SCOPED_TRACE(offset);
+      uint32_t actual = 0;
+      se::DeviceAddressBase word(
+          static_cast<char*>(recv_addr.opaque()) + offset, sizeof(actual));
+      ASSERT_OK(stream1->Memcpy(&actual, word, sizeof(actual)));
+      ASSERT_OK(stream1->BlockHostUntilDone());
+      EXPECT_EQ(actual, kPattern + chunk);
+    }
+  }
+}
 
 // Test checks that there are no deadlocks when NCCL API is used concurrently
 // from multiple threads.
@@ -373,6 +565,568 @@ TEST_P(NcclCommunicatorDestructorTest, DestroyWithVlogEnabled) {
 INSTANTIATE_TEST_SUITE_P(Blocking, NcclCommunicatorDestructorTest,
                          ::testing::Bool(),
                          [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "Blocking" : "Async";
+                         });
+
+bool IsAtLeastNccl23200() {
+  if (NCCL_VERSION_CODE < 23200) {
+    return false;
+  }
+  int runtime_version = 0;
+  return ncclGetVersion(&runtime_version) == ncclSuccess &&
+         runtime_version >= 23200;
+}
+
+TEST(NcclCommunicatorTest, VariadicAllReduceBatchedWithoutSymmetricWindow) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  constexpr int kNumDevices = 2;
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, kNumDevices));
+
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1},
+                                                       /*blocking=*/true));
+
+  constexpr size_t kCount = 256;
+  constexpr size_t kAllocBytes = 4096;
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto send_allocs0, Allocate(allocators, kAllocBytes));
+  ASSERT_OK_AND_ASSIGN(auto recv_allocs0, Allocate(allocators, kAllocBytes));
+  ASSERT_OK_AND_ASSIGN(auto send_allocs1, Allocate(allocators, kAllocBytes));
+  ASSERT_OK_AND_ASSIGN(auto recv_allocs1, Allocate(allocators, kAllocBytes));
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl_test", kNumDevices);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  ASSERT_OK_AND_ASSIGN(auto stream0, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream1, executors[1]->CreateStream());
+  std::vector<se::Stream*> streams = {stream0.get(), stream1.get()};
+
+  auto capture_grouped_all_reduces =
+      [&]() -> absl::StatusOr<std::vector<CapturedGraphInfo>> {
+    std::vector<Future<CapturedGraphInfo>> futures;
+    futures.reserve(kNumDevices);
+    for (int rank = 0; rank < kNumDevices; ++rank) {
+      futures.push_back(MakeFutureOn(exec, [&, rank] {
+        GpuCollectives::Executor gpu_exec(streams[rank]);
+        return CaptureCollectiveGraph(
+            executors[rank], streams[rank], [&]() -> absl::Status {
+              return comms[rank]
+                  ->GroupExecute([&]() -> absl::Status {
+                    ABSL_RETURN_IF_ERROR(comms[rank]->LaunchAllReduce(
+                        send_allocs0[rank]->address(),
+                        recv_allocs0[rank]->address(), F32, kCount,
+                        ReductionKind::SUM, gpu_exec, /*is_rma=*/false));
+                    return comms[rank]->LaunchAllReduce(
+                        send_allocs1[rank]->address(),
+                        recv_allocs1[rank]->address(), F32, kCount,
+                        ReductionKind::SUM, gpu_exec, /*is_rma=*/false);
+                  })
+                  .Await();
+            });
+      }));
+    }
+    return JoinFutures(absl::MakeSpan(futures)).Await();
+  };
+
+  // Without any NCCL_WIN_COLL_SYMMETRIC window registered on `comms`, grouped
+  // non-RMA collectives must not force task isolation and should batch into a
+  // single NCCL kernel launch.
+  ASSERT_OK_AND_ASSIGN(std::vector<CapturedGraphInfo> before_window,
+                       capture_grouped_all_reduces());
+  for (const CapturedGraphInfo& info : before_window) {
+    EXPECT_EQ(info.kernel_names.size(), 1);
+  }
+
+  // Registering and then destroying a symmetric window must restore batching.
+  if (executors[0]->CanEnablePeerAccessTo(executors[1]) &&
+      executors[0]
+          ->GetDeviceDescription()
+          .cuda_compute_capability()
+          .IsAtLeastHopper() &&
+      comms[0]->LsaSize() == kNumDevices) {
+    {
+      ASSERT_OK_AND_ASSIGN(
+          auto sym_mems,
+          AwaitSymmetricMemory(CreateSymmetricMemory(
+              exec, comms, send_allocs0, /*symmetric_window=*/true)));
+    }
+    ASSERT_OK_AND_ASSIGN(std::vector<CapturedGraphInfo> after_window_destroy,
+                         capture_grouped_all_reduces());
+    for (const CapturedGraphInfo& info : after_window_destroy) {
+      EXPECT_EQ(info.kernel_names.size(), 1);
+    }
+  }
+}
+
+TEST(NcclCommunicatorTest, SymmetricKernelsGuardedByIsRma) {
+  if (!IsAtLeastNccl23200()) {
+    GTEST_SKIP() << "Test requires NCCL 2.32 or newer";
+  }
+
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  constexpr int kNumDevices = 2;
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, kNumDevices));
+
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires peer access between devices";
+  }
+
+  if (!executors[0]
+           ->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Test requires at least Hopper architecture";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1},
+                                                       /*blocking=*/true));
+  if (comms[0]->LsaSize() != kNumDevices) {
+    GTEST_SKIP() << "Test requires all ranks in the same LSA team (NVLink)";
+  }
+
+  constexpr size_t kCount = 256;
+  constexpr size_t kAllocBytes = 4096;
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto send_allocs, Allocate(allocators, kAllocBytes));
+  ASSERT_OK_AND_ASSIGN(auto recv_allocs, Allocate(allocators, kAllocBytes));
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl_test", kNumDevices);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  ASSERT_OK_AND_ASSIGN(
+      auto send_sym_mems,
+      AwaitSymmetricMemory(CreateSymmetricMemory(exec, comms, send_allocs,
+                                                 /*symmetric_window=*/true)));
+  ASSERT_OK_AND_ASSIGN(
+      auto recv_sym_mems,
+      AwaitSymmetricMemory(CreateSymmetricMemory(exec, comms, recv_allocs,
+                                                 /*symmetric_window=*/true)));
+
+  ASSERT_OK_AND_ASSIGN(auto stream0, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream1, executors[1]->CreateStream());
+  std::vector<se::Stream*> streams = {stream0.get(), stream1.get()};
+
+  auto capture_all_reduce =
+      [&](bool is_rma) -> absl::StatusOr<std::vector<CapturedGraphInfo>> {
+    std::vector<Future<CapturedGraphInfo>> futures;
+    futures.reserve(kNumDevices);
+    for (int rank = 0; rank < kNumDevices; ++rank) {
+      futures.push_back(MakeFutureOn(exec, [&, rank, is_rma] {
+        GpuCollectives::Executor gpu_exec(streams[rank]);
+        return CaptureCollectiveGraph(
+            executors[rank], streams[rank], [&]() -> absl::Status {
+              return comms[rank]
+                  ->GroupExecute([&]() {
+                    return comms[rank]->LaunchAllReduce(
+                        send_allocs[rank]->address(),
+                        recv_allocs[rank]->address(), F32, kCount,
+                        ReductionKind::SUM, gpu_exec, is_rma);
+                  })
+                  .Await();
+            });
+      }));
+    }
+    return JoinFutures(absl::MakeSpan(futures)).Await();
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::vector<CapturedGraphInfo> ar_no_rma,
+                       capture_all_reduce(/*is_rma=*/false));
+  for (const CapturedGraphInfo& info : ar_no_rma) {
+    EXPECT_THAT(info.kernel_names, Not(IsEmpty()));
+    EXPECT_THAT(info.kernel_names, Each(HasSubstr("ncclDevKernel_")));
+    EXPECT_THAT(info.kernel_names,
+                Not(Contains(HasSubstr("ncclSymkDevKernel_"))));
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<CapturedGraphInfo> ar_with_rma,
+                       capture_all_reduce(/*is_rma=*/true));
+  for (const CapturedGraphInfo& info : ar_with_rma) {
+    EXPECT_THAT(info.kernel_names, Contains(HasSubstr("ncclSymkDevKernel_")));
+  }
+
+  auto capture_all_gather =
+      [&](bool is_rma) -> absl::StatusOr<std::vector<CapturedGraphInfo>> {
+    std::vector<Future<CapturedGraphInfo>> futures;
+    futures.reserve(kNumDevices);
+    for (int rank = 0; rank < kNumDevices; ++rank) {
+      futures.push_back(MakeFutureOn(exec, [&, rank, is_rma] {
+        GpuCollectives::Executor gpu_exec(streams[rank]);
+        return CaptureCollectiveGraph(
+            executors[rank], streams[rank], [&]() -> absl::Status {
+              return comms[rank]
+                  ->GroupExecute([&]() {
+                    return comms[rank]->LaunchAllGather(
+                        send_allocs[rank]->address(),
+                        recv_allocs[rank]->address(), F32, kCount, gpu_exec,
+                        is_rma);
+                  })
+                  .Await();
+            });
+      }));
+    }
+    return JoinFutures(absl::MakeSpan(futures)).Await();
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::vector<CapturedGraphInfo> ag_no_rma,
+                       capture_all_gather(/*is_rma=*/false));
+  for (const CapturedGraphInfo& info : ag_no_rma) {
+    EXPECT_THAT(info.kernel_names, Not(IsEmpty()));
+    EXPECT_THAT(info.kernel_names, Each(HasSubstr("ncclDevKernel_")));
+    EXPECT_THAT(info.kernel_names,
+                Not(Contains(HasSubstr("ncclSymkDevKernel_"))));
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<CapturedGraphInfo> ag_with_rma,
+                       capture_all_gather(/*is_rma=*/true));
+  for (const CapturedGraphInfo& info : ag_with_rma) {
+    EXPECT_THAT(info.kernel_names, Contains(HasSubstr("ncclSymkDevKernel_")));
+  }
+}
+
+TEST(NcclCommunicatorTest, AllGatherCopyEngineGuardedByIsRma) {
+  if (!IsAtLeastNccl23200()) {
+    GTEST_SKIP() << "Test requires NCCL 2.32 or newer";
+  }
+
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  constexpr int kNumDevices = 2;
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, kNumDevices));
+
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires peer access between devices";
+  }
+
+  if (!executors[0]
+           ->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Test requires at least Hopper architecture";
+  }
+
+  std::optional<std::string> original_xla_flags;
+  if (const char* env = std::getenv("XLA_FLAGS")) {
+    original_xla_flags = env;
+  }
+  const std::string test_xla_flags =
+      original_xla_flags.has_value() && !original_xla_flags->empty()
+          ? absl::StrCat(
+                *original_xla_flags,
+                " --xla_gpu_experimental_enable_nccl_symmetric_buffers=true")
+          : "--xla_gpu_experimental_enable_nccl_symmetric_buffers=true";
+  (void)GetDebugOptionsFromFlags();
+  tsl::setenv("XLA_FLAGS", test_xla_flags.c_str(), /*overwrite=*/1);
+  ResetFlagValues();
+  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
+  absl::Cleanup restore_xla_flags = [&] {
+    if (original_xla_flags.has_value()) {
+      tsl::setenv("XLA_FLAGS", original_xla_flags->c_str(), /*overwrite=*/1);
+    } else {
+      tsl::unsetenv("XLA_FLAGS");
+    }
+    ResetFlagValues();
+    ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      auto comms, CreateCommunicators(executors, {kD0, kD1}, /*blocking=*/true,
+                                      /*num_ids=*/1, /*custom_backend=*/nullptr,
+                                      /*use_minimal_resource=*/true));
+  if (comms[0]->LsaSize() != kNumDevices) {
+    GTEST_SKIP() << "Test requires all ranks in the same LSA team (NVLink)";
+  }
+
+  constexpr size_t kCount = 256;
+  constexpr size_t kAllocBytes = 4096;
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto send_allocs, Allocate(allocators, kAllocBytes));
+  ASSERT_OK_AND_ASSIGN(auto recv_allocs, Allocate(allocators, kAllocBytes));
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl_test", kNumDevices);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  ASSERT_OK_AND_ASSIGN(
+      auto send_sym_mems,
+      AwaitSymmetricMemory(CreateSymmetricMemory(exec, comms, send_allocs,
+                                                 /*symmetric_window=*/true)));
+  ASSERT_OK_AND_ASSIGN(
+      auto recv_sym_mems,
+      AwaitSymmetricMemory(CreateSymmetricMemory(exec, comms, recv_allocs,
+                                                 /*symmetric_window=*/true)));
+
+  ASSERT_OK_AND_ASSIGN(auto stream0, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream1, executors[1]->CreateStream());
+  std::vector<se::Stream*> streams = {stream0.get(), stream1.get()};
+
+  auto capture_all_gather =
+      [&](bool is_rma) -> absl::StatusOr<std::vector<CapturedGraphInfo>> {
+    std::vector<Future<CapturedGraphInfo>> futures;
+    futures.reserve(kNumDevices);
+    for (int rank = 0; rank < kNumDevices; ++rank) {
+      futures.push_back(MakeFutureOn(exec, [&, rank, is_rma] {
+        GpuCollectives::Executor gpu_exec(streams[rank]);
+        return CaptureCollectiveGraph(
+            executors[rank], streams[rank], [&]() -> absl::Status {
+              return comms[rank]
+                  ->GroupExecute([&]() {
+                    return comms[rank]->LaunchAllGather(
+                        send_allocs[rank]->address(),
+                        recv_allocs[rank]->address(), F32, kCount, gpu_exec,
+                        is_rma);
+                  })
+                  .Await();
+            });
+      }));
+    }
+    return JoinFutures(absl::MakeSpan(futures)).Await();
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::vector<CapturedGraphInfo> ag_no_rma,
+                       capture_all_gather(/*is_rma=*/false));
+  for (const CapturedGraphInfo& info : ag_no_rma) {
+    EXPECT_THAT(info.kernel_names, Not(IsEmpty()));
+    EXPECT_THAT(info.kernel_names, Each(HasSubstr("ncclDevKernel_")));
+    EXPECT_THAT(info.kernel_names,
+                Not(Contains(HasSubstr("ncclSymkDevKernel_"))));
+    EXPECT_EQ(info.num_memcpy_nodes, 0);
+    EXPECT_EQ(info.num_batch_mem_op_nodes, 0);
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<CapturedGraphInfo> ag_with_rma,
+                       capture_all_gather(/*is_rma=*/true));
+  for (const CapturedGraphInfo& info : ag_with_rma) {
+    EXPECT_THAT(info.kernel_names, IsEmpty());
+    EXPECT_THAT(info.num_memcpy_nodes, Gt(0));
+    EXPECT_THAT(info.num_batch_mem_op_nodes, Gt(0));
+  }
+}
+
+// Acquires cached symmetric memory for `addrs[i]` on `comms[i]` concurrently.
+absl::StatusOr<std::vector<std::shared_ptr<SymmetricMemory>>>
+AcquireSymmetricMemory(tsl::Executor& exec,
+                       absl::Span<const std::unique_ptr<GpuCommunicator>> comms,
+                       absl::Span<const se::DeviceAddressBase> addrs) {
+  std::vector<Future<std::shared_ptr<SymmetricMemory>>> futures;
+  futures.reserve(comms.size());
+  for (size_t i = 0; i < comms.size(); ++i) {
+    futures.push_back(
+        MakeFutureOn(exec, [comm = comms[i].get(), addr = addrs[i]] {
+          return comm->AcquireSymmetricMemory(addr, /*symmetric_window=*/false);
+        }));
+  }
+  return JoinFutures(absl::MakeSpan(futures)).Await();
+}
+
+TEST(NcclCommunicatorTest, AcquireSymmetricMemoryCachesByAddress) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+  constexpr int kNumDevices = 2;
+  if (platform->VisibleDeviceCount() < kNumDevices) {
+    GTEST_SKIP() << "Test requires at least " << kNumDevices << " GPUs";
+  }
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, kNumDevices));
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires peer access between devices";
+  }
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<GpuCommunicator>> comms,
+      CreateCommunicators(executors, {kD0, kD1}, /*blocking=*/true));
+
+  constexpr size_t kSize = 1024;
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<se::MemoryAllocator>> allocators,
+      CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<se::MemoryAllocation>> allocs,
+      Allocate(allocators, 2 * kSize));
+  auto addrs = [&](size_t size) {
+    std::vector<se::DeviceAddressBase> result;
+    for (const std::unique_ptr<se::MemoryAllocation>& alloc : allocs) {
+      result.emplace_back(alloc->address().opaque(), size);
+    }
+    return result;
+  };
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl_test", kNumDevices);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<SymmetricMemory>> first,
+                       AcquireSymmetricMemory(exec, comms, addrs(kSize)));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<SymmetricMemory>> hit,
+                       AcquireSymmetricMemory(exec, comms, addrs(kSize)));
+  EXPECT_EQ(hit, first);
+
+  // A different size at the same address can't be registered while the old
+  // window is still held. This fails before any NCCL call, so one rank is
+  // enough.
+  EXPECT_THAT(comms[0]->AcquireSymmetricMemory(addrs(2 * kSize)[0],
+                                               /*symmetric_window=*/false),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  // Once only the cache holds it, the old window is replaced.
+  first.clear();
+  hit.clear();
+  ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<SymmetricMemory>> bigger,
+                       AcquireSymmetricMemory(exec, comms, addrs(2 * kSize)));
+  for (int i = 0; i < kNumDevices; ++i) {
+    EXPECT_EQ(bigger[i]->addr().size(), 2 * kSize);
+    comms[i]->ReleaseSymmetricMemory(bigger[i]->addr());
+    // The cache dropped its reference, `bigger` is now the only owner.
+    EXPECT_EQ(bigger[i].use_count(), 1);
+  }
+
+  // Re-populate the cache and verify Abort() clears it and rejects subsequent
+  // AcquireSymmetricMemory calls even for a previously cached address.
+  bigger.clear();
+  ASSERT_OK(AcquireSymmetricMemory(exec, comms, addrs(2 * kSize)).status());
+  for (int i = 0; i < kNumDevices; ++i) {
+    ASSERT_OK(comms[i]->Abort());
+    EXPECT_THAT(
+        comms[i]->AcquireSymmetricMemory(addrs(2 * kSize)[i],
+                                         /*symmetric_window=*/false),
+        StatusIs(absl::StatusCode::kFailedPrecondition, HasSubstr("aborted")));
+  }
+}
+
+// Members are declared in creation order so that implicit destruction
+// releases child resources before their communicators and allocations.
+struct TeardownResources {
+  std::vector<std::unique_ptr<se::MemoryAllocator>> allocators;
+  std::vector<std::unique_ptr<se::MemoryAllocation>> allocs;
+  // Only referenced by the communicator cache, so they must outlive `comms`.
+  std::vector<std::unique_ptr<se::MemoryAllocation>> cached_allocs;
+  std::vector<std::unique_ptr<GpuCommunicator>> comms;
+  std::vector<std::unique_ptr<RegisteredMemory>> registered_memories;
+  std::vector<std::unique_ptr<SymmetricMemory>> symmetric_memories;
+  std::vector<std::unique_ptr<GpuDeviceCommunicator>> device_comms;
+};
+
+absl::StatusOr<TeardownResources> CreateTeardownResources(
+    absl::Span<se::StreamExecutor* const> executors, bool blocking) {
+  TeardownResources resources;
+  ABSL_ASSIGN_OR_RETURN(resources.allocators, CreateMemoryAllocators(executors));
+  ABSL_ASSIGN_OR_RETURN(resources.allocs, Allocate(resources.allocators, 1024));
+  ABSL_ASSIGN_OR_RETURN(resources.comms,
+                   CreateCommunicators(executors, {kD0, kD1}, blocking));
+
+  resources.registered_memories.reserve(executors.size());
+  for (size_t i = 0; i < executors.size(); ++i) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<RegisteredMemory> registered,
+                     resources.comms[i]->CreateRegisteredMemory(
+                         resources.allocs[i]->address()));
+    resources.registered_memories.push_back(std::move(registered));
+  }
+
+  // NCCL window registration on a non-blocking communicator returns a null
+  // window, so symmetric memories and device comms need a blocking one.
+  if (blocking && executors[0]->CanEnablePeerAccessTo(executors[1]) &&
+      resources.comms[0]->SupportsDeviceComm() &&
+      resources.comms[1]->SupportsDeviceComm()) {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl_test",
+                                 executors.size());
+    tsl::Executor& exec = *pool.AsExecutor();
+
+    ABSL_ASSIGN_OR_RETURN(resources.symmetric_memories,
+                     AwaitSymmetricMemory(CreateSymmetricMemory(
+                         exec, resources.comms, resources.allocs,
+                         /*symmetric_window=*/false)));
+
+    // Drop the handles so that the communicator cache is the only owner, and
+    // the communicator destructor or Abort has to clear it.
+    ABSL_ASSIGN_OR_RETURN(resources.cached_allocs,
+                     Allocate(resources.allocators, 1024));
+    std::vector<se::DeviceAddressBase> cached_addrs;
+    for (const auto& alloc : resources.cached_allocs) {
+      cached_addrs.push_back(alloc->address());
+    }
+    ABSL_RETURN_IF_ERROR(
+        AcquireSymmetricMemory(exec, resources.comms, cached_addrs).status());
+
+    GpuDeviceCommunicator::Requirements reqs;
+    reqs.lsa_barrier_count = 8;
+    std::vector<Future<std::unique_ptr<GpuDeviceCommunicator>>> futures;
+    futures.reserve(executors.size());
+    for (size_t i = 0; i < executors.size(); ++i) {
+      futures.push_back(MakeFutureOn(
+          exec, [&, i] { return resources.comms[i]->CreateDeviceComm(reqs); }));
+    }
+    ABSL_ASSIGN_OR_RETURN(resources.device_comms,
+                     JoinFutures(absl::MakeSpan(futures)).Await());
+  } else if (blocking) {
+    LOG(WARNING) << "Skipping symmetric memory and device comm teardown "
+                    "coverage: requires peer access and device comm support";
+  }
+  return resources;
+}
+
+// Sets up `TeardownResources` on two CUDA devices, or returns `std::nullopt`
+// if fewer than two GPUs are visible.
+absl::StatusOr<std::optional<TeardownResources>> SetUpTeardownResources(
+    bool blocking) {
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
+                   se::PlatformManager::PlatformWithName("CUDA"));
+  constexpr int kNumDevices = 2;
+  if (platform->VisibleDeviceCount() < kNumDevices) {
+    return std::nullopt;
+  }
+  ABSL_ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> executors,
+                   CreateExecutors(platform, kNumDevices));
+  return CreateTeardownResources(executors, blocking);
+}
+
+using NcclCommunicatorTeardownTest = testing::TestWithParam<bool>;
+
+TEST_P(NcclCommunicatorTeardownTest, DestroyChildResourcesAfterAbort) {
+  ASSERT_OK_AND_ASSIGN(std::optional<TeardownResources> resources,
+                       SetUpTeardownResources(GetParam()));
+  if (!resources.has_value()) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  absl::ScopedMockLog log;
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, _, _)).Times(0);
+  log.StartCapturingLogs();
+
+  for (std::unique_ptr<GpuCommunicator>& comm : resources->comms) {
+    ASSERT_OK(comm->Abort());
+    EXPECT_EQ(comm->platform_comm().handle, nullptr);
+  }
+
+  resources->device_comms.clear();
+  resources->symmetric_memories.clear();
+  resources->registered_memories.clear();
+  resources->comms.clear();
+}
+
+TEST_P(NcclCommunicatorTeardownTest,
+       DestroyChildResourcesAfterParentDestroyed) {
+  ASSERT_OK_AND_ASSIGN(std::optional<TeardownResources> resources,
+                       SetUpTeardownResources(GetParam()));
+  if (!resources.has_value()) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  absl::ScopedMockLog log;
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, _, _)).Times(0);
+  log.StartCapturingLogs();
+
+  resources->comms.clear();
+  resources->device_comms.clear();
+  resources->symmetric_memories.clear();
+  resources->registered_memories.clear();
+}
+
+INSTANTIATE_TEST_SUITE_P(Blocking, NcclCommunicatorTeardownTest,
+                         testing::Bool(),
+                         [](const testing::TestParamInfo<bool>& info) {
                            return info.param ? "Blocking" : "Async";
                          });
 

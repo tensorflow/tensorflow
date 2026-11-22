@@ -103,6 +103,7 @@ TEST_F(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
       *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
 
   ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
@@ -168,6 +169,7 @@ TEST_F(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
       *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
 
   ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
@@ -235,27 +237,207 @@ TEST_F(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
   }
 
   EXPECT_FALSE(builder.StartBuildStep());
+  EXPECT_FALSE(builder.IsBuilding());
+}
+
+TEST_F(WeightCacheBuilderTest, EmptyBuildStepEndsTheStep) {
+  const std::string cache_path = testing::TempDir() + "/cache";
+  const std::string payload1 = "First step payload.";
+  const std::string payload2 = "Third step payload.";
+  const PackIdentifier id1{1, 2, 3};
+  const PackIdentifier id2{4, 5, 6};
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+
+  // Write the first buffer in step 1.
+  ASSERT_TRUE(builder.StartBuildStep());
+  ASSERT_FALSE(
+      builder
+          .Append(id1, payload1.data(), payload1.size(), kDefaultFingerprint.id)
+          .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  // Reserve without Append in step 2: the step is empty and exits early,
+  // releasing the staging buffer and resetting `is_build_step_`.
+  ASSERT_TRUE(builder.StartBuildStep());
+  EXPECT_NE(builder.Reserve(1024), nullptr);
+  ASSERT_TRUE(builder.StopBuildStep());
+  EXPECT_FALSE(builder.IsBuilding());
+  EXPECT_EQ(builder.capacity(), 0);
+  EXPECT_EQ(builder.data(), nullptr);
+  EXPECT_EQ(builder.LastBuildStepSize(), 0);
+
+  // Starting step 3 after an empty step reuses the in-memory buffer list and
+  // skips re-reading the on-disk flatbuffer, so corrupting the old buffer list
+  // on disk before step 3 does not cause `StartBuildStep` to fail.
+  ASSERT_NE(file_descriptor.SetPos(builder.LastBuildStepStart() + 1), -1);
+  const std::string garbage(8, 'a');
+  ASSERT_TRUE(file_descriptor.Write(garbage.data(), garbage.size()));
+
+  ASSERT_TRUE(builder.StartBuildStep());
+  ASSERT_FALSE(
+      builder
+          .Append(id2, payload2.data(), payload2.size(), kDefaultFingerprint.id)
+          .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  // Verify that both steps' buffers are present in the finalized cache.
+  MMapHandle handle;
+  ASSERT_TRUE(handle.Map(cache_path.c_str()));
+  const auto& header =
+      *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
+  const cache::schema::BufferList* const packed_weights =
+      cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
+  ASSERT_NE(packed_weights, nullptr);
+  ASSERT_NE(packed_weights->buffers(), nullptr);
+  EXPECT_EQ(packed_weights->buffers()->size(), 2);
+}
+
+TEST_F(WeightCacheBuilderTest, RetainAndReleaseStagingBufferAcrossSteps) {
+  const std::string cache_path = testing::TempDir() + "/retain_staging_cache";
+  const std::string payload1 = "First step payload.";
+  const std::string payload2 = "Second step payload.";
+  const PackIdentifier id1{1, 2, 3};
+  const PackIdentifier id2{4, 5, 6};
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+
+  // Step 1 retains the staging buffer on stop.
+  ASSERT_TRUE(builder.StartBuildStep());
+  void* buf1 = builder.Reserve(4096);
+  ASSERT_NE(buf1, nullptr);
+  std::memcpy(buf1, payload1.data(), payload1.size());
+  ASSERT_FALSE(
+      builder.Append(id1, buf1, payload1.size(), kDefaultFingerprint.id)
+          .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep(/*release_staging_buffer=*/false));
+  EXPECT_FALSE(builder.IsBuilding());
+  uint8_t* const retained_data = builder.data();
+  const size_t retained_capacity = builder.capacity();
+  ASSERT_NE(retained_data, nullptr);
+  EXPECT_GE(retained_capacity, 4096);
+
+  // Step 2 reuses the retained staging buffer without reallocating, and
+  // ReleaseStagingBuffer is a no-op while a build step is active.
+  ASSERT_TRUE(builder.StartBuildStep());
+  void* buf2 = builder.Reserve(1024);
+  ASSERT_NE(buf2, nullptr);
+  EXPECT_EQ(builder.data(), retained_data);
+  EXPECT_EQ(builder.capacity(), retained_capacity);
+  builder.ReleaseStagingBuffer();
+  EXPECT_EQ(builder.data(), retained_data);
+  EXPECT_EQ(builder.capacity(), retained_capacity);
+  std::memcpy(buf2, payload2.data(), payload2.size());
+  ASSERT_FALSE(
+      builder.Append(id2, buf2, payload2.size(), kDefaultFingerprint.id)
+          .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep(/*release_staging_buffer=*/false));
+  EXPECT_FALSE(builder.IsBuilding());
+  EXPECT_EQ(builder.data(), retained_data);
+  EXPECT_EQ(builder.capacity(), retained_capacity);
+
+  // An empty step with retention also preserves the staging buffer.
+  ASSERT_TRUE(builder.StartBuildStep());
+  ASSERT_TRUE(builder.StopBuildStep(/*release_staging_buffer=*/false));
+  EXPECT_FALSE(builder.IsBuilding());
+  EXPECT_EQ(builder.data(), retained_data);
+  EXPECT_EQ(builder.capacity(), retained_capacity);
+
+  // Explicit release frees the staging buffer once no step is active.
+  builder.ReleaseStagingBuffer();
+  EXPECT_EQ(builder.capacity(), 0);
+  EXPECT_EQ(builder.data(), nullptr);
+
+  MMapHandle handle;
+  ASSERT_TRUE(handle.Map(cache_path.c_str()));
+  const auto& header =
+      *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
+  const cache::schema::BufferList* const packed_weights =
+      cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
+  ASSERT_NE(packed_weights, nullptr);
+  ASSERT_NE(packed_weights->buffers(), nullptr);
+  EXPECT_EQ(packed_weights->buffers()->size(), 2);
+}
+
+TEST_F(WeightCacheBuilderTest, FailedAppendDoesNotCorruptSchema) {
+  const std::string cache_path = testing::TempDir() + "/cache";
+  const std::string bad_payload = "Unwritten payload.";
+  const std::string good_payload = "Valid packed payload.";
+  const PackIdentifier bad_id{9, 9, 9};
+  const PackIdentifier good_id{1, 2, 3};
+
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+
+  // A failed Append (fingerprint_id == 0) on step 0 followed by a restarted
+  // step and another failed Append must not leave unwritten BufferT entries.
+  ASSERT_TRUE(builder.StartBuildStep());
+  EXPECT_TRUE(builder
+                  .Append(bad_id, bad_payload.data(), bad_payload.size(),
+                          /*fingerprint_id=*/0)
+                  .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  ASSERT_TRUE(builder.StartBuildStep());
+  EXPECT_TRUE(builder
+                  .Append(bad_id, bad_payload.data(), bad_payload.size(),
+                          /*fingerprint_id=*/0)
+                  .IsInvalid());
+  const BufferLocation loc =
+      builder.Append(good_id, good_payload.data(), good_payload.size(),
+                     kDefaultFingerprint.id);
+  ASSERT_FALSE(loc.IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  auto verify_single_good_buffer = [&]() {
+    MMapHandle handle;
+    ASSERT_TRUE(handle.Map(cache_path.c_str()));
+    const auto& header =
+        *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
+    ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+    ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
+    const cache::schema::BufferList* const packed_weights =
+        cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
+    ASSERT_NE(packed_weights, nullptr);
+    ASSERT_NE(packed_weights->buffers(), nullptr);
+    ASSERT_EQ(packed_weights->buffers()->size(), 1);
+    const auto* entry = packed_weights->buffers()->Get(0);
+    EXPECT_EQ(entry->weights_id(), good_id.weights_id);
+    EXPECT_EQ(entry->size(), good_payload.size());
+    std::tuple<const char*, size_t> cache_data(
+        reinterpret_cast<const char*>(
+            handle.data() + packed_weights->base_offset() + entry->offset()),
+        entry->size());
+    EXPECT_THAT(cache_data, ElementsAreArray(good_payload));
+  };
+  verify_single_good_buffer();
+
+  // Restarting when header.buffer_list_size == 0 also clears stale in-memory
+  // schema entries while preserving base_offset.
+  XNNPackCacheHeader empty_header{XNNPackCacheHeader::kInvalidHeader};
+  empty_header.buffer_list_offset = sizeof(empty_header);
+  ASSERT_EQ(file_descriptor.SetPos(0), 0);
+  ASSERT_TRUE(file_descriptor.Write(&empty_header, sizeof(empty_header)));
+
+  ASSERT_TRUE(builder.StartBuildStep());
+  ASSERT_FALSE(builder
+                   .Append(good_id, good_payload.data(), good_payload.size(),
+                           kDefaultFingerprint.id)
+                   .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+  verify_single_good_buffer();
 }
 
 TEST_F(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
   WeightCacheBuilder builder;
   EXPECT_FALSE(builder.Start("", FileDescriptor()));
   EXPECT_FALSE(builder.Start("/seldf/sedsft", FileDescriptor()));
-}
-
-TEST_F(WeightCacheBuilderTest, InMemoryCacheCanBeBuilt) {
-  if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
-    GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
-                    "isn't supported by the current system, skipping test.";
-  }
-  WeightCacheBuilder builder;
-  EXPECT_TRUE(
-      builder.Start(kInMemoryCachePath, CreateInMemoryFileDescriptor(nullptr)));
-  EXPECT_TRUE(builder.IsStarted());
-  const FileDescriptor file_fd =
-      FileDescriptor::Open(kInMemoryCachePath, O_RDONLY);
-  EXPECT_FALSE(file_fd.IsValid());
-  EXPECT_EQ(errno, ENOENT);
 }
 
 TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
@@ -319,6 +501,7 @@ TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
       *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
 
   ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
@@ -442,6 +625,25 @@ TEST(CacheMissHandlerTest, MultipleAppendsReturnDifferentOffsets) {
   ASSERT_THAT(buffer1_it, Not(offset_to_addr.end()));
   ASSERT_THAT(buffer2_it, Not(offset_to_addr.end()));
   EXPECT_THAT(buffer1_it->second, Not(buffer2_it->second));
+}
+
+TEST(CacheMissHandlerTest, UnusedReserveDoesntReuseOffsets) {
+  const double kData[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  CacheMissHandler cache_miss_handler;
+  std::map<size_t, void*> offset_to_addr;
+  const PackIdentifier dummy_id{2, 3, 4};
+  // The first buffer is reserved but never appended, e.g. because the packed
+  // data was already in the cache. The next reservation replaces it.
+  ASSERT_THAT(cache_miss_handler.Reserve(sizeof(kData)), Not(IsNull()));
+  void* const ptr1 = cache_miss_handler.Reserve(sizeof(kData));
+  std::memcpy(ptr1, kData, sizeof(kData));
+  const BufferLocation loc1 = cache_miss_handler.Append(
+      dummy_id, ptr1, sizeof(kData), kDefaultFingerprint.id, offset_to_addr);
+  const BufferLocation loc2 = cache_miss_handler.Append(
+      dummy_id, kData, sizeof(kData), kDefaultFingerprint.id, offset_to_addr);
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(2));
+  EXPECT_THAT(loc1.offset, Ne(loc2.offset));
+  EXPECT_THAT(offset_to_addr.size(), Eq(2));
 }
 
 struct FakeContext {
@@ -730,11 +932,57 @@ TEST_P(BuildMMapWeightCacheProviderTest, BuildStepSequenceWorks) {
                   kWeightIndex2);
 
   EXPECT_TRUE(cache_provider.IsActive());
-  EXPECT_TRUE(cache_provider.IsBuilding());
+  // In-memory caches don't use build steps.
+  EXPECT_EQ(cache_provider.IsBuilding(), !use_in_memory_cache);
   ASSERT_TRUE(cache_provider.StopBuildStep());
 
   ASSERT_TRUE(cache_provider.IsActive());
   EXPECT_FALSE(cache_provider.IsBuilding());
+}
+
+TEST_P(BuildMMapWeightCacheProviderTest,
+       RetainAndReleaseStagingBufferAcrossSteps) {
+  enum { kWeightIndex1, kBiasIndex, kWeightIndex2 };
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  void* const buf1 = cache_provider.ReserveSpace(4096);
+  ASSERT_NE(buf1, nullptr);
+  const auto pack_id_1 = ctx.PackTensors(&cache_provider.GetCacheProvider(),
+                                         kAlgoSeed1, kWeightIndex1, kBiasIndex);
+  ASSERT_TRUE(cache_provider.StopBuildStep(/*release_staging_buffer=*/false));
+  EXPECT_FALSE(cache_provider.IsBuilding());
+
+  // Step 1's buffer is mapped and readable immediately after step 1 stops.
+  const xnn_weights_cache_look_up_key key_1 =
+      ctx.LookUpKey(kAlgoSeed1, kWeightIndex1, kBiasIndex);
+  const size_t offset_1 = cache_provider.LookUp(&key_1);
+  ASSERT_EQ(offset_1, ctx.packed_buffers.find(pack_id_1)->second.offset);
+  EXPECT_NE(cache_provider.OffsetToAddr(offset_1), nullptr);
+
+  // Step 2 reuses the retained staging buffer and maps step 2's buffer, while
+  // ReleaseStagingBuffer is a no-op during the active build step.
+  //
+  // In-memory caches don't use the builder's staging buffer: every reservation
+  // gets its own buffer.
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  if (!use_in_memory_cache) {
+    EXPECT_EQ(cache_provider.ReserveSpace(1024), buf1);
+    cache_provider.ReleaseStagingBuffer();
+    EXPECT_EQ(cache_provider.ReserveSpace(1024), buf1);
+  }
+  const auto pack_id_2 = ctx.PackTensors(&cache_provider.GetCacheProvider(),
+                                         kAlgoSeed2, kWeightIndex2);
+  ASSERT_TRUE(cache_provider.StopBuildStep(/*release_staging_buffer=*/false));
+
+  const xnn_weights_cache_look_up_key key_2 =
+      ctx.LookUpKey(kAlgoSeed2, kWeightIndex2);
+  const size_t offset_2 = cache_provider.LookUp(&key_2);
+  ASSERT_EQ(offset_2, ctx.packed_buffers.find(pack_id_2)->second.offset);
+  EXPECT_NE(cache_provider.OffsetToAddr(offset_2), nullptr);
+
+  cache_provider.ReleaseStagingBuffer();
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  EXPECT_NE(cache_provider.ReserveSpace(1024), nullptr);
+  ASSERT_TRUE(cache_provider.StopBuildStep());
 }
 
 TEST_P(BuildMMapWeightCacheProviderTest, MemoryLockCacheWorks) {
@@ -1237,6 +1485,24 @@ TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenFingerprintIsNotFound) {
   EXPECT_FALSE(CallIsCompatibleCacheFile());
 }
 
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenVersionMismatches) {
+  constexpr decltype(XNNPackCacheHeader::version) bad_version =
+      XNNPackCacheHeader::kInvalidHeader;
+  constexpr size_t version_offset = offsetof(XNNPackCacheHeader, version);
+  ASSERT_EQ(fd_.SetPos(version_offset), version_offset);
+  ASSERT_TRUE(fd_.Write(&bad_version, sizeof(bad_version)));
+  EXPECT_FALSE(CallIsCompatibleCacheFile());
+}
+
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenMagicValueMismatches) {
+  constexpr decltype(XNNPackCacheHeader::magic_value) bad_magic =
+      ~XNNPackCacheHeader::kMagicValue;
+  constexpr size_t magic_offset = offsetof(XNNPackCacheHeader, magic_value);
+  ASSERT_EQ(fd_.SetPos(magic_offset), magic_offset);
+  ASSERT_TRUE(fd_.Write(&bad_magic, sizeof(bad_magic)));
+  EXPECT_FALSE(CallIsCompatibleCacheFile());
+}
+
 INSTANTIATE_TEST_SUITE_P(
     Test, IsCompatibleCacheFileTest,
     testing::Values(IsCompatibleCacheFileTest::Param::kPath,
@@ -1326,6 +1592,199 @@ TEST_F(MaliciousCacheTest, BufferOffsetPlusSizeOverflowsInt64) {
 
   MMapWeightCacheProvider cache_provider;
   EXPECT_FALSE(cache_provider.Load(fd_.GetCPath()));
+}
+
+class InMemoryWeightCacheTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    xnn_set_fingerprint(kDefaultFingerprint);
+    ASSERT_TRUE(provider_.LoadOrStartBuild(kInMemoryCachePath));
+  }
+
+  static xnn_weights_cache_look_up_key Key(uint32_t seed,
+                                           const std::string& weights) {
+    return {.seed = seed,
+            .kernel = weights.data(),
+            .bias = nullptr,
+            .fingerprint_id = kDefaultFingerprint.id};
+  }
+
+  // Packs `weights` the way XNNPack does and returns the cache offset.
+  static size_t Insert(MMapWeightCacheProvider& provider,
+                       const xnn_weights_cache_look_up_key& key,
+                       const std::string& weights) {
+    void* const reserved = provider.ReserveSpace(weights.size());
+    if (reserved == nullptr) {
+      return SIZE_MAX;
+    }
+    std::memcpy(reserved, weights.data(), weights.size());
+    return provider.LookUpOrInsert(&key, reserved, weights.size());
+  }
+
+  size_t Insert(const xnn_weights_cache_look_up_key& key,
+                const std::string& weights) {
+    return Insert(provider_, key, weights);
+  }
+
+  MMapWeightCacheProvider provider_;
+};
+
+TEST(InMemoryWeightCacheProviderTest, IsAlwaysAvailable) {
+  EXPECT_TRUE(TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider());
+}
+
+TEST_F(InMemoryWeightCacheTest, DoesntNeedBuildSteps) {
+  EXPECT_TRUE(provider_.IsActive());
+  EXPECT_FALSE(provider_.CanStartBuildStep());
+  EXPECT_FALSE(provider_.IsBuilding());
+  // Build steps are accepted but don't do anything.
+  EXPECT_TRUE(provider_.StartBuildStep());
+  EXPECT_FALSE(provider_.IsBuilding());
+  EXPECT_TRUE(provider_.StopBuildStep());
+}
+
+TEST_F(InMemoryWeightCacheTest, BuffersHaveStableAddresses) {
+  std::vector<std::string> weights;
+  std::vector<size_t> offsets;
+  std::vector<const void*> addresses;
+  for (int i = 0; i < 16; ++i) {
+    weights.push_back(GenerateRandomString(100000 + i));
+    ASSERT_TRUE(provider_.MapBufferIdentifier(
+        weights.back().data(), weights.back().size(), /*identifier=*/i));
+    offsets.push_back(Insert(Key(/*seed=*/1, weights.back()), weights.back()));
+    ASSERT_NE(offsets.back(), SIZE_MAX);
+    // The address is usable as soon as the buffer is inserted.
+    addresses.push_back(provider_.OffsetToAddr(offsets.back()));
+    ASSERT_NE(addresses.back(), nullptr);
+  }
+  for (size_t i = 0; i < weights.size(); ++i) {
+    EXPECT_EQ(provider_.OffsetToAddr(offsets[i]), addresses[i]);
+    EXPECT_THAT(LightSpan<const char>(addresses[i], weights[i].size()),
+                ElementsAreArray(weights[i]));
+  }
+}
+
+TEST_F(InMemoryWeightCacheTest, DeduplicatesBuffers) {
+  const std::string weights = GenerateRandomString(10000);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  const xnn_weights_cache_look_up_key key = Key(/*seed=*/1, weights);
+  const size_t offset = Insert(key, weights);
+  ASSERT_NE(offset, SIZE_MAX);
+  EXPECT_EQ(provider_.LookUp(&key), offset);
+  EXPECT_EQ(Insert(key, weights), offset);
+
+  // The same weights packed differently get their own buffer.
+  const xnn_weights_cache_look_up_key other_key = Key(/*seed=*/2, weights);
+  const size_t other_offset = Insert(other_key, weights);
+  ASSERT_NE(other_offset, SIZE_MAX);
+  EXPECT_NE(other_offset, offset);
+}
+
+TEST_F(InMemoryWeightCacheTest, ReleaseClearsTheCache) {
+  const std::string weights = GenerateRandomString(64);
+  const xnn_weights_cache_look_up_key key = Key(/*seed=*/1, weights);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  const size_t offset = Insert(key, weights);
+  ASSERT_NE(offset, SIZE_MAX);
+
+  provider_.Release();
+  EXPECT_FALSE(provider_.IsActive());
+
+  // A released provider can start a new cache whose offsets point to the new
+  // data.
+  const std::string other_weights = GenerateRandomString(64);
+  ASSERT_TRUE(provider_.StartBuild(kInMemoryCachePath));
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  EXPECT_EQ(provider_.LookUp(&key), SIZE_MAX);
+  const size_t new_offset = Insert(key, other_weights);
+  ASSERT_NE(new_offset, SIZE_MAX);
+  EXPECT_THAT(LightSpan<const char>(provider_.OffsetToAddr(new_offset),
+                                    other_weights.size()),
+              ElementsAreArray(other_weights));
+}
+
+TEST_F(InMemoryWeightCacheTest, StartingAFileBuildReplacesTheCache) {
+  const std::string weights = GenerateRandomString(64);
+  const xnn_weights_cache_look_up_key key = Key(/*seed=*/1, weights);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  ASSERT_NE(Insert(key, weights), SIZE_MAX);
+
+  // Starting a file cache without releasing the in-memory one first forgets
+  // the in-memory buffers but keeps the buffer identifiers.
+  TempFileDesc tmp_file{TempFileDesc::kAutoClose};
+  ASSERT_TRUE(provider_.StartBuild(tmp_file.GetCPath()));
+  EXPECT_TRUE(provider_.CanStartBuildStep());
+  EXPECT_EQ(provider_.LookUp(&key), SIZE_MAX);
+
+  const std::string file_weights = GenerateRandomString(64);
+  ASSERT_TRUE(provider_.StartBuildStep());
+  EXPECT_TRUE(provider_.IsBuilding());
+  const size_t offset = Insert(key, file_weights);
+  ASSERT_NE(offset, SIZE_MAX);
+  ASSERT_TRUE(provider_.StopBuildStep());
+
+  EXPECT_EQ(provider_.LookUp(&key), offset);
+  EXPECT_THAT(LightSpan<const char>(provider_.OffsetToAddr(offset),
+                                    file_weights.size()),
+              ElementsAreArray(file_weights));
+}
+
+TEST_F(InMemoryWeightCacheTest, LoadingAFileReplacesTheCache) {
+  const std::string weights = GenerateRandomString(64);
+  const xnn_weights_cache_look_up_key key = Key(/*seed=*/1, weights);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  ASSERT_NE(Insert(key, weights), SIZE_MAX);
+
+  // Build a cache file that holds other data for the same key.
+  TempFileDesc tmp_file{TempFileDesc::kAutoClose};
+  const std::string file_weights = GenerateRandomString(64);
+  size_t file_offset = SIZE_MAX;
+  {
+    MMapWeightCacheProvider file_provider;
+    ASSERT_TRUE(file_provider.StartBuild(tmp_file.GetCPath()));
+    ASSERT_TRUE(file_provider.MapBufferIdentifier(
+        weights.data(), weights.size(), /*identifier=*/1));
+    ASSERT_TRUE(file_provider.StartBuildStep());
+    file_offset = Insert(file_provider, key, file_weights);
+    ASSERT_TRUE(file_provider.StopBuildStep());
+  }
+  ASSERT_NE(file_offset, SIZE_MAX);
+
+  // Loading the file without releasing the in-memory cache first must not
+  // leave in-memory buffers behind for the file offsets.
+  ASSERT_TRUE(provider_.Load(tmp_file.GetPath()));
+  EXPECT_EQ(provider_.LookUp(&key), file_offset);
+  EXPECT_THAT(LightSpan<const char>(provider_.OffsetToAddr(file_offset),
+                                    file_weights.size()),
+              ElementsAreArray(file_weights));
+}
+
+TEST_F(InMemoryWeightCacheTest, MovedFromProviderIsInactive) {
+  MMapWeightCacheProvider moved_to(std::move(provider_));
+  EXPECT_TRUE(moved_to.IsActive());
+  EXPECT_FALSE(provider_.IsActive());  // NOLINT(bugprone-use-after-move)
+
+  MMapWeightCacheProvider assigned_to;
+  assigned_to = std::move(moved_to);
+  EXPECT_TRUE(assigned_to.IsActive());
+  EXPECT_FALSE(moved_to.IsActive());  // NOLINT(bugprone-use-after-move)
+}
+
+TEST(MMapWeightCacheProviderReleaseTest, ReleaseForgetsTheCacheFile) {
+  TempFileDesc tmp_file{TempFileDesc::kAutoClose};
+  MMapWeightCacheProvider provider;
+  ASSERT_TRUE(provider.StartBuild(tmp_file.GetCPath()));
+  ASSERT_TRUE(provider.IsActive());
+
+  provider.Release();
+  EXPECT_FALSE(provider.IsActive());
+  EXPECT_FALSE(provider.CanStartBuildStep());
+  EXPECT_TRUE(provider.GetFilePath().empty());
 }
 
 }  // namespace

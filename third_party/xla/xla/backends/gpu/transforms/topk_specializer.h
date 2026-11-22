@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_TOPK_SPECIALIZER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_TOPK_SPECIALIZER_H_
 
-#include <utility>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -31,8 +29,9 @@ namespace xla::gpu {
 // runtime/topk.cc.
 class TopkSpecializer : public HloModulePass {
  public:
-  explicit TopkSpecializer(se::GpuComputeCapability compute_capability)
-      : compute_capability_(std::move(compute_capability)) {}
+  explicit TopkSpecializer(const se::DeviceDescription& device_description)
+      : compute_capability_(device_description.gpu_compute_capability()),
+        sm_count_(device_description.core_count()) {}
   absl::string_view name() const override { return "topk-specializer"; }
 
  protected:
@@ -42,6 +41,7 @@ class TopkSpecializer : public HloModulePass {
 
  private:
   se::GpuComputeCapability compute_capability_;
+  int sm_count_;
 };
 
 }  // namespace xla::gpu

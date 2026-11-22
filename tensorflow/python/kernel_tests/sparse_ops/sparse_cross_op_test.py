@@ -413,6 +413,29 @@ class SparseCrossOpTest(test.TestCase):
       all_values_are_different = len(out.values) == len(set(out.values))
       self.assertTrue(all_values_are_different)
 
+  def test_hashed_dense_int64_strong_hash(self):
+    """Strong-hash crossing of an int64 dense column.
+
+    Regression test for a wild-pointer read in
+    KeyedDenseTensorColumn<int64>::Feature, which hashed the bytes at the
+    address numerically equal to each int64 element instead of the element
+    itself. Before the fix this segfaulted for any int64 dense input.
+    """
+    dense = constant_op.constant([[1], [2]], dtype=dtypes.int64)
+    op = gen_sparse_ops.sparse_cross_hashed(
+        indices=[],
+        values=[],
+        shapes=[],
+        dense_inputs=[dense],
+        num_buckets=1024,
+        strong_hash=True,
+        salt=[1, 2],
+    )
+    with self.cached_session():
+      values = self.evaluate(op.output_values)
+      self.assertAllEqual([2], values.shape)
+      self.assertTrue(all(0 <= x < 1024 for x in values))
+
   def _assert_sparse_tensor_empty(self, sp):
     self.assertEqual(0, sp.indices.size)
     self.assertEqual(0, sp.values.size)
@@ -485,13 +508,13 @@ class SparseCrossOpTest(test.TestCase):
 
     with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
                                 'Dense inputs should be a matrix'):
-      dt = array_ops.zeros([0])  # 1D DenseTensor.
+      dt = array_ops.zeros([0], dtype=dtypes.int64)  # 1D DenseTensor.
       self.evaluate(sparse_ops.sparse_cross([dt]))
 
   def test_batch_size_mismatch(self):
     st1 = sparse_tensor.SparseTensor([[0, 0]], [0], [10, 10])  # batch size 10
     st2 = sparse_tensor.SparseTensor([[0, 0]], [0], [7, 10])  # batch size 7
-    dt = array_ops.zeros([5, 0])  # batch size 5
+    dt = array_ops.zeros([5, 0], dtype=dtypes.int64)  # batch size 5
     with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
                                 'Expected batch size'):
       self.evaluate(sparse_ops.sparse_cross([st1, dt]))
@@ -941,6 +964,114 @@ class SparseCrossV2OpTest(BaseSparseCrossOpTest):
           name='a',
           separator=constant_op.constant(['a', 'b'], dtype=dtypes.string)))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_dtype_dense_cross(self):
+    inp_float = constant_op.constant([[1.0], [2.0]], dtypes.float32)
+    inp_int = constant_op.constant([[1], [2]], dtypes.int64)
+    with self.assertRaisesRegex(
+        TypeError,
+        r'tf\.sparse\.cross only supports integer and string dtypes\.',
+    ):
+      sparse_ops.sparse_cross([inp_float, inp_int])
+
+    inp_bool = constant_op.constant([[True], [False]], dtypes.bool)
+    with self.assertRaisesRegex(
+        TypeError,
+        r'tf\.sparse\.cross only supports integer and string dtypes\.',
+    ):
+      sparse_ops.sparse_cross([inp_bool, inp_int])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_dtype_sparse_cross(self):
+    sp_float = sparse_tensor.SparseTensor(
+        indices=constant_op.constant([[0, 0], [1, 0]], dtypes.int64),
+        values=constant_op.constant([1.5, 2.5], dtypes.float32),
+        dense_shape=constant_op.constant([2, 1], dtypes.int64),
+    )
+    inp_str = constant_op.constant([['a'], ['b']], dtypes.string)
+    with self.assertRaisesRegex(
+        TypeError,
+        r'tf\.sparse\.cross only supports integer and string dtypes\.',
+    ):
+      sparse_ops.sparse_cross([sp_float, inp_str])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_dtype_sparse_bool(self):
+    sp_bool = sparse_tensor.SparseTensor(
+        indices=constant_op.constant([[0, 0], [1, 0]], dtypes.int64),
+        values=constant_op.constant([True, False], dtypes.bool),
+        dense_shape=constant_op.constant([2, 1], dtypes.int64),
+    )
+    with self.assertRaisesRegex(
+        TypeError,
+        r'tf\.sparse\.cross only supports integer and string dtypes\.',
+    ):
+      sparse_ops.sparse_cross([sp_bool])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_non_finite_float_inputs_rejected(self):
+    # Regression test for GitHub issue #118198.
+    inp_non_finite = constant_op.constant(
+        [[float('inf')], [float('nan')]], dtypes.float32
+    )
+    inp_int = constant_op.constant([[5], [6]], dtypes.int32)
+    with self.assertRaisesRegex(
+        TypeError,
+        r'tf\.sparse\.cross only supports integer and string dtypes\.',
+    ):
+      sparse_ops.sparse_cross([inp_non_finite, inp_int])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_integer_types_equivalent(self):
+    int32_inp = constant_op.constant([[11], [22]], dtypes.int32)
+    int64_inp = constant_op.constant([[11], [22]], dtypes.int64)
+    str_inp = constant_op.constant([['a'], ['b']], dtypes.string)
+    res32 = sparse_ops.sparse_cross([int32_inp, str_inp])
+    res64 = sparse_ops.sparse_cross([int64_inp, str_inp])
+    self._assert_sparse_tensor_equals(
+        self.evaluate(res32), self.evaluate(res64)
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_non_tensor_input_sparse_cross(self):
+    with self.assertRaisesRegex(
+        TypeError, r'All inputs must be Tensor or SparseTensor\.'
+    ):
+      sparse_ops.sparse_cross(['non_tensor_scalar'])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_cpp_kernel_invalid_dtype(self):
+    # Tests direct op kernel construction rejects invalid types.
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError),
+        r'not in (the )?list of allowed values',
+    ):
+      dense_float = constant_op.constant([[1.0], [2.0]], dtypes.float32)
+      op = gen_sparse_ops.sparse_cross_v2(
+          indices=[],
+          values=[],
+          shapes=[],
+          dense_inputs=[dense_float],
+          sep='_X_',
+      )
+      self.evaluate(op)
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError),
+        r'not in (the )?list of allowed values',
+    ):
+      sp_indices = constant_op.constant([[0, 0]], dtypes.int64)
+      sp_values_float = constant_op.constant([1.0], dtypes.float32)
+      sp_shape = constant_op.constant([1, 1], dtypes.int64)
+      op = gen_sparse_ops.sparse_cross_v2(
+          indices=[sp_indices],
+          values=[sp_values_float],
+          shapes=[sp_shape],
+          dense_inputs=[],
+          sep='_X_',
+      )
+      self.evaluate(op)
+
 
 class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
 
@@ -1135,6 +1266,94 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
           strong_hash=strong_hash,
       )
       self.evaluate(op)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_dtype_dense_cross_hashed(self):
+    inp_float = constant_op.constant([[1.0], [2.0]], dtypes.float64)
+    inp_int = constant_op.constant([[5], [6]], dtypes.int32)
+    with self.assertRaisesRegex(
+        TypeError,
+        r'tf\.sparse\.cross_hashed only supports integer and string dtypes\.',
+    ):
+      sparse_ops.sparse_cross_hashed([inp_float, inp_int])
+
+    inp_bool = constant_op.constant([[True], [False]], dtypes.bool)
+    with self.assertRaisesRegex(
+        TypeError,
+        r'tf\.sparse\.cross_hashed only supports integer and string dtypes\.',
+    ):
+      sparse_ops.sparse_cross_hashed([inp_bool, inp_int])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_dtype_sparse_cross_hashed(self):
+    sp_float = sparse_tensor.SparseTensor(
+        indices=constant_op.constant([[0, 0], [1, 0]], dtypes.int64),
+        values=constant_op.constant([1.0, 2.0], dtypes.float64),
+        dense_shape=constant_op.constant([2, 1], dtypes.int64),
+    )
+    with self.assertRaisesRegex(
+        TypeError,
+        r'tf\.sparse\.cross_hashed only supports integer and string dtypes\.',
+    ):
+      sparse_ops.sparse_cross_hashed([sp_float])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_dtype_sparse_cross_hashed_bool(self):
+    sp_bool = sparse_tensor.SparseTensor(
+        indices=constant_op.constant([[0, 0], [1, 0]], dtypes.int64),
+        values=constant_op.constant([True, False], dtypes.bool),
+        dense_shape=constant_op.constant([2, 1], dtypes.int64),
+    )
+    with self.assertRaisesRegex(
+        TypeError,
+        r'tf\.sparse\.cross_hashed only supports integer and string dtypes\.',
+    ):
+      sparse_ops.sparse_cross_hashed([sp_bool])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_non_tensor_input_sparse_cross_hashed(self):
+    with self.assertRaisesRegex(
+        TypeError, r'All inputs must be Tensor or SparseTensor\.'
+    ):
+      sparse_ops.sparse_cross_hashed(['non_tensor_scalar'])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_cpp_kernel_invalid_dtype_hashed(self):
+    # Tests direct op kernel construction rejects invalid types.
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError),
+        r'not in (the )?list of allowed values',
+    ):
+      dense_float = constant_op.constant([[1.0], [2.0]], dtypes.float32)
+      op = gen_sparse_ops.sparse_cross_hashed(
+          indices=[],
+          values=[],
+          shapes=[],
+          dense_inputs=[dense_float],
+          num_buckets=10,
+          strong_hash=False,
+          salt=[1, 2],
+      )
+      self.evaluate(op)
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError),
+        r'not in (the )?list of allowed values',
+    ):
+      sp_indices = constant_op.constant([[0, 0]], dtypes.int64)
+      sp_values_float = constant_op.constant([1.0], dtypes.float32)
+      sp_shape = constant_op.constant([1, 1], dtypes.int64)
+      op = gen_sparse_ops.sparse_cross_hashed(
+          indices=[sp_indices],
+          values=[sp_values_float],
+          shapes=[sp_shape],
+          dense_inputs=[],
+          num_buckets=10,
+          strong_hash=False,
+          salt=[1, 2],
+      )
+      self.evaluate(op)
+
 
 if __name__ == '__main__':
   test.main()

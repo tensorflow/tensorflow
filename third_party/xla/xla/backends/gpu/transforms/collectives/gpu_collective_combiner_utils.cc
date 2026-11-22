@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/log/log.h"
@@ -137,23 +138,22 @@ void AppendFrontendAttributesToCombinerKey(const HloInstruction* instruction,
     return;
   }
 
-  const auto& attributes = instruction->frontend_attributes().map();
   auto append_attribute = [&](absl::string_view name, absl::string_view value) {
     absl::StrAppend(&extra_args, " frontend_attribute=", name.size(), ":", name,
                     value.size(), ":", value);
   };
 
-  auto combiner_key = attributes.find(kCombinerKeyAttr);
-  if (combiner_key != attributes.end()) {
-    append_attribute(combiner_key->first, combiner_key->second);
+  if (std::optional<std::string> combiner_key =
+          instruction->get_frontend_attribute(kCombinerKeyAttr)) {
+    append_attribute(kCombinerKeyAttr, *combiner_key);
   }
 
-  auto collective_group_key = attributes.find(kCollectiveGroupKeyAttr);
-  if (collective_group_key == attributes.end() ||
-      collective_group_key->second.empty()) {
+  std::optional<std::string> collective_group_key =
+      instruction->get_frontend_attribute(kCollectiveGroupKeyAttr);
+  if (!collective_group_key.has_value() || collective_group_key->empty()) {
     return;
   }
-  append_attribute(collective_group_key->first, collective_group_key->second);
+  append_attribute(kCollectiveGroupKeyAttr, *collective_group_key);
 }
 
 }  // namespace xla::gpu

@@ -34,10 +34,8 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -219,33 +217,31 @@ void PropagateLivenessToParameterCallers(
   CHECK_EQ(instruction->opcode(), HloOpcode::kParameter);
   const CallGraphNode& call_graph_node =
       call_graph->GetNode(instruction->parent());
-  if (call_graph_node.context() == CallContext::kControlFlow) {
-    for (const CallSite& callsite : call_graph_node.caller_callsites()) {
-      if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
-        auto* xla_while = callsite.instruction();
-        const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
-        ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
-          // Propagate liveness to while result{shape_index}
-          MarkLiveAtIndex(xla_while, shape_index, live_index_map, worklist,
-                          workset);
-          // Propagate liveness to while body root{shape_index}.
-          MarkLiveAtIndex(xla_while->while_body()->root_instruction(),
-                          shape_index, live_index_map, worklist, workset);
-          // Propagate liveness to operand(0){shape_index}.
-          MarkLiveAtIndex(xla_while->operand(0), shape_index, live_index_map,
-                          worklist, workset);
-        });
-      } else if (callsite.instruction()->opcode() == HloOpcode::kCall) {
-        HloInstruction* xla_call = callsite.instruction();
-        const HloInstruction* call_operand =
-            xla_call->operand(instruction->parameter_number());
-        const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
-        ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
-          // Propagate liveness to call operand.
-          MarkLiveAtIndex(call_operand, shape_index, live_index_map, worklist,
-                          workset);
-        });
-      }
+  for (const CallSite& callsite : call_graph_node.caller_callsites()) {
+    if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
+      auto* xla_while = callsite.instruction();
+      const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
+      ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
+        // Propagate liveness to while result{shape_index}
+        MarkLiveAtIndex(xla_while, shape_index, live_index_map, worklist,
+                        workset);
+        // Propagate liveness to while body root{shape_index}.
+        MarkLiveAtIndex(xla_while->while_body()->root_instruction(),
+                        shape_index, live_index_map, worklist, workset);
+        // Propagate liveness to operand(0){shape_index}.
+        MarkLiveAtIndex(xla_while->operand(0), shape_index, live_index_map,
+                        worklist, workset);
+      });
+    } else if (callsite.instruction()->opcode() == HloOpcode::kCall) {
+      HloInstruction* xla_call = callsite.instruction();
+      const HloInstruction* call_operand =
+          xla_call->operand(instruction->parameter_number());
+      const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
+      ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
+        // Propagate liveness to call operand.
+        MarkLiveAtIndex(call_operand, shape_index, live_index_map, worklist,
+                        workset);
+      });
     }
   }
 }
@@ -258,44 +254,42 @@ void PropagateLivenessThroughControlFlow(
     Workset* workset, CallGraph* call_graph) {
   const CallGraphNode& call_graph_node =
       call_graph->GetNode(instruction->parent());
-  if (call_graph_node.context() == CallContext::kControlFlow) {
-    for (const CallSite& callsite : call_graph_node.caller_callsites()) {
-      HloInstruction* caller = callsite.instruction();
-      if (caller->opcode() == HloOpcode::kWhile) {
-        // If a live instruction is within the %while body or condition
-        // computation, mark the predicate value returned by the condition
-        // computation live as well.
-        MarkLiveAtIndex(caller->while_condition()->root_instruction(), {},
-                        live_index_map, worklist, workset);
-      } else if (caller->opcode() == HloOpcode::kConditional) {
-        // If a live instruction is within the true or false branches of a
-        // conditional, we mark the predicate operand live as well.
-        MarkLiveAtIndex(caller->operand(0), {}, live_index_map, worklist,
-                        workset);
-        // Mark the caller instruction live.
-        MarkLiveAtIndex(caller, {}, live_index_map, worklist, workset);
-        // Propagate liveness to the caller computation.
-        const HloComputation* callee_comp = instruction->parent();
-        // Initialize 'operand_index' to skip predictate operand.
-        int64_t operand_index = 1;
-        for (auto* caller_comp : caller->called_computations()) {
-          if (callee_comp == caller_comp) {
-            MarkLiveAtIndex(caller->operand(operand_index), {}, live_index_map,
-                            worklist, workset);
-            if (instruction->opcode() == HloOpcode::kParameter) {
-              // If 'instruction' is a parameter, propagate live shape indices
-              // to the associated callsite's argument shape indices.
-              const ShapeTree<bool>& index_tree =
-                  *live_index_map->at(instruction);
-              ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
-                MarkLiveAtIndex(caller->operand(operand_index), shape_index,
-                                live_index_map, worklist, workset);
-              });
-            }
-            break;
+  for (const CallSite& callsite : call_graph_node.caller_callsites()) {
+    HloInstruction* caller = callsite.instruction();
+    if (caller->opcode() == HloOpcode::kWhile) {
+      // If a live instruction is within the %while body or condition
+      // computation, mark the predicate value returned by the condition
+      // computation live as well.
+      MarkLiveAtIndex(caller->while_condition()->root_instruction(), {},
+                      live_index_map, worklist, workset);
+    } else if (caller->opcode() == HloOpcode::kConditional) {
+      // If a live instruction is within the true or false branches of a
+      // conditional, we mark the predicate operand live as well.
+      MarkLiveAtIndex(caller->operand(0), {}, live_index_map, worklist,
+                      workset);
+      // Mark the caller instruction live.
+      MarkLiveAtIndex(caller, {}, live_index_map, worklist, workset);
+      // Propagate liveness to the caller computation.
+      const HloComputation* callee_comp = instruction->parent();
+      // Initialize 'operand_index' to skip predictate operand.
+      int64_t operand_index = 1;
+      for (auto* caller_comp : caller->called_computations()) {
+        if (callee_comp == caller_comp) {
+          MarkLiveAtIndex(caller->operand(operand_index), {}, live_index_map,
+                          worklist, workset);
+          if (instruction->opcode() == HloOpcode::kParameter) {
+            // If 'instruction' is a parameter, propagate live shape indices
+            // to the associated callsite's argument shape indices.
+            const ShapeTree<bool>& index_tree =
+                *live_index_map->at(instruction);
+            ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
+              MarkLiveAtIndex(caller->operand(operand_index), shape_index,
+                              live_index_map, worklist, workset);
+            });
           }
-          ++operand_index;
+          break;
         }
+        ++operand_index;
       }
     }
   }
@@ -320,7 +314,7 @@ void HloLivenessAnalysis::RunAnalysis() {
   for (auto* computation : module_.computations()) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->HasSideEffectNoRecurse() ||
-          HasDisableWhileLoopDceAttr(instruction)) {
+          frontend::HasDisableWhileLoopDceAttr(instruction)) {
         // Mark live at all indices if the instruction has side effects or if
         // dead code elimination is explicitly disabled via frontend attribute
         // (e.g., on special while loops).

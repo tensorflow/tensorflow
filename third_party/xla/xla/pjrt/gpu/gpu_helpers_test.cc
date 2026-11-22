@@ -166,6 +166,40 @@ TEST_F(BfcMemorySizingTest, EqualEndpointsMatchFixedPolicy) {
   EXPECT_EQ(executor_.reservations_, 0);
 }
 
+TEST_F(BfcMemorySizingTest, TempBufferPoolGetsWhatAPreallocatedPoolLeaves) {
+  ASSERT_OK_AND_ASSIGN(auto default_pool, Create(FixedMemFraction{0.75}));
+  ASSERT_OK_AND_ASSIGN(auto temp_pool,
+                       CreateTempBufferBFCAllocator(
+                           &executor_, FixedMemFraction{0.75},
+                           /*preallocate=*/true,
+                           /*gpu_system_memory_size=*/std::nullopt, {}, {}));
+  // Together the two pools may use the 64 MiB of device memory once.
+  EXPECT_EQ(default_pool->GetStats()->bytes_limit, 48 * kMiB);
+  EXPECT_EQ(temp_pool->GetStats()->bytes_limit, 16 * kMiB);
+}
+
+TEST_F(BfcMemorySizingTest, TempBufferPoolHasDefaultLimitWithoutPreallocation) {
+  ASSERT_OK_AND_ASSIGN(auto temp_pool,
+                       CreateTempBufferBFCAllocator(
+                           &executor_, FixedMemFraction{0.75},
+                           /*preallocate=*/false,
+                           /*gpu_system_memory_size=*/std::nullopt, {}, {}));
+  EXPECT_EQ(temp_pool->GetStats()->bytes_limit, 48 * kMiB);
+  ASSERT_OK_AND_ASSIGN(
+      temp_pool, CreateTempBufferBFCAllocator(
+                     &executor_, FixedMemFraction{0.75}, /*preallocate=*/false,
+                     /*gpu_system_memory_size=*/8 * kMiB, {}, {}));
+  EXPECT_EQ(temp_pool->GetStats()->bytes_limit, 8 * kMiB);
+}
+
+TEST_F(BfcMemorySizingTest, TempBufferPoolNeedsMemoryLeftByPreallocatedPool) {
+  EXPECT_THAT(CreateTempBufferBFCAllocator(
+                  &executor_, FixedMemFraction{1.0}, /*preallocate=*/true,
+                  /*gpu_system_memory_size=*/std::nullopt, {}, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("leaves no device memory")));
+}
+
 constexpr size_t kPoolLimit = 24 * kMiB;
 
 class GpuBFCAllocatorTest : public ::testing::Test {

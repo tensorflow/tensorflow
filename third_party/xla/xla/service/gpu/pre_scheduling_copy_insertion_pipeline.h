@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_PRE_SCHEDULING_COPY_INSERTION_PIPELINE_H_
 #define XLA_SERVICE_GPU_PRE_SCHEDULING_COPY_INSERTION_PIPELINE_H_
 
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/service/gpu/alias_info.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {

@@ -175,11 +175,11 @@ For the deviceless compilation to work, the user either need to \
 **disable** autotuning with `--xla_gpu_autotune_level=0`\
 or\
 **load a pre-existing autotuning results** with
-`--xla_gpu_load_autotune_results_from=<filename>` (obtained with
-`--xla_gpu_dump_autotune_results_to=<filename>`).
+`--xla_load_autotune_cache_from=<filename>` (obtained with
+`--xla_dump_autotune_cache_to=<filename>`).
 
 ```
-hlo-opt --platform=CUDA --stage=llvm --xla_gpu_target_config_filename=xla/backends/gpu/target_config/specs/a100_pcie_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
+hlo-opt --platform=CUDA --stage=llvm --xla_gpu_target_config_filename=xla/backends/gpu/target_config/specs/a100_pcie_80.txtpb --xla_load_autotune_cache_from=results.textpb input.hlo
 ```
 
 The autotune file is text serialization of `autotune_results.proto`, with
@@ -207,7 +207,7 @@ results {
 ```
 
 The autotuning database can be serialized using
-`XLA_FLAGS=--xla_gpu_dump_autotune_results_to=<myfile.pbtxt>`
+`XLA_FLAGS=--xla_dump_autotune_cache_to=<myfile.pbtxt>`
 
 ## [`hlo-opt`] HLO Pass Development And Debugging
 

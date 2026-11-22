@@ -1044,3 +1044,25 @@ func.func @unsorted_and_mergeable_sub_axes_manual_axes_attr(%arg0: tensor<4x2xf3
   return %0 : tensor<4x2xf32>
 }
 
+// -----
+
+sdy.mesh @mesh = <["a"=2, "b"=2]>
+
+// CHECK-LABEL: func @compute_on_start_call
+func.func @compute_on_start_call(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK-NEXT: %[[START:.*]] = stablehlo.custom_call @"compute-on-start"(%arg0)
+  // CHECK-V2-SAME: {called_computations = [@compute_on_body], mhlo.frontend_attributes = {_xla_compute_type = "sparseoffload"}, mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-V3-SAME: {called_computations = [@compute_on_body], mhlo.frontend_attributes = {_xla_compute_type = "sparseoffload"}, mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}, {}]}"} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-NEXT: return %[[START]] : tensor<8x8xf32>
+  %0 = call @compute_on_body(%arg0) {
+    mhlo.frontend_attributes = {_xla_compute_type = "sparseoffload", xla.sdy.is_compute_on_start = "true"},
+    sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}]>]>
+  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+func.func private @compute_on_body(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  return %arg0 : tensor<8x8xf32>
+}
+
+

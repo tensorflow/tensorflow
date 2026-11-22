@@ -265,7 +265,7 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
           )
       )
       # The stacked table is added as trackable to the embedding so that the
-      # checkpoint key corresponsing to stacked table is read.
+      # checkpoint key corresponding to stacked table is read.
       self._track_trackable(stacked_var_trackable, stacked_table_name)
       variables.update(stacked_var_trackable.get_vars())
     return variables

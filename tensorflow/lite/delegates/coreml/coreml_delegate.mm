@@ -153,7 +153,9 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
   return false;
 }
 
-class CoreMlDelegate : public TfLiteDelegate {
+TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate);
+
+class CoreMlDelegate {
  public:
   explicit CoreMlDelegate(const TfLiteCoreMlDelegateOptions* params)
       : params_(params != nullptr ? *params : TfLiteCoreMlDelegateOptions()) {
@@ -188,9 +190,17 @@ class CoreMlDelegate : public TfLiteDelegate {
 
   TfLiteCoreMlDelegateOptions* params() { return &params_; }
 
+  TfLiteDelegate* tflite_delegate() { return &delegate_; }
+
   bool VerifyDelegate() { return true; }
 
  private:
+  TfLiteDelegate delegate_ = {
+      .data_ = this,
+      .Prepare = &DelegatePrepare,
+      .flags = kTfLiteDelegateFlagsNone,
+  };
+
   TfLiteCoreMlDelegateOptions params_;
 };
 
@@ -212,7 +222,7 @@ TfLiteRegistration GetCoreMlKernelRegistration() {
   kernel_registration.init = [](TfLiteContext* context, const char* buffer,
                                 size_t length) -> void* {
     const auto* params = reinterpret_cast<const TfLiteDelegateParams*>(buffer);
-    const auto* coreml_options = (reinterpret_cast<CoreMlDelegate*>(params->delegate))->params();
+    const auto* coreml_options = static_cast<CoreMlDelegate*>(params->delegate->data_)->params();
     CoreMlDelegateKernel* coreml_kernel = new CoreMlDelegateKernel(coreml_options->coreml_version);
     if (coreml_kernel->Init(context, params) != kTfLiteOk) {
       delete coreml_kernel;
@@ -241,7 +251,7 @@ TfLiteRegistration GetCoreMlKernelRegistration() {
 }
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  const auto* params = reinterpret_cast<TfLiteCoreMlDelegateOptions*>(delegate->data_);
+  const auto* params = static_cast<CoreMlDelegate*>(delegate->data_)->params();
 
   delegates::IsNodeSupportedFn node_supported_fn = [=](TfLiteContext* context, TfLiteNode* node,
                                                        TfLiteRegistration* registration,
@@ -269,20 +279,13 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }
 
 TfLiteDelegate* CreateCoreMlDelegate(const TfLiteCoreMlDelegateOptions* options) {
-  TfLiteDelegate* delegate = new CoreMlDelegate(options);
-  if (!static_cast<CoreMlDelegate*>(delegate)->VerifyDelegate()) {
+  CoreMlDelegate* delegate = new CoreMlDelegate(options);
+  if (!delegate->VerifyDelegate()) {
     delete delegate;
     return nullptr;
   }
 
-  delegate->data_ = static_cast<tflite::CoreMlDelegate*>(delegate)->params();
-  delegate->flags = kTfLiteDelegateFlagsNone;
-  delegate->Prepare = &DelegatePrepare;
-  delegate->CopyFromBufferHandle = nullptr;
-  delegate->CopyToBufferHandle = nullptr;
-  delegate->FreeBufferHandle = nullptr;
-
-  return delegate;
+  return delegate->tflite_delegate();
 }
 }  // namespace
 }  // namespace tflite
@@ -351,4 +354,7 @@ TfLiteDelegate* TfLiteCoreMlDelegateCreate(const TfLiteCoreMlDelegateOptions* op
   }
 }
 
-void TfLiteCoreMlDelegateDelete(TfLiteDelegate* delegate) { delete delegate; }
+void TfLiteCoreMlDelegateDelete(TfLiteDelegate* delegate) {
+  if (delegate == nullptr) return;
+  delete static_cast<tflite::CoreMlDelegate*>(delegate->data_);
+}

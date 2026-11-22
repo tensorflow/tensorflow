@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -389,6 +390,112 @@ LogicalResult ReorderBroadcastToCast::matchAndRewrite(
   return success();
 }
 
+// Moves a broadcast_to feeding select_v2 to after the select_v2:
+//
+//   select_v2(c, x, broadcast_to(y, S)) -> broadcast_to(select_v2(c, x, y), S)
+//
+// (and likewise for the other operand positions). The generated
+// FuseBroadcastToIntoSelectOp patterns already drop the broadcast_to when the
+// remaining operands produce the full output shape on their own; this handles
+// the remaining case, where the select_v2 would otherwise compute on the
+// broadcast shape even though every operand is smaller. After the rewrite the
+// select_v2 runs on the pre-broadcast shape and the trailing broadcast_to can
+// be fused into an implicitly-broadcasting consumer by
+// ConvertResultsBroadcastableShapeOp. This is the shape of HuggingFace's
+// `_prepare_4d_attention_mask`: `mask[:, None, None, :].expand(b, 1, T, S)`
+// followed by `masked_fill` and an add to the attention scores.
+class ReorderBroadcastToSelectV2 : public OpRewritePattern<TFL::SelectV2Op> {
+ public:
+  using OpRewritePattern<TFL::SelectV2Op>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::SelectV2Op op,
+                                PatternRewriter& rewriter) const override;
+};
+
+LogicalResult ReorderBroadcastToSelectV2::matchAndRewrite(
+    TFL::SelectV2Op op, PatternRewriter& rewriter) const {
+  auto result_type = llvm::dyn_cast<RankedTensorType>(op.getType());
+  if (!result_type || !result_type.hasStaticShape() ||
+      result_type.getRank() > 5 ||
+      !result_type.getElementType().isIntOrFloat()) {
+    return rewriter.notifyMatchFailure(op, "unsupported result type");
+  }
+
+  // Replace each broadcast_to operand by its input, remembering the shape
+  // operand of a broadcast_to that produces the full result shape.
+  SmallVector<Value, 3> operands(op.getOperands());
+  Value full_shape;
+  bool changed = false;
+  for (Value& operand : operands) {
+    auto bcast = operand.getDefiningOp<TFL::BroadcastToOp>();
+    if (!bcast || !bcast->hasOneUse()) continue;
+    auto pre_type =
+        llvm::dyn_cast<RankedTensorType>(bcast.getInput().getType());
+    if (!pre_type || !pre_type.hasStaticShape()) continue;
+    auto bcast_type = llvm::dyn_cast<RankedTensorType>(bcast.getType());
+    if (!full_shape && bcast_type &&
+        bcast_type.getShape() == result_type.getShape()) {
+      full_shape = bcast.getShape();
+    }
+    operand = bcast.getInput();
+    changed = true;
+  }
+  if (!changed) return rewriter.notifyMatchFailure(op, "no broadcast_to");
+
+  // Every (pre-broadcast) operand must have a static shape: operands that were
+  // not fed by a broadcast_to may still be unranked or dynamic.
+  for (Value operand : operands) {
+    auto ranked = llvm::dyn_cast<RankedTensorType>(operand.getType());
+    if (!ranked || !ranked.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "operand has an unranked or non-static shape");
+    }
+  }
+
+  // The pre-broadcast operands must themselves be broadcast compatible, and
+  // the shape they produce must be a strict refinement of the result shape
+  // (otherwise the generated FuseBroadcastToIntoSelectOp patterns apply).
+  SmallVector<int64_t, 4> shape(
+      llvm::cast<RankedTensorType>(operands[0].getType()).getShape());
+  for (Value operand : llvm::drop_begin(operands)) {
+    SmallVector<int64_t, 4> next;
+    if (!OpTrait::util::getBroadcastedShape(
+            shape, llvm::cast<RankedTensorType>(operand.getType()).getShape(),
+            next)) {
+      return rewriter.notifyMatchFailure(op, "operands not broadcastable");
+    }
+    shape = std::move(next);
+  }
+  if (shape == result_type.getShape()) {
+    return rewriter.notifyMatchFailure(op, "operands produce the result shape");
+  }
+  SmallVector<int64_t, 4> check;
+  if (!OpTrait::util::getBroadcastedShape(shape, result_type.getShape(),
+                                          check) ||
+      check != result_type.getShape()) {
+    return rewriter.notifyMatchFailure(
+        op, "pre-broadcast shape does not broadcast to the result");
+  }
+
+  auto select = TFL::SelectV2Op::create(
+      rewriter, op.getLoc(),
+      RankedTensorType::get(shape, result_type.getElementType()), operands[0],
+      operands[1], operands[2]);
+  if (!full_shape) {
+    full_shape = TFL::ConstOp::create(
+        rewriter, op.getLoc(),
+        DenseIntElementsAttr::get(RankedTensorType::get({result_type.getRank()},
+                                                        rewriter.getI32Type()),
+                                  llvm::to_vector(llvm::map_range(
+                                      result_type.getShape(), [](int64_t d) {
+                                        return static_cast<int32_t>(d);
+                                      }))));
+  }
+  rewriter.replaceOpWithNewOp<TFL::BroadcastToOp>(op, result_type, select,
+                                                  full_shape);
+  return success();
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize_broadcast_like.inc"
 }  // namespace
 
@@ -401,6 +508,7 @@ void OptimizeBroadcastLikePass::runOnOperation() {
   patterns.add<ConvertResultsBroadcastableBatchMatMulShapeOp>(func.getContext(),
                                                               GetOptions());
   patterns.add<ReorderBroadcastToCast>(func.getContext());
+  patterns.add<ReorderBroadcastToSelectV2>(func.getContext());
   TFL::populateWithGenerated(patterns);
   (void)applyPatternsGreedily(getOperation(), std::move(patterns));
 }

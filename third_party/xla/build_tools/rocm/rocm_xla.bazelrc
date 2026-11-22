@@ -1,6 +1,5 @@
 # Test-related settings.
 
-common:rocm_base --test_verbose_timeout_warnings
 common:rocm_base --test_timeout=920,2400,7200,9600
 
 # Backend-agnostic RBE settings. Shared by rocm_rbe (EngFlow) and
@@ -30,6 +29,8 @@ build:rocm_rbe --extra_execution_platforms="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --platforms="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --tls_client_certificate="/data/temp-rbe-cert.crt"
 build:rocm_rbe --tls_client_key="/data/temp-rbe-cert.key"
+# Link locally: large links exceed EngFlow's action input/output limits.
+build:rocm_rbe --strategy=CppLink=local
 
 # Buildbarn (bb-rbe.amd.com) RBE backend.
 build:rocm_rbe_dev --config=rocm_rbe_base
@@ -64,9 +65,12 @@ build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 build:tsan --linkopt -g
+build:tsan --copt -O1
 build:tsan --run_under=//build_tools/rocm:sanitizer_wrapper
+build:tsan --repo_env=GLOBAL_SYMBOLS_TO_VERSION="llvm::*,LLVM*"
 
 build:asan --run_under=//build_tools/rocm:sanitizer_wrapper
+build:asan --repo_env=GLOBAL_SYMBOLS_TO_VERSION="llvm::*,LLVM*"
 
 build:ci_single_gpu --config=rocm_base
 

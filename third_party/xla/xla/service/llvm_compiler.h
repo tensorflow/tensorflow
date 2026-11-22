@@ -45,7 +45,7 @@ namespace xla {
 // Hooks are only called one at a time.
 class LLVMCompiler : public Compiler {
  public:
-  ~LLVMCompiler() override {}
+  ~LLVMCompiler() override = default;
 
   // A callback of this type can be run before and/or after IR-level
   // optimization to e.g. dump out the generated IR to disk or gather some

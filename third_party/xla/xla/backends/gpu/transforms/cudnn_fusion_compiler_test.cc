@@ -21,13 +21,19 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/backends/gpu/transforms/compiled_cudnn_graph_cache.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -35,6 +41,33 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::absl_testing::StatusIs;
+
+// Runs CuDnnFusionCompiler on the module's single cuDNN fusion and returns the
+// serialized cuDNN graph as JSON.
+absl::StatusOr<nlohmann::json> CompileAndGetCudnnGraph(
+    se::StreamExecutor* executor, HloModule& module) {
+  BinaryMap compilation_results;
+  CuDnnFusionCompiler compiler(executor, executor->GetDeviceDescription(),
+                               compilation_results);
+  ABSL_RETURN_IF_ERROR(compiler.Run(&module).status());
+  if (compilation_results.size() != 1) {
+    return absl::InternalError("Expected exactly one compiled cuDNN graph.");
+  }
+  const std::string& data = compilation_results.begin()->second;
+  return nlohmann::json::from_ubjson(data.begin(), data.end());
+}
+
+bool ContainsPointwiseNode(const nlohmann::json& graph,
+                           absl::string_view mode) {
+  for (const auto& node : graph["nodes"]) {
+    if (node.value("mode", "") == mode) {
+      return true;
+    }
+  }
+  return false;
+}
 
 class CudnnFusionCompilerConstTest
     : public HloPjRtGpuTestBase,
@@ -50,6 +83,81 @@ class CudnnFusionCompilerConstTest
     return *executor;
   }
 };
+
+TEST_P(CudnnFusionCompilerConstTest, MaximumWithZeroLowersToReluFwd) {
+  PrimitiveType type = GetParam();
+  std::string type_name = primitive_util::LowercasePrimitiveTypeName(type);
+
+  std::string hlo_text = absl::Substitute(R"(
+  fusion1 {
+    p0 = $0[4,48,48,64] parameter(0)
+    p1 = $0[64,3,3,64] parameter(1)
+    conv = $0[4,48,48,64] convolution(p0, p1),
+      window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_o01i->b01f,
+      convolution_kind=fprop
+    zero = $0[] constant(0)
+    zeros = $0[4,48,48,64] broadcast(zero), dimensions={}
+    ROOT relu = $0[4,48,48,64] maximum(conv, zeros)
+  }
+
+  ENTRY e {
+    p0 = $0[4,48,48,64] parameter(0)
+    p1 = $0[64,3,3,64] parameter(1)
+    ROOT _ = $0[4,48,48,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$$fusion",
+        }
+      }
+  })",
+                                          type_name);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(nlohmann::json graph,
+                       CompileAndGetCudnnGraph(stream_executor(), *hlo_module));
+  const bool expect_relu = primitive_util::IsFloatingPointType(type);
+  EXPECT_EQ(ContainsPointwiseNode(graph, "RELU_FWD"), expect_relu);
+  EXPECT_EQ(ContainsPointwiseNode(graph, "MAX"), !expect_relu);
+}
+
+TEST_P(CudnnFusionCompilerConstTest, MaximumWithNonZeroLowersToMax) {
+  PrimitiveType type = GetParam();
+  std::string type_name = primitive_util::LowercasePrimitiveTypeName(type);
+
+  std::string hlo_text = absl::Substitute(R"(
+  fusion1 {
+    p0 = $0[4,48,48,64] parameter(0)
+    p1 = $0[64,3,3,64] parameter(1)
+    conv = $0[4,48,48,64] convolution(p0, p1),
+      window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_o01i->b01f,
+      convolution_kind=fprop
+    one = $0[] constant(1)
+    ones = $0[4,48,48,64] broadcast(one), dimensions={}
+    ROOT max = $0[4,48,48,64] maximum(conv, ones)
+  }
+
+  ENTRY e {
+    p0 = $0[4,48,48,64] parameter(0)
+    p1 = $0[64,3,3,64] parameter(1)
+    ROOT _ = $0[4,48,48,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$$fusion",
+        }
+      }
+  })",
+                                          type_name);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(nlohmann::json graph,
+                       CompileAndGetCudnnGraph(stream_executor(), *hlo_module));
+  EXPECT_TRUE(ContainsPointwiseNode(graph, "MAX"));
+  EXPECT_FALSE(ContainsPointwiseNode(graph, "RELU_FWD"));
+}
 
 TEST_P(CudnnFusionCompilerConstTest,
        GetAvailablePlanCountFromCudnnConvolutionFusionWithConst) {
@@ -93,7 +201,7 @@ TEST_P(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -157,7 +265,7 @@ TEST_P(CudnnFusionCompilerWgradTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -202,7 +310,7 @@ TEST_F(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -243,7 +351,7 @@ TEST_F(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -284,9 +392,152 @@ TEST_F(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
+}
+
+TEST_F(CudnnFusionCompilerConstTest,
+       GetAvailablePlanCountFromConvolutionFusionWithAmax) {
+  std::string hlo_text = R"(
+  max {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT c = f32[] maximum(a, b)
+  }
+
+  fusion_amax {
+    p0 = f32[4,48,48,64] parameter(0)
+    p1 = f32[64,3,3,64] parameter(1)
+    conv = f32[4,48,48,64] convolution(p0, p1),
+      window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_o01i->b01f,
+      convolution_kind=fprop
+    abs = f32[4,48,48,64] abs(conv)
+    init = f32[] constant(-inf)
+    ROOT amax = f32[] reduce(abs, init), dimensions={0,1,2,3}, to_apply=max
+  }
+
+  ENTRY e {
+    p0 = f32[4,48,48,64] parameter(0)
+    p1 = f32[64,3,3,64] parameter(1)
+    ROOT _ = f32[] fusion(p0, p1), kind=kCustom, calls=fusion_amax,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$fusion",
+        }
+      }
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  const HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  auto* fusion = Cast<HloFusionInstruction>(root);
+
+  ASSERT_OK_AND_ASSIGN(int plan_count,
+                       CuDnnFusionCompiler::GetAvailablePlanCount(
+                           stream_executor()->AsDnn(),
+                           stream_executor()->GetDeviceDescription(), *fusion));
+  EXPECT_GT(plan_count, 0);
+}
+
+TEST_F(CudnnFusionCompilerConstTest,
+       GetAvailablePlanCountRejectsNonAmaxReduce) {
+  // cuDNN reductions are always emitted as AMAX; any other reducer must be
+  // rejected instead of silently computing the wrong value.
+  std::string hlo_text = R"(
+  add {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT c = f32[] add(a, b)
+  }
+
+  fusion_sum {
+    p0 = f32[4,48,48,64] parameter(0)
+    p1 = f32[64,3,3,64] parameter(1)
+    conv = f32[4,48,48,64] convolution(p0, p1),
+      window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_o01i->b01f,
+      convolution_kind=fprop
+    init = f32[] constant(0)
+    ROOT sum = f32[] reduce(conv, init), dimensions={0,1,2,3}, to_apply=add
+  }
+
+  ENTRY e {
+    p0 = f32[4,48,48,64] parameter(0)
+    p1 = f32[64,3,3,64] parameter(1)
+    ROOT _ = f32[] fusion(p0, p1), kind=kCustom, calls=fusion_sum,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$fusion",
+        }
+      }
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  const HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  auto* fusion = Cast<HloFusionInstruction>(root);
+
+  EXPECT_THAT(CuDnnFusionCompiler::GetAvailablePlanCount(
+                  stream_executor()->AsDnn(),
+                  stream_executor()->GetDeviceDescription(), *fusion),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(CudnnFusionCompilerConstTest, ReusesGraphsFromCache) {
+  constexpr absl::string_view kHlo = R"(
+  fusion1 {
+    p0 = f16[4,48,48,64] parameter(0)
+    p1 = f16[64,3,3,64] parameter(1)
+    conv = f16[4,48,48,64] convolution(p0, p1),
+      window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_o01i->b01f,
+      convolution_kind=fprop
+    zero = f16[] constant(0)
+    zeros = f16[4,48,48,64] broadcast(zero), dimensions={}
+    ROOT relu = f16[4,48,48,64] maximum(conv, zeros)
+  }
+
+  ENTRY e {
+    p0 = f16[4,48,48,64] parameter(0)
+    p1 = f16[64,3,3,64] parameter(1)
+    ROOT _ = f16[4,48,48,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+      backend_config={"fusion_backend_config": {"kind": "__cudnn$fusion"}}
+  })";
+  CompiledCudnnGraphCache cache;
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> first_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  BinaryMap first_results;
+  ASSERT_OK(CuDnnFusionCompiler(stream_executor(),
+                                stream_executor()->GetDeviceDescription(),
+                                first_results, &cache)
+                .Run(first_module.get())
+                .status());
+
+  // Without a stream executor and with deviceless compilation disabled, the
+  // graph cannot be built, so it has to come from the cache.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> second_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  second_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_cudnn_deviceless_compilation_mode(
+          DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED);
+  BinaryMap second_results;
+  ASSERT_OK(CuDnnFusionCompiler(/*stream_exec=*/nullptr,
+                                stream_executor()->GetDeviceDescription(),
+                                second_results, &cache)
+                .Run(second_module.get())
+                .status());
+
+  EXPECT_EQ(first_results, second_results);
+  EXPECT_EQ(first_module->entry_computation()->ToString(),
+            second_module->entry_computation()->ToString());
 }
 
 }  // namespace

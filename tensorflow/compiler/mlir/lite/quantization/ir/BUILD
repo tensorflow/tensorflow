@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -75,19 +76,22 @@ cc_library(
     srcs = [
         "ConvertConst.cc",
         "ConvertSimQuant.cc",
+        "FakeQuantSupport.cc",
         "QuantOps.cc",
         "QuantizeUtils.cc",
+        "UniformSupport.cc",
     ],
     hdrs = [
+        "FakeQuantSupport.h",
         "Passes.h",
         "QuantOps.h",
         "QuantizeUtils.h",
+        "UniformSupport.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":QuantOpsIncGen",
         ":QuantPassIncGen",
-        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeOpInterface",
@@ -99,5 +103,18 @@ cc_library(
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "quant_support_test",
+    srcs = ["quant_support_test.cc"],
+    deps = [
+        ":QuantOps",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
     ],
 )

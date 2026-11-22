@@ -92,6 +92,7 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -106,6 +107,7 @@ cc_library(
         ":sycl_platform",
         ":sycl_blas_lt_plugin",
         ":sycl_dnn",
+        ":sycl_fft",
     ]),
     alwayslink = 1,
 )
@@ -301,6 +303,7 @@ sycl_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:fft",
         "//xla/stream_executor:generic_memory_allocation",
         "//xla/stream_executor:generic_memory_allocator",
         "//xla/stream_executor:kernel",
@@ -321,7 +324,6 @@ sycl_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -329,8 +331,6 @@ sycl_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -590,18 +590,48 @@ sycl_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":onemkl_blas_h",
+        ":onemkl_util_headers",
         ":sycl_matmul_utils",
         ":sycl_platform_id",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:plugin_registry",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_blas_lt",
+        "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
     ],
     alwayslink = True,
+)
+
+xla_test(
+    name = "sycl_blas_test",
+    srcs = ["sycl_blas_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":sycl_blas_lt_plugin",
+        ":sycl_platform",
+        ":sycl_platform_id",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 sycl_library(
@@ -615,6 +645,22 @@ sycl_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+sycl_library(
+    name = "onemkl_blas_h",
+    hdrs = ["onemkl_blas.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":onemkl_util_headers",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
+        "@com_google_absl//absl/status:status_macros",
     ],
 )
 
@@ -689,6 +735,35 @@ sycl_library(
 )
 
 sycl_library(
+    name = "sycl_fft",
+    srcs = ["sycl_fft.cc"],
+    hdrs = ["sycl_fft.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":onemkl_util_headers",
+        ":sycl_platform_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:fft",
+        "//xla/stream_executor:plugin_registry",
+        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_helpers_header",
+        "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
+)
+
+sycl_library(
     name = "sycl_matmul_utils",
     srcs = ["sycl_matmul_utils.cc"],
     hdrs = ["sycl_matmul_utils.h"],
@@ -698,6 +773,7 @@ sycl_library(
     ],
     deps = [
         ":onednn_util",
+        "//xla:xla_data_proto_cc",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:statusor",
@@ -716,11 +792,20 @@ xla_test(
     ],
     deps = [
         "//xla:error_spec",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
@@ -798,4 +883,23 @@ sycl_library(
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
+)
+
+xla_test(
+    name = "conv_sycl_test",
+    srcs = ["conv_sycl_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

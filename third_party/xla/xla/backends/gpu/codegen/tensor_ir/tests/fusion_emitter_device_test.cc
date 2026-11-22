@@ -360,6 +360,66 @@ ENTRY main {
       RunAndCompareNoHloPasses(std::move(module), {&lhs, &rhs}, kExactMatch));
 }
 
+// Naive `exp(x) - 1` loses all precision for `|x| < 2^-24` (returning 0) and
+// ~20 mantissa bits around `1e-7f`. Testing with zero absolute tolerance on
+// near-zero inputs plus saturation/IEEE edge cases guards against regressing
+// from `nv_tensor_ir.expm1` back to a naive decomposition.
+TEST_F(TensorIrEmitterTest, Expm1AccuracyF32) {
+  constexpr absl::string_view kHloText = R"(
+fused_computation {
+  p0 = f32[4,4] parameter(0)
+  ROOT out = f32[4,4] exponential-minus-one(p0)
+}
+
+ENTRY main {
+  p0 = f32[4,4] parameter(0)
+  ROOT fusion = f32[4,4] fusion(p0), kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__tensorir","tensor_ir_fusion_config":{}}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const float kNaN = std::numeric_limits<float>::quiet_NaN();
+  const float kInf = std::numeric_limits<float>::infinity();
+  Literal input = LiteralUtil::CreateR2<float>({
+      {-0.0f, 0.0f, -1e-10f, 1e-10f},
+      {-1e-7f, 1e-7f, -1e-5f, 1e-5f},
+      {-0.5f, 0.5f, -50.0f, 100.0f},
+      {-kInf, kInf, 1.0f, kNaN},
+  });
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), {&input},
+                                       ErrorSpec{/*aabs=*/0, /*arel=*/3e-6}));
+}
+
+// Likewise, naive `log(x + 1)` rounds `1 + x` to 1 for `|x| < 2^-24` and
+// suffers catastrophic cancellation near zero; `-1`, `< -1`, and `+inf` cover
+// the `-inf`/`NaN` domain boundaries and the `inf / inf` guard in Kahan's
+// formula.
+TEST_F(TensorIrEmitterTest, Log1pAccuracyF32) {
+  constexpr absl::string_view kHloText = R"(
+fused_computation {
+  p0 = f32[4,4] parameter(0)
+  ROOT out = f32[4,4] log-plus-one(p0)
+}
+
+ENTRY main {
+  p0 = f32[4,4] parameter(0)
+  ROOT fusion = f32[4,4] fusion(p0), kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__tensorir","tensor_ir_fusion_config":{}}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const float kNaN = std::numeric_limits<float>::quiet_NaN();
+  const float kInf = std::numeric_limits<float>::infinity();
+  Literal input = LiteralUtil::CreateR2<float>({
+      {-0.0f, 0.0f, -1e-10f, 1e-10f},
+      {-1e-7f, 1e-7f, -1e-5f, 1e-5f},
+      {-0.5f, 0.5f, -1.0f, -2.0f},
+      {-kInf, kInf, 10.0f, kNaN},
+  });
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), {&input},
+                                       ErrorSpec{/*aabs=*/0, /*arel=*/3e-6}));
+}
+
 // Reductions whose body is a plain `add`/`max` lower to TensorIR's built-in
 // reduction modes.
 TEST_F(TensorIrEmitterTest, ReduceAddF32) {

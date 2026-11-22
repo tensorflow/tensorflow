@@ -1,0 +1,219 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/cpu/tests/cpu_pjrt_codegen_test.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/types.h"
+#include "xla/xla_data.pb.h"
+
+namespace xla::cpu {
+namespace {
+
+class CpuDynShapeTest : public CpuPjRtCodegenTest {};
+
+TEST_F(CpuDynShapeTest, CompilePadToStaticIr) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule PadToStaticIr
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      param = s32[<=3,<=4]{1,0} parameter(0)
+      zero = s32[] constant(0)
+      ROOT sum = s32[] reduce(param, zero), dimensions={0,1}, to_apply=add
+    }
+  )hlo";
+  CompileAndVerifyIr(kHlo, R"(
+    CHECK: define ptr @param.padded(ptr{{.*}})
+    CHECK: define internal void @param.padded_wrapped(
+    CHECK:   add i64 %{{.*}}, 48
+    CHECK:   load i32, ptr %{{.*}}, align 4
+    CHECK:   store i32
+    CHECK:   add i64 %{{.*}}, 52
+    CHECK:   load i32, ptr %{{.*}}, align 4
+    CHECK:   store i32
+    CHECK: xla_cpu_emitter__pad_to_static_kernel_emitter__hlo_opcode__custom-call
+  )",
+                     /*match_optimized_ir=*/false);
+}
+
+TEST_F(CpuDynShapeTest, ExecuteDynamicEntryParameterViaDynamicPadder) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule DynamicEntryParamReduce
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      param = s32[<=3,<=4]{1,0} parameter(0)
+      zero = s32[] constant(0)
+      ROOT sum = s32[] reduce(param, zero), dimensions={0,1}, to_apply=add
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  Shape dyn_shape =
+      ShapeUtil::MakeShape(S32, {3, 4}, /*dynamic_dimensions=*/{true, true});
+  Literal input(dyn_shape);
+  ASSERT_OK(input.Populate<int32_t>([](auto indices) -> int32_t {
+    if (indices[0] >= 2 || indices[1] >= 3) {
+      return 1000;
+    }
+    return static_cast<int32_t>(indices[0] * 3 + indices[1] + 1);
+  }));
+  input.SetDynamicSize(0, 2);
+  input.SetDynamicSize(1, 3);
+
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&input}));
+  EXPECT_EQ(result, LiteralUtil::CreateR0<int32_t>(21));
+}
+
+TEST_F(CpuDynShapeTest, ExecutePadToStaticMultiDimNonDefaultLayout) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule PadToStaticMultiDim
+    ENTRY main {
+      param = s32[3,<=3,<=2]{2,0,1} parameter(0)
+      ROOT pad_to_static = (s32[3,3,2]{2,0,1}, s32[], s32[], s32[])
+        custom-call(param), custom_call_target="PadToStatic"
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  Shape dyn_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 3, 2}, {2, 0, 1});
+  dyn_shape.set_dynamic_dimension(1, true);
+  dyn_shape.set_dynamic_dimension(2, true);
+  Literal input(dyn_shape);
+  ASSERT_OK(input.Populate<int32_t>([](auto indices) -> int32_t {
+    if (indices[1] >= 2 || indices[2] >= 1) {
+      return -1;
+    }
+    return static_cast<int32_t>(indices[0] * 100 + indices[1] * 10 +
+                                indices[2] + 1);
+  }));
+  input.SetDynamicSize(1, 2);
+  input.SetDynamicSize(2, 1);
+
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&input},
+                                               /*run_hlo_passes=*/false));
+  std::vector<Literal> outputs = result.DecomposeTuple();
+  ASSERT_EQ(outputs.size(), 4);
+  EXPECT_EQ(outputs[1].Get<int32_t>({}), 3);
+  EXPECT_EQ(outputs[2].Get<int32_t>({}), 2);
+  EXPECT_EQ(outputs[3].Get<int32_t>({}), 1);
+  for (int64_t i = 0; i < 3; ++i) {
+    for (int64_t j = 0; j < 2; ++j) {
+      EXPECT_EQ(outputs[0].Get<int32_t>({i, j, 0}), i * 100 + j * 10 + 1);
+    }
+  }
+}
+
+TEST_F(CpuDynShapeTest, ExecuteSliceToDynamicAndPadToStaticUnalignedF16) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule SliceToDynamicAndPadToStaticF16
+    ENTRY main {
+      param = f16[5]{0} parameter(0)
+      dyn_size = s32[] parameter(1)
+      dyn = f16[<=5]{0} custom-call(param, dyn_size),
+        custom_call_target="SliceToDynamic"
+      ROOT pad_to_static = (f16[5]{0}, s32[]) custom-call(dyn),
+        custom_call_target="PadToStatic"
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  Literal input = LiteralUtil::CreateR1<half>(
+      {half(1.0f), half(2.0f), half(3.0f), half(4.0f), half(5.0f)});
+  Literal dyn_size = LiteralUtil::CreateR0<int32_t>(3);
+
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       Execute(std::move(module), {&input, &dyn_size},
+                               /*run_hlo_passes=*/false));
+  std::vector<Literal> outputs = result.DecomposeTuple();
+  ASSERT_EQ(outputs.size(), 2);
+  EXPECT_EQ(outputs[1].Get<int32_t>({}), 3);
+  for (int64_t i = 0; i < 3; ++i) {
+    EXPECT_EQ(outputs[0].Get<half>({i}), half(i + 1.0f));
+  }
+}
+
+TEST_F(CpuDynShapeTest, ExecuteDynamicEntryParameterZeroDynamicSize) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule DynamicEntryParamZeroSizeReduce
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      param = s32[<=4]{0} parameter(0)
+      zero = s32[] constant(0)
+      ROOT sum = s32[] reduce(param, zero), dimensions={0}, to_apply=add
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  Shape dyn_shape =
+      ShapeUtil::MakeShape(S32, {4}, /*dynamic_dimensions=*/{true});
+  Literal input(dyn_shape);
+  ASSERT_OK(input.Populate<int32_t>([](auto) { return 42; }));
+  input.SetDynamicSize(0, 0);
+
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&input}));
+  EXPECT_EQ(result, LiteralUtil::CreateR0<int32_t>(0));
+}
+
+TEST_F(CpuDynShapeTest, CompileSliceToDynamicIr) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule SliceToDynamicIr
+    ENTRY main {
+      param = f16[5]{0} parameter(0)
+      dyn_size = s32[] parameter(1)
+      ROOT res = f16[<=5]{0} custom-call(param, dyn_size),
+        custom_call_target="SliceToDynamic"
+    }
+  )hlo";
+  CompileAndVerifyIr(kHlo, R"(
+    CHECK: define ptr @res(ptr{{.*}})
+    CHECK: define internal void @res_wrapped(
+    CHECK:   add i64 %{{.*}}, 10
+    CHECK:   store i32 %{{.*}}, ptr %{{.*}}, align 1
+    CHECK:   store half
+    CHECK: xla_cpu_emitter__slice_to_dynamic_kernel_emitter__hlo_opcode__custom-call
+  )",
+                     /*match_optimized_ir=*/false);
+}
+
+}  // namespace
+}  // namespace xla::cpu

@@ -185,6 +185,10 @@ class BFloat16Propagation : public HloModulePass {
   void DetermineAsyncComputationsPrecision(HloInstruction* async_start);
 
   // Special handling in the opportunity-finding pass for called computations.
+  // When a callee is shared across multiple kCall sites, it is visited once
+  // after its last caller without cloning (which would invalidate dataflow_);
+  // whenever callers disagree on an output or parameter precision, the wider
+  // precision (F32) always wins over BF16.
   //
   // Precondition: hlo->opcode() == kCall
   void DetermineCalledComputationsPrecision(HloInstruction* call);
@@ -290,7 +294,25 @@ class BFloat16Propagation : public HloModulePass {
   void PushAcrossCallBoundaries(const HloPosition& position);
 
   // Makes every adjustable F32 position BF16 iff the BFS did not reach it.
-  void MaterializeResolvedPrecisions(HloModule* module);
+  // Returns the fusion computations (and any enclosing fusion computations)
+  // where a non-parameter op or root had a tentative BF16 mark reverted to F32.
+  absl::flat_hash_set<const HloComputation*> MaterializeResolvedPrecisions(
+      HloModule* module);
+
+  // Returns whether fusion parameter `fp` at `index` was marked BF16 in the
+  // backward pass and all of its internal uses and root aliases inside its
+  // fusion still consume BF16 after F32 constraint resolution.
+  bool FusionParameterConsumesBF16(HloInstruction* fp, const ShapeIndex& index,
+                                   const absl::flat_hash_set<HloPosition>&
+                                       bf16_fusion_param_positions) const;
+
+  // Reverts fusion-internal BF16 changes that no longer cross the fusion
+  // boundary after F32 constraint resolution reverted an internal op or root.
+  void RevertPostResolveFusionInternalBF16Changes(
+      HloInstruction* fusion,
+      const absl::flat_hash_set<const HloComputation*>&
+          fusions_with_reverted_ops,
+      absl::flat_hash_set<HloPosition>& bf16_fusion_param_positions);
 
   // ***************************
   // Functions called after changes in changes_to_bf16_ are applied.
@@ -320,9 +342,16 @@ class BFloat16Propagation : public HloModulePass {
   // Functions called and state used by two or more passes.
 
   // Returns whether all uses of the given HloInstruction can consume BF16
-  // input.
+  // input. When `bf16_fusion_param_positions` is non-null, evaluates a fusion
+  // parameter after F32 constraint resolution by checking root aliases and
+  // recursing into nested fusion parameters rather than reading caller-pushed
+  // parameter marks.
   bool AllUsersConsumeBF16(const HloInstruction& hlo,
                            const ShapeIndex& index) const;
+  bool AllUsersConsumeBF16Impl(const HloInstruction& hlo,
+                               const ShapeIndex& index,
+                               const absl::flat_hash_set<HloPosition>*
+                                   bf16_fusion_param_positions) const;
 
   // Memoized ShouldKeepPrecisionUnchanged. Valid while shapes are
   // unmutated; the loop that applies changes_to_bf16_ in RunImpl must call
@@ -435,6 +464,9 @@ class BFloat16Propagation : public HloModulePass {
   // Mapping from each HloComputation to the number of callers to it in the
   // module. Populated at the beginning of this pass.
   absl::flat_hash_map<const HloComputation*, int64_t> caller_counts_;
+
+  // Number of kCall sites visited so far per callee in the backward pass.
+  absl::flat_hash_map<const HloComputation*, int64_t> visited_call_counts_;
 
   // We first store the potential F32-to-BF16 changes to changes_to_bf16_, which
   // are subject to further adjustment, then finally applied to the HLOs. This

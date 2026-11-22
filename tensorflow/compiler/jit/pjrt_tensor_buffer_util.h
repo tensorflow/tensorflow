@@ -38,6 +38,17 @@ absl::StatusOr<Tensor> MakeTensorFromPjRtBuffer(
 // For TensorFlow internal use only.
 class PjRtTensorBufferUtil {
  public:
+  struct LookupResult {
+    const PjRtTensorBuffer* buffer = nullptr;
+    // True when `tensor` spans the full `[data(), data() + size())` range of
+    // `buffer`; false when `tensor` is a sliced `SubBuffer` view of `buffer`.
+    bool is_full_buffer = false;
+  };
+
+  // Finds the `PjRtTensorBuffer` backing `tensor`, unwrapping `SubBuffer`
+  // views via `root_buffer()`.
+  static LookupResult FindPjRtTensorBuffer(const Tensor* tensor);
+
   // Takes the device memory pointer from the PjRtBuffer and create a
   // PjRtTensorBuffer. The PjRtTensorBuffer holds the pointer to the device
   // memory. It also owns the PjRtBuffer. If output_tensor does not use

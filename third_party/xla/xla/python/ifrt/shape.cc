@@ -16,16 +16,19 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 
 #include <cstdint>
+#include <memory>
 #include <ostream>
 #include <utility>
 #include <variant>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
 
@@ -46,30 +49,41 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 }  // namespace
 
+absl::StatusOr<Shape> Shape::Create(absl::Span<const int64_t> dims) {
+  int64_t count = 1;
+  for (int64_t d : dims) {
+    if (d < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Shape expects non-negative dimension sizes, but got ",
+                       d, " in [", absl::StrJoin(dims, ","), "]"));
+    }
+    if (d == 0) {
+      continue;
+    }
+    if (__builtin_mul_overflow(count, d, &count) || count > kMaxNumElements) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Number of elements in shape [",
+                       absl::StrJoin(dims, ","), "] is too large"));
+    }
+  }
+  return Shape(UncheckedTag{},
+               std::make_shared<Dimensions>(dims.begin(), dims.end()));
+}
+
+Shape::Shape(absl::Span<const int64_t> dims)
+    : Shape([](absl::Span<const int64_t> d) {
+        absl::StatusOr<Shape> shape = Create(d);
+        CHECK_OK(shape);
+        return *std::move(shape);
+      }(dims)) {}
+
 absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
   if (version_number != SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Unsupported ", version_number, " for Shape deserialization"));
   }
-
-  Shape::Dimensions dims;
-  dims.reserve(proto.dims_size());
-  int64_t num_elements = 1;
-  bool overflow = false;
-  for (int64_t dim : proto.dims()) {
-    if (dim < 0) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "Shape expects non-negative dimension sizes, but got %d", dim));
-    }
-    overflow |= __builtin_mul_overflow(num_elements, dim, &num_elements);
-    dims.push_back(dim);
-  }
-  if (overflow) {
-    return absl::InvalidArgumentError(
-        "Too large number of elements in a shape");
-  }
-  return Shape(std::move(dims));
+  return Create(proto.dims());
 }
 
 void Shape::ToProto(ShapeProto& proto, SerDesVersion version) const {
@@ -96,6 +110,25 @@ int64_t Shape::num_elements() const {
   return count;
 }
 
+absl::StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::Create(
+    absl::Span<const bool> dynamic_dims) {
+  if (!absl::c_any_of(dynamic_dims, [](bool b) { return b; })) {
+    return absl::InvalidArgumentError(
+        "At least one dimension needs to be dynamically sized");
+  }
+  return BoundedDynamicShapeTag(
+      UncheckedTag{},
+      DynamicDimensions(dynamic_dims.begin(), dynamic_dims.end()));
+}
+
+BoundedDynamicShapeTag::BoundedDynamicShapeTag(
+    absl::Span<const bool> dynamic_dims)
+    : BoundedDynamicShapeTag([](absl::Span<const bool> dims) {
+        absl::StatusOr<BoundedDynamicShapeTag> tag = Create(dims);
+        CHECK_OK(tag);
+        return *std::move(tag);
+      }(dynamic_dims)) {}
+
 absl::StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::FromProto(
     const BoundedDynamicShapeTagProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
@@ -104,13 +137,7 @@ absl::StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::FromProto(
         absl::StrCat("Unsupported ", version_number,
                      " for BoundedDynamicShapeTag deserialization"));
   }
-
-  BoundedDynamicShapeTag::DynamicDimensions dynamic_dims;
-  dynamic_dims.reserve(proto.is_dynamic_dims_size());
-  for (bool dynamic_dim : proto.is_dynamic_dims()) {
-    dynamic_dims.push_back(dynamic_dim);
-  }
-  return BoundedDynamicShapeTag(std::move(dynamic_dims));
+  return Create(proto.is_dynamic_dims());
 }
 
 void BoundedDynamicShapeTag::ToProto(BoundedDynamicShapeTagProto& proto,

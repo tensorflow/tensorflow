@@ -28,6 +28,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,6 +39,7 @@
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 
@@ -189,6 +191,11 @@ class HloRematerialization : public HloPassInterface {
 
     // The high-level rematerialization algorithm to be used.
     RematAlgorithm remat_algorithm;
+
+    // Set when running after copy insertion. Recomputed instructions then
+    // never read an operand after its storage is overwritten: they run before
+    // the overwrite or, for array operands, read a copy saved before it.
+    const AliasInfo* alias_info = nullptr;
   };
 
   explicit HloRematerialization(
@@ -303,6 +310,10 @@ class HloRematerialization : public HloPassInterface {
   // Updates dataflow analysis if it is stale.
   absl::Status UpdateDataflowAnalysis(HloModule* module);
 
+  // Fills value_overwriters_ and overwriter_ids_ once per RunImpl if
+  // Options::alias_info is set.
+  absl::Status ComputeValueOverwriters(const HloModule* module);
+
   // Cleans up dead rematerialized instructions out of the module. Basically
   // runs DCE and updates the schedule.
   static absl::StatusOr<bool> CleanupRematerializedInstructions(
@@ -403,6 +414,14 @@ class HloRematerialization : public HloPassInterface {
   absl::flat_hash_map<const HloComputation*, int64_t> computation_peak_memory_;
 
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
+
+  // Maps (instruction unique id, shape index) of an array position to the
+  // unique id of the instruction in the same computation that next overwrites
+  // its storage. Unique ids survive instruction deletion.
+  absl::flat_hash_map<std::pair<int64_t, ShapeIndex>, int64_t>
+      value_overwriters_;
+  absl::flat_hash_set<int64_t> overwriter_ids_;
+  bool value_overwriters_computed_ = false;
 
   // Set of computations which have had rematerialization
   // applied. Rematerialization is only applied once per computation.

@@ -45,9 +45,7 @@ namespace xla::offloader_util {
 namespace {
 
 absl::Status ClearComputeTypeFrontendAttribute(HloInstruction* instr) {
-  FrontendAttributes copy_of_frontend_attributes = instr->frontend_attributes();
-  copy_of_frontend_attributes.mutable_map()->erase(kXlaComputeTypeAttr);
-  instr->set_frontend_attributes(copy_of_frontend_attributes);
+  instr->erase_frontend_attribute(kXlaComputeTypeAttr);
   return absl::OkStatus();
 }
 

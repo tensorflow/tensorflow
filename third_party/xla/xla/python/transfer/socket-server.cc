@@ -74,6 +74,10 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
   }
 
   ~SocketNetworkState() override {
+    start_bulk_transport_ = nullptr;
+    bulk_transport_.reset();
+    dests_.clear();
+    table_.reset();
     factory_.reset();
     if (connections_) {
       absl::MutexLock l(connections_->mu);
@@ -584,6 +588,7 @@ tsl::RCReference<SocketServer::Connection> SocketServer::Connect(
 }
 
 void SocketServer::WaitForQuiesce() {
+  listener_.reset();
   absl::MutexLock l(connections_->mu);
   auto cond = [&]() { return connections_->list.empty(); };
   connections_->mu.Await(absl::Condition(&cond));

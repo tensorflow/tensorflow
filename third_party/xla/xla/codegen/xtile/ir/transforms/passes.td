@@ -61,3 +61,18 @@ def ExpandXtileComplexOpsPass : Pass<"expand-xtile-complex-ops", "mlir::ModuleOp
     "mlir::stablehlo::StablehloDialect",
   ];
 }
+
+def LegalizeI1StoragePass
+    : Pass<"xtile-legalize-i1-storage", "mlir::ModuleOp"> {
+  let summary = "Lowers i1 memref tile accesses to byte-addressed i8 storage.";
+  let description = [{
+    Rewrites `i1` `memref` arguments on `xtile.entry_func` and results of
+    `xtile.select_buffer` to byte-addressed `i8` storage (zero for `false`,
+    non-zero for `true`), and converts between `i8` storage and `i1` tile values
+    at `xtile.extract` and `xtile.insert`.
+  }];
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "xla::xtile::XTileDialect",
+  ];
+}

@@ -28,8 +28,20 @@ def _transitive_parameters_library_impl(ctx):
     defines = depset(
         transitive = [dep[CcInfo].compilation_context.defines for dep in ctx.attr.original_deps],
     )
+
+    # Propagate external_includes via system_includes because
+    # cc_common.create_compilation_context restricts external_includes to
+    # rules_cc's private allowlist, and when the external_include_paths feature
+    # is enabled (default in Bazel 8), external repositories place all public
+    # and virtual include directories in CompilationContext.external_includes.
     system_includes = depset(
-        transitive = [dep[CcInfo].compilation_context.system_includes for dep in ctx.attr.original_deps],
+        transitive = [
+            dep[CcInfo].compilation_context.system_includes
+            for dep in ctx.attr.original_deps
+        ] + [
+            dep[CcInfo].compilation_context.external_includes
+            for dep in ctx.attr.original_deps
+        ],
     )
     includes = depset(
         transitive = [dep[CcInfo].compilation_context.includes for dep in ctx.attr.original_deps],

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -150,6 +151,8 @@ class CustomCallThunk : public TracedCommand {
 
   bool use_pdl() const { return use_pdl_; }
 
+  std::string ToString(int indent) const override;
+
   std::optional<XLA_FFI_Handler_Bundle> bundle() const {
     const XLA_FFI_Handler_Bundle* c_bundle =
         std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
@@ -261,6 +264,7 @@ class CustomCallThunk : public TracedCommand {
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
       CollectiveMemoryRequests* absl_nullable collective_memory_requests,
+      CommandBufferRequests* absl_nullable command_buffer_requests,
       const CollectiveCliques* absl_nullable collective_cliques,
       const CollectiveMemory* absl_nullable collective_memory,
       const ffi::ExecutionContext* absl_nullable execution_context,
@@ -276,6 +280,7 @@ class CustomCallThunk : public TracedCommand {
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
       CollectiveMemoryRequests* absl_nullable collective_memory_requests,
+      CommandBufferRequests* absl_nullable command_buffer_requests,
       const CollectiveCliques* absl_nullable collective_cliques,
       const CollectiveMemory* absl_nullable collective_memory,
       absl::Span<se::Stream* const> computation_streams,
@@ -290,6 +295,7 @@ class CustomCallThunk : public TracedCommand {
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
       CollectiveMemoryRequests* absl_nullable collective_memory_requests,
+      CommandBufferRequests* absl_nullable command_buffer_requests,
       const CollectiveCliques* absl_nullable collective_cliques,
       const CollectiveMemory* absl_nullable collective_memory,
       absl::Span<se::Stream* const> computation_streams,

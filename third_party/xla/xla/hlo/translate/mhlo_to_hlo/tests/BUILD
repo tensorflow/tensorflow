@@ -42,6 +42,7 @@ lit_test_suite(
             "export-with-layouts.mlir",
             "export.mlir",
             "export_async.mlir",
+            "export_async_dynamic_update_slice.mlir",
             "export_and_check_layouts.mlir",
             "export_bounded_dynamism.mlir",
             "export_entry_computation_layout.mlir",

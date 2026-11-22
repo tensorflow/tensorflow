@@ -24,6 +24,7 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "third_party/gpus/cuda/include/cublasLt.h"
@@ -41,9 +43,11 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/cuda/cublas_lt_matmul_algorithm.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/stream.h"
@@ -100,6 +104,24 @@ template <typename T>
 absl::Status SetAttr(cublasLtMatmulPreference_t handle,
                      cublasLtMatmulPreferenceAttributes_t attr, T value) {
   return SET_ATTR(cublasLtMatmulPreferenceSetAttribute, handle, attr, value);
+}
+
+template <typename T>
+absl::Status SetAttr(cublasLtMatmulAlgo_t* handle,
+                     cublasLtMatmulAlgoConfigAttributes_t attr, T value) {
+  return SET_ATTR(cublasLtMatmulAlgoConfigSetAttribute, handle, attr, value);
+}
+
+template <typename T>
+absl::StatusOr<T> GetAttr(const cublasLtMatmulAlgo_t* handle,
+                          cublasLtMatmulAlgoConfigAttributes_t attr) {
+  return GET_ATTR(cublasLtMatmulAlgoConfigGetAttribute, handle, attr, T);
+}
+
+template <typename T>
+absl::StatusOr<T> GetCapAttr(const cublasLtMatmulAlgo_t* handle,
+                             cublasLtMatmulAlgoCapAttributes_t attr) {
+  return GET_ATTR(cublasLtMatmulAlgoCapGetAttribute, handle, attr, T);
 }
 
 cublasLtPointerMode_t AsCublasLtPointerMode(
@@ -240,6 +262,33 @@ cublasLtPointerMode_t BlasLt::MatmulDesc::pointer_mode() const {
           .value());
 }
 
+absl::Status BlasLt::MatmulPlan::SetDummyFp8ScalePointersIfNeeded() const {
+  // Set dummy (non-null, aligned) scale pointers before querying heuristics or
+  // validating an algorithm descriptor so that cuBLASLt considers algorithms
+  // that support FP8 tensor scaling. Real pointers are set in DoMatmul() before
+  // cublasLtMatmul().
+  auto is_fp8 = [](cudaDataType_t type) {
+    return type == CUDA_R_8F_E4M3 || type == CUDA_R_8F_E5M2;
+  };
+  bool is_fp8_scaled = is_fp8(a_desc_.type()) || is_fp8(b_desc_.type());
+  if (is_fp8_scaled) {
+    void* dummy = reinterpret_cast<void*>(0x40);
+    ABSL_RETURN_IF_ERROR(
+        SetAttr(op_desc_.get(), CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, dummy));
+    ABSL_RETURN_IF_ERROR(
+        SetAttr(op_desc_.get(), CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, dummy));
+    if (is_fp8(c_desc_.type())) {
+      ABSL_RETURN_IF_ERROR(
+          SetAttr(op_desc_.get(), CUBLASLT_MATMUL_DESC_C_SCALE_POINTER, dummy));
+    }
+    if (is_fp8(d_desc_.type())) {
+      ABSL_RETURN_IF_ERROR(
+          SetAttr(op_desc_.get(), CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, dummy));
+    }
+  }
+  return absl::OkStatus();
+}
+
 auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
                                        size_t max_workspace_size) const
     -> absl::StatusOr<std::vector<MatmulAlgorithm>> {
@@ -260,30 +309,7 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
                                       CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
                                       max_workspace_size));
 
-#if CUDA_VERSION >= 11080
-    // Set dummy (non-null, aligned) scale pointers before querying heuristics
-    // so that cuBLASLt considers algorithms that support FP8 tensor scaling.
-    // Real pointers are set in DoMatmul() before cublasLtMatmul().
-    auto is_fp8 = [](cudaDataType_t type) {
-      return type == CUDA_R_8F_E4M3 || type == CUDA_R_8F_E5M2;
-    };
-    bool is_fp8_scaled = is_fp8(a_desc_.type()) || is_fp8(b_desc_.type());
-    if (is_fp8_scaled) {
-      void* dummy = reinterpret_cast<void*>(0x40);
-      ABSL_RETURN_IF_ERROR(
-          SetAttr(op_desc_.get(), CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, dummy));
-      ABSL_RETURN_IF_ERROR(
-          SetAttr(op_desc_.get(), CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, dummy));
-      if (is_fp8(c_desc_.type())) {
-        ABSL_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
-                                CUBLASLT_MATMUL_DESC_C_SCALE_POINTER, dummy));
-      }
-      if (is_fp8(d_desc_.type())) {
-        ABSL_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
-                                CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, dummy));
-      }
-    }
-#endif
+    ABSL_RETURN_IF_ERROR(SetDummyFp8ScalePointersIfNeeded());
     std::unique_ptr<ActivateContext> activation =
         blas_lt_.executor_->Activate();
 
@@ -303,6 +329,124 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
     }
   }
   return std::move(algorithms);
+}
+
+absl::StatusOr<gpu::BlasLtMatmulAlgorithm>
+BlasLt::MatmulPlan::GetBlasLtMatmulAlgorithm(
+    const MatmulAlgorithm& algorithm) const {
+  const cublasLtMatmulAlgo_t* cublas_lt_algo =
+      std::any_cast<cublasLtMatmulAlgo_t>(&algorithm.opaque_algo);
+  if (cublas_lt_algo == nullptr) {
+    return absl::InternalError("Invalid algorithm type!");
+  }
+  CublasLtMatmulAlgorithm cublaslt;
+  ABSL_ASSIGN_OR_RETURN(cublaslt.algo_id,
+                   GetAttr<int32_t>(cublas_lt_algo, CUBLASLT_ALGO_CONFIG_ID));
+  ABSL_ASSIGN_OR_RETURN(
+      cublaslt.tile_id,
+      GetAttr<uint32_t>(cublas_lt_algo, CUBLASLT_ALGO_CONFIG_TILE_ID));
+  ABSL_ASSIGN_OR_RETURN(
+      cublaslt.split_k,
+      GetAttr<int32_t>(cublas_lt_algo, CUBLASLT_ALGO_CONFIG_SPLITK_NUM));
+  ABSL_ASSIGN_OR_RETURN(
+      cublaslt.reduction_scheme,
+      GetAttr<uint32_t>(cublas_lt_algo, CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME));
+  ABSL_ASSIGN_OR_RETURN(
+      cublaslt.cta_swizzling,
+      GetAttr<uint32_t>(cublas_lt_algo, CUBLASLT_ALGO_CONFIG_CTA_SWIZZLING));
+  ABSL_ASSIGN_OR_RETURN(
+      cublaslt.custom_option,
+      GetAttr<uint32_t>(cublas_lt_algo, CUBLASLT_ALGO_CONFIG_CUSTOM_OPTION));
+  ABSL_ASSIGN_OR_RETURN(
+      cublaslt.stages_id,
+      GetAttr<uint32_t>(cublas_lt_algo, CUBLASLT_ALGO_CONFIG_STAGES_ID));
+  ABSL_ASSIGN_OR_RETURN(
+      cublaslt.inner_shape_id,
+      GetAttr<uint16_t>(cublas_lt_algo, CUBLASLT_ALGO_CONFIG_INNER_SHAPE_ID));
+  ABSL_ASSIGN_OR_RETURN(
+      cublaslt.cluster_shape_id,
+      GetAttr<uint16_t>(cublas_lt_algo, CUBLASLT_ALGO_CONFIG_CLUSTER_SHAPE_ID));
+  ABSL_ASSIGN_OR_RETURN(cublaslt.numerical_impl_flags,
+                   GetCapAttr<uint64_t>(
+                       cublas_lt_algo, CUBLASLT_ALGO_CAP_NUMERICAL_IMPL_FLAGS));
+
+  return gpu::BlasLtMatmulAlgorithm{
+      /*library_version=*/static_cast<int64_t>(cublasLtGetVersion()),
+      /*algorithm=*/cublaslt,
+  };
+}
+
+absl::StatusOr<BlasLt::MatmulAlgorithm> BlasLt::MatmulPlan::GetMatmulAlgorithm(
+    const gpu::BlasLtMatmulAlgorithm& algorithm,
+    size_t max_workspace_size) const {
+  const CublasLtMatmulAlgorithm* cublaslt =
+      std::get_if<CublasLtMatmulAlgorithm>(&algorithm.algorithm);
+  if (cublaslt == nullptr) {
+    return absl::InvalidArgumentError(
+        "BlasLtMatmulAlgorithm does not contain a cuBLASLt algorithm "
+        "descriptor.");
+  }
+
+  cublasLtMatmulAlgo_t algo{};
+  cublasLtMatmulHeuristicResult_t check_result{};
+  {
+    absl::MutexLock lock(blas_lt_.mu_);
+    TF_RET_CHECK(blas_lt_.handle_.get() != nullptr);
+    ABSL_RETURN_IF_ERROR(SetDummyFp8ScalePointersIfNeeded());
+    std::unique_ptr<ActivateContext> activation =
+        blas_lt_.executor_->Activate();
+
+    ABSL_RETURN_IF_ERROR(ToStatus(
+        cublasLtMatmulAlgoInit(blas_lt_.handle_.get(), op_desc_.compute_type(),
+                               op_desc_.scale_type(), a_desc_.type(),
+                               b_desc_.type(), c_desc_.type(), d_desc_.type(),
+                               cublaslt->algo_id, &algo),
+        "cublasLtMatmulAlgoInit"));
+
+    ABSL_RETURN_IF_ERROR(
+        SetAttr(&algo, CUBLASLT_ALGO_CONFIG_TILE_ID, cublaslt->tile_id));
+    ABSL_RETURN_IF_ERROR(
+        SetAttr(&algo, CUBLASLT_ALGO_CONFIG_SPLITK_NUM, cublaslt->split_k));
+    ABSL_RETURN_IF_ERROR(SetAttr(&algo, CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME,
+                            cublaslt->reduction_scheme));
+    ABSL_RETURN_IF_ERROR(SetAttr(&algo, CUBLASLT_ALGO_CONFIG_CTA_SWIZZLING,
+                            cublaslt->cta_swizzling));
+    ABSL_RETURN_IF_ERROR(SetAttr(&algo, CUBLASLT_ALGO_CONFIG_CUSTOM_OPTION,
+                            cublaslt->custom_option));
+    ABSL_RETURN_IF_ERROR(
+        SetAttr(&algo, CUBLASLT_ALGO_CONFIG_STAGES_ID, cublaslt->stages_id));
+    ABSL_RETURN_IF_ERROR(SetAttr(&algo, CUBLASLT_ALGO_CONFIG_INNER_SHAPE_ID,
+                            cublaslt->inner_shape_id));
+    ABSL_RETURN_IF_ERROR(SetAttr(&algo, CUBLASLT_ALGO_CONFIG_CLUSTER_SHAPE_ID,
+                            cublaslt->cluster_shape_id));
+
+    ABSL_RETURN_IF_ERROR(ToStatus(
+        cublasLtMatmulAlgoCheck(blas_lt_.handle_.get(), op_desc_.get(),
+                                a_desc_.get(), b_desc_.get(), c_desc_.get(),
+                                d_desc_.get(), &algo, &check_result),
+        "cublasLtMatmulAlgoCheck"));
+  }
+
+  ABSL_RETURN_IF_ERROR(ToStatus(check_result.state, "cublasLtMatmulAlgoCheck"));
+  if (check_result.workspaceSize > max_workspace_size) {
+    return absl::ResourceExhaustedError(absl::StrFormat(
+        "Reconstructed cuBLASLt algorithm (id=%d) requires %zu bytes of "
+        "workspace, which exceeds max_workspace_size=%zu.",
+        cublaslt->algo_id, check_result.workspaceSize, max_workspace_size));
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      uint64_t numerical_impl_flags,
+      GetCapAttr<uint64_t>(&algo, CUBLASLT_ALGO_CAP_NUMERICAL_IMPL_FLAGS));
+  if (numerical_impl_flags != cublaslt->numerical_impl_flags) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Reconstructed cuBLASLt algorithm (id=%d) has numerical_impl_flags "
+        "0x%x, which does not match expected 0x%x.",
+        cublaslt->algo_id, numerical_impl_flags,
+        cublaslt->numerical_impl_flags));
+  }
+
+  return MatmulAlgorithm{algo, check_result.workspaceSize};
 }
 
 namespace {

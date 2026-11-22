@@ -15,15 +15,29 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 
+#include <array>
+#include <cstdint>
+#include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "benchmark/benchmark.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 
@@ -170,6 +184,291 @@ TEST(ConvertMlirHloToHloModuleTest, PacksSpmdParametersShardingsForTupleArgs) {
   EXPECT_EQ((*hlo_module)->spmd_parameters_shardings()[0].ToString(),
             "{{devices=[1,2]<=[2]}, {replicated}, {devices=[2,1]<=[2]}}");
 }
+
+TEST(ConvertMlirHloToHloModuleTest, MemoizesRepeatedNamedShardings) {
+  constexpr absl::string_view kShardingA =
+      "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}";
+  constexpr absl::string_view kShardingB =
+      "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}";
+  const std::string kMlirModule = R"mlir(
+    module attributes {
+      mhlo.spmd_output_sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}",
+      mhlo.spmd_parameters_shardings = [
+        "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}",
+        "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}",
+        "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}"
+      ]
+    } {
+      func.func private @callee(
+          %arg0: tensor<2x2xf32> {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}"})
+          -> (tensor<2x2xf32> {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}"}) {
+        %0 = stablehlo.negate %arg0 {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}"} : tensor<2x2xf32>
+        return %0 : tensor<2x2xf32>
+      }
+
+      func.func @main(
+          %arg0: tensor<2x2xf32> {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}"},
+          %arg1: tensor<2x2xf32> {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}"},
+          %arg2: tensor<2x2xf32> {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}"})
+          -> (tensor<2x2xf32> {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}"},
+              tensor<2x2xf32> {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}"}) {
+        %c0 = stablehlo.constant {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}"} dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>
+        %c1 = stablehlo.constant {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}"} dense<[[5.0, 6.0], [7.0, 8.0]]> : tensor<2x2xf32>
+        %add = stablehlo.add %arg0, %c0 {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}"} : tensor<2x2xf32>
+        %neg = stablehlo.negate %add {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}"} : tensor<2x2xf32>
+        %call0 = func.call @callee(%neg) {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+        %call1 = func.call @callee(%c1) {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+        %bad0 = stablehlo.subtract %arg1, %arg2 {mhlo.sharding = "invalid_sharding"} : tensor<2x2xf32>
+        %bad1 = stablehlo.abs %bad0 {mhlo.sharding = "invalid_sharding"} : tensor<2x2xf32>
+        %out0 = stablehlo.add %call0, %bad1 {mhlo.sharding = "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}"} : tensor<2x2xf32>
+        return %out0, %call1 : tensor<2x2xf32>, tensor<2x2xf32>
+      }
+    }
+  )mlir";
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+
+  mlir::BaseScopedDiagnosticHandler handler(&context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(kMlirModule, &context);
+  ASSERT_THAT(handler.ConsumeStatus(), ::absl_testing::IsOk());
+  ASSERT_TRUE(module);
+
+  MlirToHloConversionOptions options;
+  options.use_tuple_args = true;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
+                       ConvertMlirHloToHloModule(*module, options));
+
+  ASSERT_TRUE(hlo_module->has_spmd_output_sharding());
+  EXPECT_EQ(hlo_module->spmd_output_sharding().ToString(), kShardingA);
+
+  ASSERT_TRUE(hlo_module->has_spmd_parameters_shardings());
+  ASSERT_EQ(hlo_module->spmd_parameters_shardings().size(), 1);
+  EXPECT_EQ(hlo_module->spmd_parameters_shardings()[0].ToString(),
+            "{{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}, "
+            "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}, "
+            "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}}");
+
+  const xla::HloComputation* entry = hlo_module->entry_computation();
+  ASSERT_NE(entry, nullptr);
+  ASSERT_EQ(entry->num_parameters(), 1);
+  ASSERT_TRUE(entry->parameter_instruction(0)->has_sharding());
+  EXPECT_EQ(entry->parameter_instruction(0)->sharding().ToString(),
+            "{{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}, "
+            "{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}, "
+            "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}}");
+  ASSERT_TRUE(entry->root_instruction()->has_sharding());
+  EXPECT_EQ(entry->root_instruction()->sharding().ToString(),
+            "{{mesh['x'=2,'y'=2], [{'x'}, {'y'}]}, "
+            "{mesh['x'=2,'y'=2], [{'y'}, {'x'}]}}");
+
+  int gte_count = 0;
+  int constant_count = 0;
+  int add_count = 0;
+  int negate_count = 0;
+  int call_count = 0;
+  int subtract_count = 0;
+  int abs_count = 0;
+  for (const xla::HloInstruction* instr : entry->instructions()) {
+    switch (instr->opcode()) {
+      case xla::HloOpcode::kGetTupleElement: {
+        ++gte_count;
+        ASSERT_TRUE(instr->has_sharding());
+        const absl::string_view expected =
+            instr->tuple_index() == 2 ? kShardingB : kShardingA;
+        EXPECT_EQ(instr->sharding().ToString(), expected);
+        break;
+      }
+      case xla::HloOpcode::kConstant: {
+        ++constant_count;
+        ASSERT_TRUE(instr->has_sharding());
+        EXPECT_EQ(instr->sharding().ToString(), kShardingA);
+        break;
+      }
+      case xla::HloOpcode::kAdd: {
+        ++add_count;
+        ASSERT_TRUE(instr->has_sharding());
+        EXPECT_EQ(instr->sharding().ToString(), kShardingA);
+        break;
+      }
+      case xla::HloOpcode::kNegate: {
+        ++negate_count;
+        ASSERT_TRUE(instr->has_sharding());
+        EXPECT_EQ(instr->sharding().ToString(), kShardingA);
+        break;
+      }
+      case xla::HloOpcode::kCall: {
+        ++call_count;
+        ASSERT_TRUE(instr->has_sharding());
+        EXPECT_EQ(instr->sharding().ToString(), kShardingB);
+        const xla::HloComputation* callee = instr->to_apply();
+        ASSERT_NE(callee, nullptr);
+        ASSERT_EQ(callee->num_parameters(), 1);
+        ASSERT_TRUE(callee->parameter_instruction(0)->has_sharding());
+        EXPECT_EQ(callee->parameter_instruction(0)->sharding().ToString(),
+                  kShardingA);
+        ASSERT_TRUE(callee->root_instruction()->has_sharding());
+        EXPECT_EQ(callee->root_instruction()->sharding().ToString(),
+                  kShardingB);
+        break;
+      }
+      case xla::HloOpcode::kSubtract: {
+        ++subtract_count;
+        EXPECT_FALSE(instr->has_sharding());
+        break;
+      }
+      case xla::HloOpcode::kAbs: {
+        ++abs_count;
+        EXPECT_FALSE(instr->has_sharding());
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+  }
+  EXPECT_EQ(gte_count, 3);
+  EXPECT_EQ(constant_count, 2);
+  EXPECT_EQ(add_count, 2);
+  EXPECT_EQ(negate_count, 1);
+  EXPECT_EQ(call_count, 2);
+  EXPECT_EQ(subtract_count, 1);
+  EXPECT_EQ(abs_count, 1);
+
+  MlirToHloConversionOptions non_tuple_options;
+  non_tuple_options.use_tuple_args = false;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> non_tuple_hlo_module,
+                       ConvertMlirHloToHloModule(*module, non_tuple_options));
+  ASSERT_TRUE(non_tuple_hlo_module->has_spmd_parameters_shardings());
+  ASSERT_EQ(non_tuple_hlo_module->spmd_parameters_shardings().size(), 3);
+  EXPECT_EQ(non_tuple_hlo_module->spmd_parameters_shardings()[0].ToString(),
+            kShardingA);
+  EXPECT_EQ(non_tuple_hlo_module->spmd_parameters_shardings()[1].ToString(),
+            kShardingA);
+  EXPECT_EQ(non_tuple_hlo_module->spmd_parameters_shardings()[2].ToString(),
+            kShardingB);
+}
+
+std::string MakeModuleSourceWithSharedNamedShardings(int num_ops) {
+  static constexpr std::array<absl::string_view, 16> kShardings = {
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'data', 'fsdp'}, {'tensor'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'data'}, {'fsdp', 'tensor'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'data', 'context'}, {'tensor'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'fsdp'}, {'tensor'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'tensor'}, {'fsdp'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'data'}, {'tensor'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'data', 'fsdp'}, {}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{}, {'fsdp', 'tensor'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], [{'data'}, {}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], [{}, {'tensor'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'fsdp', 'context'}, {'tensor'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'data':(8)8, 'fsdp'}, {'tensor'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'data'}, {'tensor':(2)4, 'context'}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'data', ?}, {'tensor', ?}]}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "
+      "[{'fsdp'}, {}], replicated={'data', 'tensor'}}",
+      "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], replicated}",
+  };
+  constexpr int kNumArgs = 64;
+  constexpr absl::string_view kTensorType = "tensor<16384x16384xf32>";
+
+  std::string source = "func.func @main(";
+  for (int i = 0; i < kNumArgs; ++i) {
+    if (i > 0) {
+      absl::StrAppend(&source, ", ");
+    }
+    absl::StrAppend(&source, "%arg", i, ": ", kTensorType,
+                    " {mhlo.sharding = \"", kShardings[i % kShardings.size()],
+                    "\"}");
+  }
+  absl::StrAppend(&source, ") -> (");
+  for (int i = 0; i < kNumArgs; ++i) {
+    if (i > 0) {
+      absl::StrAppend(&source, ", ");
+    }
+    absl::StrAppend(&source, kTensorType, " {mhlo.sharding = \"",
+                    kShardings[(i + 3) % kShardings.size()], "\"}");
+  }
+  absl::StrAppend(&source, ") {\n");
+  for (int i = 0; i < num_ops; ++i) {
+    std::string operand = i < kNumArgs ? absl::StrCat("%arg", i)
+                                       : absl::StrCat("%v", i - kNumArgs);
+    absl::StrAppend(&source, "  %v", i, " = stablehlo.negate ", operand,
+                    " {mhlo.sharding = \"", kShardings[i % kShardings.size()],
+                    "\"} : ", kTensorType, "\n");
+  }
+  absl::StrAppend(&source, "  func.return ");
+  for (int i = 0; i < kNumArgs; ++i) {
+    if (i > 0) {
+      absl::StrAppend(&source, ", ");
+    }
+    int val_idx = num_ops - kNumArgs + i;
+    absl::StrAppend(&source, "%v", val_idx);
+  }
+  absl::StrAppend(&source, " : ");
+  for (int i = 0; i < kNumArgs; ++i) {
+    if (i > 0) {
+      absl::StrAppend(&source, ", ");
+    }
+    absl::StrAppend(&source, kTensorType);
+  }
+  absl::StrAppend(&source, "\n}\n");
+  return source;
+}
+
+void BM_ExportWithSharedNamedShardings(benchmark::State& state) {
+  const int num_ops = state.range(0);
+  const std::string mlir_source =
+      MakeModuleSourceWithSharedNamedShardings(num_ops);
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
+  CHECK(module);
+
+  MlirToHloConversionOptions options;
+  {
+    xla::HloProto warmup_proto;
+    CHECK_OK(ConvertMlirHloToHlo(*module, &warmup_proto, options));
+    int sharded_negates = 0;
+    for (const xla::HloInstructionProto& instr :
+         warmup_proto.hlo_module().computations(0).instructions()) {
+      if (instr.opcode() == "negate" && instr.has_sharding()) {
+        ++sharded_negates;
+      }
+    }
+    CHECK_EQ(sharded_negates, num_ops);
+  }
+
+  for (auto s : state) {
+    xla::HloProto hlo_proto;
+    CHECK_OK(ConvertMlirHloToHlo(*module, &hlo_proto, options));
+    benchmark::DoNotOptimize(hlo_proto);
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_ops);
+}
+
+BENCHMARK(BM_ExportWithSharedNamedShardings)
+    ->Arg(1000)
+    ->Arg(4000)
+    ->Arg(16000)
+    ->Unit(benchmark::kMillisecond);
 
 }  // namespace
 }  // namespace mlir

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes_utils.h"
+#include "xla/backends/cpu/runtime/thunk_serdes/onednn_custom_call_thunk_serdes.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -42,6 +44,14 @@ namespace xla::cpu {
 namespace {
 
 absl::Status CustomCallThunkToProto(const Thunk& thunk, ThunkProto& proto) {
+  // If this is an OneDNN custom call, serialize it into the OneDNN custom call
+  // proto
+  if (std::optional<absl::Status> onednn_status =
+          TrySerializeOneDnnCustomCall(thunk, proto)) {
+    return *std::move(onednn_status);
+  }
+
+  // Handle regular custom calls
   const auto& custom_call_thunk =
       absl::down_cast<const CustomCallThunk&>(thunk);
   CustomCallThunkProto* custom_call_proto = proto.mutable_custom_call_thunk();
@@ -78,6 +88,14 @@ absl::StatusOr<std::unique_ptr<Thunk>> CustomCallThunkFromProto(
     const HloModule* hlo_module,
     const std::vector<std::shared_ptr<Resource>>* resources) {
   ABSL_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  // Check if this is an OneDNN custom call
+  if (proto.has_onednn_custom_call_thunk()) {
+    return OneDnnCustomCallFromProto(proto.onednn_custom_call_thunk(),
+                                     std::move(info), buffer_allocations);
+  }
+
+  // Handle regular custom calls
 
   CustomCallThunk::OpBuffers op_buffers;
   for (const ShapeBufferAllocationSliceProto& arg_buff_shape :

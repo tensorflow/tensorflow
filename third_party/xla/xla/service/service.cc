@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/transforms/dynamic_padder.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/dump.h"
 #include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/dynamic_padder.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -364,7 +364,9 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(device_assignment_ptr);
     options.set_execution_profile(profile);
-    run_options.emplace_back(options, backend->StreamBorrowerWithPriority());
+    run_options.emplace_back(
+        options, backend->StreamBorrowerWithPriority(),
+        backend->LocalityDomainStreamBorrowerWithPriority());
   }
 
   if (options_.number_of_replicas() == 1) {

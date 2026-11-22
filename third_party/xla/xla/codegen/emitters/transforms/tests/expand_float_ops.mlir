@@ -197,6 +197,51 @@ module {
 // -----
 
 module {
+  func.func @e8m0_lowest_binade_constants() -> (i8, i8, i8, i8, i8, i8, i8, i8, i8, i8) {
+    %f32_sub = arith.constant 0x003FFFFF : f32
+    %f32_below = arith.constant 0x005FFFFF : f32
+    %f32_mid = arith.constant 0x00600000 : f32
+    %f32_zero = arith.constant 0.0 : f32
+    %f32_neg_zero = arith.constant -0.0 : f32
+    %f16_sub_mid = arith.constant 0x0003 : f16
+    %f64_sub = arith.constant 0x37F0000000000000 : f64
+    %f64_below = arith.constant 0x3807FFFFFFFFFFFF : f64
+    %f64_mid = arith.constant 0x3808000000000000 : f64
+    %f64_zero = arith.constant 0.0 : f64
+    %t0 = arith.truncf %f32_sub : f32 to f8E8M0FNU
+    %t1 = arith.truncf %f32_below : f32 to f8E8M0FNU
+    %t2 = arith.truncf %f32_mid : f32 to f8E8M0FNU
+    %t3 = arith.truncf %f32_zero : f32 to f8E8M0FNU
+    %t4 = arith.truncf %f32_neg_zero : f32 to f8E8M0FNU
+    %t5 = arith.truncf %f16_sub_mid : f16 to f8E8M0FNU
+    %t6 = arith.truncf %f64_sub : f64 to f8E8M0FNU
+    %t7 = arith.truncf %f64_below : f64 to f8E8M0FNU
+    %t8 = arith.truncf %f64_mid : f64 to f8E8M0FNU
+    %t9 = arith.truncf %f64_zero : f64 to f8E8M0FNU
+    %b0 = arith.bitcast %t0 : f8E8M0FNU to i8
+    %b1 = arith.bitcast %t1 : f8E8M0FNU to i8
+    %b2 = arith.bitcast %t2 : f8E8M0FNU to i8
+    %b3 = arith.bitcast %t3 : f8E8M0FNU to i8
+    %b4 = arith.bitcast %t4 : f8E8M0FNU to i8
+    %b5 = arith.bitcast %t5 : f8E8M0FNU to i8
+    %b6 = arith.bitcast %t6 : f8E8M0FNU to i8
+    %b7 = arith.bitcast %t7 : f8E8M0FNU to i8
+    %b8 = arith.bitcast %t8 : f8E8M0FNU to i8
+    %b9 = arith.bitcast %t9 : f8E8M0FNU to i8
+    return %b0, %b1, %b2, %b3, %b4, %b5, %b6, %b7, %b8, %b9 : i8, i8, i8, i8, i8, i8, i8, i8, i8, i8
+  }
+}
+
+// CHECK-LABEL: @e8m0_lowest_binade_constants
+// CHECK-DAG: %[[ZERO:.*]] = arith.constant 0 : i8
+// CHECK-DAG: %[[ONE:.*]] = arith.constant 1 : i8
+// CHECK-DAG: %[[F16_SUB:.*]] = arith.constant 105 : i8
+// CHECK-DAG: %[[NAN:.*]] = arith.constant -1 : i8
+// CHECK: return %[[ZERO]], %[[ZERO]], %[[ONE]], %[[NAN]], %[[NAN]], %[[F16_SUB]], %[[ZERO]], %[[ZERO]], %[[ONE]], %[[NAN]] : i8, i8, i8, i8, i8, i8, i8, i8, i8, i8
+
+// -----
+
+module {
   func.func @maximumf_f8(%arg0: f8E4M3FN, %arg1: f8E4M3FN) -> f8E4M3FN {
     %ret = arith.maximumf %arg0, %arg1 : f8E4M3FN
     return %ret : f8E4M3FN

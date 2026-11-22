@@ -50,6 +50,10 @@ CheckpointReader::CheckpointReader(const std::string& filename,
       return;
     }
     auto result = BuildV2VarMaps();
+    if (!v2_reader_->status().ok()) {
+      tsl::Set_TF_Status_from_Status(status, v2_reader_->status());
+      return;
+    }
     var_to_shape_map_.swap(result.first);
     var_to_data_type_map_.swap(result.second);
   } else {
@@ -66,6 +70,9 @@ CheckpointReader::CheckpointReader(const std::string& filename,
 }
 
 bool CheckpointReader::HasTensor(const std::string& name) const {
+  if (var_to_shape_map_ != nullptr) {
+    return var_to_shape_map_->find(name) != var_to_shape_map_->end();
+  }
   absl::MutexLock lock(reader_mu_);
   if (reader_ != nullptr) {
     return reader_->HasTensor(name, nullptr, nullptr);
@@ -123,6 +130,9 @@ CheckpointReader::BuildV2VarMaps() {
   absl::flat_hash_set<std::string> filtered_keys;
   BundleEntryProto entry;
   v2_reader_->Seek(kHeaderEntryKey);
+  if (!v2_reader_->status().ok()) {
+    return std::make_pair(nullptr, nullptr);
+  }
   for (v2_reader_->Next(); v2_reader_->Valid(); v2_reader_->Next()) {
     CHECK(entry.ParseFromString(v2_reader_->value()))
         << entry.InitializationErrorString();
@@ -135,6 +145,9 @@ CheckpointReader::BuildV2VarMaps() {
                 .second);
     }
   }
+  if (!v2_reader_->status().ok()) {
+    return std::make_pair(nullptr, nullptr);
+  }
 
   // Second pass: adds the entries, ignoring the filtered keys.
   std::unique_ptr<TensorSliceReader::VarToShapeMap> var_to_shape_map(
@@ -142,6 +155,9 @@ CheckpointReader::BuildV2VarMaps() {
   std::unique_ptr<TensorSliceReader::VarToDataTypeMap> var_to_data_type_map(
       new TensorSliceReader::VarToDataTypeMap);
   v2_reader_->Seek(kHeaderEntryKey);
+  if (!v2_reader_->status().ok()) {
+    return std::make_pair(nullptr, nullptr);
+  }
   for (v2_reader_->Next(); v2_reader_->Valid(); v2_reader_->Next()) {
     if (filtered_keys.count(v2_reader_->key()) > 0) continue;
     CHECK(entry.ParseFromString(v2_reader_->value()))
@@ -149,6 +165,9 @@ CheckpointReader::BuildV2VarMaps() {
     std::string key(v2_reader_->key());
     (*var_to_shape_map)[key] = TensorShape(entry.shape());
     (*var_to_data_type_map)[key] = DataType(entry.dtype());
+  }
+  if (!v2_reader_->status().ok()) {
+    return std::make_pair(nullptr, nullptr);
   }
   // The returned pointers are owned by the caller.
   return std::make_pair(std::move(var_to_shape_map),

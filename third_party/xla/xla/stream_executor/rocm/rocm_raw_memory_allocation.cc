@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_raw_memory_allocation.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 
@@ -26,32 +25,24 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
+#include "xla/stream_executor/rocm/rocm_vmm_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
 namespace stream_executor::gpu {
 
 absl::StatusOr<std::unique_ptr<RocmRawMemoryAllocation>>
-RocmRawMemoryAllocation::Create(StreamExecutor* executor, uint64_t size) {
+RocmRawMemoryAllocation::Create(StreamExecutor* executor, uint64_t size,
+                                const RocmVmmAllocator::Options& options) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-  hipDevice_t device;
-  ABSL_RETURN_IF_ERROR(ToStatus(hipDeviceGet(&device, executor->device_ordinal())));
+  ABSL_ASSIGN_OR_RETURN(RocmVmmAllocationParams params,
+                   GetRocmVmmAllocationParams(executor, options));
 
-  hipMemAllocationProp props = {};
-  props.type = hipMemAllocationTypePinned;
-  props.location.type = hipMemLocationTypeDevice;
-  props.location.id = device;
-  props.requestedHandleTypes = hipMemHandleTypeNone;
+  uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, params.granularity);
 
-  size_t granularity = 0;
-  ABSL_RETURN_IF_ERROR(ToStatus(hipMemGetAllocationGranularity(
-      &granularity, &props, hipMemAllocationGranularityRecommended)));
-
-  uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, granularity);
-
-  hipMemGenericAllocationHandle_t handle;
-  ABSL_RETURN_IF_ERROR(ToStatus(hipMemCreate(&handle, padded_size, &props, 0ULL)));
+  ABSL_ASSIGN_OR_RETURN(hipMemGenericAllocationHandle_t handle,
+                   CreateRocmVmmPhysicalAllocation(params.prop, padded_size));
 
   return std::unique_ptr<RocmRawMemoryAllocation>(
       new RocmRawMemoryAllocation(executor, handle, padded_size));

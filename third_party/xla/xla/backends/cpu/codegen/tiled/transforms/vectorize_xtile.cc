@@ -535,12 +535,6 @@ struct VectorizeDotGeneralOp
           op, "complex types are not supported by vector operations");
     }
 
-    mlir::Operation* add_op;
-    Value accumulator;
-    if (mlir::failed(GetFusedAddUnit(op, rewriter, add_op, accumulator))) {
-      return mlir::failure();
-    }
-
     auto lhs_vector =
         mlir::dyn_cast<mlir::TypedValue<mlir::VectorType>>(adaptor.getLhs());
     auto rhs_vector =
@@ -555,10 +549,19 @@ struct VectorizeDotGeneralOp
     mlir::VectorType result_vector_type = mlir::cast<mlir::VectorType>(
         this->getTypeConverter()->convertType(op.getType()));
 
-    Value acc_vector = accumulator;
-    if (acc_vector.getType() != result_vector_type) {
-      acc_vector = this->getTypeConverter()->materializeTargetConversion(
-          rewriter, op.getLoc(), result_vector_type, acc_vector);
+    mlir::Operation* add_op = nullptr;
+    mlir::Operation* replace_op = op;
+    Value acc_vector;
+    if (mlir::succeeded(GetFusedAddUnit(op, rewriter, add_op, acc_vector))) {
+      replace_op = add_op;
+      if (acc_vector.getType() != result_vector_type) {
+        acc_vector = this->getTypeConverter()->materializeTargetConversion(
+            rewriter, op.getLoc(), result_vector_type, acc_vector);
+      }
+    } else {
+      acc_vector =
+          ma::ConstantOp::create(rewriter, op.getLoc(), result_vector_type,
+                                 rewriter.getZeroAttr(result_vector_type));
     }
 
     mlir::stablehlo::DotDimensionNumbersAttr dimension_numbers =
@@ -594,13 +597,15 @@ struct VectorizeDotGeneralOp
     mlir::ArrayAttr iterator_types = GetIteratorTypes(
         rewriter, iterator_count, lhs_batch.size(), lhs_contracting.size());
 
-    rewriter.setInsertionPoint(add_op);
+    rewriter.setInsertionPoint(replace_op);
     mlir::Value result = mlir::vector::ContractionOp::create(
         rewriter, op->getLoc(), lhs_vector, rhs_vector, acc_vector,
         indexing_maps, iterator_types);
 
-    rewriter.replaceOp(add_op, result);
-    rewriter.eraseOp(op);
+    rewriter.replaceOp(replace_op, result);
+    if (replace_op != op) {
+      rewriter.eraseOp(op);
+    }
 
     return mlir::success();
   }
@@ -838,11 +843,12 @@ struct VectorizeReshapeOp : public mlir::OpConversionPattern<shlo::ReshapeOp> {
   }
 };
 
-struct VectorizeConstantOp : public mlir::OpConversionPattern<ma::ConstantOp> {
-  using OpConversionPattern::OpConversionPattern;
+template <typename ConstantOpType>
+struct VectorizeConstantOp : public mlir::OpConversionPattern<ConstantOpType> {
+  using mlir::OpConversionPattern<ConstantOpType>::OpConversionPattern;
 
   mlir::LogicalResult matchAndRewrite(
-      ma::ConstantOp op, OpAdaptor adaptor,
+      ConstantOpType op, typename ConstantOpType::Adaptor adaptor,
       mlir::ConversionPatternRewriter& rewriter) const override {
     auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(op.getType());
     if (!tensor_type) {
@@ -993,12 +999,12 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::ConcatenateOp,
-                        shlo::DotGeneralOp, shlo::IotaOp, shlo::ReduceOp,
-                        shlo::ReshapeOp, shlo::SliceOp, shlo::TransposeOp,
-                        mlir::tensor::BitcastOp, mlir::tensor::ExtractOp,
-                        mlir::tensor::FromElementsOp, xtile::ExtractTileOp,
-                        xtile::InsertTileOp, xtile::MaskOp>();
+    target.addIllegalOp<
+        shlo::BroadcastInDimOp, shlo::ConcatenateOp, shlo::ConstantOp,
+        shlo::DotGeneralOp, shlo::IotaOp, shlo::ReduceOp, shlo::ReshapeOp,
+        shlo::SliceOp, shlo::TransposeOp, mlir::tensor::BitcastOp,
+        mlir::tensor::ExtractOp, mlir::tensor::FromElementsOp,
+        xtile::ExtractTileOp, xtile::InsertTileOp, xtile::MaskOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalDialect<ma::ArithDialect, mm::MathDialect>(
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
@@ -1017,7 +1023,8 @@ class VectorizeXTilePass
       VectorizeReshapeOp,
       VectorizeSliceOp,
       VectorizeBroadcastInDimOp,
-      VectorizeConstantOp,
+      VectorizeConstantOp<ma::ConstantOp>,
+      VectorizeConstantOp<shlo::ConstantOp>,
       VectorizeFromElementsOp,
       VectorizeReduceOp,
       VectorizeTransposeOp
@@ -1057,6 +1064,7 @@ class VectorizeXTilePass
       mm::ExpM1Op,
       mm::ExpOp,
       mm::FloorOp,
+      mm::FmaOp,
       mm::IPowIOp,
       mm::IsFiniteOp,
       mm::Log1pOp, mm::Log2Op, mm::LogOp,

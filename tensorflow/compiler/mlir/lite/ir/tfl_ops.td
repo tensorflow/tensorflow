@@ -29,27 +29,56 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization.td"
-include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
-// TFLite dialect string type - uses the TF string type as implementation
+// TFLite element types. See tfl_types.h.
+//
+// The constraints accept both the TFLite types and the matching `tf_type` types
+// (matched by name, without depending on the `tf_type` dialect). The builders
+// build the TFLite types.
 //===----------------------------------------------------------------------===//
-def TFL_Str : Type<CPred<"llvm::isa<mlir::TF::StringType>($_self)">,
+
+// `!tfl.string` or `!tf_type.string`.
+def TFL_Str : Type<CPred<"::mlir::TFL::IsStringType($_self)">,
                   "TFLite string type">,
-             BuildableType<"getType<mlir::TF::StringType>()">;
+             BuildableType<"$_builder.getType<::mlir::TFL::StringType>()">;
 
-//===----------------------------------------------------------------------===//
-// TFLite dialect quint8 type - uses the TF quint8 type as implementation
-//===----------------------------------------------------------------------===//
-def TFL_Quint8 : Type<CPred<"llvm::isa<mlir::TF::Quint8Type>($_self)">,
+// `!tfl.quint8` or `!tf_type.quint8`.
+def TFL_Quint8 : Type<CPred<"::mlir::TFL::IsQuint8Type($_self)">,
                     "TFLite quint8 type">,
-              BuildableType<"getType<mlir::TF::Quint8Type>()">;
+              BuildableType<"$_builder.getType<::mlir::TFL::Quint8Type>()">;
+
+// `!tfl.resource` or `!tf_type.resource`, with or without subtypes.
+def TFL_Resource : Type<CPred<"::mlir::TFL::IsResourceType($_self)">,
+                        "resource">,
+                   BuildableType<"$_builder.getType<::mlir::TFL::ResourceType>()">;
 
 //===----------------------------------------------------------------------===//
 // Type that represents control dependencies
 //===----------------------------------------------------------------------===//
 def TFL_Control: Type<CPred<"llvm::isa<ControlType>($_self)">, "control">,
                  BuildableType<"$_builder.getType<ControlType>()">;
+
+//===----------------------------------------------------------------------===//
+// TFLite traits
+//===----------------------------------------------------------------------===//
+
+// Op has the same operand and result types after resolving reference types,
+// allowing compatible shapes (e.g. tensor<*xf32> and tensor<4xf32>). See
+// `mlir::OpTrait::TFL::SameOperandsAndResultTypeResolveRef`.
+def TFL_SameOperandsAndResultTypeResolveRef : TraitList<
+  InferTensorType.traits #
+  [
+    NativeOpTrait<"TFL::SameOperandsAndResultTypeResolveRef">
+  ]>;
+
+//===----------------------------------------------------------------------===//
+// Type that represents N-D blockwise quantized storage. See
+// `BlockwiseQuantType` in tfl_ops.h.
+//===----------------------------------------------------------------------===//
+def TFL_BlockwiseQuantType :
+    Type<CPred<"llvm::isa<mlir::TFL::BlockwiseQuantType>($_self)">,
+         "blockwise quantized type">;
 
 
 //===----------------------------------------------------------------------===//
@@ -134,7 +163,7 @@ def TFL_I32OrI64Tensor : TFL_TensorOf<[TFL_Int32Or64]>;
 def TFL_I32Tensor : TFL_TensorOf<[I32]>;
 def TFL_I64Tensor : TFL_TensorOf<[I64]>;
 def TFL_Complex64Tensor : TFL_TensorOf<[Complex<F<32>>]>;
-def TFL_ResourceTensor : TFL_TensorOf<[TF_Resource]>;
+def TFL_ResourceTensor : TFL_TensorOf<[TFL_Resource]>;
 
 // TODO(jpienaar): Expand to all int types.
 def TFL_IntTensor : TypeAlias<TFL_I32Tensor, "tensor of any integer type">;
@@ -289,20 +318,21 @@ class TFL_NumElementsTrait<int x, int n> :
   PredOpTrait<"operand " # x # " has num of elements equals to  " # n,
     TFL_NumElements<x, n>>;
 
-// tf.uint8 and tf.quint8 are mapped to the same tflite types, so they are equal
-// when used as element types.
+// uint8 and quint8 (and uint16 and quint16) are mapped to the same tflite
+// types, so they are equal when used as element types. quint<num> is
+// `!tfl.quint8` or `!tf_type.quint<num>`.
 class TFL_TFTypesWithSameBits<int i, int j, int num> :
   And<[
-    Or<[CPred<"llvm::isa<mlir::TF::Quint" # num # "Type>(getElementTypeOrSelf($_op.getResult(" # i # ")))">,
+    Or<[CPred<"::mlir::TFL::IsQuintType(getElementTypeOrSelf($_op.getResult(" # i # ")), " # num # ")">,
         CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isUnsignedInteger(" # num # ")">]>,
-    Or<[CPred<"llvm::isa<mlir::TF::Quint" # num # "Type>(getElementTypeOrSelf($_op.getOperand(" # j # ")))">,
+    Or<[CPred<"::mlir::TFL::IsQuintType(getElementTypeOrSelf($_op.getOperand(" # j # ")), " # num # ")">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
 class TFL_TFOperandTypesWithSameBits<int i, int j, int num> :
   And<[
-    Or<[CPred<"llvm::isa<mlir::TF::Quint" # num # "Type>(getElementTypeOrSelf($_op.getOperand(" # i # ")))">,
+    Or<[CPred<"::mlir::TFL::IsQuintType(getElementTypeOrSelf($_op.getOperand(" # i # ")), " # num # ")">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # i # ")).isUnsignedInteger(" # num # ")">]>,
-    Or<[CPred<"llvm::isa<mlir::TF::Quint" # num # "Type>(getElementTypeOrSelf($_op.getOperand(" # j # ")))">,
+    Or<[CPred<"::mlir::TFL::IsQuintType(getElementTypeOrSelf($_op.getOperand(" # j # ")), " # num # ")">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
 class TFL_OperandIsNoneOrHasRank<int n, int m> :
@@ -855,7 +885,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [
 
 def TFL_CeilOp: TFL_Op<"ceil", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Ceil operator";
 
   let description = [{
@@ -871,7 +901,7 @@ def TFL_CeilOp: TFL_Op<"ceil", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -1046,7 +1076,7 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
 
 def TFL_CosOp: TFL_Op<"cos", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Cosine operator";
 
   let description = [{
@@ -1062,7 +1092,7 @@ def TFL_CosOp: TFL_Op<"cos", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
 
   }];
@@ -1145,7 +1175,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, F16, QI8, QUI8, QI16, QUI16]>:$input,
-    TFL_TensorOf<[F32, F16, QI2, QI4, QI8, QUI8, QI16]>:$filter,
+    TFL_TensorOf<[F32, F16, QI2, QI4, QI8, QUI8, QI16, TFL_BlockwiseQuantType]>:$filter,
     TFL_TensorOfOrNone<[F32, F16, QI32, QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -1234,7 +1264,7 @@ in the batch dimensions and broadcasting.
 
   let arguments = (ins
     TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$x,
-    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$y,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8, TFL_BlockwiseQuantType]>:$y,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
     // Used in post-training dynamic range quantization. If the value is true,
@@ -1397,7 +1427,7 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
 
 def TFL_LocalResponseNormalizationOp : TFL_Op<"local_response_normalization", [
     TFL_OperandHasRank<0, 4>,
-    TF_SameOperandsAndResultTypeResolveRef,
+    TFL_SameOperandsAndResultTypeResolveRef,
     Pure]> {
   let summary = "Local Response Normalization.";
 
@@ -1432,7 +1462,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -1759,11 +1789,14 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let description = [{
     Looks up ids in a list of embedding tensors.
+
+    A `!tfl.blockwise_quant` table is dequantized row by row into a float
+    output.
   }];
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$lookup,
-    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4, QI2]>:$value
+    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4, QI2, TFL_BlockwiseQuantType]>:$value
    );
 
   let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);
@@ -1838,7 +1871,7 @@ def TFL_ExpOp: TFL_Op<"exp", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -1954,7 +1987,7 @@ def TFL_FillOp: TFL_Op<"fill", [
 
 def TFL_FloorOp: TFL_Op<"floor", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Floor operator";
 
   let description = [{
@@ -1970,7 +2003,7 @@ def TFL_FloorOp: TFL_Op<"floor", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -2045,8 +2078,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
-    TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
+    ins TFL_TensorOf<[F32, F16, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
+    TFL_TensorOf<[F32, F16, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -2274,9 +2307,9 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     Computes element-wise Sigmoid of input
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, F16, QI8, QUI8, QI16, TFL_Quint8]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$y);
+  let results = (outs TFL_TensorOf<[F32, F16, QI8, QUI8, QI16, TFL_Quint8]>:$y);
 
   let extraClassDeclaration = [{
   // FixedOutputRangeInterface:
@@ -2324,7 +2357,7 @@ def TFL_LogOp: TFL_Op<"log", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 
@@ -2464,6 +2497,8 @@ def TFL_MeanOp : TFL_Op<"mean", [
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+
+  let hasFolder = 1;
 }
 
 def TFL_OneHotOp : TFL_Op<"one_hot", [
@@ -2498,7 +2533,7 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [
 
 def TFL_RoundOp: TFL_Op<"round", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Round operator";
 
   let description = [{
@@ -2516,7 +2551,7 @@ Rounds the values of a tensor to the nearest integer, element-wise.
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -2753,7 +2788,7 @@ def TFL_MulOp : TFL_Op<"mul", [
 
 def TFL_NegOp: TFL_Op<"neg", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Negation operator";
 
   let description = [{
@@ -2771,7 +2806,7 @@ def TFL_NegOp: TFL_Op<"neg", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -3416,7 +3451,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
 
 def TFL_SinOp: TFL_Op<"sin", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Sine operator";
 
   let description = [{
@@ -3432,7 +3467,7 @@ def TFL_SinOp: TFL_Op<"sin", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -3476,6 +3511,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
         /*zero_point=*/bit_width == 8 ? -(1<<(bit_width-1)): 0);
   }
   }];
+
+  let hasFolder = 1;
 }
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
@@ -3506,14 +3543,14 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
 
 def TFL_SquareOp: TFL_Op<"square", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Square operator";
 
   let description = [{
@@ -3531,7 +3568,7 @@ def TFL_SquareOp: TFL_Op<"square", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -3596,6 +3633,8 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
   let results = (outs TFL_TensorOf<[F32, I32, QI8]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
+
+  let hasFolder = 1;
 
   let hasCustomAssemblyFormat = 1;
 
@@ -4014,6 +4053,8 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
   );
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
@@ -4043,6 +4084,8 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
   );
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_SparseToDenseOp : TFL_Op<"sparse_to_dense", [
@@ -4367,11 +4410,17 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
   let description = [{
     Converts quantized array of integers to floating-points according to the
     quantization parameters.
+
+    The input may also be blockwise quantized (`!tfl.blockwise_quant`), in
+    which case each block of the input is dequantized with its own scale and
+    zero point.
   }];
 
-  let arguments = (ins TFL_TensorOf<[QI2, QI4, QUI4, QI8, QUI8, QI16, F16, F8E4M3FN, F8E5M2]>:$input);
+  let arguments = (ins TFL_TensorOf<[QI2, QI4, QUI4, QI8, QUI8, QI16, F16, F8E4M3FN, F8E5M2, TFL_BlockwiseQuantType]>:$input);
 
-  let results = (outs TFL_FpTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, F16]>:$output);
+
+  let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "Value":$input),
@@ -4506,7 +4555,9 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
     ElementsAttr:$value
   );
 
-  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI4, QI16, QUI16, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI4, QI16, QUI16, TFL_Quint8, TFL_BlockwiseQuantType]>:$output);
+
+  let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "TypeAttr":$qtype, "Attribute":$value),
@@ -4563,7 +4614,7 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI4, QUI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, F16, QI4, QUI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
     TensorTypeAttr:$qtype
   );
 
@@ -5732,12 +5783,12 @@ subsequent operation and then be optimized away, however.)
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
+    TFL_TensorOf<[F32, F16, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
     TFL_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+    TFL_TensorOf<[F32, F16, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
   );
 
   let extraClassDeclaration = [{
@@ -5846,6 +5897,7 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
 
   let description = [{
     Performs convolution operation on 3D inputs.
+
     Inputs:
       `inputs[0]`: required: the input activation tensor
       `inputs[1]`: required: the filter weight tensor
@@ -5903,6 +5955,7 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
 
   let description = [{
     Performs transposed convolution operation on 3D inputs.
+
     Inputs:
       `inputs[0]`: required: the shape of output tensor
       `inputs[1]`: required: the filter weight tensor

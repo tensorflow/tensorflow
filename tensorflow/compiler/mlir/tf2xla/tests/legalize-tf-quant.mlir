@@ -137,6 +137,160 @@ func.func @uniform_quantized_convolution_hybrid_explicit(%input: tensor<1x2x2x3x
   func.return %0 : tensor<1x3x3x2xf32>
 }
 
+// -----
+
+// CHECK-LABEL: func @uniform_quantized_convolution_hybrid_same_missing_window_strides
+func.func @uniform_quantized_convolution_hybrid_same_missing_window_strides(%input: tensor<1x2x2x3xf32>) -> tensor<1x2x2x2xf32> {
+  %weight = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2032207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2032207D207D20696E745F76616C3A20313237"> : tensor<2x3x3x2x!tf_type.qint8>} : () -> tensor<2x3x3x2x!tf_type.qint8>
+  %weight_scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %weight_zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[CONST:.*]] = mhlo.constant()
+  // CHECK: mhlo.convolution(%arg0, %[[CONST]])
+  // CHECK-SAME{LITERAL}: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+  // CHECK-SAME{LITERAL}: window = {pad = [[1, 1], [2, 2]], lhs_dilate = [1, 1], rhs_dilate = [2, 2]}
+  // CHECK-SAME{LITERAL}: batch_group_count = 1 : i64, feature_group_count = 1 : i64
+  // CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x2x2x2xf32>
+
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%input, %weight, %weight_scales, %weight_zps) {
+    padding = "SAME",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = -1 : i64,
+    rhs_quantization_min_val = -128 : i64,
+    rhs_quantization_max_val = 127 : i64
+  } : (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1x2x2x2xf32>
+  func.return %0 : tensor<1x2x2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantized_convolution_hybrid_same_empty_rhs_dilation
+func.func @uniform_quantized_convolution_hybrid_same_empty_rhs_dilation(%input: tensor<1x2x2x3xf32>) -> tensor<1x2x1x2xf32> {
+  %weight = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2032207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2032207D207D20696E745F76616C3A20313237"> : tensor<2x3x3x2x!tf_type.qint8>} : () -> tensor<2x3x3x2x!tf_type.qint8>
+  %weight_scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %weight_zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[CONST:.*]] = mhlo.constant()
+  // CHECK: mhlo.convolution(%arg0, %[[CONST]])
+  // CHECK-SAME{LITERAL}: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+  // CHECK-SAME{LITERAL}: window = {stride = [1, 2], pad = [[0, 1], [0, 1]], lhs_dilate = [1, 1]}
+  // CHECK-SAME{LITERAL}: batch_group_count = 1 : i64, feature_group_count = 1 : i64
+  // CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x2x1x2xf32>
+
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%input, %weight, %weight_scales, %weight_zps) {
+    window_strides = [1, 2],
+    padding = "SAME",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = -1 : i64,
+    rhs_quantization_min_val = -128 : i64,
+    rhs_quantization_max_val = 127 : i64
+  } : (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1x2x1x2xf32>
+  func.return %0 : tensor<1x2x1x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantized_convolution_hybrid_same_stride_gt_lhs
+func.func @uniform_quantized_convolution_hybrid_same_stride_gt_lhs(%input: tensor<1x2x2x3xf32>) -> tensor<1x1x1x2xf32> {
+  %weight = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2032207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2032207D207D20696E745F76616C3A20313237"> : tensor<2x3x3x2x!tf_type.qint8>} : () -> tensor<2x3x3x2x!tf_type.qint8>
+  %weight_scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %weight_zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[CONST:.*]] = mhlo.constant()
+  // CHECK: mhlo.convolution(%arg0, %[[CONST]])
+  // CHECK-SAME{LITERAL}: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+  // CHECK-SAME{LITERAL}: window = {stride = [3, 3], pad = [[0, 0], [0, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+  // CHECK-SAME{LITERAL}: batch_group_count = 1 : i64, feature_group_count = 1 : i64
+  // CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x1x1x2xf32>
+
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%input, %weight, %weight_scales, %weight_zps) {
+    window_strides = [3, 3],
+    padding = "SAME",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [1, 1],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = -1 : i64,
+    rhs_quantization_min_val = -128 : i64,
+    rhs_quantization_max_val = 127 : i64
+  } : (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+}
+
+// -----
+
+// Dynamic spatial result dims prevent -canonicalize from folding the 0-element
+// convolution into mhlo.constant before FileCheck inspects the computed pad.
+// CHECK-LABEL: func @uniform_quantized_convolution_hybrid_same_zero_lhs_dim
+func.func @uniform_quantized_convolution_hybrid_same_zero_lhs_dim(%input: tensor<1x0x0x3xf32>) -> tensor<1x?x?x2xf32> {
+  %weight = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2032207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2032207D207D20696E745F76616C3A20313237"> : tensor<2x3x3x2x!tf_type.qint8>} : () -> tensor<2x3x3x2x!tf_type.qint8>
+  %weight_scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %weight_zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[CONST:.*]] = mhlo.constant()
+  // CHECK: mhlo.convolution(%arg0, %[[CONST]])
+  // CHECK-SAME{LITERAL}: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+  // CHECK-SAME{LITERAL}: window = {stride = [1, 4], pad = [[0, 1], [0, 0]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+  // CHECK-SAME{LITERAL}: batch_group_count = 1 : i64, feature_group_count = 1 : i64
+  // CHECK-SAME: (tensor<1x0x0x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x?x?x2xf32>
+
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%input, %weight, %weight_scales, %weight_zps) {
+    window_strides = [1, 4],
+    padding = "SAME",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [1, 1],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = -1 : i64,
+    rhs_quantization_min_val = -128 : i64,
+    rhs_quantization_max_val = 127 : i64
+  } : (tensor<1x0x0x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1x?x?x2xf32>
+  func.return %0 : tensor<1x?x?x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantized_convolution_hybrid_default_group_counts
+func.func @uniform_quantized_convolution_hybrid_default_group_counts(%input: tensor<1x2x2x3xf32>) -> tensor<1x3x3x2xf32> {
+  %weight = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2032207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2033207D2064696D207B2073697A653A2032207D207D20696E745F76616C3A20313237"> : tensor<2x3x3x2x!tf_type.qint8>} : () -> tensor<2x3x3x2x!tf_type.qint8>
+  %weight_scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %weight_zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[CONST:.*]] = mhlo.constant()
+  // CHECK: mhlo.convolution(%arg0, %[[CONST]])
+  // CHECK-SAME{LITERAL}: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+  // CHECK-SAME{LITERAL}: window = {stride = [1, 2], pad = [[1, 2], [3, 4]], lhs_dilate = [1, 1], rhs_dilate = [2, 2]}
+  // CHECK-SAME{LITERAL}: batch_group_count = 1 : i64, feature_group_count = 1 : i64
+  // CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x3x3x2xf32>
+
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%input, %weight, %weight_scales, %weight_zps) {
+    window_strides = [1, 2],
+    padding = "EXPLICIT",
+    explicit_padding = [1, 2, 3, 4],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = -1 : i64,
+    rhs_quantization_min_val = -128 : i64,
+    rhs_quantization_max_val = 127 : i64
+  } : (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1x3x3x2xf32>
+  func.return %0 : tensor<1x3x3x2xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // tf.UniformQuantize and tf.UniformDequantize legalization
 //===----------------------------------------------------------------------===//

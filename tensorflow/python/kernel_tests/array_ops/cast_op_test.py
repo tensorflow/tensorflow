@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for tensorflow.ops.tf.cast."""
 
+import platform
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -233,6 +235,45 @@ class SaturateCastTest(test.TestCase):
         x, y = self.evaluate([x, y])
         correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
         self.assertAllEqual(correct, y)
+
+  def testSaturateIntegerInputs(self):
+    int_types = [
+        dtypes.int8,
+        dtypes.int16,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.uint8,
+        dtypes.uint16,
+        dtypes.uint32,
+        dtypes.uint64,
+    ]
+    for in_type in int_types:
+      x_ = [in_type.min, in_type.min + 1, 0, 1, 5, in_type.max - 1, in_type.max]
+      x = constant_op.constant(x_, dtype=in_type)
+      for out_type in int_types:
+        if (
+            platform.system() == "Windows"
+            and in_type == dtypes.int64
+            and out_type == dtypes.uint32
+        ):
+          # Windows CI builds without AVX, and the pinned Eigen's SSE2 int64
+          # pmin and pmax compare the low 32 bits as signed, so ClipByValue is
+          # wrong for an upper limit of 2**32 - 1.
+          continue
+        y = self.evaluate(math_ops.saturate_cast(x, dtype=out_type))
+        self.assertEqual(y.dtype, out_type.as_numpy_dtype)
+        # Python integers compare exactly, whatever the two dtypes are.
+        expected = [min(max(v, out_type.min), out_type.max) for v in x_]
+        self.assertAllEqual(expected, y)
+      for out_type in [dtypes.float32, dtypes.float64, dtypes.bfloat16]:
+        y = self.evaluate(math_ops.saturate_cast(x, dtype=out_type))
+        self.assertAllEqual(self.evaluate(math_ops.cast(x, out_type)), y)
+      # float16 is the only float dtype narrower than some integer dtypes.
+      y = self.evaluate(math_ops.saturate_cast(x, dtype=dtypes.float16))
+      expected = np.array(
+          [min(max(v, -65504), 65504) for v in x_], dtype=np.float16
+      )
+      self.assertAllEqual(expected, y)
 
   def testSaturateRealToComplex(self):
     in_types = (dtypes.float32, dtypes.float64)

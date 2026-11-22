@@ -216,6 +216,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/delegates/ynnpack:ynnpack_delegate",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
     ],
     alwayslink = 1,

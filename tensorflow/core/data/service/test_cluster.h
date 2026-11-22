@@ -265,7 +265,7 @@ DatasetClient<T>::ReadFromTasks(const std::vector<TaskInfo>& tasks) {
       }
       all_workers_finished = false;
       result[task.worker_address()].push_back(
-          element_result->components[0].unaligned_flat<T>().data()[0]);
+          element_result->components[0].unaligned_flat<T>()(0));
     }
   }
   return result;

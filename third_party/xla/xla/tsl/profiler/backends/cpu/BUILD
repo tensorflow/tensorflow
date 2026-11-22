@@ -19,9 +19,6 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:traceme_global_flags",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:thread_annotations",
     ] + if_static([
         ":traceme_recorder_impl",
     ]),
@@ -69,11 +66,13 @@ tsl_cc_test(
         "//xla/tsl/profiler/utils:math_utils",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:time_utils_impl",
+        "//xla/tsl/profiler/utils:trace_filter_utils",
         "//xla/tsl/profiler/utils:traceme_global_flags",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
@@ -83,12 +82,11 @@ cc_library(
     hdrs = ["annotation_stack.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
+        "//xla:__subpackages__",
         "//xla/tsl/profiler:internal",
     ]),
     deps = [
-        "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ] + if_static([

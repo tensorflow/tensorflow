@@ -156,6 +156,10 @@ bool IsSpmdGenerated(const HloInstruction& instr);
 bool IsTritonCollectiveKernel(
     CollectiveBackendConfig::CollectiveKernelStrategy kernel_strategy);
 
+// Returns true if `instr` is a two-shot Triton all-gather instruction or a
+// custom fusion containing one.
+bool IsTritonTwoShotAllGather(const HloInstruction& instr);
+
 // Returns the set of HloOpcodes that should be fused.
 absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
     const DebugOptions& debug_options);

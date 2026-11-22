@@ -124,6 +124,30 @@ ENTRY main {
               xla::testing::opcode_matchers::Shape("s32[2,2]{1,0}"));
 }
 
+TEST_F(ConvolutionTypeCanonicalizerTest, DotGeneralBf16ToS32) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f8e4m3fn[2,10]{1,0} parameter(0)
+  p1 = f8e4m3fn[10,2]{1,0} parameter(1)
+  p2 = f8e8m0fnu[2,5]{1,0} parameter(2)
+  ROOT dot = s32[2,2]{1,0} dot-general(p0, p1, p2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, block_scaling_config={lhs={scale_idx=2}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConvolutionTypeCanonicalizer pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Convert(op::DotGeneral()));
+  EXPECT_THAT(root, xla::testing::opcode_matchers::Shape("s32[2,2]{1,0}"));
+  EXPECT_THAT(root->operand(0),
+              xla::testing::opcode_matchers::Shape("f32[2,2]{1,0}"));
+  EXPECT_EQ(root->operand(0)->block_scaling_config().lhs().scale_idx(), 2);
+}
+
 TEST_F(ConvolutionTypeCanonicalizerTest, NoChangeNeeded) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -139,6 +163,29 @@ ENTRY main {
   ConvolutionTypeCanonicalizer pass;
   ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(ConvolutionTypeCanonicalizerTest, DotF64ToS64UsesF64Intermediate) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f64[10,10]{1,0} parameter(0)
+  p1 = f64[10,10]{1,0} parameter(1)
+  ROOT dot = s64[10,10]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConvolutionTypeCanonicalizer pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::Convert(AllOf(
+                  op::Dot(op::Parameter(0), op::Parameter(1)),
+                  xla::testing::opcode_matchers::Shape("f64[10,10]{1,0}"))));
+  EXPECT_THAT(root, xla::testing::opcode_matchers::Shape("s64[10,10]{1,0}"));
 }
 
 }  // namespace

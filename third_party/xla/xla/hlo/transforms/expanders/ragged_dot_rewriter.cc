@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -39,14 +39,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -107,12 +112,21 @@ std::unique_ptr<HloInstruction> CreateCumulativeSum(
                                             zero, cumsum_window, add);
 }
 
+// Returns where `dim` of the original operand ends up once the group
+// dimension has been inserted at `new_dim_index`.
+int ShiftedDim(int dim, int new_dim_index) {
+  return dim >= new_dim_index ? dim + 1 : dim;
+}
+
 // Expands ragged_op by one dimension with each row in the new dimension
 // representing each group. It then zeros out the elements that don't belong to
 // that group.
+// `prefix_dims` holds the operand dimensions that the leading dimensions of
+// group_sizes range over, see GroupSizesPrefix.
 HloInstruction* RaggedToDense(HloInstruction* ragged_operand,
-                              HloInstruction* group_sizes, int new_dim_index,
-                              int ragged_dim) {
+                              HloInstruction* group_sizes,
+                              absl::Span<const int64_t> prefix_dims,
+                              int new_dim_index, int ragged_dim) {
   auto computation = ragged_operand->parent();
   HloInstruction* cumulative_sum =
       computation->AddInstruction(CreateCumulativeSum(group_sizes));
@@ -152,18 +166,23 @@ HloInstruction* RaggedToDense(HloInstruction* ragged_operand,
                         old_shape.dimensions().end());
   new_shape_dims.insert(new_shape_dims.begin() + new_dim_index, num_groups);
   auto new_shape_gs = ShapeUtil::MakeShape(group_type, new_shape_dims);
-  llvm::SmallVector<int64_t> broadcast_dims(
-      concat->shape().dimensions().size());
-  for (int i = 0; i < concat->shape().dimensions().size(); ++i) {
-    broadcast_dims[i] = i;
+  // group_sizes is either [prefix..., G] or a flat [G] shared by every prefix
+  // element.  Map its leading dimensions onto the operand's prefix dimensions
+  // and its group dimension onto the newly inserted one.
+  llvm::SmallVector<int64_t> broadcast_dims;
+  broadcast_dims.reserve(group_dim + 1);
+  for (int i = 0; i < group_dim; ++i) {
+    broadcast_dims.push_back(ShiftedDim(prefix_dims[i], new_dim_index));
   }
+  broadcast_dims.push_back(new_dim_index);
   auto broadcast = computation->AddInstruction(
       HloInstruction::CreateBroadcast(new_shape_gs, concat, broadcast_dims));
 
   auto iota = computation->AddInstruction(HloInstruction::CreateIota(
       ShapeUtil::MakeShape(group_type, {old_shape.dimensions(ragged_dim)}), 0));
-  auto broadcast_iota = computation->AddInstruction(
-      HloInstruction::CreateBroadcast(new_shape_gs, iota, {ragged_dim + 1}));
+  auto broadcast_iota =
+      computation->AddInstruction(HloInstruction::CreateBroadcast(
+          new_shape_gs, iota, {ShiftedDim(ragged_dim, new_dim_index)}));
 
   // Zero out the top if row < cum_group_size.
   auto new_shape_pred = ShapeUtil::MakeShape(PRED, new_shape_gs.dimensions());
@@ -245,6 +264,55 @@ RaggedDotMode GetRaggedDotMode(int lhs_ragged_dim,
   return RaggedDotMode::kRaggedNonContracting;
 }
 
+// group_sizes has shape [prefix..., G], or a flat [G] that every prefix
+// element shares.  The prefix ranges over the lhs batch dimensions followed by
+// the lhs dimensions of the same kind as the ragged one that precede it; see
+// ShapeInference::InferRaggedDotOpShape.  `lhs` holds those dimensions and
+// `rhs` the dimensions they are paired with, which only exist for the batch
+// and contracting dimensions the rhs shares with the lhs.
+struct GroupSizesPrefix {
+  llvm::SmallVector<int64_t> lhs;
+  llvm::SmallVector<int64_t> rhs;
+};
+
+GroupSizesPrefix GetGroupSizesPrefix(const DotDimensionNumbers& dot_dims,
+                                     int lhs_rank, int lhs_ragged_dim,
+                                     RaggedDotMode mode) {
+  GroupSizesPrefix prefix;
+  for (int i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
+    // A ragged batch dimension ends the prefix: the groups partition it, so
+    // the dimensions inner to it are not indexed by group_sizes.
+    if (dot_dims.lhs_batch_dimensions(i) == lhs_ragged_dim) {
+      break;
+    }
+    prefix.lhs.push_back(dot_dims.lhs_batch_dimensions(i));
+    prefix.rhs.push_back(dot_dims.rhs_batch_dimensions(i));
+  }
+  switch (mode) {
+    case RaggedDotMode::kRaggedBatch:
+      break;
+    case RaggedDotMode::kRaggedContracting:
+      for (int i = 0; i < dot_dims.lhs_contracting_dimensions_size(); ++i) {
+        if (dot_dims.lhs_contracting_dimensions(i) == lhs_ragged_dim) {
+          break;
+        }
+        prefix.lhs.push_back(dot_dims.lhs_contracting_dimensions(i));
+        prefix.rhs.push_back(dot_dims.rhs_contracting_dimensions(i));
+      }
+      break;
+    case RaggedDotMode::kRaggedNonContracting:
+      for (int dim = 0; dim < lhs_rank && dim != lhs_ragged_dim; ++dim) {
+        if (!absl::c_linear_search(dot_dims.lhs_contracting_dimensions(),
+                                   dim) &&
+            !absl::c_linear_search(dot_dims.lhs_batch_dimensions(), dim)) {
+          prefix.lhs.push_back(dim);
+        }
+      }
+      break;
+  }
+  return prefix;
+}
+
 int FindRhsRaggedDim(const DotDimensionNumbers& dot_dims, int lhs_ragged_dim) {
   const auto& lhs_contracting_dims = dot_dims.lhs_contracting_dimensions();
   int ragged_contracting_index =
@@ -258,10 +326,10 @@ DotDimensionNumbers CreateRaggedNonContractingDotDims(
   DotDimensionNumbers new_dims;
   new_dims.add_lhs_contracting_dimensions(new_dim_index);
   for (auto dim : old_dims.lhs_contracting_dimensions()) {
-    new_dims.add_lhs_contracting_dimensions(dim + 1);
+    new_dims.add_lhs_contracting_dimensions(ShiftedDim(dim, new_dim_index));
   }
   for (auto dim : old_dims.lhs_batch_dimensions()) {
-    new_dims.add_lhs_batch_dimensions(dim);
+    new_dims.add_lhs_batch_dimensions(ShiftedDim(dim, new_dim_index));
   }
   new_dims.add_rhs_contracting_dimensions(rhs_group_dim);
   for (auto dim : old_dims.rhs_contracting_dimensions()) {
@@ -306,11 +374,19 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> RaggedToGeneral(
   auto lhs = ragged_dot->mutable_operand(0);
   auto rhs = ragged_dot->mutable_operand(1);
   auto group_sizes = ragged_dot->mutable_operand(2);
-  int new_dim_index = group_sizes->shape().dimensions().size() - 1;
-  DotDimensionNumbers new_dot_dims;
 
   RaggedDotMode mode =
       GetRaggedDotMode(lhs_ragged_dim, ragged_dims.dot_dimension_numbers());
+  GroupSizesPrefix prefix = GetGroupSizesPrefix(
+      dot_dims, lhs->shape().dimensions().size(), lhs_ragged_dim, mode);
+  // The group dimension goes right after the dimensions group_sizes ranges
+  // over; the mode-specific dimension numbers below shift the operand
+  // dimensions it displaces.
+  const int new_dim_index = prefix.lhs.size();
+  const int group_sizes_rank = group_sizes->shape().dimensions().size();
+  TF_RET_CHECK(group_sizes_rank == 1 || group_sizes_rank == new_dim_index + 1);
+  DotDimensionNumbers new_dot_dims;
+
   switch (mode) {
     case RaggedDotMode::kRaggedNonContracting: {
       if (ragged_dims.rhs_group_dimensions().size() != 1) {
@@ -319,16 +395,19 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> RaggedToGeneral(
             "dimension is a non-contracting dimension");
       }
       int rhs_group_dim = ragged_dims.rhs_group_dimensions(0);
-      lhs = RaggedToDense(lhs, group_sizes, new_dim_index, lhs_ragged_dim);
+      lhs = RaggedToDense(lhs, group_sizes, prefix.lhs, new_dim_index,
+                          lhs_ragged_dim);
       new_dot_dims = CreateRaggedNonContractingDotDims(dot_dims, new_dim_index,
                                                        rhs_group_dim);
       break;
     }
     case RaggedDotMode::kRaggedContracting: {
-      lhs = RaggedToDense(lhs, group_sizes, new_dim_index, lhs_ragged_dim);
+      lhs = RaggedToDense(lhs, group_sizes, prefix.lhs, new_dim_index,
+                          lhs_ragged_dim);
       lhs = TransposeIndexToFront(lhs, new_dim_index);
       int rhs_ragged_dim = FindRhsRaggedDim(dot_dims, lhs_ragged_dim);
-      rhs = RaggedToDense(rhs, group_sizes, new_dim_index, rhs_ragged_dim);
+      rhs = RaggedToDense(rhs, group_sizes, prefix.rhs, new_dim_index,
+                          rhs_ragged_dim);
       rhs = TransposeIndexToFront(rhs, new_dim_index);
       new_dot_dims = CreateRaggedContractingDotDims(dot_dims);
       break;
@@ -343,99 +422,39 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> RaggedToGeneral(
                                    ragged_dot->precision_config());
 }
 
-bool IsFP16Operation(const HloInstruction* ragged_dot) {
-  return (ragged_dot->shape().element_type() == F16) &&
-         (ragged_dot->operand(0)->shape().element_type() == F16) &&
-         (ragged_dot->operand(1)->shape().element_type() == F16);
-}
-
-bool IsBF16Operation(const HloInstruction* ragged_dot) {
-  return (ragged_dot->shape().element_type() == BF16) &&
-         (ragged_dot->operand(0)->shape().element_type() == BF16) &&
-         (ragged_dot->operand(1)->shape().element_type() == BF16);
-}
-
-bool CanBeHandledByCuDNNFusion(
-    const HloInstruction* instruction,
-    stream_executor::dnn::VersionInfo cudnn_version) {
-  const HloRaggedDotInstruction* ragged_dot =
-      DynCast<HloRaggedDotInstruction>(instruction);
-  const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
-  if (ragged_dims.lhs_ragged_dimensions().size() != 1 ||
-      (ragged_dot->shape().element_type() != F16 &&
-       ragged_dot->shape().element_type() != BF16)) {
-    return false;
-  }
-  int lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
-  RaggedDotMode mode =
-      GetRaggedDotMode(lhs_ragged_dim, ragged_dims.dot_dimension_numbers());
-  if (mode == RaggedDotMode::kRaggedContracting) {
-    // Wgrad: needs cuDNN's moe_grouped_matmul_bwd, gated separately since it
-    // requires a newer cuDNN than the forward ragged-dot fusion.
-    return cudnn_version >= kMinCudnnVersionForRaggedDotWgradFusion;
-  }
-  return mode == RaggedDotMode::kRaggedNonContracting;
-}
-
-bool CanBeHandledByGpublasltGroupGemm(
-    const se::GpuComputeCapability& gpu_compute_capability,
-    const HloInstruction* instruction) {
-  // Currently only Hipblaslt supports GroupGemm.
-  // The current status of Hipblaslt support for GroupGemm is as follows:
-  // For MI300 targets (gfx942) : datatype supported FP16 and BF16
-  // For MI350/355 targets (gfx950) : datatype supported FP16 only
-
-  if (const auto* rocm_cc = gpu_compute_capability.rocm_compute_capability()) {
-    const std::string& gfx_version = rocm_cc->gfx_version();
-    VLOG(2) << "RaggedDotRewriter running on ROCm device: " << gfx_version;
-
-    if (gfx_version == "gfx942" &&
-        (IsFP16Operation(instruction) || IsBF16Operation(instruction))) {
-      return true;
-    }
-
-    if (gfx_version == "gfx950" && IsFP16Operation(instruction)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 }  // namespace
 
 absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  const bool has_grouped_gemm =
-      module->config()
-          .debug_options()
-          .xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
-      module->config().debug_options().xla_gpu_enable_cublaslt();
-  const se::CudaComputeCapability* cuda_cc =
-      gpu_compute_capability_.cuda_compute_capability();
-  const bool ragged_dot_fusion_enabled =
-      module->config()
-          .debug_options()
-          .xla_gpu_experimental_use_ragged_dot_fusion() &&
-      cudnn_version_ >= kMinCudnnVersionForRaggedDotFusion &&
-      cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
-
-  // Gather all Ragged Dot operations that need to be expanded into regular
-  // dots. Ragged-dots that can be lowered through Gpublaslt GroupGemm or
-  // cuDNN fusion are left as-is for those later passes to handle.
+  // Gather the ragged-dots that no backend claims; see SelectRaggedDotBackends
+  // for the priority order.  The ones left behind are rewritten later by
+  // GemmRewriter or RaggedDotFusionRewriter.
+  const DebugOptions& debug_options = module->config().debug_options();
   std::vector<HloRaggedDotInstruction*> ragged_dots;
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kRaggedDot) {
-        if (ragged_dot_fusion_enabled &&
-            CanBeHandledByCuDNNFusion(instruction, cudnn_version_)) {
-          continue;
+      if (instruction->opcode() != HloOpcode::kRaggedDot) {
+        continue;
+      }
+      absl::InlinedVector<gpu::RaggedDotBackend, 3> backends =
+          gpu::SelectRaggedDotBackends(*instruction, gpu_compute_capability_,
+                                       cudnn_version_, toolkit_version_,
+                                       debug_options);
+      if (!backends.empty() &&
+          backends.front() == gpu::RaggedDotBackend::kCuDnn) {
+        Decision decision =
+            is_supported_by_cudnn_fusion_ == nullptr
+                ? Decision::Forbid("no cuDNN ragged-dot support callback")
+                : is_supported_by_cudnn_fusion_(instruction);
+        if (!decision.IsAllowed()) {
+          VLOG(3) << "Not using cuDNN fusion for " << instruction->name()
+                  << ": " << decision.Explain();
+          backends.erase(backends.begin());
         }
-        if (has_grouped_gemm && CanBeHandledByGpublasltGroupGemm(
-                                    gpu_compute_capability_, instruction)) {
-          continue;
-        }
+      }
+      if (backends.empty()) {
         ragged_dots.push_back(Cast<HloRaggedDotInstruction>(instruction));
       }
     }

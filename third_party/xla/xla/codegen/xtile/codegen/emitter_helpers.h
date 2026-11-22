@@ -37,6 +37,8 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -99,14 +101,16 @@ class EmitterContext {
                  const HloFusionInstruction* fusion, mlir::Value pid,
                  mlir::Value tid, gpu::Schedule schedule,
                  xtile::EntryFuncOp entry_func,
-                 const gpu::TiledHloComputation& tiled_computation)
+                 const gpu::TiledHloComputation& tiled_computation,
+                 bool is_cpu = false)
       : b_(b),
         pid_(pid),
         tid_(tid),
         schedule_(std::move(schedule)),
         fusion_(fusion),
         entry_func_(entry_func),
-        tiled_computation_(tiled_computation) {}
+        tiled_computation_(tiled_computation),
+        is_cpu_(is_cpu) {}
 
   mlir::ImplicitLocOpBuilder& b() { return b_; }
   mlir::Value pid() const { return pid_; }
@@ -116,6 +120,7 @@ class EmitterContext {
   const gpu::TiledHloComputation& tiled_computation() const {
     return tiled_computation_;
   }
+  bool is_cpu() const { return is_cpu_; }
 
   // Returns the single result of `tiled_hlo`. Multi-result instructions (e.g.
   // variadic collectives) must be addressed with an explicit result index.
@@ -155,7 +160,7 @@ class EmitterContext {
   }
 
   std::pair<mlir::Value, Interval> GetSequentialDimValue(
-      gpu::experimental::TiledDimId sequential_dim_id) const {
+      gpu::TiledDimId sequential_dim_id) const {
     auto it = sequential_dim_id_to_value_.find(sequential_dim_id);
     QCHECK(it != sequential_dim_id_to_value_.end())
         << "Sequential dim id " << sequential_dim_id
@@ -166,9 +171,8 @@ class EmitterContext {
   // Maps `sequential_dim_id` to `value` until the returned object is destroyed.
   // Returns an error if the dimension is already mapped.
   absl::StatusOr<ScopedSequentialDimBinding>
-  MapSymbolIdToSequentialDimValueScoped(
-      gpu::experimental::TiledDimId sequential_dim_id, mlir::Value value,
-      Interval interval) {
+  MapSymbolIdToSequentialDimValueScoped(gpu::TiledDimId sequential_dim_id,
+                                        mlir::Value value, Interval interval) {
     if (!sequential_dim_id_to_value_
              .try_emplace(sequential_dim_id, value, interval)
              .second) {
@@ -181,7 +185,8 @@ class EmitterContext {
 
   // Evaluates tiling parameters for the given affine expressions, e.g. offsets.
   absl::StatusOr<mlir::SmallVector<mlir::Value>> EvaluateTilingParameters(
-      mlir::ArrayRef<SymbolicExpr> exprs);
+      mlir::ArrayRef<SymbolicExpr> exprs,
+      mlir::ArrayRef<std::pair<SymbolicExpr, Interval>> tile_constraints = {});
 
   // A tiled scan leaves its `scf.for` over the scan dimension open, so that
   // the epilogue and the writes of the output tiles are emitted inside the
@@ -212,6 +217,7 @@ class EmitterContext {
   const HloFusionInstruction* fusion_ = nullptr;
   xtile::EntryFuncOp entry_func_;
   const gpu::TiledHloComputation& tiled_computation_;
+  bool is_cpu_ = false;
   SequentialDimValueMap sequential_dim_id_to_value_;
   std::optional<ScopedSequentialDimBinding> open_scan_binding_;
   mlir::scf::ForOp open_scan_loop_;
@@ -247,18 +253,7 @@ class TileInfo {
     return minor_to_major_layout_;
   }
 
-  // The replica id offsets if the tensor has a replica dimension.
-  llvm::ArrayRef<mlir::Value> replica_id_offsets() const {
-    return replica_id_offsets_;
-  }
-
-  // The replica id bounds if the tensor has a replica dimension.
-  llvm::ArrayRef<mlir::Value> replica_id_bounds() const {
-    return replica_id_bounds_;
-  }
-
-  // The storage type of the tensor. This could be different from the element
-  // type. e.g. predicates are stored as i8 instead of i1.
+  // Element type of the tensor in XTile SSA tiles.
   mlir::Type storage_type() const { return storage_type_; }
 
  private:
@@ -268,26 +263,19 @@ class TileInfo {
   llvm::SmallVector<int64_t> padded_tile_sizes_;
   llvm::SmallVector<int64_t> minor_to_major_layout_;
   mlir::Type storage_type_;
-  llvm::SmallVector<mlir::Value> replica_id_offsets_;
-  llvm::SmallVector<mlir::Value> replica_id_bounds_;
 
-  TileInfo(llvm::SmallVector<mlir::Value> offsets,             //
-           llvm::SmallVector<int64_t> tile_strides,            //
-           llvm::SmallVector<int64_t> storage_shape,           //
-           llvm::SmallVector<int64_t> padded_tile_sizes,       //
-           llvm::SmallVector<int64_t> minor_to_major_layout,   //
-           mlir::Type storage_type,                            //
-           llvm::SmallVector<mlir::Value> replica_id_offsets,  //
-           llvm::SmallVector<mlir::Value> replica_id_bounds    //
-           )
+  TileInfo(llvm::SmallVector<mlir::Value> offsets,            //
+           llvm::SmallVector<int64_t> tile_strides,           //
+           llvm::SmallVector<int64_t> storage_shape,          //
+           llvm::SmallVector<int64_t> padded_tile_sizes,      //
+           llvm::SmallVector<int64_t> minor_to_major_layout,  //
+           mlir::Type storage_type)
       : offsets_(std::move(offsets)),
         tile_strides_(std::move(tile_strides)),
         storage_shape_(std::move(storage_shape)),
         padded_tile_sizes_(std::move(padded_tile_sizes)),
         minor_to_major_layout_(std::move(minor_to_major_layout)),
-        storage_type_(std::move(storage_type)),
-        replica_id_offsets_(std::move(replica_id_offsets)),
-        replica_id_bounds_(std::move(replica_id_bounds)) {}
+        storage_type_(std::move(storage_type)) {}
 };
 
 // Triton requires that all block dimensions are a power of 2.
@@ -305,8 +293,35 @@ absl::StatusOr<mlir::Type> PrimitiveTypeToMlirType(
 // MLIR type -> XLA type conversions.
 absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
 
+// Element type used for `t` in XTile SSA tiles.
 mlir::Type StorageType(mlir::Type t);
+
+// Byte-addressable element type used for `elem_type` in memory.
+mlir::Type MemoryStorageType(mlir::Type elem_type);
+
+bool IsI1MemRef(mlir::Type type);
+bool HasUnlegalizedI1Storage(mlir::Operation* op);
+
+// Converts `storage_value` from its `MemoryStorageType` representation to
+// `logical_elem_type`.
+TensorValue UnpackFromMemoryStorage(mlir::OpBuilder& b, mlir::Location loc,
+                                    TensorValue storage_value,
+                                    mlir::Type logical_elem_type);
+
+// Converts `logical_value` to its `MemoryStorageType` representation.
+TensorValue PackToMemoryStorage(mlir::OpBuilder& b, mlir::Location loc,
+                                TensorValue logical_value);
+
 mlir::Type GetSignlessType(mlir::Type t);
+
+// Returns whether the scan `combiner` computes a running sum: it has two
+// parameters `p0` and `p1` of the output element type, and its root is
+// `tuple(x, x)`, where `x` is `add(p0, p1)` or, as produced by
+// FloatNormalization, `convert(add(convert(p0), convert(p1)))`, with the add
+// operands in either order. Both tuple elements must be the same instruction
+// because `LowerScan` (xtile_lower_to_triton.cc) derives the carry from the
+// output.
+bool IsAdditiveScanCombiner(const HloComputation& combiner);
 
 // Triton tt.dot_scaled takes scale operands only for low-precision lhs/rhs
 // value dtypes that it interprets through a dot-scaled element-type attribute.
@@ -521,24 +536,49 @@ absl::StatusOr<mlir::Type> GetMlirType(
     mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
     const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
 
-// Visitor to determine tile based requirements while iterating over the fusion
-// instructions.
-struct DefaultTileRequirementsVisitor {
-  DefaultTileRequirementsVisitor() = default;
-  virtual ~DefaultTileRequirementsVisitor() = default;
-  virtual absl::StatusOr<llvm::SmallVector<int64_t>> RequiredReplicaIdBounds(
-      const HloInstruction& instr) const {
-    return llvm::SmallVector<int64_t>();
-  }
+// Per-peer output buffer indexing info for a root HLO instruction.
+//
+// Example:
+//   ag = f32[4,32] all-gather(p0 /*f32[4,8]*/), dimensions={1},
+//     replica_groups={{0,1,2,3},{4,5,6,7}}
+//   ROOT out = f32[4,32] negate(ag)
+//
+//   Tiling space for out: d0 (axis 0), d1 (axis 1), d2 (kReplica, size 4).
+//   Result for out: {collective_dim=1, replica_dim_id=d2, world_size=4}.
+//   Note: collective_dim is the axis in out's shape (where xtile.insert
+//   writes), which matches dimensions={1} through elementwise/GTE ops.
+//   Rank r in its group writes columns [r*8, r*8+8) of axis 1 into every
+//   peer's buffer (peer p = d2).
+struct RootPeerBufferInfo {
+  // Axis of root_hlo.shape() split across ranks (e.g. the gather dimension).
+  int64_t collective_dim;
+  // kReplica tiled dimension; its value selects the peer's output buffer.
+  gpu::TiledDimId replica_dim_id;
+  // Number of peers in one replica group (not the total device count).
+  int64_t world_size;
 };
 
-// Function to get the MLIR types from a HloFusionInstruction.
+// Returns per-peer output buffer info if `root_hlo` has a dimension with
+// `PeerIndexing::kPerPeerBuffer` in `tiling_space`.
+std::optional<RootPeerBufferInfo> GetRootPeerBufferInfo(
+    const gpu::TilingSpace& tiling_space, const HloInstruction& root_hlo);
+
+// Collective signature configuration for `xtile::EntryFuncOp`.
+struct CollectiveEntrySpec {
+  // Per-leaf-result mask: true when the result argument is a peer pointer
+  // table (`memref<world_size x i64>`) rather than a local tensor memref.
+  llvm::SmallVector<bool> peer_table_results;
+  int32_t num_scratch_buffers = 0;
+  bool has_signal_and_rank = false;
+  int64_t world_size = 0;
+};
+
+// Returns the I/O memref argument types (`[inputs..., outputs...]`) for
+// `fusion`.
 absl::StatusOr<llvm::SmallVector<mlir::Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
-    absl::Span<mlir::Type> opaque_args_types,
-    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc,
-    const DefaultTileRequirementsVisitor& tile_requirements_visitor =
-        DefaultTileRequirementsVisitor());
+    const CollectiveEntrySpec& collective_spec,
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
 
 // Function to check if the operands of a concatenation are valid for tiling.
 absl::Status CheckConcatenateOperands(

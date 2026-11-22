@@ -18,6 +18,25 @@
 // Verify the generic form can be parsed.
 // RUN: emitters_opt %s --split-input-file --mlir-print-op-generic | emitters_opt --split-input-file | FileCheck %s
 
+func.func @atomic_store(%in: tensor<2x3xf32>, %val: f32, %i: index, %j: index)
+    -> tensor<2x3xf32> {
+  %ret = xla.atomic_store %val into %in[%i, %j] : tensor<2x3xf32>
+  return %ret : tensor<2x3xf32>
+}
+// CHECK-LABEL: @atomic_store
+// CHECK: xla.atomic_store %{{.*}} into %{{.*}}[%{{.*}}, %{{.*}}] : tensor<2x3xf32>
+
+// -----
+
+func.func @atomic_store_0d(%in: tensor<f32>, %val: f32) -> tensor<f32> {
+  %ret = xla.atomic_store %val into %in[] : tensor<f32>
+  return %ret : tensor<f32>
+}
+// CHECK-LABEL: @atomic_store_0d
+// CHECK: xla.atomic_store %{{.*}} into %{{.*}}[] : tensor<f32>
+
+// -----
+
 func.func @atomic_rmw(%in: tensor<2x3xf32>, %i: index, %j: index)
     -> (tensor<2x3xf32>) {
   %ret = xla.atomic_rmw %in[%i, %j] : tensor<2x3xf32> {
@@ -214,3 +233,41 @@ func.func @get_dynamic_dim_size(%in: tensor<16x8x4xf32>) -> (i32) {
 }
 // CHECK-LABEL: @get_dynamic_dim_size
 // CHECK: xla.get_dynamic_dim_size
+
+// -----
+
+func.func @copy_slice(%src: tensor<4x3xf32>, %dst: tensor<4x5xf32>,
+                      %i: index, %j: index) -> tensor<4x5xf32> {
+  %out = xla.copy_slice %src[%i, %j] into %dst[%i, %j] count(3)
+      : tensor<4x3xf32> into tensor<4x5xf32>
+  func.return %out : tensor<4x5xf32>
+}
+// CHECK-LABEL: @copy_slice
+// CHECK: xla.copy_slice %{{.*}}[%{{.*}}, %{{.*}}] into %{{.*}}[%{{.*}}, %{{.*}}] count(3) : tensor<4x3xf32> into tensor<4x5xf32>
+
+// -----
+
+func.func @linear_extract(%src: tensor<4x3xf32>, %idx: index) -> f32 {
+  %out = xla.linear_extract %src[%idx] : tensor<4x3xf32>
+  func.return %out : f32
+}
+// CHECK-LABEL: @linear_extract
+// CHECK: xla.linear_extract %{{.*}}[%{{.*}}] : tensor<4x3xf32>
+
+// -----
+
+func.func @linear_insert(%val: f32, %dst: tensor<4x3xf32>, %idx: index) -> tensor<4x3xf32> {
+  %out = xla.linear_insert %val into %dst[%idx] : tensor<4x3xf32>
+  func.return %out : tensor<4x3xf32>
+}
+// CHECK-LABEL: @linear_insert
+// CHECK: xla.linear_insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<4x3xf32>
+
+// -----
+
+func.func @set_dynamic_dim_size(%in: tensor<16x8x4xf32>, %size: i32) -> tensor<16x8x4xf32> {
+  %out = xla.set_dynamic_dim_size %size into %in[1] : tensor<16x8x4xf32>
+  func.return %out : tensor<16x8x4xf32>
+}
+// CHECK-LABEL: @set_dynamic_dim_size
+// CHECK: xla.set_dynamic_dim_size %{{.*}} into %{{.*}}[1] : tensor<16x8x4xf32>

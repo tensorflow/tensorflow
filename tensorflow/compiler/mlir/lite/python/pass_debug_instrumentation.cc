@@ -36,7 +36,7 @@ limitations under the License.
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/python/conversion_failure_reporter.h"
-#include "xla/tsl/platform/env.h"
+#include "tensorflow/compiler/mlir/lite/utils/file_utils.h"
 
 namespace mlir::TFL {
 
@@ -75,7 +75,7 @@ void PassDebugInstrumentation::DumpIrToFile(mlir::Pass* pass,
                                             llvm::StringRef suffix) {
   if (!op) return;
   std::string dumps_dir = absl::StrCat(debug_dir_, "/ir_dumps");
-  if (!tsl::Env::Default()->RecursivelyCreateDir(dumps_dir).ok()) return;
+  if (!CreateDirectories(dumps_dir).ok()) return;
   std::string func_name;
   if (auto sym_attr = op->getAttrOfType<mlir::StringAttr>("sym_name")) {
     func_name =
@@ -96,7 +96,7 @@ void PassDebugInstrumentation::DumpIrToFile(mlir::Pass* pass,
     flags.elideLargeResourceString(elide_resource_strings_larger_than_);
   }
   op->print(os, flags);
-  (void)tsl::WriteStringToFile(tsl::Env::Default(), filename, ir_str);
+  (void)WriteStringToFile(filename, ir_str);
 
   mlir::ModuleOp module_op = mlir::dyn_cast<mlir::ModuleOp>(op);
   if (!module_op) {
@@ -109,7 +109,7 @@ void PassDebugInstrumentation::DumpIrToFile(mlir::Pass* pass,
     std::string bc_str;
     llvm::raw_string_ostream bc_os(bc_str);
     if (mlir::succeeded(mlir::writeBytecodeToFile(module_op, bc_os))) {
-      (void)tsl::WriteStringToFile(tsl::Env::Default(), bc_filename, bc_str);
+      (void)WriteStringToFile(bc_filename, bc_str);
     }
   }
 }

@@ -17,10 +17,16 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:xla.default.bzl", "xla_cc_binary")
-load("//xla/tests:build_defs.bzl", "xla_py_test", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
+load(
+    "//xla/tests:build_defs.bzl",
+    "AMD_GPU_ANY_BACKEND",
+    "NVIDIA_GPU_ANY_BACKEND",
+    "xla_py_test",
+    "xla_test",
+)
+load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
-load("//xla/tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
+load("//xla/tsl/platform:build_config_root.bzl", "tf_exec_properties", "tf_gpu_tests_tags")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -229,6 +235,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/runtime:device_id",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
         "//xla/service:device_assignment",
@@ -279,11 +286,15 @@ xla_test(
             "multi_gpu",
             "nomsan",
         ],
-        "nvgpu_any": [
-            "broken",
-            "no_oss",
-        ],
-    },
+    } | if_oss(
+        {
+            NVIDIA_GPU_ANY_BACKEND: [
+                "broken",
+                "no_oss",
+            ],
+        },
+        {},
+    ),
     backends = [
         "cpu",
         "gpu",
@@ -295,10 +306,12 @@ xla_test(
         ":create_client",
         ":functional_hlo_runner",
         ":hlo_input_output_format",
+        ":hlo_runner_profiler",
         ":profiler_interface",
         "//xla:debug_options_flags",
         "//xla:future",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -307,16 +320,24 @@ xla_test(
         "//xla/client:executable_build_options",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:mock_pjrt_client",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:scoped_async_tracking_event",
+        "//xla/pjrt/distributed:in_memory_key_value_store",
+        "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/runtime:chip_id",
+        "//xla/runtime:device_id",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_proto_cc",
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
@@ -325,12 +346,12 @@ xla_test(
         "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:subprocess",
         "//xla/tsl/platform:test",
         "//xla/tsl/testing:temporary_directory",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -387,15 +408,19 @@ xla_test(
             "nomsan",
             "requires-gpu-sm80-only",
         ],
-        "nvgpu_any": [
+        AMD_GPU_ANY_BACKEND: [
             "broken",
             "no_oss",
         ],
-        "amdgpu_any": [
-            "broken",
-            "no_oss",
-        ],
-    },
+    } | if_oss(
+        {
+            NVIDIA_GPU_ANY_BACKEND: [
+                "broken",
+                "no_oss",
+            ],
+        },
+        {},
+    ),
     backends = [
         "cpu",
         "gpu",
@@ -490,4 +515,41 @@ xla_py_test(
         "@absl_py//absl/testing:absltest",
         "@transformer_engine//:transformer_engine_jax",  # buildcleaner: keep
     ],
+)
+
+tsl_pybind_extension(
+    name = "python_hlo_runner_ffi_test_lib",
+    testonly = True,
+    srcs = ["python_hlo_runner_ffi_test_lib.cc"],
+    deps = [
+        "//xla/ffi/api:ffi",
+        "//xla/ffi/api:record_ffi",
+        "@nanobind",
+    ],
+)
+
+_FFI_TEST_DEPS = [
+    ":py_hlo_multihost_runner",
+    ":python_hlo_runner_ffi_test_lib",
+    "@absl_py//absl/flags",
+    "@absl_py//absl/testing:absltest",
+    "@absl_py//absl/testing:parameterized",
+]
+
+xla_py_test(
+    name = "python_hlo_runner_ffi_test",
+    srcs = ["python_hlo_runner_ffi_test.py"],
+    tags = ["cpu"],
+    deps = _FFI_TEST_DEPS,
+)
+
+xla_py_test(
+    name = "python_hlo_runner_ffi_gpu_test",
+    srcs = ["python_hlo_runner_ffi_test.py"],
+    args = ["--device=gpu"],
+    env = {"XLA_FLAGS": "--xla_gpu_graph_min_graph_size=1 --xla_gpu_enable_command_buffer=CUSTOM_CALL"},
+    exec_properties = tf_exec_properties({"tags": tf_gpu_tests_tags()}),
+    main = "python_hlo_runner_ffi_test.py",
+    tags = ["cuda-only"] + tf_gpu_tests_tags(),
+    deps = _FFI_TEST_DEPS,
 )

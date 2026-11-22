@@ -181,8 +181,9 @@ absl::Status RunHloBenchmarkImpl(benchmark::State* absl_nullable state,
   std::unique_ptr<PjRtLoadedExecutable> executable;
   if (benchmark_options.aot_options) {
     ABSL_ASSIGN_OR_RETURN(auto* topology, client->GetTopologyDescription());
-    auto* cpu_raw_client = absl::down_cast<PjRtCpuRawClient*>(
-        absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+    auto* cpu_raw_client = absl::down_cast<CommonPjRtClient*>(client.get())
+                               ->raw_client()
+                               ->down_cast<PjRtCpuRawClient>();
     ABSL_ASSIGN_OR_RETURN(
         auto pjrt_executable,
         cpu_raw_client->CompileAheadOfTime(
@@ -359,6 +360,9 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
     compile_options.executable_build_options.mutable_debug_options()
         ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
   }
+  // Disable HLO module upload for benchmarks.
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_enable_hlo_modules_upload(false);
 
   for (auto _ : state) {
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,

@@ -126,7 +126,15 @@ absl::Status CreateFunction(id<MTLDevice> device, const std::string& code,
   MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
 
   // Runtime checks for the iOS version independently of minimum target iOS.
-  if (@available(macOS 11.0, iOS 14.0, tvOS 14.0, *)) {
+  if (@available(macOS 15.0, iOS 18.0, tvOS 18.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion3_2];
+  } else if (@available(macOS 14.0, iOS 17.0, tvOS 17.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion3_1];
+  } else if (@available(macOS 13.0, iOS 16.0, tvOS 16.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion3_0];
+  } else if (@available(macOS 12.0, iOS 15.0, tvOS 15.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion2_4];
+  } else if (@available(macOS 11.0, iOS 14.0, tvOS 14.0, *)) {
     [options setLanguageVersion:MTLLanguageVersion2_3];
   } else if (@available(macOS 10.15, iOS 13.0, tvOS 13.0, *)) {
     [options setLanguageVersion:MTLLanguageVersion2_2];
@@ -169,7 +177,12 @@ absl::Status CreateFunction(id<MTLDevice> device, const std::string& code,
                                               encoding:[NSString defaultCStringEncoding]]];
   }
 
-  [options setFastMathEnabled:YES];
+  if (@available(macOS 15.0, iOS 18.0, tvOS 18.0, *)) {
+    [options setMathMode:MTLMathModeFast];
+    [options setMathFloatingPointFunctions:MTLMathFloatingPointFunctionsFast];
+  } else {
+    [options setFastMathEnabled:YES];
+  }
   [options setPreprocessorMacros:macros_dict];
   NSError* error = nil;
   NSString* code_ns = [NSString stringWithCString:code.c_str()

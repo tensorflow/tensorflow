@@ -187,7 +187,7 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
 
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type) {
+    SymmetricMemoryType symmetric_memory_type) {
   int64_t group_size = instr->GetModule()->config().replica_count();
   if (!instr->replica_groups().empty() &&
       instr->replica_groups()[0].replica_ids_size() > 0) {
@@ -205,7 +205,7 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
   codegen_config.copy_input_to_scratch = false;
   codegen_config.sync_count_increment = 1u;
   // Argument layout (must match the Triton entry function): inputs, outputs,
-  // rank, invocation count, signal flags, one remote scratch table per operand.
+  // one remote scratch table per operand, signal flags, rank.
   for (int32_t i = 0; i < num_operands; ++i) {
     codegen_config.input_buffer_specs.push_back(
         {/*requires_multimem=*/false, SymmetricMemoryType::kNone});
@@ -218,32 +218,29 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     codegen_config.argument_descriptors.push_back(
         {KernelArgType::kOutputBuffer, /*index=*/i});
   }
-  codegen_config.argument_descriptors.push_back({KernelArgType::kRuntimeRank});
-  codegen_config.argument_descriptors.push_back(
-      {KernelArgType::kInvocationCount});
-  // Signal buffers.
-  codegen_config.argument_descriptors.push_back(
-      {KernelArgType::kScratchBuffer, /*index=*/0});
   kernel_spec.scratch_buffers.push_back({signal_size,
                                          /*requires_multimem=*/false,
-                                         scratch_memory_type,
+                                         symmetric_memory_type,
                                          /*should_memzero=*/true,
                                          /*should_double_buffer=*/true});
-  // One symmetric scratch buffer per operand that holds one rank's slice
-  // (= input size). Double-buffering is handled by the should_double_buffer
+  // One symmetric scratch buffer per operand that holds all ranks' slices
+  // (= output size). Double-buffering is handled by the should_double_buffer
   // flag.
   for (int32_t i = 0; i < num_operands; ++i) {
-    const int64_t remote_size = xla::RoundUpTo<uint64_t>(
-        ShapeUtil::ByteSizeOf(instr->operand(i)->shape()),
+    const int64_t output_size = xla::RoundUpTo<uint64_t>(
+        ShapeUtil::ByteSizeOf(instr->operand(i)->shape()) * group_size,
         kXlaAllocatedBufferAlignBytes);
     codegen_config.argument_descriptors.push_back(
         {KernelArgType::kScratchBuffer, /*index=*/1 + i});
-    kernel_spec.scratch_buffers.push_back({remote_size,
+    kernel_spec.scratch_buffers.push_back({output_size,
                                            /*requires_multimem=*/false,
-                                           scratch_memory_type,
+                                           symmetric_memory_type,
                                            /*should_memzero=*/false,
                                            /*should_double_buffer=*/true});
   }
+  codegen_config.argument_descriptors.push_back(
+      {KernelArgType::kScratchBuffer, /*index=*/0});
+  codegen_config.argument_descriptors.push_back({KernelArgType::kRuntimeRank});
   return kernel_spec;
 }
 

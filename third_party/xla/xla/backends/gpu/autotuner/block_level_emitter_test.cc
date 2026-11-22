@@ -21,9 +21,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/nvptx_compiler.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -47,6 +50,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using ::testing::ElementsAre;
+using ::testing::Pointee;
 using ::tsl::proto_testing::EqualsProto;
 using ::xla::xtile::BlockLevelFusionConfig;
 
@@ -336,6 +341,83 @@ ENTRY %main {
   for (int i = 0; i < parallel_configs.size(); ++i) {
     EXPECT_THAT(*parallel_configs[i], EqualsProto(*sequential_configs[i]));
   }
+}
+
+// A Triton softmax fusion with a block-level config.
+constexpr absl::string_view kTritonSoftmaxWithConfigHlo = R"(
+HloModule m
+max {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT m = f32[] maximum(a, b)
+}
+triton_softmax {
+  p = f32[128,256] parameter(0)
+  c = f32[] constant(-inf)
+  r = f32[128] reduce(p, c), dimensions={1}, to_apply=max
+  b = f32[128,256] broadcast(r), dimensions={0}
+  ROOT s = f32[128,256] subtract(p, b)
+}
+ENTRY main {
+  p = f32[128,256] parameter(0)
+  ROOT fusion = f32[128,256] fusion(p), kind=kCustom, calls=triton_softmax,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["1","256"]}]}}}
+})";
+
+TEST_F(TritonBlockLevelFusionEmitterBackendTest,
+       GetSupportedConfigsWithTopK1ReturnsOnlyPreExistingConfig) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kTritonSoftmaxWithConfigHlo));
+  const HloInstruction& fusion =
+      *module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(auto pre_existing, backend_.GetDefaultConfig(fusion));
+  ASSERT_OK_AND_ASSIGN(auto configs, backend_.GetSupportedConfigs(fusion));
+  EXPECT_THAT(configs, ElementsAre(Pointee(EqualsProto(*pre_existing))));
+}
+
+TEST_F(TritonBlockLevelFusionEmitterBackendTest,
+       GetSupportedConfigsWithTopKAboveOneReturnsCostModelTopK) {
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_fusion_autotune_top_k_configs(4);
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kTritonSoftmaxWithConfigHlo, config));
+  ASSERT_OK_AND_ASSIGN(auto configs,
+                       backend_.GetSupportedConfigs(
+                           *module->entry_computation()->root_instruction()));
+  // TMA variants of some configs may be added, depending on the GPU.
+  EXPECT_EQ(absl::c_count_if(configs,
+                             [](const std::unique_ptr<BackendConfig>& config) {
+                               return !config->block_level().is_tma_allowed();
+                             }),
+            4);
+}
+
+TEST_F(TritonBlockLevelFusionEmitterBackendTest,
+       IsSupportedHonorsSameShapeMultiOutputFusionFlag) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+f {
+  p0 = f32[16,16]{1,0} parameter(0)
+  p1 = f32[16,16]{1,0} parameter(1)
+  add = f32[16,16]{1,0} add(p0, p1)
+  sub = f32[16,16]{1,0} subtract(p0, p1)
+  ROOT t = (f32[16,16]{1,0}, f32[16,16]{1,0}) tuple(add, sub)
+}
+
+ENTRY main {
+  p0 = f32[16,16]{1,0} parameter(0)
+  p1 = f32[16,16]{1,0} parameter(1)
+  ROOT fusion = (f32[16,16]{1,0}, f32[16,16]{1,0}) fusion(p0, p1),
+    kind=kLoop, calls=f
+})"));
+  const HloInstruction& fusion =
+      *module->entry_computation()->root_instruction();
+  EXPECT_FALSE(backend_.IsSupported(fusion));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(true);
+  EXPECT_TRUE(backend_.IsSupported(fusion));
 }
 
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, Version) {

@@ -28,10 +28,12 @@ td_library(
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:FunctionInterfacesTdFiles",
         "@llvm-project//mlir:GPUOpsTdFiles",
+        "@llvm-project//mlir:IndexingMapOpInterfaceTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:PtrTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+        "@llvm-project//mlir:ValueBoundsOpInterfaceTdFiles",
         "@llvm-project//mlir:ViewLikeInterfaceTdFiles",
     ],
 )
@@ -97,9 +99,14 @@ gentbl_cc_library(
             ["-gen-component-options"],
             "include/tensor_ir/Options/CompilerOptions.h.inc",
         ),
+        (
+            ["-gen-pipeline-options"],
+            "include/tensor_ir/Options/PipelineOptions.h.inc",
+        ),
     ],
     tblgen = ":tensor_ir-tblgen",
     td_file = "include/tensor_ir/Options/Options.td",
+    visibility = ["//visibility:public"],
     deps = [":TensorIROptionsTdFiles"],
 )
 
@@ -405,9 +412,11 @@ cc_library(
         "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:IndexingMapOpInterface",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:PtrDialect",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:ValueBoundsOpInterface",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
 )
@@ -454,12 +463,16 @@ cc_library(
     name = "NVTensorIRAnalysis",
     srcs = [
         "lib/Analysis/LayoutPropagation.cpp",
+        "lib/Analysis/ShapeOracle.cpp",
+        "lib/Analysis/ShapeRelationModels.cpp",
+        "lib/Analysis/ShapeRelationModels.h",
         "lib/Analysis/SymbolicLayout.cpp",
         "lib/Analysis/TileAnalyzer.cpp",
         "lib/Analysis/TileCandidateGenerator.cpp",
     ],
     hdrs = [
         "include/tensor_ir/Analysis/LayoutPropagation.h",
+        "include/tensor_ir/Analysis/ShapeOracle.h",
         "include/tensor_ir/Analysis/SymbolicLayout.h",
         "include/tensor_ir/Analysis/TileAnalyzer.h",
         "include/tensor_ir/Analysis/TileCandidateGenerator.h",
@@ -473,9 +486,21 @@ cc_library(
         ":NVTensorIRSupport",
         ":NVTensorIRUtils",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ArithValueBoundsOpInterfaceImpl",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:ValueBoundsOpInterface",
     ],
 )
 
@@ -483,6 +508,7 @@ cc_library(
     name = "NVTensorIRTransform",
     srcs = glob(["lib/Transform/*.cpp"]),
     hdrs = [
+        "include/tensor_ir/Conversion/TensorToCudaTile/TensorToCudaTile.h",
         "include/tensor_ir/Transform/HostLoweringUtils.h",
         "include/tensor_ir/Transform/Passes.h",
     ],
@@ -499,6 +525,7 @@ cc_library(
         ":NVTensorIRSupport",
         ":NVTensorIRUtils",
         ":TensorIRTransformPassesIncGen",
+        ":TensorToCudaTileConversionPassIncGen",
         "@cuda_tile//:CudaTileDialect",
         "@llvm-project//llvm:AArch64CodeGen",
         "@llvm-project//llvm:AArch64Info",
@@ -518,6 +545,7 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ArithTransforms",
+        "@llvm-project//mlir:ArithUtils",
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:ControlFlowDialect",
@@ -565,21 +593,24 @@ cc_library(
 
 cc_library(
     name = "NVTensorIRRuntimeTypes",
+    srcs = ["lib/Artifact/KernelMetadata.cpp"],
     hdrs = [
+        "include/tensor_ir/Artifact/KernelMetadata.h",
         "include/tensor_ir/Runtime/HostRuntimeAbi.h",
         "include/tensor_ir/Runtime/Types.h",
     ],
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [
+        ":NVTensorIRCompilerOptions",
         ":NVTensorIRSupport",
+        "@llvm-project//llvm:Support",
     ],
 )
 
 cc_library(
     name = "NVTensorIRArtifact",
     srcs = [
-        "lib/Artifact/KernelMetadata.cpp",
         "lib/Artifact/TensorIRArtifact.cpp",
         "lib/Artifact/TensorIRArtifactCodec.cpp",
     ],
@@ -695,6 +726,7 @@ cc_library(
     deps = [
         ":NVTensorIRToLinalgConversion",
         "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ConvertToLLVM",
         "@llvm-project//mlir:FuncDialect",
@@ -734,11 +766,12 @@ cc_library(
 
 cc_library(
     name = "NVTensorIRTileIRAssembly",
-    srcs = ["lib/Compiler/CudaTile/TileIRAssembly.cpp"],
-    hdrs = ["include/tensor_ir/Compiler/CudaTile/TileIRAssembly.h"],
+    srcs = ["lib/Support/TileIRAssembly.cpp"],
+    hdrs = ["include/tensor_ir/Support/TileIRAssembly.h"],
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [
+        ":NVTensorIRCompilerOptions",
         ":NVTensorIRSupport",
         ":NVTensorIRUtils",
         "@cuda_tile//:CudaTileBytecode",
@@ -804,6 +837,7 @@ cc_library(
         ":NVTensorIRTransform",
         "@cuda_tile//:CudaTileDialect",
         "@cuda_tile//:CudaTileTransforms",
+        "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ArithTransforms",

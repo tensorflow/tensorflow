@@ -15,20 +15,30 @@ limitations under the License.
 
 #include "xla/tests/test_utils.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -36,14 +46,22 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/testing/temporary_directory.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace {
+
+using ::testing::AllOf;
+using ::testing::Each;
+using ::testing::Ge;
+using ::testing::Le;
 
 // A test fixture is used because we need a client for our computation builder.
 class TestUtilsTest : public HloTestBase {};
@@ -854,6 +872,555 @@ ENTRY entry {
   ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                        MakeFakeArguments(module.get()));
   EXPECT_EQ(args.size(), 2);
+}
+
+// Verifies that when `cache_arguments` is false (the default), every parameter
+// of an identical shape receives an independently generated random tensor.
+TEST_F(TestUtilsTest, DefaultFakeArgumentsKeepAllRepeatedShapesDistinct) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule DistinctDefaultFakeArgsModule
+
+ENTRY entry {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[128,256] parameter(1)
+  p2 = f32[128,256] parameter(2)
+  p3 = f32[128,256] parameter(3)
+  add0 = f32[128,256] add(p0, p1)
+  add1 = f32[128,256] add(p2, p3)
+  ROOT out = f32[128,256] add(add0, add1)
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 4);
+  EXPECT_NE(args[0], args[1]);
+  EXPECT_NE(args[0], args[2]);
+  EXPECT_NE(args[1], args[3]);
+}
+
+constexpr absl::string_view kCachedFakeArgsModuleHlo = R"(
+HloModule CachedFakeArgsModule, entry_computation_layout={(f32[128,256]{1,0:T(8,128)}, f32[128,256]{1,0:T(8,128)}, f32[128,256]{1,0:T(8,128)}, f32[128,256]{1,0:T(8,128)}, (s4[256,256]{1,0:T(8,128)(8,1)E(4)}, s4[256,256]{1,0:T(8,128)(8,1)E(4)}, s4[256,256]{1,0:T(8,128)(8,1)E(4)}))->f32[128,256]{1,0}}
+
+ENTRY entry {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[128,256] parameter(1)
+  p2 = f32[128,256] parameter(2)
+  p3 = f32[128,256] parameter(3)
+  tup = (s4[256,256], s4[256,256], s4[256,256]) parameter(4)
+  add0 = f32[128,256] add(p0, p1)
+  add1 = f32[128,256] add(p2, p3)
+  ROOT out = f32[128,256] add(add0, add1)
+}
+)";
+
+// Verifies that `cache_arguments` strips device tiling/packing (`T(...)` and
+// `E(4)`) onto canonical host shapes and cycles through
+// `max_cached_variants_per_shape` distinct variants per shape (including inside
+// tuple parameters).
+TEST_F(TestUtilsTest, CachedFakeArgumentsReusesVariantsAndNormalizesShapes) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kCachedFakeArgsModuleHlo));
+
+  FakeArgumentsOptions opts;
+  opts.cache_arguments = true;
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get(), opts));
+  ASSERT_EQ(args.size(), 5);
+  // Variant 0 and Variant 1 must be distinct, and reused for p2 and p3.
+  EXPECT_NE(args[0], args[1]);
+  EXPECT_EQ(args[0], args[2]);
+  EXPECT_EQ(args[1], args[3]);
+  // Both cache misses and cache hits must return normalized untiled host
+  // shapes.
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(ShapeUtil::DeviceShapeIsHostShape(args[i].shape()))
+        << "arg=" << i;
+  }
+  EXPECT_TRUE(Shape::Equal()(args[0].shape(), args[2].shape()));
+
+  // Verify packed E(4) s4[256,256] tuple leaves (64 KiB host Literal) were
+  // cached and normalized.
+  std::vector<Literal> tup_leaves = args[4].Clone().DecomposeTuple();
+  ASSERT_EQ(tup_leaves.size(), 3);
+  EXPECT_NE(tup_leaves[0], tup_leaves[1]);
+  EXPECT_EQ(tup_leaves[0], tup_leaves[2]);
+  EXPECT_TRUE(ShapeUtil::DeviceShapeIsHostShape(tup_leaves[0].shape()));
+}
+
+// Verifies that cached arguments persist as `.xlatensor` files under
+// `XLA_ARGUMENT_CACHE_DIR` and reload from disk when the in-memory cache is
+// cold.
+TEST_F(TestUtilsTest, CachedFakeArgumentsPersistsToAndLoadsFromDisk) {
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  ClearFakeArgumentCacheForTest();
+  tsl::setenv("XLA_ARGUMENT_CACHE_DIR", temp_dir.path().c_str(),
+              /*overwrite=*/1);
+  absl::Cleanup cleanup = [&] {
+    tsl::unsetenv("XLA_ARGUMENT_CACHE_DIR");
+    ClearFakeArgumentCacheForTest();
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kCachedFakeArgsModuleHlo));
+
+  FakeArgumentsOptions opts;
+  opts.cache_arguments = true;
+  opts.max_cached_variants_per_shape = 1;
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args1,
+                       MakeFakeArguments(module.get(), opts));
+  ASSERT_EQ(args1.size(), 5);
+
+  tsl::Env* env = tsl::Env::Default();
+  std::vector<std::string> f32_files;
+  ASSERT_OK(env->GetMatchingPaths(
+      tsl::io::JoinPath(temp_dir.path(), "v1", "f32_128x256", "*",
+                        "*.xlatensor"),
+      &f32_files));
+  ASSERT_EQ(f32_files.size(), 1);
+
+  std::vector<std::string> s4_files;
+  ASSERT_OK(
+      env->GetMatchingPaths(tsl::io::JoinPath(temp_dir.path(), "v1",
+                                              "s4_256x256", "*", "*.xlatensor"),
+                            &s4_files));
+  ASSERT_EQ(s4_files.size(), 1);
+
+  // Clear the in-memory cache and mutate the first payload float of the
+  // `.xlatensor` file on disk to prove the next call reloads from
+  // `TryLoadFromDisk` rather than regenerating or hitting RAM.
+  ClearFakeArgumentCacheForTest();
+  const std::string& target_file = f32_files[0];
+  std::string file_bytes;
+  ASSERT_OK(tsl::ReadFileToString(env, target_file, &file_bytes));
+  ASSERT_EQ(file_bytes.size(),
+            4096 + static_cast<size_t>(args1[0].size_bytes()));
+  const float sentinel = 42.5f;
+  std::memcpy(&file_bytes[4096], &sentinel, sizeof(float));
+  ASSERT_OK(tsl::WriteStringToFile(env, target_file, file_bytes));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args_disk,
+                       MakeFakeArguments(module.get(), opts));
+  ASSERT_EQ(args_disk.size(), 5);
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(args_disk[i].data<float>()[0], sentinel) << "arg=" << i;
+  }
+}
+
+// Verifies that a corrupted `.xlatensor` file on disk is deleted, regenerated
+// deterministically, and rewritten with a valid header.
+TEST_F(TestUtilsTest,
+       CachedFakeArgumentsRegeneratesAndRepairsCorruptedDiskFile) {
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  ClearFakeArgumentCacheForTest();
+  tsl::setenv("XLA_ARGUMENT_CACHE_DIR", temp_dir.path().c_str(),
+              /*overwrite=*/1);
+  absl::Cleanup cleanup = [&] {
+    tsl::unsetenv("XLA_ARGUMENT_CACHE_DIR");
+    ClearFakeArgumentCacheForTest();
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kCachedFakeArgsModuleHlo));
+
+  FakeArgumentsOptions opts;
+  opts.cache_arguments = true;
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args1,
+                       MakeFakeArguments(module.get(), opts));
+  ASSERT_EQ(args1.size(), 5);
+
+  tsl::Env* env = tsl::Env::Default();
+  std::vector<std::string> f32_files;
+  ASSERT_OK(env->GetMatchingPaths(
+      tsl::io::JoinPath(temp_dir.path(), "v1", "f32_128x256", "*",
+                        "*.xlatensor"),
+      &f32_files));
+  ASSERT_EQ(f32_files.size(), 2);
+
+  std::string target_file = f32_files[0];
+  std::string file_bytes;
+  ASSERT_OK(tsl::ReadFileToString(env, target_file, &file_bytes));
+
+  // Corrupt the `.xlatensor` header and verify graceful fallback regeneration
+  // plus on-disk repair of the corrupted file.
+  ClearFakeArgumentCacheForTest();
+  std::memcpy(&file_bytes[0], "BADMAGIC", 8);
+  ASSERT_OK(tsl::WriteStringToFile(env, target_file, file_bytes));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args_regen,
+                       MakeFakeArguments(module.get(), opts));
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(args1[i], args_regen[i]) << "arg=" << i;
+  }
+
+  std::string repaired_bytes;
+  ASSERT_OK(tsl::ReadFileToString(env, target_file, &repaired_bytes));
+  EXPECT_EQ(absl::string_view(repaired_bytes).substr(0, 8), "XLATNSR1");
+}
+
+// Verifies that `MakeDataflowConstrainedArguments` incorporates explicit
+// per-parameter `ConstraintInterval` ranges into the cache key so constrained
+// and unconstrained parameters of the same shape never collide.
+TEST_F(TestUtilsTest,
+       CachedDataflowConstrainedArgumentsIncludesParameterRangesInCacheKey) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kCachedFakeArgsModuleHlo));
+
+  FakeArgumentsOptions base_opts;
+  base_opts.cache_arguments = true;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> base_args,
+                       MakeFakeArguments(module.get(), base_opts));
+
+  FakeArgumentsOptions df_opts;
+  df_opts.cache_arguments = true;
+  df_opts.parameter_ranges = {{0, {10.0, 20.0}}, {2, {10.0, 20.0}}};
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> df_args,
+                       MakeDataflowConstrainedArguments(module.get(), df_opts));
+  ASSERT_EQ(df_args.size(), 5);
+  EXPECT_NE(df_args[0], df_args[2]);
+  EXPECT_GE(df_args[0].data<float>()[0], 10.0f);
+  EXPECT_LE(df_args[0].data<float>()[0], 20.0f);
+  EXPECT_EQ(df_args[1], base_args[0]);
+  EXPECT_EQ(df_args[3], base_args[1]);
+}
+
+// Verifies that arrays larger than 32 MiB exercise the multi-chunk parallel
+// striped `pread` path in `TryLoadFromDisk` and the parallel `memcpy` path in
+// `CloneArrayLiteralParallel`.
+TEST_F(TestUtilsTest, CachedFakeArgumentsParallelDiskReadAndCloneOnLargeArray) {
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  ClearFakeArgumentCacheForTest();
+  tsl::setenv("XLA_ARGUMENT_CACHE_DIR", temp_dir.path().c_str(),
+              /*overwrite=*/1);
+  absl::Cleanup cleanup = [&] {
+    tsl::unsetenv("XLA_ARGUMENT_CACHE_DIR");
+    ClearFakeArgumentCacheForTest();
+  };
+
+  // 33 MiB (2 * 16 MiB + 1 MiB tail chunk) exercises multi-chunk parallel
+  // pread in TryLoadFromDisk and parallel memcpy in CloneArrayLiteralParallel.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule LargeCachedArrayModule
+
+ENTRY entry {
+  p0 = u8[34603008] parameter(0)
+  p1 = u8[34603008] parameter(1)
+  p2 = u8[34603008] parameter(2)
+  add0 = u8[34603008] add(p0, p1)
+  ROOT out = u8[34603008] add(add0, p2)
+}
+)"));
+
+  FakeArgumentsOptions opts;
+  opts.cache_arguments = true;
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> cold_args,
+                       MakeFakeArguments(module.get(), opts));
+  ASSERT_EQ(cold_args.size(), 3);
+  EXPECT_EQ(cold_args[0], cold_args[2]);
+
+  // Clear RAM so the next call executes the parallel striped pread path.
+  ClearFakeArgumentCacheForTest();
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> disk_args,
+                       MakeFakeArguments(module.get(), opts));
+  EXPECT_EQ(cold_args[0], disk_args[0]);
+  EXPECT_EQ(cold_args[1], disk_args[1]);
+  EXPECT_EQ(cold_args[2], disk_args[2]);
+}
+
+// Verifies that both the in-memory LRU cache and the on-disk `.xlatensor` LRU
+// tracker promote accessed entries on lookup and evict the least-recently used
+// entries when capacity limits are exceeded.
+TEST_F(TestUtilsTest,
+       CachedFakeArgumentsEvictsLeastRecentlyUsedInMemoryAndOnDisk) {
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  ClearFakeArgumentCacheForTest();
+  tsl::setenv("XLA_ARGUMENT_CACHE_DIR", temp_dir.path().c_str(),
+              /*overwrite=*/1);
+  absl::Cleanup cleanup = [&] {
+    tsl::unsetenv("XLA_ARGUMENT_CACHE_DIR");
+    ClearFakeArgumentCacheForTest();
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule LruEvictionModule
+
+ENTRY entry {
+  ROOT p0 = f32[128,256] parameter(0)
+}
+)"));
+
+  // Each f32[128,256] literal is 128 KiB (131,072 bytes). Cap both the
+  // in-memory and on-disk caches at 256 KiB (enough for exactly 2 entries).
+  constexpr int64_t kTwoEntriesBytes = 2 * 128 * 1024;
+  SetFakeArgumentCacheLimitsForTest(/*max_in_memory_bytes=*/kTwoEntriesBytes,
+                                    /*max_disk_bytes=*/kTwoEntriesBytes);
+
+  auto make_with_seed =
+      [&](std::minstd_rand0::result_type seed) -> absl::StatusOr<Literal> {
+    std::minstd_rand0 engine(seed);
+    FakeArgumentsOptions opts;
+    opts.engine = &engine;
+    opts.cache_arguments = true;
+    opts.max_cached_variants_per_shape = 1;
+    ABSL_ASSIGN_OR_RETURN(std::vector<Literal> args,
+                     MakeFakeArguments(module.get(), opts));
+    return std::move(args[0]);
+  };
+
+  tsl::Env* env = tsl::Env::Default();
+  const std::string glob_pattern = tsl::io::JoinPath(
+      temp_dir.path(), "v1", "f32_128x256", "*", "*.xlatensor");
+
+  // 1. Insert seed 1 (`file_seed1`), then seed 2 (`file_seed2`). Cache is now
+  // at capacity `{seed 2 (MRU), seed 1 (LRU)}`.
+  ASSERT_OK_AND_ASSIGN(Literal lit_seed1, make_with_seed(1));
+  std::vector<std::string> files_after_seed1;
+  ASSERT_OK(env->GetMatchingPaths(glob_pattern, &files_after_seed1));
+  ASSERT_EQ(files_after_seed1.size(), 1);
+  const std::string file_seed1 = files_after_seed1[0];
+
+  ASSERT_OK_AND_ASSIGN(Literal lit_seed2, make_with_seed(2));
+  EXPECT_NE(lit_seed1, lit_seed2);
+
+  // 2. Access seed 1 again to promote it to MRU (`{seed 1 (MRU), seed 2
+  // (LRU)}`), then insert seed 3. Seed 2 (the LRU entry) must be evicted from
+  // both RAM and disk, while seed 1 and seed 3 remain.
+  ASSERT_OK_AND_ASSIGN(Literal lit_seed1_hit, make_with_seed(1));
+  EXPECT_EQ(lit_seed1_hit, lit_seed1);
+  ASSERT_OK_AND_ASSIGN(Literal lit_seed3, make_with_seed(3));
+  EXPECT_NE(lit_seed3, lit_seed1);
+
+  std::vector<std::string> files_after_eviction;
+  ASSERT_OK(env->GetMatchingPaths(glob_pattern, &files_after_eviction));
+  EXPECT_EQ(files_after_eviction.size(), 2);
+  EXPECT_THAT(files_after_eviction, ::testing::Contains(file_seed1));
+
+  // 3. Verify that seed 1 is still served from the in-memory cache even after
+  // its on-disk file is deleted.
+  ASSERT_OK(env->DeleteFile(file_seed1));
+  ASSERT_OK_AND_ASSIGN(Literal lit_seed1_from_ram, make_with_seed(1));
+  EXPECT_EQ(lit_seed1_from_ram, lit_seed1);
+}
+
+constexpr absl::string_view kMixedWeightsAndControlModuleHlo = R"(
+HloModule MixedWeightsAndControlModule
+
+ENTRY entry {
+  w0 = f32[128,256] parameter(0)
+  w1 = f32[128,256] parameter(1)
+  w2 = f32[128,256] parameter(2)
+  d0 = f64[128,128] parameter(3)
+  d1 = f64[128,128] parameter(4)
+  d2 = f64[128,128] parameter(5)
+  q0 = s4[256,256] parameter(6)
+  q1 = s4[256,256] parameter(7)
+  q2 = s4[256,256] parameter(8)
+  idx0 = s32[128,256] parameter(9)
+  idx1 = s32[128,256] parameter(10)
+  idx2 = s32[128,256] parameter(11)
+  mask0 = pred[256,256] parameter(12)
+  mask1 = pred[256,256] parameter(13)
+  mask2 = pred[256,256] parameter(14)
+  router0 = bf16[64,256] parameter(15)
+  router1 = bf16[64,256] parameter(16)
+  router2 = bf16[64,256] parameter(17)
+  slot = s32[] parameter(18)
+  ROOT out = (f32[128,256], f64[128,128], s4[256,256], s32[128,256],
+              pred[256,256], bf16[64,256], s32[])
+      tuple(w0, d0, q0, idx0, mask0, router0, slot)
+}
+)";
+
+// Verifies that >= 16-bit integer index/control tensors, predicate masks, and
+// sub-threshold floating-point tensors are never deduplicated across parameters
+// when `cache_arguments` is true, and that cached tensors jump `options.engine`
+// ahead by the exact transition count `MakeFakeLiteral` consumes so every
+// uncached parameter and the final `engine` state match `cache_arguments =
+// false` bit-for-bit across both cold and warm cache runs.
+void VerifyCachedFakeArgumentsParity(const HloModule* mixed_module,
+                                     bool use_large_range) {
+  std::minstd_rand0 uncached_engine(777);
+  FakeArgumentsOptions uncached_opts;
+  uncached_opts.engine = &uncached_engine;
+  uncached_opts.use_large_range = use_large_range;
+  uncached_opts.cache_arguments = false;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> uncached_args,
+                       MakeFakeArguments(mixed_module, uncached_opts));
+  ASSERT_EQ(uncached_args.size(), 19);
+
+  std::minstd_rand0 cold_engine(777);
+  FakeArgumentsOptions cached_opts;
+  cached_opts.engine = &cold_engine;
+  cached_opts.use_large_range = use_large_range;
+  cached_opts.cache_arguments = true;
+  cached_opts.max_cached_variants_per_shape = 2;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> cold_args,
+                       MakeFakeArguments(mixed_module, cached_opts));
+  ASSERT_EQ(cold_args.size(), 19);
+
+  // Cached bulk shapes generate distinct variants up to
+  // `max_cached_variants_per_shape` (2) and reuse Variant 0 for the third
+  // occurrence.
+  EXPECT_NE(cold_args[0], cold_args[1]);
+  EXPECT_EQ(cold_args[0], cold_args[2]);
+  EXPECT_NE(cold_args[3], cold_args[4]);
+  EXPECT_EQ(cold_args[3], cold_args[5]);
+  EXPECT_NE(cold_args[6], cold_args[7]);
+  EXPECT_EQ(cold_args[6], cold_args[8]);
+
+  // Uncached wide-int, predicate, sub-threshold router, and scalar parameters
+  // stay distinct across occurrences and match `cache_arguments = false`
+  // bit-for-bit, as does the final caller RNG state.
+  EXPECT_NE(cold_args[9], cold_args[10]);
+  EXPECT_NE(cold_args[9], cold_args[11]);
+  EXPECT_NE(cold_args[12], cold_args[13]);
+  EXPECT_NE(cold_args[12], cold_args[14]);
+  EXPECT_NE(cold_args[15], cold_args[16]);
+  EXPECT_NE(cold_args[15], cold_args[17]);
+  EXPECT_EQ(absl::MakeConstSpan(cold_args).subspan(9),
+            absl::MakeConstSpan(uncached_args).subspan(9));
+  EXPECT_EQ(cold_engine, uncached_engine);
+
+  // Warm cache hits must yield identical arguments and final RNG state.
+  std::minstd_rand0 warm_engine(777);
+  cached_opts.engine = &warm_engine;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> warm_args,
+                       MakeFakeArguments(mixed_module, cached_opts));
+  EXPECT_EQ(warm_args, cold_args);
+  EXPECT_EQ(warm_engine, uncached_engine);
+}
+
+TEST_F(TestUtilsTest,
+       CachedFakeArgumentsPreservesWideIntPredAndRngStateDefaultRange) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mixed_module,
+      ParseAndReturnVerifiedModule(kMixedWeightsAndControlModuleHlo));
+  ASSERT_NO_FATAL_FAILURE(VerifyCachedFakeArgumentsParity(
+      mixed_module.get(), /*use_large_range=*/false));
+}
+
+TEST_F(TestUtilsTest,
+       CachedFakeArgumentsPreservesWideIntPredAndRngStateLargeRange) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mixed_module,
+      ParseAndReturnVerifiedModule(kMixedWeightsAndControlModuleHlo));
+  ASSERT_NO_FATAL_FAILURE(VerifyCachedFakeArgumentsParity(
+      mixed_module.get(), /*use_large_range=*/true));
+}
+
+TEST_F(TestUtilsTest,
+       CachedDataflowConstrainedArgumentsPreservesRngStateAndValues) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mixed_module,
+      ParseAndReturnVerifiedModule(kMixedWeightsAndControlModuleHlo));
+
+  // Verify `MakeDataflowConstrainedArguments` engine alignment and value
+  // bounds, including a collapsed constant interval `[5.0, 5.0]` (`min == max`
+  // -> 0 RNG steps) and a bounded interval `[1.0, 2.0]`.
+  std::minstd_rand0 df_uncached_engine(1234);
+  FakeArgumentsOptions df_uncached_opts;
+  df_uncached_opts.engine = &df_uncached_engine;
+  df_uncached_opts.cache_arguments = false;
+  df_uncached_opts.parameter_ranges = {{0, {5.0, 5.0}}, {3, {1.0, 2.0}}};
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> df_uncached_args,
+      MakeDataflowConstrainedArguments(mixed_module.get(), df_uncached_opts));
+
+  std::minstd_rand0 df_cached_engine(1234);
+  FakeArgumentsOptions df_cached_opts = df_uncached_opts;
+  df_cached_opts.engine = &df_cached_engine;
+  df_cached_opts.cache_arguments = true;
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> df_cached_args,
+      MakeDataflowConstrainedArguments(mixed_module.get(), df_cached_opts));
+  EXPECT_TRUE(df_cached_args[0].IsAllFloat(5.0f));
+  EXPECT_THAT(df_cached_args[3].data<double>(), Each(AllOf(Ge(1.0), Le(2.0))));
+  EXPECT_NE(df_cached_args[3], df_cached_args[4]);
+  EXPECT_EQ(absl::MakeConstSpan(df_cached_args).subspan(9),
+            absl::MakeConstSpan(df_uncached_args).subspan(9));
+  EXPECT_EQ(df_cached_engine, df_uncached_engine);
+}
+
+// Verifies that raising `min_cached_argument_bytes` keeps smaller repeated
+// floating-point matrices (such as per-layer MoE router gates) uncached and
+// bit-identical to `cache_arguments = false` while still caching larger bulk
+// weight tensors.
+TEST_F(TestUtilsTest, CachedFakeArgumentsRespectsMinCachedArgumentBytes) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule RouterAndBulkWeightsModule
+
+ENTRY entry {
+  r0 = bf16[4096,32] parameter(0)
+  r1 = bf16[4096,32] parameter(1)
+  r2 = bf16[4096,32] parameter(2)
+  w0 = bf16[4096,64] parameter(3)
+  w1 = bf16[4096,64] parameter(4)
+  w2 = bf16[4096,64] parameter(5)
+  ROOT out = (bf16[4096,32], bf16[4096,64]) tuple(r0, w0)
+}
+)"));
+
+  std::minstd_rand0 uncached_engine(2026);
+  FakeArgumentsOptions uncached_opts;
+  uncached_opts.engine = &uncached_engine;
+  uncached_opts.cache_arguments = false;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> uncached_args,
+                       MakeFakeArguments(module.get(), uncached_opts));
+
+  // `bf16[4096,32]` is 256 KiB; `bf16[4096,64]` is 512 KiB.
+  std::minstd_rand0 cached_engine(2026);
+  FakeArgumentsOptions cached_opts;
+  cached_opts.engine = &cached_engine;
+  cached_opts.cache_arguments = true;
+  cached_opts.min_cached_argument_bytes = 512 * 1024;
+  cached_opts.max_cached_variants_per_shape = 2;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> cached_args,
+                       MakeFakeArguments(module.get(), cached_opts));
+  ASSERT_EQ(cached_args.size(), 6);
+
+  // Router gates (< 512 KiB) stay distinct across all layers and match
+  // `cache_arguments = false` bit-for-bit.
+  EXPECT_NE(cached_args[0], cached_args[1]);
+  EXPECT_NE(cached_args[0], cached_args[2]);
+  EXPECT_NE(cached_args[1], cached_args[2]);
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(cached_args[i], uncached_args[i]) << "router=" << i;
+  }
+
+  // Bulk weights (>= 512 KiB) reuse Variant 0 for the third occurrence.
+  EXPECT_NE(cached_args[3], cached_args[4]);
+  EXPECT_EQ(cached_args[3], cached_args[5]);
+  EXPECT_EQ(cached_engine, uncached_engine);
 }
 
 }  // namespace

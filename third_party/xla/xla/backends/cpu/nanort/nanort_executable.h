@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
+#include "xla/custom_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -89,6 +90,9 @@ class NanoRtExecutable {
 
     ExecuteOptions& set_ffi_context(const ffi::ExecutionContext* ffi_context);
 
+    ExecuteOptions& set_custom_options(
+        std::shared_ptr<const CustomOptions> custom_options);
+
     ExecuteOptions& set_launch_id(int32_t launch_id);
 
     ExecuteOptions& set_local_device_id(LocalDeviceId local_device_id);
@@ -104,6 +108,9 @@ class NanoRtExecutable {
     DeviceAssignment* device_assignment() const { return device_assignment_; }
     int32_t launch_id() const { return launch_id_; }
     const ffi::ExecutionContext* ffi_context() const { return ffi_context_; }
+    const std::shared_ptr<const CustomOptions>& custom_options() const {
+      return custom_options_;
+    }
 
    private:
     const Eigen::ThreadPoolDevice* intra_op_thread_pool_;
@@ -119,6 +126,7 @@ class NanoRtExecutable {
     // hosts, the launch IDs may be used by the runtime to detect the mismatch.
     int32_t launch_id_;
     const ffi::ExecutionContext* ffi_context_;
+    std::shared_ptr<const CustomOptions> custom_options_;
   };
 
   // A non-owning read-only view into the XLA executable's argument buffer.

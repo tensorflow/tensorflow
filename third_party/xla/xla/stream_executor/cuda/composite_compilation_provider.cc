@@ -87,6 +87,12 @@ absl::StatusOr<Assembly> CompositeCompilationProvider::Compile(
   return providers_.front()->Compile(cc, ptx, options);
 }
 
+absl::StatusOr<Assembly> CompositeCompilationProvider::Compile(
+    const CudaComputeCapability& cc, absl::string_view ptx,
+    absl::string_view fingerprint, const CompilationOptions& options) const {
+  return providers_.front()->Compile(cc, ptx, fingerprint, options);
+}
+
 absl::StatusOr<RelocatableModule>
 CompositeCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,

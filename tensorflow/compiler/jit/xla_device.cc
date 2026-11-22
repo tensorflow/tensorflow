@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <optional>
+#include <set>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -148,20 +150,23 @@ XlaDevice::Metadata::Metadata(
     int device_ordinal, se::Platform* platform, const DeviceType& device_type,
     std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
         shape_determination_fns,
-    PaddedShapeFn padded_shape_fn, bool use_multiple_streams)
+    PaddedShapeFn padded_shape_fn, bool use_multiple_streams,
+    const std::optional<std::set<int>>& allowed_devices)
     : device_ordinal_(device_ordinal),
       device_type_(device_type),
       platform_(platform),
       shape_determination_fns_(std::move(shape_determination_fns)),
       padded_shape_fn_(std::move(padded_shape_fn)),
-      use_multiple_streams_(use_multiple_streams) {}
+      use_multiple_streams_(use_multiple_streams),
+      allowed_devices_(allowed_devices) {}
 
 int XlaDevice::Metadata::device_ordinal() const { return device_ordinal_; }
 
 se::Platform* XlaDevice::Metadata::platform() const { return platform_; }
 
 xla::LocalClient* XlaDevice::Metadata::client() const {
-  auto client = xla::ClientLibrary::GetOrCreateLocalClient(platform_);
+  auto client =
+      xla::ClientLibrary::GetOrCreateLocalClient(platform_, allowed_devices_);
   return client.value();
 }
 
@@ -210,7 +215,7 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
                     options.shape_determination_fns,
                     options.padded_shape_fn ? options.padded_shape_fn
                                             : DefaultPaddedShapeFn,
-                    options.use_multiple_streams),
+                    options.use_multiple_streams, options.allowed_devices),
       device_ordinal_(options.device_ordinal),
       device_name_(options.device_name),
       jit_device_name_(options.compilation_device_name),

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_CORE_HOST_OFFLOADING_HLO_HOST_DEVICE_TYPE_CALL_WRAPPER_H_
 #define XLA_CORE_HOST_OFFLOADING_HLO_HOST_DEVICE_TYPE_CALL_WRAPPER_H_
 
+#include <functional>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -58,10 +60,14 @@ class HloHostDeviceTypeCallWrapper : public HloModulePass {
   static absl::StatusOr<HloCallInstruction*>
   MaterializeConstantsOnHostComputation(HloCallInstruction* call);
 
-  // Removes tuple parameter/operands from the call instruction.
+  // Removes tuple parameter/operands from the call instruction. Each used leaf
+  // of a tuple parameter becomes a separate parameter of the called
+  // computation. Parameters of the called computation that are dead (including
+  // ones that were already dead before this transformation) are removed
+  // together with their call operands.
   //
-  // Returns an an updated call instruction/computation that does not
-  // contain tuple parameters/operands.
+  // Returns an updated call instruction/computation that does not contain
+  // tuple parameters/operands.
   static absl::StatusOr<HloCallInstruction*> RemoveTupleParameters(
       HloCallInstruction* call);
 

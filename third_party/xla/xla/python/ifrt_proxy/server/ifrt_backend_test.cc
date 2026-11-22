@@ -63,6 +63,7 @@
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/program_serdes.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -392,6 +393,12 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     TF_RET_CHECK(response->has_compile_response());
     return response->compile_response();
   }
+
+  // Stores `serialized` in the host buffer store, and returns a
+  // `DeserializeLoadedExecutableRequest` that refers to it.
+  std::unique_ptr<IfrtRequest> MakeDeserializeRequest(
+      const std::string& serialized, absl::Span<const int32_t> device_ids,
+      uint64_t* host_buffer_handle);
 
   absl::Status CheckFuture(uint64_t handle) {
     if (handle == 0) {
@@ -977,6 +984,43 @@ TEST_P(IfrtBackendHandlerTest, BitcastArrays) {
               SizeIs(result_arrays.size()));
 }
 
+TEST_P(IfrtBackendHandlerTest, RemapArraysFailsWithInconsistentArraySpecs) {
+  TF_ASSERT_OK_AND_ASSIGN(Device * device,
+                          mock_client_->LookupDevice(DeviceId(0)));
+  ShardingRef sharding(SingleDeviceSharding::Create(device, MemoryKind()));
+
+  // The output dtype differs from the input dtype.
+  std::vector<ArraySpec> input_specs{
+      {DType(DType::kS32), Shape({2}), sharding, /*layout=*/nullptr}};
+  std::vector<ArraySpec> output_specs{
+      {DType(DType::kF32), Shape({2}), sharding, /*layout=*/nullptr}};
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0].push_back(
+      {/*in_array=*/0, sharding->devices()});
+  RemapPlan plan(std::move(input_specs), std::move(output_specs),
+                 std::move(input_devices_for_output_map));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
+                          MakeTestArray(tsl::MakeRef<xla::ifrt::MockArray>()));
+
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  RemapArraysRequest* remap_arrays_request =
+      ifrt_request->mutable_remap_arrays_request();
+  remap_arrays_request->add_array_handles(array_handle);
+  TF_ASSERT_OK(plan.ToProto(*remap_arrays_request->mutable_plan(),
+                            ifrt_serdes_version()));
+  remap_arrays_request->set_copy_semantics(
+      proto::ARRAY_COPY_SEMANTICS_DONATE_INPUT);
+
+  // The invalid plan must not reach the IFRT client.
+  EXPECT_CALL(*mock_client_, RemapArrays(_, _, _)).Times(0);
+
+  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("must have the same dtype")));
+}
+
 TEST_P(IfrtBackendHandlerTest, ReshardArrays) {
   auto layout1 = std::make_shared<const xla::PjRtLayout>(
       xla::LayoutUtil::MakeDescendingLayout(1));
@@ -1263,6 +1307,138 @@ TEST_P(IfrtBackendHandlerTest, CompileFailure) {
       CompileTestLoadedExecutable(absl::InternalError("injected error")),
       absl_testing::StatusIs(absl::StatusCode::kInternal,
                              StrEq("injected error")));
+}
+
+// Stores `serialized` in the host buffer store and returns a request that
+// refers to it.
+std::unique_ptr<IfrtRequest> IfrtBackendHandlerTest::MakeDeserializeRequest(
+    const std::string& serialized, absl::Span<const int32_t> device_ids,
+    uint64_t* host_buffer_handle) {
+  *host_buffer_handle = NewHostBufferHandle();
+  CHECK_OK(host_buffer_store_->Store(*host_buffer_handle, serialized));
+  auto request = NewIfrtRequest(NewOpId());
+  auto* deserialize_request =
+      request->mutable_deserialize_loaded_executable_request();
+  deserialize_request->set_serialized_executable_handle(*host_buffer_handle);
+  for (const int32_t device_id : device_ids) {
+    deserialize_request->add_device_ids(device_id);
+  }
+  return request;
+}
+
+TEST_P(IfrtBackendHandlerTest, DeserializeLoadedExecutableSuccess) {
+  const std::string serialized = "serialized executable bytes";
+  uint64_t host_buffer_handle;
+  auto request = MakeDeserializeRequest(serialized, /*device_ids=*/{1, 0},
+                                        &host_buffer_handle);
+  xla::CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(3);
+  XlaCompileOptions xla_compile_options(compile_options, DeviceListRef());
+  TF_ASSERT_OK_AND_ASSIGN(
+      *request->mutable_deserialize_loaded_executable_request()
+           ->mutable_compile_options(),
+      Serialize(xla_compile_options,
+                std::make_unique<SerializeOptions>(ifrt_serdes_version())));
+
+  auto device_list =
+      BasicDeviceList::Create({mock_devices_[1].get(), mock_devices_[0].get()});
+  auto executable = std::make_unique<MockLoadedExecutable>();
+  EXPECT_CALL(*executable, name()).WillOnce(Return("deserialized_executable"));
+  EXPECT_CALL(*executable, devices())
+      .WillOnce(Return(std::make_optional(device_list)));
+  EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
+
+  EXPECT_CALL(mock_compiler_, DeserializeLoadedExecutable(_, _))
+      .WillOnce([&](const absl::Cord& bytes,
+                    std::unique_ptr<DeserializeExecutableOptions> options) {
+        EXPECT_EQ(std::string(bytes), serialized);
+        // The server releases the upload before it calls the backend, so the
+        // store does not hold the bytes during a long deserialization. The
+        // `Cord` keeps the bytes alive.
+        EXPECT_THAT(host_buffer_store_->Lookup(host_buffer_handle),
+                    absl_testing::StatusIs(absl::StatusCode::kNotFound));
+        auto* xla_options =
+            dyn_cast<XlaDeserializeExecutableOptions>(options.get());
+        EXPECT_NE(xla_options, nullptr);
+        if (xla_options != nullptr) {
+          // The compile options survive the round trip.
+          EXPECT_TRUE(xla_options->compile_options.has_value());
+          if (xla_options->compile_options.has_value()) {
+            EXPECT_EQ(xla_options->compile_options->executable_build_options
+                          .num_replicas(),
+                      3);
+          }
+          // The device order of the request is preserved.
+          EXPECT_TRUE(xla_options->devices.has_value());
+          if (xla_options->devices.has_value()) {
+            EXPECT_EQ((*xla_options->devices)->devices().size(), 2);
+            EXPECT_EQ((*xla_options->devices)->devices()[0]->Id().value(), 1);
+            EXPECT_EQ((*xla_options->devices)->devices()[1]->Id().value(), 0);
+          }
+        }
+        return tsl::Future<xla::ifrt::LoadedExecutableRef>(
+            xla::ifrt::LoadedExecutableRef(std::move(executable)));
+      });
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                          CallBackend(std::move(request)));
+  ASSERT_TRUE(response->has_deserialize_loaded_executable_response());
+  const CompileResponse& compile_response =
+      response->deserialize_loaded_executable_response().compile_response();
+  EXPECT_THAT(compile_response, Partially(EquivToProto(R"pb(
+                name: "deserialized_executable"
+                num_devices: 2
+                addressable_device_ids: [ 1, 0 ]
+                device_ids: [ 1, 0 ]
+                fingerprint_value: "fingerprint"
+              )pb")));
+  EXPECT_NE(compile_response.loaded_executable_handle(), 0);
+  EXPECT_NE(compile_response.ready_future_handle(), 0);
+
+  // The server consumes the uploaded bytes.
+  EXPECT_THAT(host_buffer_store_->Lookup(host_buffer_handle),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_P(IfrtBackendHandlerTest, DeserializeLoadedExecutableWithoutDevices) {
+  uint64_t host_buffer_handle;
+  auto request =
+      MakeDeserializeRequest("bytes", /*device_ids=*/{}, &host_buffer_handle);
+
+  EXPECT_CALL(mock_compiler_, DeserializeLoadedExecutable(_, _))
+      .WillOnce([&](const absl::Cord& bytes,
+                    std::unique_ptr<DeserializeExecutableOptions> options) {
+        auto* xla_options =
+            dyn_cast<XlaDeserializeExecutableOptions>(options.get());
+        EXPECT_NE(xla_options, nullptr);
+        if (xla_options != nullptr) {
+          // Empty `device_ids` means that the backend chooses the devices.
+          EXPECT_FALSE(xla_options->devices.has_value());
+          EXPECT_FALSE(xla_options->compile_options.has_value());
+        }
+        return tsl::Future<xla::ifrt::LoadedExecutableRef>(
+            absl::InvalidArgumentError("devices are required"));
+      });
+
+  EXPECT_THAT(CallBackend(std::move(request)),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("devices are required")));
+}
+
+TEST_P(IfrtBackendHandlerTest, DeserializeLoadedExecutableBackendFailure) {
+  uint64_t host_buffer_handle;
+  auto request =
+      MakeDeserializeRequest("bytes", /*device_ids=*/{0}, &host_buffer_handle);
+
+  EXPECT_CALL(mock_compiler_, DeserializeLoadedExecutable(_, _))
+      .WillOnce(Return(tsl::Future<xla::ifrt::LoadedExecutableRef>(
+          absl::FailedPreconditionError("ABI mismatch"))));
+
+  EXPECT_THAT(CallBackend(std::move(request)),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                     StrEq("ABI mismatch")));
+  EXPECT_THAT(host_buffer_store_->Lookup(host_buffer_handle),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
@@ -2274,6 +2450,58 @@ TEST_P(IfrtBackendHandlerTest, CancelExecutionWithoutFillStatusIsNoOp) {
   }
 }
 
+TEST_P(IfrtBackendHandlerTest, HashValues) {
+  constexpr uint64_t kHash0 = 100;
+  constexpr uint64_t kHash1 = 200;
+
+  auto array0 = tsl::MakeRef<MockArray>();
+  auto array1 = tsl::MakeRef<MockArray>();
+  ASSERT_OK_AND_ASSIGN(uint64_t handle0, MakeTestArray(array0));
+  ASSERT_OK_AND_ASSIGN(uint64_t handle1, MakeTestArray(array1));
+
+  EXPECT_CALL(*mock_client_, HashValues(ElementsAre(array0, array1),
+                                        xla::ifrt::Client::HashMode::kLogical))
+      .WillOnce(Return(tsl::Future<std::vector<uint64_t>>(
+          std::vector<uint64_t>{kHash0, kHash1})));
+
+  auto request = NewIfrtRequest(NewOpId());
+  HashValuesRequest* hash_request = request->mutable_hash_values_request();
+  hash_request->add_value_handles(handle0);
+  hash_request->add_value_handles(handle1);
+  hash_request->set_hash_mode(proto::HASH_MODE_LOGICAL);
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                       CallBackend(std::move(request)));
+  EXPECT_THAT(response->hash_values_response().hashes(),
+              ElementsAre(kHash0, kHash1));
+}
+
+TEST_P(IfrtBackendHandlerTest, CompileReportsMpmdAddressableDevicesError) {
+  if (Version().protocol_version() <
+      protocol_version::kMpmdLoadedExecutableMethods) {
+    GTEST_SKIP() << "Requires protocol version "
+                 << protocol_version::kMpmdLoadedExecutableMethods;
+  }
+  auto executable = std::make_unique<MockMpmdLoadedExecutable>();
+
+  ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
+  auto empty_device_list = BasicDeviceList::Create({});
+  ON_CALL(*executable, devices()).WillByDefault(Return(empty_device_list));
+  ON_CALL(*executable, Fingerprint()).WillByDefault(Return("mpmd_fingerprint"));
+  EXPECT_CALL(*executable, GetMpmdAddressableDevices())
+      .WillOnce(Return(absl::InternalError("no mpmd devices")));
+
+  // A failed query must not fail the compilation. The server reports the
+  // error in the response instead.
+  TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                          CompileTestLoadedExecutable(std::move(executable)));
+
+  EXPECT_FALSE(response.has_mpmd_addressable_devices());
+  ASSERT_TRUE(response.has_mpmd_addressable_devices_error());
+  EXPECT_THAT(
+      tsl::StatusFromProto(response.mpmd_addressable_devices_error()),
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "no mpmd devices"));
+}
 INSTANTIATE_TEST_SUITE_P(
     IfrtBackendHandlerTestWithAllVersions, IfrtBackendHandlerTest,
     testing::Range(protocol_version::kServerMin,

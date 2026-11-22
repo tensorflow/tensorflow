@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xnnpack.h"  // from @XNNPACK
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -64,6 +67,7 @@ std::vector<uint8_t> MoeCustomData(const std::string& weight_type,
 class MoeNodeBuilder {
  public:
   MoeNodeBuilder() : interpreter_(std::make_unique<Interpreter>()) {
+    buffers_.reserve(16);
     registration_ = {nullptr, nullptr, nullptr, nullptr};
     registration_.builtin_code = kTfLiteBuiltinCustom;
     registration_.custom_name = "moe";
@@ -86,6 +90,21 @@ class MoeNodeBuilder {
         buffers_.back().data(), buffers_.back().size());
     inputs_.push_back(next_tensor_++);
   }
+
+  void AddConstFloatInput(const std::vector<int>& shape,
+                          const std::vector<float>& values) {
+    buffers_.emplace_back(values.size() * sizeof(float));
+    std::memcpy(buffers_.back().data(), values.data(),
+                values.size() * sizeof(float));
+    interpreter_->AddTensors(1);
+    interpreter_->SetTensorParametersReadOnly(
+        next_tensor_, kTfLiteFloat32, "", shape,
+        {kTfLiteNoQuantization, nullptr}, buffers_.back().data(),
+        buffers_.back().size());
+    inputs_.push_back(next_tensor_++);
+  }
+
+  Interpreter* interpreter() { return interpreter_.get(); }
 
   void AddOutput(TfLiteType type, const std::vector<int>& shape) {
     interpreter_->AddTensors(1);
@@ -205,11 +224,96 @@ TEST(MoeDelegateKernelIsSupportedTest, AcceptsBothGeluSpellings) {
   EXPECT_EQ(legacy_builder.IsSupported(), kTfLiteOk);
 }
 
-TEST(MoeDelegateKernelIsSupportedTest, RejectsUnknownActivation) {
+TEST(MoeDelegateKernelIsSupportedTest, AcceptsSiluActivation) {
   MoeNodeBuilder builder;
   BuildInt8Moe(builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
                /*activation=*/"silu");
+  EXPECT_EQ(builder.IsSupported(), kTfLiteOk);
+}
+
+TEST(MoeDelegateKernelIsSupportedTest, RejectsUnknownActivation) {
+  MoeNodeBuilder builder;
+  BuildInt8Moe(builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"relu");
   EXPECT_EQ(builder.IsSupported(), kTfLiteError);
+}
+
+TEST(MoeDelegateKernelInvokeTest, ExecutesSiluSingleAndMultiToken) {
+  ASSERT_EQ(xnn_initialize(nullptr), xnn_status_success);
+
+  // Test both single-token (token 0 -> expert 0) and multi-token (tokens 1, 2
+  // -> expert 1) routing paths with SiLU activation: silu(x) = x / (1 + e^-x).
+  constexpr int kTokens = 3;
+  MoeNodeBuilder builder;
+  builder.AddInput(kTfLiteFloat32, {1, 1, kTokens, kModelDim});
+  builder.AddInput(kTfLiteFloat32, {1, 1, kTokens, kNumActiveExperts});
+  builder.AddInput(kTfLiteInt32, {1, 1, kTokens, kNumActiveExperts});
+
+  std::vector<float> gate_w(kGateFf1Rows * kModelDim, 0.0f);
+  std::vector<float> ff1_w(kGateFf1Rows * kModelDim, 0.0f);
+  std::vector<float> linear_w(kLinearRows * kHiddenDim, 0.0f);
+  // Set row (out=0, expert=e) -> row_idx = 0 * kNumExperts + e = e, col 0 = 1.
+  for (int e = 0; e < kNumExperts; ++e) {
+    gate_w[e * kModelDim + 0] = 1.0f;
+    ff1_w[e * kModelDim + 0] = 2.0f;
+    linear_w[e * kHiddenDim + 0] = 1.0f;
+  }
+  builder.AddConstFloatInput({kHiddenDim, kNumExperts, 1, kModelDim}, gate_w);
+  builder.AddConstFloatInput({kHiddenDim, kNumExperts, 1, kModelDim}, ff1_w);
+  builder.AddConstFloatInput({kModelDim, kNumExperts, 1, kHiddenDim}, linear_w);
+  builder.AddConstFloatInput({kNumExperts}, {1.0f, 1.5f});
+
+  builder.AddOutput(kTfLiteFloat32, {1, 1, kTokens, kModelDim});
+  builder.SetCustomData(MoeCustomData("fp32", "silu"));
+  builder.Finish();
+
+  Interpreter* interp = builder.interpreter();
+  ASSERT_EQ(interp->AllocateTensors(), kTfLiteOk);
+
+  float* src = interp->typed_input_tensor<float>(0);
+  std::fill(src, src + kTokens * kModelDim, 0.0f);
+  src[0 * kModelDim + 0] = -1.0f;  // token 0 -> expert 0 (single-token path)
+  src[1 * kModelDim + 0] = 1.0f;   // token 1 -> expert 1 (multi-token path)
+  src[2 * kModelDim + 0] = -2.0f;  // token 2 -> expert 1 (multi-token path)
+
+  float* top_weights = interp->typed_input_tensor<float>(1);
+  top_weights[0] = 1.0f;
+  top_weights[1] = 0.5f;
+  top_weights[2] = 2.0f;
+
+  int32_t* top_indices = interp->typed_input_tensor<int32_t>(2);
+  top_indices[0] = 0;
+  top_indices[1] = 1;
+  top_indices[2] = 1;
+
+  TfLiteIntArray* nodes = TfLiteIntArrayCreate(1);
+  nodes->data[0] = 0;
+  TfLiteDelegateParams params{};
+  params.nodes_to_replace = nodes;
+
+  TfLiteContext* ctx = interp->primary_subgraph().context();
+  ctx->GetNodeAndRegistration = [](struct TfLiteContext* context,
+                                   int node_index, TfLiteNode** node,
+                                   TfLiteRegistration** registration) {
+    auto* subgraph = static_cast<Subgraph*>(context->impl_);
+    const auto* pair = subgraph->node_and_registration(node_index);
+    *node = const_cast<TfLiteNode*>(&pair->first);
+    *registration = const_cast<TfLiteRegistration*>(&pair->second);
+    return kTfLiteOk;
+  };
+  auto kernel = MoeExpertsDelegateKernel::Create(ctx, &params, nullptr);
+  TfLiteIntArrayFree(nodes);
+  ASSERT_NE(kernel, nullptr);
+  ASSERT_EQ(kernel->Prepare(ctx), kTfLiteOk);
+  ASSERT_EQ(kernel->Invoke(ctx), kTfLiteOk);
+
+  auto silu = [](float x) { return x / (1.0f + std::exp(-x)); };
+  const float* out = interp->typed_output_tensor<float>(0);
+  EXPECT_NEAR(out[0 * kModelDim + 0], silu(-1.0f) * (-2.0f) * 1.0f * 1.0f,
+              1e-5f);
+  EXPECT_NEAR(out[1 * kModelDim + 0], silu(1.0f) * 2.0f * 1.5f * 0.5f, 1e-5f);
+  EXPECT_NEAR(out[2 * kModelDim + 0], silu(-2.0f) * (-4.0f) * 1.5f * 2.0f,
+              1e-5f);
 }
 
 }  // namespace

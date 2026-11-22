@@ -322,12 +322,7 @@ void EnsurePreservedInfo(const HloInstruction* instr) {
 }
 
 std::string PipelineAttr(const HloInstruction* instr) {
-  const FrontendAttributes& attr = instr->frontend_attributes();
-  if (auto it = attr.map().find(kSendRecvPipelineAttr);
-      it != attr.map().end()) {
-    return it->second;
-  }
-  return "";
+  return instr->get_frontend_attribute(kSendRecvPipelineAttr).value_or("");
 }
 std::string OtherAttr(const HloInstruction* instr) {
   const FrontendAttributes& attributes = instr->frontend_attributes();
@@ -982,8 +977,7 @@ TEST_F(DecomposerTest, OneSendRecvWithNonConflictingAllReduce) {
   // Expect all non-conflicting collectives to not be annotated with the
   // collective
   // stream attribute.
-  EXPECT_FALSE(
-      ar->frontend_attributes().map().contains(kCollectiveStreamAttrName));
+  EXPECT_FALSE(ar->has_frontend_attribute(kCollectiveStreamAttrName));
 }
 
 TEST_F(DecomposerTest, OneSendRecvWithConflictingAndNonConflictingCollectives) {
@@ -1095,8 +1089,7 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingAndNonConflictingCollectives) {
 
   // Expect all non-conflicting collectives to not be annotated with the
   // collective stream attribute.
-  EXPECT_FALSE(
-      ar->frontend_attributes().map().contains(kCollectiveStreamAttrName));
+  EXPECT_FALSE(ar->has_frontend_attribute(kCollectiveStreamAttrName));
 }
 
 TEST_F(DecomposerTest, OneSendRecvWithIndirectlyConflictingCollectives) {

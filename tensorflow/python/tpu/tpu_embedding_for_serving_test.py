@@ -226,7 +226,7 @@ class TPUEmbeddingForServingTest(test.TestCase):
   def test_cpu_partial_structure_for_features(self):
     mid_level = self._create_mid_level()
     # Remove one element of the tuple, the inputs are a subset of
-    # feature_config and will be able to excute.
+    # feature_config and will be able to execute.
     features = tuple(self._get_sparse_tensors()[:2])
     results = mid_level(features, weights=None)
     reduced = []

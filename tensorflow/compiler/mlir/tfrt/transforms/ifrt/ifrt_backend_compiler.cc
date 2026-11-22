@@ -52,8 +52,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_program.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -61,28 +65,6 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
-
-// Points every IFRT call op (tf.IfrtCall or tf.AsyncIfrtCall) with
-// `old_program_id` at the already registered `new_program_id`. A program is
-// called by only one of the two op kinds, but a module may contain both kinds
-// for different programs.
-void ReplaceIfrtCallProgramId(mlir::ModuleOp module, int64_t old_program_id,
-                              int64_t new_program_id) {
-  mlir::Builder builder(module.getContext());
-  auto update_program_id = [&](mlir::Operation* op) {
-    if (auto attr = op->getAttrOfType<mlir::IntegerAttr>("program_id")) {
-      if (attr.getInt() == old_program_id) {
-        op->setAttr("program_id", builder.getI64IntegerAttr(new_program_id));
-      }
-    }
-  };
-  module.walk([&](mlir::TF::IfrtCallOp call) {
-    update_program_id(call.getOperation());
-  });
-  module.walk([&](mlir::TF::AsyncIfrtCallOp call) {
-    update_program_id(call.getOperation());
-  });
-}
 
 // Returns the `variable_arg_indices` shared by all call sites of `program_id`
 // (which are either all tf.IfrtCall or all tf.AsyncIfrtCall), or std::nullopt
@@ -162,23 +144,40 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
 
     const uint64_t submodule_fingerprint =
         MlirModuleFingerprint(submodule->get());
-    // The executable binds loaded variables by the call site's
-    // `variable_arg_indices`, which are not part of the submodule, so a program
-    // is only reused by call sites with the same indices. If call sites of
-    // this program disagree, skip the cache.
+    // Call sites with identical TPU programs share one `IfrtProgram`, so the
+    // program is compiled once for all of them, while each call site gets its
+    // own `IfrtServingExecutable` that binds its own variables (identical
+    // clusters with different weights, e.g. of different signatures, stay
+    // correct). The program takes loaded variables at the call site's
+    // `variable_arg_indices`, which are not part of the submodule, so they are
+    // part of the key. If call sites of this program disagree, the program is
+    // not shared.
     const std::optional<std::vector<int>> variable_arg_indices =
         GetVariableArgIndices(module, program_id);
+    auto create_program = [&]() {
+      return IfrtProgram::Create(
+          model_name, entry_function_name.str(), *std::move(submodule),
+          ifrt_model_context.GetClient(), ifrt_model_context.GetDeviceMgr(),
+          ifrt_model_context.GetShapeRepresentationFn(),
+          ifrt_model_context.GetIfrtServingCoreSelector(),
+          ifrt_model_context.GetCompilationEnvOrOverrides(),
+          ifrt_model_context.GetTfToHloCompiler(),
+          ifrt_model_context.GetPersistentCompilationCache(),
+          ifrt_model_context.use_undonatable_buffer_converter(),
+          ifrt_model_context.device_ids());
+    };
+    std::shared_ptr<IfrtProgram> program;
     if (variable_arg_indices.has_value()) {
-      if (std::optional<int64_t> existing_program_id =
-              ifrt_model_context.LookupProgramId(submodule_fingerprint,
-                                                 *variable_arg_indices);
-          existing_program_id.has_value()) {
-        ReplaceIfrtCallProgramId(module, program_id, *existing_program_id);
-        continue;
-      }
+      TF_ASSIGN_OR_RETURN(program, ifrt_model_context.GetOrCreateProgram(
+                                       submodule_fingerprint,
+                                       *variable_arg_indices, create_program));
+    } else if (!ifrt_model_context.IsFrozen()) {
+      TF_ASSIGN_OR_RETURN(program, create_program());
     }
 
-    if (ifrt_model_context.IsFrozen()) {
+    // After freeze, a call site can only be served by a program compiled
+    // during warmup.
+    if (program == nullptr) {
       if (ifrt_model_context.HasProgramWithFingerprint(submodule_fingerprint)) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Cannot compile IFRT programs after the model is frozen. The TPU "
@@ -197,18 +196,12 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
     TF_ASSIGN_OR_RETURN(
         auto executable,
         IfrtServingExecutable::Create(
-            program_id, model_name, entry_function_name.str(),
-            *std::move(submodule), ifrt_model_context.GetClient(),
+            program_id, std::move(program), ifrt_model_context.GetClient(),
             &ifrt_model_context.GetThreadPool(),
             &ifrt_model_context.GetLoadedVariableRegistry(),
             &ifrt_model_context.GetRestoreTensorRegistry(),
             ifrt_model_context.checkpoint_loader_queue(),
-            ifrt_model_context.GetDeviceMgr(),
-            ifrt_model_context.GetShapeRepresentationFn(),
             ifrt_model_context.GetIfrtServingCoreSelector(),
-            ifrt_model_context.GetCompilationEnvOrOverrides(),
-            ifrt_model_context.GetTfToHloCompiler(),
-            ifrt_model_context.GetPersistentCompilationCache(),
             ifrt_model_context.GetH2DTransferExecutorFactory(),
             ifrt_model_context.use_output_arena(),
             ifrt_model_context.use_undonatable_buffer_converter()));
@@ -217,11 +210,6 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
     // the client TF program can invoke them via `IfrtCall` op.
     TF_ASSIGN_OR_RETURN(auto handle, ServingExecutableRegistry::Register(
                                          program_id, std::move(executable)));
-
-    if (variable_arg_indices.has_value()) {
-      ifrt_model_context.RegisterProgramId(submodule_fingerprint,
-                                           *variable_arg_indices, program_id);
-    }
     handles.push_back(std::move(handle));
   }
 
@@ -244,18 +232,28 @@ absl::Status CompileTensorflowForIfrtServing(
   // compiled modules identifies host-needed variables for
   // IfrtModelContext::Freeze() (freeze-time host variable mode). This is
   // only complete if every signature is compiled before Freeze() is called.
-  if (!ifrt_model_context.IsFrozen()) {
+  tensorflow::DeviceMgr* device_mgr = ifrt_model_context.GetDeviceMgr();
+  tensorflow::Device* host = device_mgr ? device_mgr->HostCPU() : nullptr;
+  if (!ifrt_model_context.IsFrozen() && host != nullptr) {
     if (auto modified = module->getAttrOfType<mlir::ArrayAttr>(
             "tf_ifrt.modified_variable_names")) {
-      for (mlir::Attribute attr : modified) {
-        if (auto name = mlir::dyn_cast<mlir::StringAttr>(attr)) {
-          // Ignore NOT_FOUND errors: some modified variables may be host-only
-          // variables managed directly in ResourceManager and not present in
-          // the checkpoint restore registry.
-          ifrt_model_context.GetRestoreTensorRegistry()
-              .SetUsedByHost(name.str())
-              .IgnoreError();
+      for (auto entry : modified.getAsRange<mlir::ArrayAttr>()) {
+        // The runtime name of the variable, as `GetRuntimeNameFromVarHandle`
+        // returns it for the handle that `tf.VarHandleOp` creates on the host:
+        // an empty container means the resource manager's default container.
+        absl::string_view container =
+            mlir::cast<mlir::StringAttr>(entry[0]).getValue();
+        absl::string_view shared_name =
+            mlir::cast<mlir::StringAttr>(entry[1]).getValue();
+        if (container.empty()) {
+          container = host->resource_manager()->default_container();
         }
+        // Ignore NOT_FOUND errors: some modified variables may be host-only
+        // variables managed directly in ResourceManager and not present in
+        // the checkpoint restore registry.
+        ifrt_model_context.GetRestoreTensorRegistry()
+            .SetUsedByHost(absl::StrCat(container, "__", shared_name))
+            .IgnoreError();
       }
     }
   }

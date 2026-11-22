@@ -1701,12 +1701,15 @@ bool IndexingMap::MergeModConstraints() {
       // reaching a "sharp limit".
       if (interval_to_update != nullptr) {
         Interval old = *interval_to_update;
-        int64_t l = (interval_to_update->lower / div) * div + res;
-        interval_to_update->lower =
-            l >= interval_to_update->lower ? l : l + div;
-        int64_t h = (interval_to_update->upper / div) * div + res;
-        interval_to_update->upper =
-            h <= interval_to_update->upper ? h : h - div;
+        const int64_t lo =
+            old.lower + llvm::mod(res - llvm::mod(old.lower, div), div);
+        const int64_t hi =
+            old.upper - llvm::mod(llvm::mod(old.upper, div) - res, div);
+        if (lo > hi) {
+          ResetToKnownEmpty();
+          return true;
+        }
+        *interval_to_update = Interval{lo, hi};
         if (*interval_to_update != old) {
           did_simplify = true;
         }

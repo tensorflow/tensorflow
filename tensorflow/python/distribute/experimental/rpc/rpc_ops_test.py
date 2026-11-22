@@ -430,13 +430,13 @@ class RpcOpsTest(test.TestCase):
       return math_ops.add(a, b)
 
     server = rpc_ops.GrpcServer(address)
+    server.register("add", add)
 
     def start_server():
       # Delay server start to simulate deadline exceeded for 1st RPC call
       # response. Client waits till server is started, thus it can trigger
       # deadline exceeded.
       time.sleep(1)
-      server.register("add", add)
       server.start()
 
     t = threading.Thread(target=start_server)
@@ -485,16 +485,19 @@ class RpcOpsTest(test.TestCase):
 
     # Specifying reasonable timeout for call should succeed.
     result_or = client.call(
-        "add", [constant_op.constant(20),
-                constant_op.constant(30)],
-        timeout_in_ms=5000)
+        "add",
+        [constant_op.constant(20), constant_op.constant(30)],
+        timeout_in_ms=20000,
+    )
     self.assertAllEqual(result_or.is_ok(), True)
 
     # Test timeouts for convenience methods
 
     # Restart server again with delay to simulate deadline exceeded.
+    t.join()
     del server
     server = rpc_ops.GrpcServer(address)
+    server.register("add", add)
     t = threading.Thread(target=start_server)
     t.start()
 
@@ -504,8 +507,10 @@ class RpcOpsTest(test.TestCase):
 
     # Succeeds with reasonable timeout.
     result_or = client.add(
-        constant_op.constant(20), constant_op.constant(30), timeout_in_ms=5000)
+        constant_op.constant(20), constant_op.constant(30), timeout_in_ms=20000
+    )
     self.assertAllEqual(result_or.is_ok(), True)
+    t.join()
 
   def test_async_call_op_wrapper(self):
     v = variables.Variable(initial_value=0, dtype=dtypes.int64)

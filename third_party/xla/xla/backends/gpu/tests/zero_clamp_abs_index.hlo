@@ -9,5 +9,9 @@ e {
     index_vector_dim=1, slice_sizes={2,3}
 }
 
-// CHECK: llvm.smin.i32
+// abs(INT32_MIN) wraps to INT32_MIN in two's complement, so the index is not
+// known to be non-negative. It is clamped with one unsigned minimum instead of
+// a signed minimum and maximum.
+// CHECK-NOT: llvm.smax.i32
+// CHECK: call i32 @llvm.umin.i32
 // CHECK-NOT: llvm.smax.i32

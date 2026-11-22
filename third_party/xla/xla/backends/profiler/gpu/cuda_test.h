@@ -16,6 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUDA_TEST_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUDA_TEST_H_
 
+#include <functional>
+
+#include "absl/status/status.h"
+#include "absl/time/time.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
+
 namespace xla {
 namespace profiler {
 namespace test {
@@ -54,6 +60,50 @@ void CudaGraphCreateAndExecute();
 // Return true if the cuda version is new enough so cuda graph activity trace
 // is supported by its CUPTI.
 bool IsCudaNewEnoughForGraphTraceTest();
+
+// Captures and instantiates a simple CUDA graph before profiling, launches and
+// synchronizes it once before start_profiler(), once between start_profiler()
+// and stop_profiler(), and once after stop_profiler(), returning the
+// cudaError_t from the post-profiler graph launch and stream synchronization.
+cudaError_t ExecuteGraphBeforeDuringAndAfterProfiler(
+    const std::function<void()>& start_profiler,
+    const std::function<void()>& stop_profiler);
+
+// Builds a parent CUDA graph containing a conditional IF node whose body
+// contains a child graph node, then spawns a worker thread that continuously
+// recaptures (cudaStreamBeginCaptureToGraph) and updates
+// (cudaGraphExecChildGraphNodeSetParams) the child node and launches the parent
+// graph while the calling thread executes up to max_profiler_sessions profiling
+// cycles via run_single_profiler_session(). Returns the first non-cudaSuccess
+// error observed by the worker thread, or cudaSuccess if none occurred.
+cudaError_t ExecuteConcurrentConditionalGraphUpdateDuringProfiler(
+    int max_profiler_sessions,
+    const std::function<bool()>& run_single_profiler_session);
+
+enum class CrossContextWorkloadMode {
+  // Worker thread captures and instantiates a CUDA graph on peer context B
+  // during each iteration while a peer-waiting kernel runs on context A.
+  kStreamCaptureAndGraphLaunch,
+  // Worker thread pre-instantiates CUDA graphs on both contexts during warmup
+  // and only dispatches cuCtxSetCurrent + cuGraphLaunch during steady-state
+  // execution.
+  kPreinstantiatedGraphLaunchOnly,
+};
+
+// Finalizes/resets profiler state via `reset_profiler_before_context_creation`
+// on each attempt so CUPTI has not yet seen the newly created contexts, creates
+// two independent CUDA contexts sharing a host-mapped synchronization flag,
+// spawns a worker thread that continuously executes a cross-context step
+// according to `workload_mode`, and invokes `run_single_profiler_session()` up
+// to `max_profiler_sessions` times with a per-session watchdog
+// `session_timeout`. Returns `absl::DeadlineExceededError` if a profiler
+// session deadlocks with zero worker progress, or `absl::OkStatus()` if all
+// sessions finish without deadlocking.
+absl::Status ExecuteCrossContextWorkloadDuringProfilerSubscribe(
+    int max_profiler_sessions, absl::Duration session_timeout,
+    CrossContextWorkloadMode workload_mode,
+    const std::function<void()>& reset_profiler_before_context_creation,
+    const std::function<bool()>& run_single_profiler_session);
 
 }  // namespace test
 }  // namespace profiler

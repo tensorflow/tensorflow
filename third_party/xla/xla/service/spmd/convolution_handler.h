@@ -80,7 +80,7 @@ class CreateShardedConvolutionFunctor final
           CreateShardedConvolution(*conv_, dims_info_, l, r, conv_window));
       sharded_conv = b->AddInstruction(std::move(sharded_conv_ptr));
     }
-    if (conv_->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    if (conv_->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
       sharded_conv->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
     }
     return sharded_conv;

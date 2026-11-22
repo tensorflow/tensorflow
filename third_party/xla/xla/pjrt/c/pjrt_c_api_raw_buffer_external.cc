@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
@@ -153,9 +154,9 @@ PjRtCApiRawBuffer::~PjRtCApiRawBuffer() {
   pjrt::PjRtCApiRawBuffer_Destroy(c_api_, c_extension_, c_buffer_);
 }
 
-PjRtMemorySpace* PjRtCApiRawBuffer::memory_space() const {
-  return client_->GetCppMemory(
-      pjrt::PjRtCApiRawBuffer_GetMemorySpace(c_api_, c_extension_, c_buffer_));
+PJRT_Memory* PjRtCApiRawBuffer::c_memory_space() const {
+  return pjrt::PjRtCApiRawBuffer_GetMemorySpace(c_api_, c_extension_,
+                                                c_buffer_);
 }
 
 void* PjRtCApiRawBuffer::GetHostPointer() const {
@@ -218,6 +219,12 @@ PjRtCApiRawBuffer::MakeAllocationReadyEvent() {
       ->MakeAllocationReadyEvent();
 }
 
+tsl::AsyncValueRef<PjRtRawBufferInterface::ExternalDmaAccess>
+PjRtCApiRawBuffer::AcquireExternalDmaAccess() {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->AcquireExternalDmaAccess();
+}
+
 void PjRtCApiRawBuffer::CopyTo(
     PjRtRawBufferRef dst_raw_buffer,
     PjRtDeviceEventPromiseRef definition_event_promise,
@@ -273,6 +280,9 @@ PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
     ABSL_ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
                      pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
                          c_api, extension, c_api_buffer->c_buffer()));
+    if (raw_buffer == nullptr) {
+      return PjRtRawBufferRef();
+    }
     return tsl::MakeRef<PjRtCApiRawBuffer>(
         raw_buffer, absl::down_cast<PjRtCApiClient*>(c_api_buffer->client()),
         c_api, extension);

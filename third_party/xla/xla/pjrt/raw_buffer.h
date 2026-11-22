@@ -55,6 +55,7 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
   void DropRef();
 
   PjRtMemorySpace* memory_space() const;
+  PJRT_Memory* c_memory_space() const { return vtable->get_memory_space(this); }
   void* GetHostPointer() const;
   size_t GetOnDeviceSizeInBytes() const;
 
@@ -84,6 +85,42 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
   };
   absl::StatusOr<std::vector<PjRtRawBufferRef>> MultiSlice(
       absl::Span<const SliceInfo> slices);
+
+  // Location of a raw buffer inside a Linux dma-buf, for external DMA engines
+  // (e.g. NICs). `offset` is measured from the start of the dma-buf, including
+  // for raw buffers created with Slice(). The backend owns `fd`.
+  struct ExternalDmaInfo {
+    int fd = -1;
+    uint64_t offset = 0;
+    uint64_t size = 0;
+  };
+
+  // One access to this buffer by an external DMA engine. PJRT cannot observe
+  // when such an engine is finished, so the access lasts as long as it is
+  // referenced: the memory stays at `info()` until the last reference is
+  // dropped. Backends subclass this and end the access in the destructor.
+  class ExternalDmaAccess {
+   public:
+    explicit ExternalDmaAccess(ExternalDmaInfo info) : info_(info) {}
+    virtual ~ExternalDmaAccess() = default;
+
+    // Copying would slice off the backend's release logic.
+    ExternalDmaAccess(const ExternalDmaAccess&) = delete;
+    ExternalDmaAccess& operator=(const ExternalDmaAccess&) = delete;
+
+    const ExternalDmaInfo& info() const { return info_; }
+
+   private:
+    ExternalDmaInfo info_;
+  };
+
+  // Starts one external DMA access. This is the only way to get the buffer's
+  // dma-buf location. The result becomes available once the buffer is
+  // allocated and its address is final, or carries an error if the buffer
+  // cannot be reached by external DMA (Unimplemented when the backend does not
+  // expose device memory as a dma-buf). Drop the reference as soon as the
+  // engine is finished; holding it keeps the memory in place.
+  tsl::AsyncValueRef<ExternalDmaAccess> AcquireExternalDmaAccess();
 
   void CopyTo(PjRtRawBufferRef dst_raw_buffer,
               PjRtDeviceEventPromiseRef definition_event_promise,
@@ -134,7 +171,7 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
       PjRtBuffer* buffer);
 
   // Memory space that the raw buffer lives on.
-  virtual PjRtMemorySpace* memory_space() const = 0;
+  virtual PJRT_Memory* c_memory_space() const = 0;
 
   // If visible to the host, returns the base pointer for direct access.
   virtual void* GetHostPointer() const { return nullptr; }
@@ -207,6 +244,11 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
 
   // Creates an event which signals when the allocation is complete.
   virtual absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() = 0;
+
+  // Starts one external DMA access; see PjRtRawBufferInterface. Backends whose
+  // device memory can move must keep this buffer in place from the moment the
+  // access is available until it is destroyed.
+  virtual tsl::AsyncValueRef<ExternalDmaAccess> AcquireExternalDmaAccess();
 
   // Copies directly into dst_raw_buffer. Must set definition_event_promise,
   // when dst_raw_buffer is ready, allocation_event before using dst_raw_buffer

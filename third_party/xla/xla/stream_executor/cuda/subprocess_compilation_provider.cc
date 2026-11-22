@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 
 namespace stream_executor::cuda {

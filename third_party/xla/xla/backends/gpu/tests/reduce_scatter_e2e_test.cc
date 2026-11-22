@@ -568,8 +568,8 @@ INSTANTIATE_TEST_SUITE_P(
          {ShapeUtil::MakeShape(F32, {4, 4096}),
           ShapeUtil::MakeShape(F32, {4, 1})},
          "add"},
-        // 12288 elements per rank: canonicalized to [R, 32, 384] so that the
-        // 4 programs per output row split the middle dimension ([1, 8, 512]
+        // 12288 elements per rank: canonicalized to [R, 64, 192] so that the
+        // 4 programs per output row split the middle dimension ([1, 16, 256]
         // tiles) instead of rounding 12288 up to a single power of two.
         {"F32AddNonPowerOfTwoLarge",
          F32,

@@ -115,6 +115,11 @@ static void rgb_to_hsv(float r, float g, float b, float* h, float* s,
   if (hh < 0.0) {
     hh = hh + 1;
   }
+  // A hue just below zero can round up to exactly 1, which hsv_to_rgb would
+  // read as a seventh sector and turn into gray.
+  if (hh >= 1.0f) {
+    hh = 0.0f;
+  }
   *v = vv;
   *h = hh;
 }

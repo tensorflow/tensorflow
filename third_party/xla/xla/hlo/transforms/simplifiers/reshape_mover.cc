@@ -31,8 +31,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/permutation_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -96,6 +103,47 @@ absl::InlinedVector<int64_t, 4> TransposedBcastDims(
     new_bcast_dims.push_back(inv_perm[dim]);
   }
   return new_bcast_dims;
+}
+
+bool OnlyInsertsDeletesOrPermutes1SizedDims(const HloInstruction* rearrange) {
+  if (rearrange->opcode() == HloOpcode::kReshape) {
+    return rearrange->ReshapeMerelyInsertsOrDeletes1SizedDimensions()
+        .has_value();
+  }
+  if (rearrange->opcode() == HloOpcode::kTranspose) {
+    int64_t prev_non_degenerate_dim = -1;
+    for (int64_t dim : rearrange->dimensions()) {
+      if (rearrange->operand(0)->shape().dimensions(dim) != 1) {
+        if (dim < prev_non_degenerate_dim) {
+          return false;
+        }
+        prev_non_degenerate_dim = dim;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+bool ProducedByContraction(const HloInstruction* instr) {
+  while (HloPredicateIsOp<HloOpcode::kConvert, HloOpcode::kReducePrecision>(
+      instr)) {
+    instr = instr->operand(0);
+  }
+  return HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution,
+                          HloOpcode::kRaggedDot>(instr);
+}
+
+bool AllUsersAreRearranges(const HloInstruction* instr) {
+  return instr != instr->parent()->root_instruction() &&
+         !instr->users().empty() && absl::c_all_of(instr->users(), IsRearrange);
+}
+
+bool AllUsersAreCustomCalls(const HloInstruction* instr) {
+  return instr != instr->parent()->root_instruction() &&
+         !instr->users().empty() &&
+         absl::c_all_of(instr->users(),
+                        HloPredicateIsOp<HloOpcode::kCustomCall>);
 }
 
 }  // namespace
@@ -222,6 +270,29 @@ bool ReshapeMover::IsReshapeMoveCandidate(HloInstruction* instruction) {
   const HloInstruction* rearrange =
       FirstNontrivialRearrange(instruction->operands());
   if (rearrange == nullptr) {
+    return false;
+  }
+  // Do not sink data reordering reshapes or transposes across widening
+  // converts unless the source comes from a contraction (so sinking exposes the
+  // convert for contraction epilogue fusion or cast folding), the source is a
+  // slice (so sinking keeps the slice adjacent to the convert for fusion
+  // instead of materializing a standalone slice and rearrange), every user of
+  // the convert is itself a rearrange (so adjacent rearranges collapse), or
+  // every user of the convert is a custom call (which cannot absorb the
+  // convert, so sinking lets conversion folding merge the convert into the
+  // rearrange). Otherwise sinking runs the rearrange in the wider element type,
+  // inflating intermediate buffer size and blocking convert fusion into
+  // downstream consumers, while fighting ConvertMover. Rearranges that only
+  // insert, delete, or permute degenerate dimensions of size 1 stay allowed.
+  if (options_.keep_rearrange_before_widening_convert &&
+      instruction->opcode() == HloOpcode::kConvert &&
+      primitive_util::BitWidth(rearrange->shape().element_type()) <
+          primitive_util::BitWidth(instruction->shape().element_type()) &&
+      !OnlyInsertsDeletesOrPermutes1SizedDims(rearrange) &&
+      !ProducedByContraction(rearrange->operand(0)) &&
+      !HloPredicateIsOp<HloOpcode::kSlice>(rearrange->operand(0)) &&
+      !AllUsersAreRearranges(instruction) &&
+      !AllUsersAreCustomCalls(instruction)) {
     return false;
   }
   return absl::c_all_of(
@@ -412,5 +483,28 @@ absl::StatusOr<bool> ReshapeMover::RunImpl(
   }
   return changed;
 }
+
+namespace {
+
+class ReshapeMoverFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "reshape-mover"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext&, const HloPassOptions& options) const override {
+    ReshapeMoverOptions reshape_mover_options;
+    reshape_mover_options.reshape_of_1d_broadcast_is_cheap =
+        options.Get<bool>("reshape_of_1d_broadcast_is_cheap").value_or(false);
+    reshape_mover_options.keep_rearrange_before_widening_convert =
+        options.Get<bool>("keep_rearrange_before_widening_convert")
+            .value_or(false);
+    return std::make_unique<ReshapeMover>(reshape_mover_options);
+  }
+};
+
+const HloPassFactory* const kReshapeMoverRegistration =
+    RegisterHloPassFactory<ReshapeMoverFactory>();
+
+}  // namespace
 
 }  // namespace xla

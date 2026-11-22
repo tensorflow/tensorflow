@@ -24,93 +24,113 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/pjrt/proto/pjrt_value_type.pb.h"
 
-using testing::ElementsAre;
-
+namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
+
 TEST(PjRtCommonTest, PjRtValueTypeFromProtoDefault) {
-  xla::PjRtValueTypeProto proto;
-  xla::PjRtValueType value = xla::PjRtValueTypeFromProto(proto);
+  PjRtValueTypeProto proto;
+  PjRtValueType value = PjRtValueTypeFromProto(proto);
   ASSERT_TRUE(std::holds_alternative<std::string>(value));
   EXPECT_EQ(std::get<std::string>(value), "");
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeToProtoFloat) {
-  xla::PjRtValueType value = 1.0f;
-  xla::PjRtValueTypeProto proto = xla::PjRtValueTypeToProto(value);
+  PjRtValueType value = 1.0f;
+  PjRtValueTypeProto proto = PjRtValueTypeToProto(value);
   ASSERT_TRUE(proto.has_float_value());
   EXPECT_EQ(proto.float_value(), 1.0f);
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeToProtoInt) {
-  xla::PjRtValueType value = 1L;
-  xla::PjRtValueTypeProto proto = xla::PjRtValueTypeToProto(value);
+  PjRtValueType value = 1L;
+  PjRtValueTypeProto proto = PjRtValueTypeToProto(value);
   ASSERT_TRUE(proto.has_int_value());
   EXPECT_EQ(proto.int_value(), 1L);
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeToProtoString) {
-  xla::PjRtValueType value = std::string("test");
-  xla::PjRtValueTypeProto proto = xla::PjRtValueTypeToProto(value);
+  PjRtValueType value = std::string("test");
+  PjRtValueTypeProto proto = PjRtValueTypeToProto(value);
   ASSERT_TRUE(proto.has_string_value());
   EXPECT_EQ(proto.string_value(), "test");
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeToProtoBool) {
-  xla::PjRtValueType value = true;
-  xla::PjRtValueTypeProto proto = xla::PjRtValueTypeToProto(value);
+  PjRtValueType value = true;
+  PjRtValueTypeProto proto = PjRtValueTypeToProto(value);
   ASSERT_TRUE(proto.has_bool_value());
   EXPECT_EQ(proto.bool_value(), true);
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeToProtoIntVector) {
-  xla::PjRtValueType value = std::vector<int64_t>{1, 2, 3};
-  xla::PjRtValueTypeProto proto = xla::PjRtValueTypeToProto(value);
+  PjRtValueType value = std::vector<int64_t>{1, 2, 3};
+  PjRtValueTypeProto proto = PjRtValueTypeToProto(value);
   ASSERT_TRUE(proto.has_int_vector());
   EXPECT_THAT(proto.int_vector().values(), ElementsAre(1, 2, 3));
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeFromProtoFloat) {
-  xla::PjRtValueTypeProto proto;
+  PjRtValueTypeProto proto;
   proto.set_float_value(1.0f);
-  xla::PjRtValueType value = xla::PjRtValueTypeFromProto(proto);
+  PjRtValueType value = PjRtValueTypeFromProto(proto);
   ASSERT_TRUE(std::holds_alternative<float>(value));
   EXPECT_EQ(std::get<float>(value), 1.0f);
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeFromProtoInt) {
-  xla::PjRtValueTypeProto proto;
+  PjRtValueTypeProto proto;
   proto.set_int_value(1L);
-  xla::PjRtValueType value = xla::PjRtValueTypeFromProto(proto);
+  PjRtValueType value = PjRtValueTypeFromProto(proto);
   ASSERT_TRUE(std::holds_alternative<int64_t>(value));
   EXPECT_EQ(std::get<int64_t>(value), 1L);
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeFromProtoString) {
-  xla::PjRtValueTypeProto proto;
+  PjRtValueTypeProto proto;
   proto.set_string_value("test");
-  xla::PjRtValueType value = xla::PjRtValueTypeFromProto(proto);
+  PjRtValueType value = PjRtValueTypeFromProto(proto);
   ASSERT_TRUE(std::holds_alternative<std::string>(value));
   EXPECT_EQ(std::get<std::string>(value), "test");
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeFromProtoBool) {
-  xla::PjRtValueTypeProto proto;
+  PjRtValueTypeProto proto;
   proto.set_bool_value(true);
-  xla::PjRtValueType value = xla::PjRtValueTypeFromProto(proto);
+  PjRtValueType value = PjRtValueTypeFromProto(proto);
   ASSERT_TRUE(std::holds_alternative<bool>(value));
   EXPECT_EQ(std::get<bool>(value), true);
 }
 
 TEST(PjRtCommonTest, PjRtValueTypeFromProtoIntVector) {
-  xla::PjRtValueTypeProto proto;
+  PjRtValueTypeProto proto;
   proto.mutable_int_vector()->add_values(1);
   proto.mutable_int_vector()->add_values(2);
   proto.mutable_int_vector()->add_values(3);
-  xla::PjRtValueType value = xla::PjRtValueTypeFromProto(proto);
+  PjRtValueType value = PjRtValueTypeFromProto(proto);
   ASSERT_TRUE(std::holds_alternative<std::vector<int64_t>>(value));
-  EXPECT_THAT(std::get<std::vector<int64_t>>(value),
-              testing::ElementsAre(1, 2, 3));
+  EXPECT_THAT(std::get<std::vector<int64_t>>(value), ElementsAre(1, 2, 3));
+}
+
+TEST(PjRtCommonTest, PjRtValueTypeCaseName) {
+  EXPECT_EQ(PjRtValueTypeCaseName(PjRtValueTypeProto::kBoolValue), "bool");
+  EXPECT_EQ(PjRtValueTypeCaseName(PjRtValueTypeProto::kFloatValue), "float");
+  EXPECT_EQ(PjRtValueTypeCaseName(PjRtValueTypeProto::kIntValue), "int64_t");
+  EXPECT_EQ(PjRtValueTypeCaseName(PjRtValueTypeProto::kIntVector),
+            "std::vector<int64_t>");
+  EXPECT_EQ(PjRtValueTypeCaseName(PjRtValueTypeProto::kStringValue), "string");
+  EXPECT_EQ(PjRtValueTypeCaseName(PjRtValueTypeProto::VALUE_NOT_SET), "unset");
+}
+
+TEST(PjRtCommonTest, PjRtTypeName) {
+  EXPECT_EQ(PjRtTypeName<bool>(), "bool");
+  EXPECT_EQ(PjRtTypeName<float>(), "float");
+  EXPECT_EQ(PjRtTypeName<int64_t>(), "int64_t");
+  EXPECT_EQ(PjRtTypeName<std::vector<int64_t>>(), "std::vector<int64_t>");
+  EXPECT_EQ(PjRtTypeName<std::string>(), "string");
+  EXPECT_EQ(PjRtTypeName<int>(), "unknown");
 }
 
 }  // namespace
+}  // namespace xla

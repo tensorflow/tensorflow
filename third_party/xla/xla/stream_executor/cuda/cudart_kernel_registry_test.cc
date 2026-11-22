@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cudart_kernel_registry.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
@@ -39,9 +41,12 @@ limitations under the License.
 namespace stream_executor::cuda {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::AnyOf;
+using ::testing::HasSubstr;
 using ::testing::Optional;
 using Write42Kernel = TypedKernelFactory<DeviceAddress<int32_t>, int32_t>;
+using Write42TypedKernel = TypedKernel<DeviceAddress<int32_t>, int32_t>;
 
 TEST(CudaRuntimeKernelRegistryTest, ResolveAndRunKernel) {
   // 1. Get the host function pointer for Write42 kernel.
@@ -191,6 +196,71 @@ TEST(CudaRuntimeKernelRegistryTest, LaunchCudaKernelWithTripleAngleBrackets) {
 
   std::vector<int32_t> expected = {42, 42, 42, 42};
   EXPECT_EQ(dst, expected);
+}
+
+TEST(CudaRuntimeKernelRegistryTest,
+     ResolveAndRunKernelWithoutCudartRegistration) {
+  Write42KernelFn host_fn = GetWrite42NoCudartKernel();
+
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  const CudaComputeCapability cc =
+      executor->GetDeviceDescription().cuda_compute_capability();
+
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec cubin_spec,
+                       FindCudaRuntimeKernel(host_fn, cc));
+  EXPECT_THAT(cubin_spec.kernel_name(), HasSubstr("Write42NoCudartKernel"));
+  EXPECT_EQ(cubin_spec.arity(), 2);
+
+  ASSERT_OK_AND_ASSIGN(CudaKernelFuncAttributes attrs,
+                       FindCudaRuntimeKernelFuncAttributes(host_fn, cc));
+  EXPECT_EQ(attrs.compute_capability.major, cc.major);
+  EXPECT_EQ(attrs.compute_capability.minor, cc.minor);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(Write42TypedKernel write42_kernel,
+                       Write42Kernel::Create(executor, cubin_spec));
+
+  int32_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  DeviceAddress<int32_t> out = executor->AllocateArray<int32_t>(length, 0);
+  ASSERT_OK(stream->MemZero(&out, byte_length));
+  ASSERT_OK(write42_kernel.Launch(ThreadDim(), BlockDim(4), stream.get(), out,
+                                  length));
+
+  std::vector<int32_t> dst(4, 0);
+  ASSERT_OK(stream->Memcpy(dst.data(), out, byte_length));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::vector<int32_t> expected = {42, 42, 42, 42};
+  EXPECT_EQ(dst, expected);
+}
+
+TEST(CudaRuntimeKernelRegistryTest, UnregisteredKernelIsInvisibleToCudart) {
+  Write42KernelFn host_fn = GetWrite42NoCudartKernel();
+
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+
+  cudaFuncAttributes runtime_attrs;
+  EXPECT_THAT(
+      cudaFuncGetAttributes(&runtime_attrs,
+                            reinterpret_cast<const void*>(host_fn)),
+      AnyOf(cudaErrorInvalidDeviceFunction, cudaErrorInvalidResourceHandle));
+  (void)cudaGetLastError();
+
+  int64_t length = 4;
+  DeviceAddress<int32_t> out = executor->AllocateArray<int32_t>(length, 0);
+  EXPECT_THAT(ChevronLaunchWrite42NoCudartKernel(stream.get(), out, length),
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 }  // namespace

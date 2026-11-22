@@ -234,3 +234,34 @@ func.func @array_cannot_be_donated_and_reused(%arg0: !array0)
     : (!array0) -> (!array1)
   return
 }
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [2,3]>
+module @copy_arrays_directly_in_module {
+  %arg = "builtin.unrealized_conversion_cast"() : () -> !array0
+  // expected-error@+1 {{'ifrt.CopyArrays' op must be in a FuncOp with attr `ifrt.function` or attr `ifrt.reshard_function`}}
+  %0, %ctrl = ifrt.CopyArrays(%arg) : (!array0) -> (!array1)
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [2,3]>
+func.func @copy_arrays_in_nested_region(%arg0: !array0)
+    attributes {ifrt.function} {
+  %cond = stablehlo.constant dense<true> : tensor<i1>
+  "stablehlo.if"(%cond) ({
+    // expected-error@+1 {{'ifrt.CopyArrays' op must be in a FuncOp with attr `ifrt.function` or attr `ifrt.reshard_function`}}
+    %0, %ctrl = ifrt.CopyArrays(%arg0) : (!array0) -> (!array1)
+    stablehlo.return
+  }, {
+    stablehlo.return
+  }) : (tensor<i1>) -> ()
+  return
+}

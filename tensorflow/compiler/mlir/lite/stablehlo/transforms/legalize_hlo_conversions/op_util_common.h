@@ -126,6 +126,13 @@ inline llvm::SmallVector<int64_t> UnrollI64Splat(DenseElementsAttr data) {
 // will return trivial 1's vector.
 llvm::SmallVector<int64_t, 4> ResolveStridesOrDilations(
     int64_t rank, std::optional<mlir::DenseIntElementsAttr> opt_attr);
+llvm::SmallVector<int64_t, 4> ResolveStridesOrDilations(
+    int64_t rank, std::optional<llvm::ArrayRef<int64_t>> opt_attr);
+
+// Resolves optional window reversal attributes. If not present,
+// will return trivial false vector.
+llvm::SmallVector<bool, 4> ResolveWindowReversal(
+    int64_t rank, std::optional<llvm::ArrayRef<bool>> opt_attr);
 
 // Resolves optional paddings attributes. If not present, will return
 // trivial [0, 0] paddings on each dim.

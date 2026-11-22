@@ -26,9 +26,10 @@ limitations under the License.
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/python/pjrt_ifrt/xla_sharding_serdes_util.h"
 #include "xla/python/pjrt_ifrt/xla_sharding_spec.h"
 #include "xla/python/pjrt_ifrt/xla_sharding_spec.pb.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -77,11 +78,21 @@ class HloShardingSpecSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for HloShardingSpec deserialization"));
     }
-    ABSL_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
+    // Reject V3 `NamedSharding` protos (including nested tuple elements) before
+    // `xla::HloSharding::FromProto`, as `xla::Mesh::FromProto` `CHECK`-fails on
+    // malformed wire meshes.
+    if (ContainsNamedSharding(proto.xla_op_sharding())) {
+      return absl::InvalidArgumentError(
+          "HloShardingSpec with XLA HloShardingV3 format is not supported for "
+          "deserialization");
+    }
+    ABSL_ASSIGN_OR_RETURN(xla::HloSharding xla_hlo_sharding,
                      xla::HloSharding::FromProto(proto.xla_op_sharding()));
 
-    return HloShardingSpec::Create(proto.num_shards(),
-                                   std::move(xla_hlo_sharding));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloShardingSpec> spec,
+                     HloShardingSpec::CreateIfValid(
+                         proto.num_shards(), std::move(xla_hlo_sharding)));
+    return spec;
   }
 
   static char ID;  // NOLINT

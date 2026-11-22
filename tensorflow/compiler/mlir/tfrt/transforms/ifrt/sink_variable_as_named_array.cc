@@ -18,6 +18,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -67,29 +68,30 @@ class SinkVariableAsNamedArrayPass
     mlir::ModuleOp module = getOperation();
     mlir::OpBuilder builder(&getContext());
 
-    // Record, as a module attribute, the runtime names of variables that are
-    // modified in this module. The runtime uses the union of these reports
-    // across all compiled modules to classify host-needed variables at
-    // IfrtModelContext::Freeze() time (freeze-time host variable mode). The
-    // name format must match GetRuntimeNameFromVarHandle:
-    // "<container>__<shared_name>".
+    // Record, as a module attribute, the variables that are modified in this
+    // module. The runtime uses the union of these reports across all compiled
+    // modules to classify host-needed variables at IfrtModelContext::Freeze()
+    // time (freeze-time host variable mode). Each entry is the
+    // [container, shared_name] of the `tf.VarHandleOp`: the runtime name also
+    // depends on the device when the container is empty.
     {
-      std::set<std::string> modified_names;
+      std::set<std::pair<std::string, std::string>> modified;
       module.walk([&](mlir::TF::VarHandleOp var_handle) {
         for (mlir::Operation* user : var_handle->getUsers()) {
           if (llvm::isa<mlir::TF::AssignVariableOp>(user)) {
-            modified_names.insert(
-                absl::StrCat(var_handle.getContainer().str(), "__",
-                             var_handle.getSharedName().str()));
+            modified.insert({var_handle.getContainer().str(),
+                             var_handle.getSharedName().str()});
             break;
           }
         }
       });
-      if (!modified_names.empty()) {
-        llvm::SmallVector<llvm::StringRef> refs(modified_names.begin(),
-                                                modified_names.end());
+      if (!modified.empty()) {
+        llvm::SmallVector<mlir::Attribute> entries;
+        for (const auto& [container, shared_name] : modified) {
+          entries.push_back(builder.getStrArrayAttr({container, shared_name}));
+        }
         module->setAttr("tf_ifrt.modified_variable_names",
-                        builder.getStrArrayAttr(refs));
+                        builder.getArrayAttr(entries));
       }
     }
 

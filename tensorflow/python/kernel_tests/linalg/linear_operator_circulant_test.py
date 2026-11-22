@@ -516,6 +516,45 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
       op_inverse = operator.inverse()
       self.assertIsInstance(op_inverse, linalg.LinearOperatorCirculant)
 
+  def test_operator_algebra_keeps_input_output_dtype(self):
+    for operator_class, fft, kernel in [
+        (linalg.LinearOperatorCirculant, fft_ops.fft, [4.0, 1.0, 0.5]),
+        (
+            linalg.LinearOperatorCirculant2D,
+            fft_ops.fft2d,
+            [[4.0, 1.0], [0.5, 0.0]],
+        ),
+        (
+            linalg.LinearOperatorCirculant3D,
+            fft_ops.fft3d,
+            [[[4.0, 1.0], [0.5, 0.0]]],
+        ),
+    ]:
+      # A real, non-symmetric kernel gives a Hermitian spectrum that is not
+      # real, so the operator is real but not self-adjoint.
+      spectrum = fft(math_ops.cast(kernel, dtypes.complex128))
+      for dtype in [dtypes.float32, dtypes.float64, dtypes.complex128]:
+        with self.subTest(operator=operator_class.__name__, dtype=dtype):
+          operator = operator_class(spectrum, input_output_dtype=dtype)
+          op_adjoint = operator.adjoint()
+          op_matmul = operator.matmul(operator)
+          op_solve = operator.solve(operator)
+          self.assertEqual(op_adjoint.dtype, dtype)
+          self.assertEqual(op_matmul.dtype, dtype)
+          self.assertEqual(op_solve.dtype, dtype)
+
+          matrix, adjoint, product, quotient = self.evaluate([
+              operator.to_dense(),
+              op_adjoint.to_dense(),
+              op_matmul.to_dense(),
+              op_solve.to_dense(),
+          ])
+          self.assertAllClose(matrix.conj().T, adjoint, rtol=1e-5, atol=1e-5)
+          self.assertAllClose(matrix @ matrix, product, rtol=1e-5, atol=1e-5)
+          self.assertAllClose(
+              np.eye(matrix.shape[-1]), quotient, rtol=1e-5, atol=1e-5
+          )
+
   def test_simple_positive_real_spectrum_gives_self_adjoint_pos_def_oper(self):
     with self.cached_session() as sess:
       spectrum = math_ops.cast([6., 4, 2], dtypes.complex64)
@@ -605,6 +644,43 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
     spectrum = [1., 2.]
     operator = linalg.LinearOperatorCirculant(spectrum)
     self.assertTrue(operator.is_self_adjoint)
+
+  def test_solve_with_spectrum_precision_different_from_operator_dtype(self):
+    # The spectrum dtype may differ from input_output_dtype.
+    for spectrum_dtype, input_output_dtype in [
+        (dtypes.float64, dtypes.complex64),
+        (dtypes.complex128, dtypes.complex64),
+        (dtypes.float32, dtypes.float64),
+    ]:
+      with self.subTest(
+          spectrum_dtype=spectrum_dtype, input_output_dtype=input_output_dtype
+      ):
+        # Real and Hermitian, so the operator is real and symmetric.
+        spectrum = math_ops.cast([6.0, 4.0, 4.0], spectrum_dtype)
+        operator = linalg.LinearOperatorCirculant(
+            spectrum, input_output_dtype=input_output_dtype
+        )
+        x = math_ops.cast(
+            [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], input_output_dtype
+        )
+
+        solution = operator.solve(x)
+        solution_adjoint = operator.solve(x, adjoint=True)
+        self.assertEqual(solution.dtype, input_output_dtype)
+        self.assertEqual(solution_adjoint.dtype, input_output_dtype)
+
+        matrix, x_val, solution, solution_adjoint, round_trip = self.evaluate([
+            operator.to_dense(),
+            x,
+            solution,
+            solution_adjoint,
+            operator.solve(operator.matmul(x)),
+        ])
+        self.assertAllClose(np.linalg.solve(matrix, x_val), solution)
+        self.assertAllClose(
+            np.linalg.solve(matrix.conj().T, x_val), solution_adjoint
+        )
+        self.assertAllClose(x_val, round_trip)
 
 
 @test_util.run_all_in_graph_and_eager_modes

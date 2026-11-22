@@ -101,6 +101,27 @@ absl::Status CudaKernel::UpdateMaxDynamicSharedMemoryBytes(
   return absl::OkStatus();
 }
 
+absl::Status CudaKernel::UpdateNonPortableClusterSize(
+    const std::optional<ClusterDim>& cluster_dims) const {
+  if (!cluster_dims.has_value() ||
+      cluster_dims->x * cluster_dims->y * cluster_dims->z <= 8 ||
+      non_portable_cluster_size_allowed_.load(std::memory_order_relaxed)) {
+    return absl::OkStatus();
+  }
+
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
+      cuFuncSetAttribute(gpu_function_,
+                         CU_FUNC_ATTRIBUTE_NON_PORTABLE_CLUSTER_SIZE_ALLOWED,
+                         1),
+      absl::StrFormat(
+          "Failed to set CU_FUNC_ATTRIBUTE_NON_PORTABLE_CLUSTER_SIZE_ALLOWED "
+          "on kernel %s",
+          name())));
+  non_portable_cluster_size_allowed_.store(true, std::memory_order_relaxed);
+  return absl::OkStatus();
+}
+
 absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
                                 const std::optional<ClusterDim>& cluster_dims,
@@ -120,7 +141,10 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
     int32_t expected_number_of_arguments =
         Arity() + (packed.number_of_shared_bytes() > 0);
 
-    CHECK_EQ(expected_number_of_arguments, packed.number_of_arguments())
+    // Kernels loaded without a typed signature (e.g. FFI registered kernels)
+    // report arity 0, so their argument count can't be checked here.
+    CHECK(Arity() == 0 ||
+          expected_number_of_arguments == packed.number_of_arguments())
         << "Kernel " << name() << " has " << packed.number_of_arguments()
         << " arguments, but expected " << expected_number_of_arguments
         << "; arity=" << Arity()
@@ -130,6 +154,7 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
 
     ABSL_RETURN_IF_ERROR(
         UpdateMaxDynamicSharedMemoryBytes(packed.number_of_shared_bytes()));
+    ABSL_RETURN_IF_ERROR(UpdateNonPortableClusterSize(cluster_dims));
 
     return stream->LaunchKernel(thread_dims, block_dims, cluster_dims, function,
                                 name(), params, packed.number_of_shared_bytes(),

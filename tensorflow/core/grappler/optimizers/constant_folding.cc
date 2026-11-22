@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <utility>
 
@@ -468,29 +469,29 @@ absl::Status ConstantFolding::MaterializeShapes(
     }
 
     if (op == "TensorArraySizeV3") {
-      const NodeDef* array = CHECK_NOTNULL(node_map_->GetNode(node->input(0)));
-      if (array->input_size() == 0 ||
-          (array->attr().count("dynamic_size") != 0 &&
-           array->attr().at("dynamic_size").b())) {
+      if (NumNonControlInputs(*node) != 2 ||
+          NodePosition(node->input(0)) != 0 ||
+          NodePosition(node->input(1)) < 0 ||
+          node_map_->GetNode(node->input(1)) == nullptr) {
         continue;
       }
-      const NodeDef* array_size =
-          CHECK_NOTNULL(node_map_->GetNode(array->input(0)));
-      if (IsReallyConstant(*array_size)) {
-        // Don't materialize 0 sizes to avoid triggering incorrect static
-        // checks. A 0 sized array that can't grow isn't useful anyway.
-        if (array_size->attr().count("value") == 0) {
-          continue;
-        }
-        const TensorProto& raw_val = array_size->attr().at("value").tensor();
-        if (raw_val.dtype() != DT_INT32) {
-          continue;
-        }
-        Tensor value(raw_val.dtype(), raw_val.tensor_shape());
-        if (!value.FromProto(raw_val)) {
-          continue;
-        }
-        if (value.flat<int32_t>()(0) == 0) {
+      const NodeDef* array = node_map_->GetNode(node->input(0));
+      bool dynamic_size = false;
+      if (array == nullptr || array->op() != "TensorArrayV3" ||
+          array->input_size() == 0 || NodePosition(array->input(0)) != 0 ||
+          (HasNodeAttr(*array, "dynamic_size") &&
+           (!GetNodeAttr(*array, "dynamic_size", &dynamic_size).ok() ||
+            dynamic_size))) {
+        continue;
+      }
+      const NodeDef* array_size = node_map_->GetNode(array->input(0));
+      Tensor value;
+      if (array_size != nullptr &&
+          GetTensorFromConstNode(array->input(0), &value)) {
+        DataType attr_dtype = DT_INVALID;
+        if (!GetNodeAttr(*array_size, "dtype", &attr_dtype).ok() ||
+            attr_dtype != DT_INT32 || value.dtype() != DT_INT32 ||
+            value.dims() != 0 || value.scalar<int32_t>()() <= 0) {
           continue;
         }
 
@@ -2251,28 +2252,37 @@ absl::Status ConstantFolding::RemoveReverse(const GraphProperties& properties,
                                             bool use_shape_info,
                                             GraphDef* optimized_graph,
                                             NodeDef* node) {
-  if (!use_shape_info || node->op() != "ReverseV2") return absl::OkStatus();
+  if (!use_shape_info || node->op() != "ReverseV2" || node->input_size() < 2 ||
+      properties.GetInputProperties(node->name()).size() != 2) {
+    return absl::OkStatus();
+  }
+  const auto& shape = properties.GetInputProperties(node->name())[0].shape();
+  if (shape.unknown_rank() || shape.dim_size() > 8) {
+    return absl::OkStatus();
+  }
   Tensor axis;
-  if (properties.HasInputProperties(node->name()) &&
+  if (!IsControlInput(node->input(1)) &&
       GetTensorFromConstNode(node->input(1), &axis)) {
-    const auto& shape = properties.GetInputProperties(node->name())[0].shape();
-    if (shape.unknown_rank()) return absl::OkStatus();
+    if (axis.dims() != 1 ||
+        (axis.dtype() != DT_INT32 && axis.dtype() != DT_INT64)) {
+      return absl::OkStatus();
+    }
     std::set<int> target_axes;
     for (int j = 0; j < axis.NumElements(); ++j) {
-      // value of axis can be negative.
-      if (axis.dtype() == DT_INT64) {
-        target_axes.insert((axis.vec<int64_t>()(j) + shape.dim_size()) %
-                           shape.dim_size());
-      } else {
-        target_axes.insert((axis.vec<int>()(j) + shape.dim_size()) %
-                           shape.dim_size());
+      const int64_t axis_value =
+          axis.dtype() == DT_INT64
+              ? axis.vec<int64_t>()(j)
+              : static_cast<int64_t>(axis.vec<int32_t>()(j));
+      if (axis_value < -shape.dim_size() || axis_value >= shape.dim_size()) {
+        return absl::OkStatus();
+      }
+      const int canonical_axis =
+          static_cast<int>((axis_value + shape.dim_size()) % shape.dim_size());
+      if (!target_axes.insert(canonical_axis).second) {
+        return absl::OkStatus();
       }
     }
 
-    // The node is replaceable iff
-    // unknown_rank == false &&
-    // (dim_size == 0 || all dims have size 1 ||
-    //  all dims with > 1 size are not in target_axes)
     bool replaceable = true;
     for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
       replaceable &=
@@ -2289,29 +2299,34 @@ absl::Status ConstantFolding::SimplifySlice(const GraphProperties& properties,
                                             bool use_shape_info,
                                             GraphDef* optimized_graph,
                                             NodeDef* node) {
-  if (!use_shape_info || !IsSlice(*node)) return absl::OkStatus();
+  if (!use_shape_info || !IsSlice(*node) || node->input_size() < 3 ||
+      properties.GetInputProperties(node->name()).size() != 3) {
+    return absl::OkStatus();
+  }
+  const auto& input = properties.GetInputProperties(node->name())[0];
+  if (input.shape().unknown_rank()) {
+    return absl::OkStatus();
+  }
   Tensor begin;
   Tensor size;
-  if (properties.HasInputProperties(node->name()) &&
+  if (!IsControlInput(node->input(1)) && !IsControlInput(node->input(2)) &&
       GetTensorFromConstNode(node->input(1), &begin) &&
       GetTensorFromConstNode(node->input(2), &size)) {
-    const auto& input = properties.GetInputProperties(node->name())[0];
-    // The node is replaceable iff unknown_rank == false &&
-    // begin == 0 && (size == -1 || size == input_shape) for all dimensions
-    bool replaceable = !input.shape().unknown_rank();
+    if (begin.dims() != 1 || size.dims() != 1 ||
+        begin.NumElements() != input.shape().dim_size() ||
+        size.NumElements() != input.shape().dim_size() ||
+        (begin.dtype() != DT_INT32 && begin.dtype() != DT_INT64) ||
+        size.dtype() != begin.dtype()) {
+      return absl::OkStatus();
+    }
+    bool replaceable = true;
     for (int j = 0; replaceable && j < input.shape().dim_size(); ++j) {
-      if (begin.dtype() == DT_INT32) {
-        replaceable &= begin.vec<int>()(j) == 0;
-      } else {
-        replaceable &= begin.vec<int64_t>()(j) == 0;
-      }
-      if (size.dtype() == DT_INT32) {
-        replaceable &= (size.vec<int>()(j) == -1 ||
-                        size.vec<int>()(j) == input.shape().dim(j).size());
-      } else {
-        replaceable &= (size.vec<int64_t>()(j) == -1 ||
-                        size.vec<int64_t>()(j) == input.shape().dim(j).size());
-      }
+      const int64_t b = begin.dtype() == DT_INT32 ? begin.vec<int32_t>()(j)
+                                                  : begin.vec<int64_t>()(j);
+      const int64_t s = size.dtype() == DT_INT32 ? size.vec<int32_t>()(j)
+                                                 : size.vec<int64_t>()(j);
+      const int64_t dim = input.shape().dim(j).size();
+      replaceable &= b == 0 && (s == -1 || (dim >= 0 && s == dim));
     }
     if (replaceable) {
       ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
@@ -2323,27 +2338,47 @@ absl::Status ConstantFolding::SimplifySlice(const GraphProperties& properties,
 absl::Status ConstantFolding::SimplifyStridedSlice(
     const GraphProperties& properties, bool use_shape_info,
     GraphDef* optimized_graph, NodeDef* node) {
-  if (use_shape_info && IsStridedSlice(*node) &&
+  if (use_shape_info && IsStridedSlice(*node) && node->input_size() >= 4 &&
       properties.GetInputProperties(node->name()).size() == 4) {
     TF_RETURN_IF_ERROR(
         CheckAttrsExist(*node, {"new_axis_mask", "shrink_axis_mask"}));
-    if (node->attr().at("new_axis_mask").i() != 0 ||
-        node->attr().at("shrink_axis_mask").i() != 0) {
-      // Skip nodes with new/shrink axis mask, since they involve dimension
-      // changes.
+    int32_t new_axis_mask = 0;
+    int32_t shrink_axis_mask = 0;
+    if (!GetNodeAttr(*node, "new_axis_mask", &new_axis_mask).ok() ||
+        !GetNodeAttr(*node, "shrink_axis_mask", &shrink_axis_mask).ok() ||
+        new_axis_mask != 0 || shrink_axis_mask != 0) {
       return absl::OkStatus();
     }
     const auto& input = properties.GetInputProperties(node->name())[0];
-    for (int j = 0; j < input.shape().dim_size(); ++j) {
-      // Skip if input shape is not fully determined.
+    const int rank = input.shape().dim_size();
+    if (input.shape().unknown_rank() || rank >= 1024) {
+      return absl::OkStatus();
+    }
+    for (int j = 0; j < rank; ++j) {
       if (input.shape().dim(j).size() < 0) {
         return absl::OkStatus();
       }
     }
 
+    TF_RETURN_IF_ERROR(
+        CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask"}));
+    int32_t begin_mask = 0;
+    int32_t end_mask = 0;
+    int32_t ellipsis_mask = 0;
+    if (!GetNodeAttr(*node, "begin_mask", &begin_mask).ok() ||
+        !GetNodeAttr(*node, "end_mask", &end_mask).ok() ||
+        !GetNodeAttr(*node, "ellipsis_mask", &ellipsis_mask).ok()) {
+      return absl::OkStatus();
+    }
+    const uint32_t u_ellipsis = static_cast<uint32_t>(ellipsis_mask);
+    if ((u_ellipsis & (u_ellipsis - 1)) != 0) {
+      return absl::OkStatus();
+    }
+
     std::vector<Tensor> input_tensors(3);
     for (int i = 1; i < 4; ++i) {
-      if (!GetTensorFromConstNode(node->input(i), &input_tensors[i - 1])) {
+      if (IsControlInput(node->input(i)) ||
+          !GetTensorFromConstNode(node->input(i), &input_tensors[i - 1])) {
         return absl::OkStatus();
       }
     }
@@ -2351,58 +2386,51 @@ absl::Status ConstantFolding::SimplifyStridedSlice(
     const Tensor& begin = input_tensors[0];
     const Tensor& end = input_tensors[1];
     const Tensor& strides = input_tensors[2];
-
-    TF_RETURN_IF_ERROR(
-        CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask"}));
-    int begin_mask = node->attr().at("begin_mask").i();
-    int end_mask = node->attr().at("end_mask").i();
-    std::set<int> expanded_ellipsis_indices;
-    int ellipsis_index = -1;
-    for (int j = 0; j < input.shape().dim_size(); ++j) {
-      // find the ellipsis_mask. If not found, insert one in the end if
-      // necessary.
-      if (node->attr().at("ellipsis_mask").i() & 1 << j ||
-          (ellipsis_index == -1 && j >= strides.NumElements())) {
-        ellipsis_index = j;
-      }
-      // insert the indices that are immediately after ellipsis_index if
-      // necessary.
-      if (ellipsis_index != -1 &&
-          input.shape().dim_size() >
-              strides.NumElements() + j - ellipsis_index) {
-        expanded_ellipsis_indices.insert(j);
-      }
+    if (begin.dims() != 1 || end.dims() != 1 || strides.dims() != 1 ||
+        begin.NumElements() != strides.NumElements() ||
+        end.NumElements() != strides.NumElements() ||
+        strides.NumElements() >= 32 ||
+        (strides.dtype() != DT_INT32 && strides.dtype() != DT_INT64) ||
+        begin.dtype() != strides.dtype() || end.dtype() != strides.dtype()) {
+      return absl::OkStatus();
     }
 
-    // The node is replaceable iff unknown_rank == false &&
-    // ((begin_mask is set || begin == 0) && (end_mask is set || end == dim)
-    //  && strides == 1) for all dimensions.
-    bool replaceable = !input.shape().unknown_rank();
-    for (int j = 0; replaceable && j < input.shape().dim_size(); ++j) {
-      if (expanded_ellipsis_indices.find(j) !=
-          expanded_ellipsis_indices.end()) {
-        // ellipsis_mask is effective on current dimension.
+    const int num_sparse = static_cast<int>(strides.NumElements());
+    int ellipsis_axis = -1;
+    for (int i = 0; i < num_sparse; ++i) {
+      if ((u_ellipsis & (1U << i)) != 0) {
+        ellipsis_axis = i;
+        break;
+      }
+    }
+    const int non_ellipsis_specs =
+        ellipsis_axis != -1 ? num_sparse - 1 : num_sparse;
+    if (non_ellipsis_specs > rank) {
+      return absl::OkStatus();
+    }
+    const int ellipsis_start = ellipsis_axis != -1 ? ellipsis_axis : num_sparse;
+    const int ellipsis_size = rank - non_ellipsis_specs;
+
+    const uint32_t u_begin = static_cast<uint32_t>(begin_mask);
+    const uint32_t u_end = static_cast<uint32_t>(end_mask);
+    bool replaceable = true;
+    for (int j = 0; replaceable && j < rank; ++j) {
+      if (j >= ellipsis_start && j < ellipsis_start + ellipsis_size) {
         continue;
       }
-      // when we have ellipsis_mask in between, input.shape().dim_size() will
-      // be greater than strides.NumElements(), since we will insert
-      // as many as expanded_ellipsis_indices.size() axes during computation.
-      // We need to subtract this number from j.
-      int i = j;
-      int expanded_ellipsis_indices_size = expanded_ellipsis_indices.size();
-      if (ellipsis_index != -1 &&
-          j >= ellipsis_index + expanded_ellipsis_indices_size) {
-        i = j - expanded_ellipsis_indices_size;
-      }
-      int b = begin.dtype() == DT_INT32 ? begin.vec<int>()(i)
-                                        : begin.vec<int64_t>()(i);
-      int e =
-          end.dtype() == DT_INT32 ? end.vec<int>()(i) : end.vec<int64_t>()(i);
-      int s = strides.dtype() == DT_INT32 ? strides.vec<int>()(i)
-                                          : strides.vec<int64_t>()(i);
-      replaceable &= (begin_mask & 1 << i || b == 0) &&
-                     (end_mask & 1 << i || e == input.shape().dim(j).size()) &&
-                     s == 1;
+      const int i = (ellipsis_axis != -1 && j >= ellipsis_start + ellipsis_size)
+                        ? j - ellipsis_size + 1
+                        : j;
+      const int64_t b = begin.dtype() == DT_INT32 ? begin.vec<int32_t>()(i)
+                                                  : begin.vec<int64_t>()(i);
+      const int64_t e = end.dtype() == DT_INT32 ? end.vec<int32_t>()(i)
+                                                : end.vec<int64_t>()(i);
+      const int64_t s = strides.dtype() == DT_INT32 ? strides.vec<int32_t>()(i)
+                                                    : strides.vec<int64_t>()(i);
+      const bool begin_masked = (u_begin & (1U << i)) != 0;
+      const bool end_masked = (u_end & (1U << i)) != 0;
+      replaceable &= (begin_masked || b == 0) &&
+                     (end_masked || e == input.shape().dim(j).size()) && s == 1;
     }
     if (replaceable) {
       ReplaceOperationWithIdentity(0, properties, node, optimized_graph);

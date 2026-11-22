@@ -1,0 +1,13 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize \
+// RUN:   -xla-gpu-test-transform-loops | FileCheck %s
+// RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
+
+fusion {
+  %p0 = s2[256]{0:E(2)} parameter(0)
+  ROOT %convert = s4[256]{0:E(4)} convert(%p0)
+}
+
+// CHECK-NOT: vector.transfer_read
+// CHECK: tensor.extract {{.*}} : tensor<256xi2>
+// CHECK: vector.transfer_write {{.*}} : vector<2xi4>, tensor<256xi4>

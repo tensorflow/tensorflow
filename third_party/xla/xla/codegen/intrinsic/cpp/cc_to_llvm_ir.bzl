@@ -24,6 +24,11 @@ load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
+# Internally this loads a macro, but in OSS this is a function
+# buildifier: disable=out-of-order-load
+def register_extension_info(**_kwargs):
+    pass
+
 visibility(DEFAULT_LOAD_VISIBILITY)
 
 def _to_clang_cl_flags(flags):
@@ -47,8 +52,8 @@ def _to_clang_cl_flags(flags):
             out.append("/clang:-flto")
         elif flag.startswith("-D") or flag.startswith("/"):
             out.append(flag)
-        elif flag.startswith("-std="):
-            # The Windows toolchain already passes /std:c++17.
+        elif flag.startswith("-std=") or flag == "-fno-exceptions":
+            # The Windows toolchain already passes /std:c++17 and /EHs- /EHc-.
             continue
         else:
             out.append("/clang:" + flag)
@@ -107,7 +112,7 @@ _extract_object_files = rule(
     },
 )
 
-def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
+def cc_ir_header(name, src, deps = [], copts = [], x86_64_copts = [], **kwargs):
     """A macro that generates an IR header and wraps it in a cc_library.
 
     Args:
@@ -115,6 +120,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
       src: The C++ source file to compile.
       deps: The C++ dependencies of the source file.
       copts: Additional compiler flags.
+      x86_64_copts: Additional compiler flags passed only on x86_64 targets.
       **kwargs: Additional arguments to pass to the generated cc_library.
     """
 
@@ -146,9 +152,12 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-g0",
         "-DNDEBUG",
         "-mprefer-vector-width=512",
-        "-DEIGEN_VECTORIZE_GENERIC",
         "-flax-vector-conversions",  # Jax Mac wheel build server has int64_t != long
         "-fno-builtin",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-fno-stack-protector",
         "-Wno-psabi",
         "-std=c++17",
         "-fno-experimental-sanitize-metadata=all",
@@ -166,11 +175,17 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         # /GS- and /EHs- /EHc- (which override the toolchain's /EHsc) keep MSVC
         # runtime hooks (stack-protector cookie, __CxxFrameHandler3 personality)
         # out of the IR, matching the ELF output.
+        "//xla/tsl:windows_x86_64": [
+            "/GS-",
+            "/EHs-",
+            "/EHc-",
+        ] + _to_clang_cl_flags(clang_flags + list_copts + x86_64_copts),
         "//xla/tsl:windows": [
             "/GS-",
             "/EHs-",
             "/EHc-",
         ] + _to_clang_cl_flags(clang_flags + list_copts),
+        "//xla/codegen/intrinsic/cpp:x86_64": clang_flags + list_copts + x86_64_copts,
         "//conditions:default": clang_flags + list_copts,
     }) + select_copts
 
@@ -195,6 +210,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     # Prefix features with '-'
     features = ["-" + f for f in disabled_features] + kwargs.pop("features", [])
     features.append("cfi_opt_out")
+    features.append("kcfi_opt_out")
 
     cc_library(
         name = lib_name,
@@ -247,3 +263,9 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         ],
         **kwargs
     )
+
+# `deps` are passed to the `{name}_lib` cc_library that compiles `src`.
+register_extension_info(
+    extension = cc_ir_header,
+    label_regex_for_dep = "{extension_name}_lib",
+)

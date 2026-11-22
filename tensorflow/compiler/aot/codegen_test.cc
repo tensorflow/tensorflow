@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
 #include "tensorflow/compiler/aot/compile.h"
+#include "tensorflow/compiler/aot/thunk_proto_execution_deserializer.h"
+#include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -177,6 +179,42 @@ static void CompareWithGoldenFile(
                                golden_file_contents.end());
   }
   EXPECT_EQ(golden_file_contents, expected_contents);
+}
+
+TEST(ThunkProtoExecutionDeserializerTest, EmitsDirectSharedRngStateCalls) {
+  xla::cpu::ThunkSequenceProto sequence;
+  {
+    xla::cpu::RngGetAndUpdateStateThunkProto* rng0 =
+        sequence.add_thunks()->mutable_rng_get_and_update_state_thunk();
+    rng0->set_delta(5);
+    rng0->mutable_state_buffer()->set_buffer_allocation_index(2);
+    rng0->mutable_state_buffer()->set_offset(0);
+    rng0->mutable_state_buffer()->set_size(16);
+  }
+  {
+    xla::cpu::RngGetAndUpdateStateThunkProto* rng1 =
+        sequence.add_thunks()->mutable_rng_get_and_update_state_thunk();
+    rng1->set_delta(11);
+    rng1->mutable_state_buffer()->set_buffer_allocation_index(3);
+    rng1->mutable_state_buffer()->set_offset(32);
+    rng1->mutable_state_buffer()->set_size(16);
+  }
+
+  ThunkProtoExecutionDeserializer deserializer;
+  absl::StatusOr<std::string> run_impl =
+      deserializer.ThunkSpecificRunImplFromThunkSequence(sequence);
+  TF_ASSERT_OK(run_impl.status());
+  EXPECT_TRUE(absl::StrContains(
+      *run_impl,
+      "rng_state.GetAndUpdateState(reinterpret_cast<uint64_t*>("
+      "reinterpret_cast<std::byte*>(buffer_table[2]) + 0), 5);"))
+      << *run_impl;
+  EXPECT_TRUE(absl::StrContains(
+      *run_impl,
+      "rng_state.GetAndUpdateState(reinterpret_cast<uint64_t*>("
+      "reinterpret_cast<std::byte*>(buffer_table[3]) + 32), 11);"))
+      << *run_impl;
+  EXPECT_FALSE(absl::StrContains(*run_impl, "rng_states[")) << *run_impl;
 }
 
 }  // namespace

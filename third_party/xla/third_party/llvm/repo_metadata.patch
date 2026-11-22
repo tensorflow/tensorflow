@@ -1,3 +1,19 @@
+diff --git a/utils/bazel/configure.bzl b/utils/bazel/configure.bzl
+--- a/utils/bazel/configure.bzl
++++ b/utils/bazel/configure.bzl
+@@ -198,8 +198,11 @@ def _llvm_configure_impl(repository_ctx):
+         executable = False,
+     )
+ 
+     if hasattr(repository_ctx, "repo_metadata"):
+-        return repository_ctx.repo_metadata(reproducible = True)
++        return repository_ctx.repo_metadata(
++            reproducible = not repository_ctx.os.name.startswith("windows"),
++        )
++    return None
+ 
+ llvm_configure = repository_rule(
+     implementation = _llvm_configure_impl,
 diff --git a/utils/bazel/linux_uapi.bzl b/utils/bazel/linux_uapi.bzl
 --- a/utils/bazel/linux_uapi.bzl
 +++ b/utils/bazel/linux_uapi.bzl

@@ -112,7 +112,7 @@ class GrpcClientSession : public ClientSession {
   absl::Notification reader_thread_stopped_;
 
   // Set by `Finish()`, respected by `Enqueue()` calls.
-  bool writes_stopped_ ABSL_GUARDED_BY(writer_mu_) = false;
+  absl::Status finish_status_ ABSL_GUARDED_BY(writer_mu_) = absl::OkStatus();
 
   // A mutex that ensures serialization between various `Enqueue()` calls, since
   // only one thread is allowed to write to the gRPC stream at a time.

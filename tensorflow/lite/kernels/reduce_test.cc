@@ -1079,6 +1079,18 @@ TEST(ReferenceDynamicInt8SumOpTest, ZeroOutputDimEmptyAxis) {
   EXPECT_THAT(m.GetOutput<int8_t>(), IsEmpty());
 }
 
+TEST(ReferenceDynamicInt8SumOpTest, SignedValuesWithRescaling) {
+  ReferenceDynamicSumOpModel m({TensorType_INT8, {2, 2}, -1.0, 1.0},
+                               {TensorType_INT8, {1, 2}, -2.0, 2.0},
+                               {TensorType_INT32, {1}}, true);
+  m.SetAxis({0});
+  m.QuantizeAndPopulate<int8_t>(m.Input(), {-0.75f, 0.25f, -0.25f, 0.5f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(
+                  ArrayFloatNear({-1.0f, 0.75f}, GetTolerance(-2.0, 2.0))));
+}
+
 TEST(DynamicInt8SumOpTest, ZeroOutputDimEmptyAxis) {
   SumOpDynamicModel m({TensorType_INT8, {3, 0}, -1.0, 1.0},
                       {TensorType_INT8, {3, 0}, -1.0, 1.0},

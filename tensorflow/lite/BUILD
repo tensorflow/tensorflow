@@ -156,6 +156,7 @@ filegroup(
         ":array.cc",
         ":array.h",
         ":builtin_ops.h",
+        ":checked_int.h",
         ":logger.h",
         ":minimal_logging.cc",
         ":minimal_logging.h",
@@ -439,6 +440,7 @@ cc_library(
 #         "@tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
 #         "@tsl//tsl/profiler/lib:traceme",
 #         "@tsl//tsl/profiler/lib:traceme_encode",
+#         "//third_party/tcmalloc:malloc_hook",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/base:core_headers",
 #         "@com_google_absl//absl/debugging:stacktrace",
@@ -1235,11 +1237,46 @@ cc_library(
     copts = tflite_copts_warnings() + tflite_copts(),
     deps = [
         ":array",
+        ":checked_int",
         ":kernel_api",
         ":macros",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "checked_int",
+    hdrs = ["checked_int.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings() + tflite_copts(),
+    deps = [
+        ":macros",
+        "//tensorflow/lite/core/c:c_api_types",
+    ],
+)
+
+cc_test(
+    name = "checked_int_test",
+    size = "small",
+    srcs = ["checked_int_test.cc"],
+    deps = [
+        ":checked_int",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Runs the same tests with the implementation used by compilers that don't
+# provide builtins.
+cc_test(
+    name = "checked_int_without_builtins_test",
+    size = "small",
+    srcs = ["checked_int_test.cc"],
+    local_defines = ["TFLITE_HAS_OVERFLOW_BUILTINS=0"],
+    deps = [
+        ":checked_int",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

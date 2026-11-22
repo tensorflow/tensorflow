@@ -26,6 +26,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
+// Emits a host kernel for a dot instruction, or for an output fusion that adds
+// a side input to the result of a dot.
 class DotKernelEmitter final : public KernelEmitter<LlvmKernelSource> {
  public:
   DotKernelEmitter(const HloInstruction* instr,

@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 
 #include <algorithm>
+#include <complex>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -39,6 +41,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
@@ -147,6 +150,22 @@ TensorValue ReshapeTo(mlir::ImplicitLocOpBuilder& b, TensorValue input,
       stablehlo::ReshapeOp::create(b, result_type, input).getResult());
 }
 
+std::optional<CollectiveStrategy> GetCollectiveStrategy(
+    const HloCollectiveInstruction& instr) {
+  auto gpu_config = instr.backend_config<xla::gpu::GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return std::nullopt;
+  }
+  switch (gpu_config->collective_backend_config().kernel_strategy()) {
+    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT:
+      return CollectiveStrategy::kOneShot;
+    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT:
+      return CollectiveStrategy::kTwoShot;
+    default:
+      return std::nullopt;
+  }
+}
+
 // Emits a (possibly variadic) all-gather and returns one tensor per output.
 absl::StatusOr<EmittedResults> EmitAllGather(
     EmitterContext& emitter_ctx, const HloAllGatherInstruction* all_gather,
@@ -203,28 +222,16 @@ absl::StatusOr<EmittedResults> EmitAllGather(
       b, mlir::TypeRange{output_types}, operands,
       all_gather->all_gather_dimension(), replica_groups_attr,
       channel_handle_attr, use_global_device_ids);
+  if (std::optional<CollectiveStrategy> strategy =
+          GetCollectiveStrategy(*all_gather)) {
+    SetCollectiveStrategy(all_gather_op, *strategy);
+  }
   EmittedResults results;
   results.reserve(num_outputs);
   for (Value result : all_gather_op.getResults()) {
     results.push_back(mlir::cast<TensorValue>(result));
   }
   return results;
-}
-
-std::optional<CollectiveStrategy> GetCollectiveStrategy(
-    const HloCollectiveInstruction& instr) {
-  auto gpu_config = instr.backend_config<xla::gpu::GpuBackendConfig>();
-  if (!gpu_config.ok()) {
-    return std::nullopt;
-  }
-  switch (gpu_config->collective_backend_config().kernel_strategy()) {
-    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT:
-      return CollectiveStrategy::kOneShot;
-    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT:
-      return CollectiveStrategy::kTwoShot;
-    default:
-      return std::nullopt;
-  }
 }
 
 absl::StatusOr<TensorValue> EmitAllToAll(
@@ -475,20 +482,30 @@ absl::StatusOr<TensorValue> EmitConcatenate(
   // which one by looking at the offset within the concatenation dimension.
   Value concatenate_dimension_offset =
       tile_info.offsets()[concatenate_dimension];
+  int64_t concat_dim_size =
+      hlo_concat->shape().dimensions(concatenate_dimension);
+  std::optional<Interval> concat_offset_range =
+      ::xla::GetRange(concatenate_dimension_offset);
+  bool can_exceed_upper_bound = !concat_offset_range.has_value() ||
+                                !concat_offset_range->IsFeasible() ||
+                                concat_offset_range->upper >= concat_dim_size;
 
   // It would have been nice to be able to use `scf::IndexSwitchOp`, but Triton
   // does not want to deal with the `Index` type, and does not support the op.
   // Instead, we generate a sequence of nested `scf::IfOp`s.
   SmallVector<mlir::scf::IfOp, 4> if_ops;
   int64_t limit = 0;
+  int64_t num_operands = tiled_concat.operands().size();
   for (const auto& [i, operand] : llvm::enumerate(tiled_concat.operands())) {
     // Write in the else branch of the previous if op if one exists.
     if (!if_ops.empty()) {
       b.setInsertionPointToStart(if_ops.back().elseBlock());
     }
-    // Add an `if_op` if we have not reached the last operand. The last operand
-    // directly populates the `else` block of the previous `if_op`.
-    if (if_ops.size() < tiled_concat.operands().size() - 1) {
+    bool is_last_operand = (static_cast<int64_t>(i) == num_operands - 1);
+    // Add an `if_op` if we have not reached the last operand, or for the last
+    // operand if `concatenate_dimension_offset` can exceed `concat_dim_size`
+    // (e.g. when a surrounding `pad` evaluates high-padding tiles).
+    if (!is_last_operand || can_exceed_upper_bound) {
       limit += operand->hlo()->shape().dimensions()[concatenate_dimension];
       Value offset_limit = CreateConst(b, b.getIndexType(), limit);
 
@@ -515,7 +532,19 @@ absl::StatusOr<TensorValue> EmitConcatenate(
         << results.size();
     TF_RET_CHECK(results[0].getType() == result_type)
         << "Region result type must match the concatenate result type";
+    if (if_ops.empty()) {
+      return results.back();
+    }
     mlir::scf::YieldOp::create(b, results.back());
+    if (is_last_operand && can_exceed_upper_bound) {
+      b.setInsertionPointToStart(if_ops.back().elseBlock());
+      TensorValue zero_tile =
+          mlir::isa<mlir::ComplexType>(element_type)
+              ? CreateConst(b, element_type, std::complex<double>(0.0, 0.0),
+                            tile_sizes)
+              : CreateConst(b, element_type, 0, tile_sizes);
+      mlir::scf::YieldOp::create(b, zero_tile);
+    }
   }
   b.setInsertionPointAfter(if_ops.front());
   return mlir::cast<TensorValue>(if_ops.front().getResult(0));
@@ -533,7 +562,15 @@ absl::StatusOr<TensorValue> MaskOperand(mlir::ImplicitLocOpBuilder& b,
                                         Value neutral_value) {
   llvm::ArrayRef<int64_t> tile_shape = operand_value.getType().getShape();
 
-  int64_t dimension_size = operand.hlo()->shape().dimensions(dimension_index);
+  // `operand_value` uses the storage shape, which is smaller than the logical
+  // shape along the packed dimension of sub-byte types (e.g. f4e2m1fn), so
+  // compare against the storage shape too.
+  const Shape& logical_shape = operand.hlo()->shape();
+  llvm::SmallVector<int64_t> logical_dims(logical_shape.dimensions().begin(),
+                                          logical_shape.dimensions().end());
+  ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> storage_dims,
+                   GetStorageShape(logical_dims, logical_shape));
+  int64_t dimension_size = storage_dims[dimension_index];
   int64_t tile_size = tile_shape[dimension_index];
 
   if (dimension_size % tile_size == 0) {
@@ -667,7 +704,8 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
   // The specific accumulator type to use may not correspond to the output type
   // of the dot. In particular, that is the case when an algorithm is specified
   // and the dot's output type does not match its expectations.
-  ABSL_ASSIGN_OR_RETURN(Type accumulator_type, xtile::GetDotAccumulatorType(b, dot));
+  ABSL_ASSIGN_OR_RETURN(Type accumulator_type,
+                   xtile::GetDotAccumulatorType(b, dot, emitter_ctx.is_cpu()));
   TensorValue accumulator =
       CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes);
 
@@ -735,7 +773,8 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
     ABSL_ASSIGN_OR_RETURN(
         Value acc_next,
         xtile::EmitSingleTileDot(
-            b, dot, xtile::DotOperands{lhs_tensor, rhs_tensor, acc}));
+            b, dot, xtile::DotOperands{lhs_tensor, rhs_tensor, acc},
+            emitter_ctx.is_cpu()));
     mlir::scf::YieldOp::create(b, acc_next);
   }
 
@@ -787,6 +826,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
     Value iv = for_op.getInductionVar();
+    Value iv_i32 = Cast(b, iv, b.getI32Type());
     const gpu::TilingSpace::DimensionInfo& dim_info =
         tiled_scaled_dot.tile().tiling_space().GetDimensionInfo(
             *tiled_scaled_dot.hlo(), sequential_dim_ids.front());
@@ -799,6 +839,35 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     const gpu::TiledHloRegion& region = tiled_scaled_dot.hlo_regions().front();
     ABSL_ASSIGN_OR_RETURN(auto results,
                      EmitTiledComputation(emitter_ctx, region, region.roots()));
+
+    // Mask out-of-bounds contracting lanes: lhs/rhs with 0 and non-scalar
+    // scales with 1, so tail lanes contribute exactly 0.
+    const DotDimensionNumbers& dim_numbers = scaled_dot.dot_dimension_numbers();
+    for (int side : {0, 1}) {
+      int64_t contracting_dim_idx =
+          side == 0 ? dim_numbers.lhs_contracting_dimensions(0)
+                    : dim_numbers.rhs_contracting_dimensions(0);
+      const gpu::TiledHloInstruction* operand = tiled_scaled_dot.operand(side);
+      Value zero = CreateConst(b, results[side].getType().getElementType(), 0,
+                               /*shape=*/{});
+      ABSL_ASSIGN_OR_RETURN(results[side],
+                       MaskOperand(b, *operand, results[side], iv_i32,
+                                   contracting_dim_idx, zero));
+
+      int scale_idx = side + 2;
+      const gpu::TiledHloInstruction* scale_operand =
+          tiled_scaled_dot.operand(scale_idx);
+      if (results[scale_idx] &&
+          IsTritonDotScaledOperandType(
+              operand->hlo()->shape().element_type()) &&
+          !ShapeUtil::IsScalar(scale_operand->hlo()->shape())) {
+        Value scale_one = CreateConst(
+            b, results[scale_idx].getType().getElementType(), 1, /*shape=*/{});
+        ABSL_ASSIGN_OR_RETURN(results[scale_idx],
+                         MaskOperand(b, *scale_operand, results[scale_idx],
+                                     iv_i32, contracting_dim_idx, scale_one));
+      }
+    }
 
     // Emit the partial dot.
     Value acc = for_op.getRegionIterArgs().front();
@@ -872,8 +941,8 @@ Value ExtractGroupSizeScalar(mlir::ImplicitLocOpBuilder& b,
   return mlir::arith::IndexCastOp::create(b, b.getIndexType(), gs_raw);
 }
 
-// Resolves `hlo` (traversing through a leading kConvert and up any nested
-// fusion parameter chain) to the entry-function buffer argument that backs it.
+// Resolves `hlo` (traversing through a leading kConvert and fusion parameter)
+// to the entry-function buffer argument that backs it.
 // The returned buffer Value carries the underlying (pre-convert) element type,
 // which callers can obtain via `getElementTypeOrSelf`.
 mlir::Value ResolveBufferArgument(EmitterContext& emitter_ctx,
@@ -883,7 +952,7 @@ mlir::Value ResolveBufferArgument(EmitterContext& emitter_ctx,
     hlo = hlo->operand(0);
   }
   if (hlo->opcode() == HloOpcode::kParameter && !fusion.IsUserOf(hlo)) {
-    hlo = hlo->parent()->FusionInstruction()->operand(hlo->parameter_number());
+    hlo = fusion.operand(hlo->parameter_number());
   }
   int64_t arg_idx = fusion.operand_index(hlo);
   return emitter_ctx.entry_func().getArgument(arg_idx);
@@ -935,8 +1004,9 @@ absl::StatusOr<RaggedDotParams> BuildRaggedDotContext(
   // Accumulator type: derived from the ragged dot's precision config so that
   // user-specified algorithms (e.g. ALG_DOT_BF16_BF16_F32) are respected,
   // mirroring the regular EmitDot path.
-  ABSL_ASSIGN_OR_RETURN(const Type acc_type,
-                   xtile::GetDotAccumulatorType(b, *ragged_dot_instr));
+  ABSL_ASSIGN_OR_RETURN(
+      const Type acc_type,
+      xtile::GetDotAccumulatorType(b, *ragged_dot_instr, emitter_ctx.is_cpu()));
   TensorValue accumulator = CreateConst(b, acc_type, 0.0f, padded_tile_sizes);
 
   return RaggedDotParams{
@@ -1053,7 +1123,8 @@ absl::StatusOr<TensorValue> MaskTileAtKBoundary(
 absl::StatusOr<Value> RunSqueezedTileDot(
     ImplicitLocOpBuilder& b, const HloRaggedDotInstruction& ragged_dot,
     const DotDimensionNumbers& dot_dims, int64_t rhs_k_dim_after_squeeze,
-    int64_t num_batch_dims, TensorValue lhs, TensorValue rhs, TensorValue acc) {
+    int64_t num_batch_dims, TensorValue lhs, TensorValue rhs, TensorValue acc,
+    bool is_cpu) {
   auto acc_shape_ref = acc.getType().getShape();
   llvm::SmallVector<int64_t> lhs_2d_shape(
       lhs.getType().getShape().begin() + num_batch_dims,
@@ -1083,10 +1154,10 @@ absl::StatusOr<Value> RunSqueezedTileDot(
                                                 num_batch_dims);
 
   // Partial dot: LHS [M, K] × RHS [K, N] → acc [M, N].
-  ABSL_ASSIGN_OR_RETURN(
-      Value acc_next_2d,
-      xtile::EmitSingleTileDot(b, ragged_dot, inner_dot_dims,
-                               xtile::DotOperands{dot_lhs, dot_rhs, dot_acc}));
+  ABSL_ASSIGN_OR_RETURN(Value acc_next_2d,
+                   xtile::EmitSingleTileDot(
+                       b, ragged_dot, inner_dot_dims,
+                       xtile::DotOperands{dot_lhs, dot_rhs, dot_acc}, is_cpu));
 
   // Unsqueeze batch dims back if they were squeezed.
   if (num_batch_dims == 0) {
@@ -1160,7 +1231,8 @@ absl::StatusOr<Value> EmitNonContractingKLoopBody(
   // Batch-squeeze → partial dot → batch-unsqueeze.
   return RunSqueezedTileDot(b, *rctx.ragged_dot_instr, rctx.dot_dims,
                             rhs_k_dim_after_squeeze, params.num_batch_dims,
-                            lhs_tensor, rhs_tensor, acc_k_in);
+                            lhs_tensor, rhs_tensor, acc_k_in,
+                            emitter_ctx.is_cpu());
 }
 
 // Emits the kRaggedNonContracting variant.
@@ -1653,7 +1725,8 @@ absl::StatusOr<TensorValue> EmitRaggedDotContracting(
     ABSL_ASSIGN_OR_RETURN(Value acc_next,
                      xtile::EmitSingleTileDot(
                          b, *ragged_dot_instr, inner_dot_dims,
-                         xtile::DotOperands{lhs_tensor, rhs_tensor, acc_in}));
+                         xtile::DotOperands{lhs_tensor, rhs_tensor, acc_in},
+                         emitter_ctx.is_cpu()));
     mlir::scf::YieldOp::create(b, acc_next);
   }
   b.setInsertionPointAfter(m_for);
@@ -1745,11 +1818,11 @@ absl::StatusOr<TensorValue> EmitRaggedDotBatch(
     // squeeze a group dimension, so the RHS contracting dim is unchanged.
     TensorValue acc_k_in =
         mlir::cast<TensorValue>(k_for.getRegionIterArgs()[0]);
-    ABSL_ASSIGN_OR_RETURN(
-        Value acc_next,
-        RunSqueezedTileDot(b, *ragged_dot_instr, dot_dims,
-                           dot_dims.rhs_contracting_dimensions(0), num_batch,
-                           lhs_tensor, rhs_tensor, acc_k_in));
+    ABSL_ASSIGN_OR_RETURN(Value acc_next,
+                     RunSqueezedTileDot(b, *ragged_dot_instr, dot_dims,
+                                        dot_dims.rhs_contracting_dimensions(0),
+                                        num_batch, lhs_tensor, rhs_tensor,
+                                        acc_k_in, emitter_ctx.is_cpu()));
     mlir::scf::YieldOp::create(b, acc_next);
   }
 
@@ -1840,6 +1913,30 @@ TensorValue EmitTranspose(mlir::ImplicitLocOpBuilder& b,
                                                 order);
 }
 
+// Returns the integer type to use for the pad bounds mask computation
+// `iota * tile_stride < pad_input_dim_size - tile_offset` of a single
+// dimension. Returns `i32` if all intermediate values are statically known to
+// fit in `i32`, and `i64` otherwise.
+Type GetPadMaskComparisonType(mlir::ImplicitLocOpBuilder& b,
+                              int64_t pad_input_dim_size, int64_t tile_size,
+                              int64_t tile_stride, Value tile_offset) {
+  std::optional<Interval> offset_range = GetRange(tile_offset);
+  if (!offset_range.has_value() || !offset_range->IsFeasible()) {
+    return b.getI64Type();
+  }
+  constexpr Interval kI32Range{std::numeric_limits<int32_t>::min(),
+                               std::numeric_limits<int32_t>::max()};
+  Interval input_dim_range{pad_input_dim_size, pad_input_dim_size};
+  Interval scaled_iota_range{0, tile_stride * (tile_size - 1)};
+  if (kI32Range.Contains(input_dim_range) &&
+      kI32Range.Contains(*offset_range) &&
+      kI32Range.Contains(input_dim_range - *offset_range) &&
+      kI32Range.Contains(scaled_iota_range)) {
+    return b.getI32Type();
+  }
+  return b.getI64Type();
+}
+
 absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
                                     const gpu::TiledHloInstruction& tiled_pad) {
   auto& b = emitter_ctx.b();
@@ -1849,18 +1946,19 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
   const gpu::TiledHloInstruction* tiled_operand = tiled_pad.operand(0);
   const auto& pad_input_shape = tiled_operand->hlo()->shape().dimensions();
 
-  // Compute tile offsets.
+  // Compute tile offsets and strides.
   ABSL_ASSIGN_OR_RETURN(TileInfo tile_info,
                    TileInfo::Construct(emitter_ctx, tiled_pad));
   SmallVector<Value, 3> tile_offsets = tile_info.offsets();
+  ArrayRef<int64_t> tile_strides = tile_info.tile_strides();
 
   // Compute mask.
-  Type i32_type = b.getI32Type();
   Value mask;
   for (auto [dim_index, sizes] : llvm::enumerate(
-           llvm::zip(pad_input_shape, tile_sizes, tile_offsets,
+           llvm::zip(pad_input_shape, tile_sizes, tile_offsets, tile_strides,
                      tiled_pad.hlo()->padding_config().dimensions()))) {
-    auto [pad_input_dim_size, tile_size, tile_offset, dim_config] = sizes;
+    auto [pad_input_dim_size, tile_size, tile_offset, tile_stride, dim_config] =
+        sizes;
     if (dim_config.edge_padding_low() != 0) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Low padding is not supported but got edge_padding_low: ",
@@ -1877,18 +1975,30 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
       continue;
     }
 
-    // LHS for the compare is an iota broadcasted to the output shape.
-    TensorValue range = Iota(b, tile_size);
-    TensorValue bcast = xtile::BroadcastInDims(
-        b, range, tile_sizes, {static_cast<int64_t>(dim_index)});
+    Type int_type = GetPadMaskComparisonType(b, pad_input_dim_size, tile_size,
+                                             tile_stride, tile_offset);
 
-    // RHS for the compare is splat(pad_input_dim_size - tile_offset).
-    Value tile_offset_i32 = Cast(b, tile_offset, i32_type);
+    // LHS for the compare is a 1D iota (scaled by the tile stride).
+    TensorValue range =
+        mlir::cast<TensorValue>(Cast(b, Iota(b, tile_size), int_type));
+    if (tile_stride != 1) {
+      range = mlir::cast<TensorValue>(
+          arith::MulIOp::create(
+              b, range, CreateConst(b, int_type, tile_stride, {tile_size}))
+              .getResult());
+    }
+
+    // Compare in 1D against splat(pad_input_dim_size - tile_offset), then
+    // broadcast the i1 mask to the output tile shape.
+    Value tile_offset_int = Cast(b, tile_offset, int_type);
     Value threshold = arith::SubIOp::create(
-        b, CreateConst(b, i32_type, pad_input_dim_size), tile_offset_i32);
-    TensorValue threshold_splat = xtile::Splat(b, threshold, tile_sizes);
-    Value cmp = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, bcast,
-                                      threshold_splat);
+        b, CreateConst(b, int_type, pad_input_dim_size), tile_offset_int);
+    TensorValue threshold_splat = xtile::Splat(b, threshold, {tile_size});
+    Value cmp_1d = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, range,
+                                         threshold_splat);
+    TensorValue cmp =
+        xtile::BroadcastInDims(b, mlir::cast<TensorValue>(cmp_1d), tile_sizes,
+                               {static_cast<int64_t>(dim_index)});
     mask = mask ? stablehlo::AndOp::create(b, mask, cmp) : cmp;
   }
   if (!mask) {
@@ -2129,15 +2239,11 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
         "in Triton emission.");
   }
 
-  const HloInstruction* scan_root = hlo_scan.to_apply()->root_instruction();
-  if (!HloPredicateIsOp<HloOpcode::kTuple>(scan_root) ||
-      !absl::c_all_of(scan_root->operands(),
-                      HloPredicateIsOp<HloOpcode::kAdd>)) {
+  if (!IsAdditiveScanCombiner(*hlo_scan.to_apply())) {
     // Non-additive scans (e.g. min, max, product) require their respective
     // identity elements for out-of-bounds padding, which is not yet supported.
     return absl::UnimplementedError(
-        "Only additive scan operations are currently supported in Triton "
-        "emission.");
+        "Only additive scans are supported in Triton.");
   }
 
   // TODO(b/390559452): Support complex-typed scans. Complex additive scans pass
@@ -2324,9 +2430,10 @@ absl::StatusOr<TensorValue> EmitReduceWithNoRegion(
   TensorValue input_value = emitter_ctx.TiledHloToTensorValue(*tiled_input);
   ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> mask_dim_bounds,
                    tiled_input->tile().GetStaticTileSizes());
-  int64_t reduce_dim = reduce_hlo.dimensions()[0];
-  mask_dim_bounds[reduce_dim] =
-      tiled_input->hlo()->shape().dimensions(reduce_dim);
+  for (int64_t reduce_dim : reduce_hlo.dimensions()) {
+    mask_dim_bounds[reduce_dim] =
+        tiled_input->hlo()->shape().dimensions(reduce_dim);
+  }
   TensorValue init_value =
       emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(1));
   mlir::Value neutral_value = mlir::tensor::ExtractOp::create(b, init_value);
@@ -2362,6 +2469,10 @@ absl::StatusOr<TensorValue> EmitCombinerStep(
                                ? mlir::cast<TensorValue>(acc_value)
                                : input_tile;
   }
+  // A combiner that only selects one of its parameters, e.g. the `(a, b) -> b`
+  // combiner of a "take last" reduction, has no instruction to emit. Such
+  // combiners have no neutral value and are rejected before codegen, so
+  // EmitScope reports an error for the empty instruction list.
   return EmitScope(b, to_emit, region_values);
 }
 
@@ -2512,45 +2623,28 @@ EmitTiledHloInstructionImpl(EmitterContext& emitter_ctx,
 
   const HloFusionInstruction& fusion = emitter_ctx.fusion();
   if (hlo->opcode() == HloOpcode::kParameter && !fusion.IsUserOf(hlo)) {
-    hlo = hlo->parent()->FusionInstruction()->operand(hlo->parameter_number());
+    hlo = fusion.operand(hlo->parameter_number());
   }
 
   if (fusion.IsUserOf(hlo)) {
-    int64_t arg_index = fusion.operand_index(hlo);
-    // Walk up the parameter chain to find the outermost operand index.
-    while (auto* instr = hlo->parent()->FusionInstruction()) {
-      arg_index = hlo->parameter_number();  // Nested operands are parameters.
-      hlo = instr->operand(arg_index);
-    }
     ABSL_ASSIGN_OR_RETURN(TileInfo tile_info,
                      TileInfo::Construct(emitter_ctx, tiled_hlo));
-    ABSL_ASSIGN_OR_RETURN(
-        TensorValue parameter,
-        EmitParameterExtract(b, tile_info,
-                             emitter_ctx.entry_func().getArgument(arg_index)));
+    ABSL_ASSIGN_OR_RETURN(TensorValue parameter,
+                     EmitParameterExtract(b, tile_info,
+                                          emitter_ctx.entry_func().getArgument(
+                                              fusion.operand_index(hlo))));
 
-    // Workaround(i1_to_i8_workaround)
-    // Some types are stored using different types, e.g. i1 is stored in memory
-    // as i8. It's important to type checking that we perform a conversion after
-    // loading if the type of the loaded parameter does not match what is
-    // expected.
     Type loaded_element_type = getElementTypeOrSelf(parameter.getType());
     ABSL_ASSIGN_OR_RETURN(Type expected_element_type,
                      PrimitiveTypeToMlirType(b, hlo->shape().element_type()));
 
-    if (expected_element_type != loaded_element_type) {
-      // Ensure that we didn't mess up somewhere else by checking that we
-      // indeed loaded the expected storage type for the expected element type.
-      if (loaded_element_type != StorageType(expected_element_type)) {
-        return absl::InternalError(absl::StrCat(
-            "Parameters were loaded with an unexpected element type "
-            "while lowering ",
-            fusion.called_computation()->ToString()));
-      }
-      if (!IsPackedTritonDotScaledOperandType(hlo->shape().element_type())) {
-        parameter =
-            mlir::cast<TensorValue>(Cast(b, parameter, expected_element_type));
-      }
+    if (expected_element_type != loaded_element_type &&
+        (loaded_element_type != StorageType(expected_element_type) ||
+         !IsPackedTritonDotScaledOperandType(hlo->shape().element_type()))) {
+      return absl::InternalError(
+          absl::StrCat("Parameters were loaded with an unexpected element type "
+                       "while lowering ",
+                       fusion.called_computation()->ToString()));
     }
     return parameter;
   }
@@ -2924,11 +3018,58 @@ Value ApplyGroupSizeTileIdRemapping(ImplicitLocOpBuilder& b,
   return arith::IndexCastOp::create(b, b.getIndexType(), remapped);
 }
 
+struct RootInsertTarget {
+  Value buffer;
+  SmallVector<Value> offsets;
+};
+
+// Selects the peer output buffer from output_arg and shifts collective_dim by
+// rank * shard_size when root_hlo uses per-peer buffers.
+absl::StatusOr<RootInsertTarget> EmitRootInsertTarget(
+    EmitterContext& emitter_ctx, const HloInstruction& root_hlo,
+    const TileInfo& tile_info, Value output_arg) {
+  SmallVector<Value> offsets = llvm::to_vector(tile_info.offsets());
+  std::optional<RootPeerBufferInfo> peer_buf = GetRootPeerBufferInfo(
+      emitter_ctx.tiled_computation().tiling_space(), root_hlo);
+  if (!peer_buf.has_value()) {
+    return RootInsertTarget{output_arg, std::move(offsets)};
+  }
+
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  xtile::EntryFuncOp fn = emitter_ctx.entry_func();
+  TF_RET_CHECK(fn.getHasRank());
+  auto dest_memref = mlir::dyn_cast<mlir::MemRefType>(output_arg.getType());
+  TF_RET_CHECK(dest_memref != nullptr && dest_memref.getRank() == 1 &&
+               dest_memref.getElementType().isInteger(64) &&
+               dest_memref.getDimSize(0) == peer_buf->world_size);
+  ABSL_ASSIGN_OR_RETURN(SmallVector<Value> peer_ids,
+                   emitter_ctx.EvaluateTilingParameters({CreateDimExpr(
+                       peer_buf->replica_dim_id.value(), b.getContext())}));
+  ABSL_ASSIGN_OR_RETURN(mlir::MemRefType spatial_memref_type,
+                   GetMemRefType(root_hlo.shape(), tile_info.storage_type()));
+  Value dest_buffer =
+      xtile::SelectBufferOp::create(b, spatial_memref_type, output_arg,
+                                    peer_ids[0], /*offset=*/mlir::Value());
+  TF_RET_CHECK(tile_info.storage_shape()[peer_buf->collective_dim] %
+                   peer_buf->world_size ==
+               0);
+  int64_t shard_size = tile_info.storage_shape()[peer_buf->collective_dim] /
+                       peer_buf->world_size;
+  TF_RET_CHECK(shard_size %
+                   tile_info.padded_tile_sizes()[peer_buf->collective_dim] ==
+               0);
+  Value rank_offset =
+      arith::MulIOp::create(b, fn.getRank(), MakeIndex(b, shard_size));
+  offsets[peer_buf->collective_dim] =
+      arith::AddIOp::create(b, offsets[peer_buf->collective_dim], rank_offset);
+  return RootInsertTarget{dest_buffer, std::move(offsets)};
+}
+
 absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
                          const HloFusionInstruction& fusion,
                          const gpu::TiledHloComputation& tiled_computation,
                          const gpu::Schedule& schedule, xtile::EntryFuncOp fn,
-                         MLIRContext* mlir_context) {
+                         MLIRContext* mlir_context, bool is_cpu) {
   if (VLOG_IS_ON(6)) {
     VLOG(6) << "Emitting XTile IR for fusion\n"
             << ExtractInstructionIntoNewModule(fusion)->ToString();
@@ -2975,8 +3116,8 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   // constructed, so that all EvaluateTilingParameters calls automatically yield
   // the reordered tile coordinates.
   tile_id = ApplyGroupSizeTileIdRemapping(b, fusion, tile_id);
-  EmitterContext emitter_ctx{b,        &fusion, program_id,       tile_id,
-                             schedule, fn,      tiled_computation};
+  EmitterContext emitter_ctx{b,        &fusion, program_id,        tile_id,
+                             schedule, fn,      tiled_computation, is_cpu};
 
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
   ABSL_ASSIGN_OR_RETURN(
@@ -3002,21 +3143,13 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   const HloComputation* computation = fusion.fused_instructions_computation();
   for (const auto& [root, result, arg] :
        llvm::zip(tiled_computation.roots(), results,
-                 fn.getArguments().drop_front(computation->num_parameters()))) {
-    // Workaround(i1_to_i8_workaround)
-    // Some types are stored using different types, e.g. i1 is stored in memory
-    // as i8. It's important to check converted types before storing if the type
-    // of the result does not match the type of the output pointer.
-    Type result_element_type = getElementTypeOrSelf(result.getType());
-    Type result_storage_type = StorageType(result_element_type);
-
-    if (result_element_type != result_storage_type) {
-      result = mlir::cast<TensorValue>(Cast(b, result, result_storage_type));
-    }
-
+                 fn.getInputOutputBuffers().drop_front(
+                     computation->num_parameters()))) {
     ABSL_ASSIGN_OR_RETURN(auto tile_info, TileInfo::Construct(emitter_ctx, *root));
-
-    xtile::InsertTileOp::create(b, result, arg, tile_info.offsets(),
+    ABSL_ASSIGN_OR_RETURN(
+        RootInsertTarget target,
+        EmitRootInsertTarget(emitter_ctx, *root->hlo(), tile_info, arg));
+    xtile::InsertTileOp::create(b, result, target.buffer, target.offsets,
                                 tile_info.padded_tile_sizes(),
                                 tile_info.tile_strides());
   }
@@ -3031,70 +3164,6 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   return absl::OkStatus();
 }
 
-// Implementation for the tiling space.
-class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
- public:
-  explicit TileRequirementsVisitor(
-      const gpu::TiledHloComputation& computation) {
-    for (const gpu::TiledHloInstruction* tiled_hlo :
-         computation.instructions()) {
-      PopulateMap(tiled_hlo);
-    }
-  }
-
-  absl::StatusOr<llvm::SmallVector<int64_t>> RequiredReplicaIdBounds(
-      const HloInstruction& instr) const override {
-    ABSL_ASSIGN_OR_RETURN(auto tiled_hlo, LookupTiledHlo(&instr));
-    llvm::SmallVector<int64_t> bounds;
-    bounds.reserve(tiled_hlo->tile().replica_ids().size());
-    for (const auto& replica_id : tiled_hlo->tile().replica_ids()) {
-      SymbolicExpr upper_bound = replica_id.upper_bound.Canonicalize();
-      if (upper_bound.GetType() != SymbolicExprType::kConstant) {
-        return absl::InternalError(
-            absl::StrCat("Replica ID bound expression is not a constant: ",
-                         upper_bound.ToString()));
-      }
-      bounds.push_back(upper_bound.GetValue());
-    }
-    return bounds;
-  }
-
- private:
-  // Look up the instruction in the tiled HLO map.
-  // For parameters to nested fusions, we walk up the parameter chain to find
-  // the outermost operand index.
-  absl::StatusOr<const gpu::TiledHloInstruction*> LookupTiledHlo(
-      const HloInstruction* original_instr) const {
-    auto it = hlo_to_tiled_.find(original_instr);
-    if (it != hlo_to_tiled_.end()) {
-      return it->second;
-    }
-    if (original_instr->opcode() == HloOpcode::kParameter) {
-      if (auto* fusion = original_instr->parent()->FusionInstruction()) {
-        const HloInstruction* resolved_instr =
-            fusion->operand(original_instr->parameter_number());
-        return LookupTiledHlo(resolved_instr);
-      }
-    }
-    return absl::InternalError(absl::StrCat(
-        "InternalError: HLO instruction not found in tiled HLO map: ",
-        original_instr->ToString()));
-  }
-
-  void PopulateMap(const gpu::TiledHloInstruction* tiled_hlo) {
-    hlo_to_tiled_[tiled_hlo->hlo()] = tiled_hlo;
-    for (const auto& region : tiled_hlo->hlo_regions()) {
-      for (const auto* region_instruction : region.instructions()) {
-        PopulateMap(region_instruction);
-      }
-    }
-  }
-
-  absl::flat_hash_map<const HloInstruction*,
-                      const xla::gpu::TiledHloInstruction*>
-      hlo_to_tiled_;
-};
-
 }  // namespace
 
 // TODO(b/447133106): Contrary to the name, this function still does a lot of
@@ -3103,8 +3172,9 @@ class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const ::xla::gpu::TiledHloComputation& tiled_computation,
-    MLIRContext& mlir_context, absl::Span<mlir::Type> opaque_args_types,
-    const std::optional<GpuComputeCapability>& gpu_cc, int num_tiles_per_pid) {
+    MLIRContext& mlir_context, const CollectiveEntrySpec& collective_spec,
+    const std::optional<GpuComputeCapability>& gpu_cc, int num_tiles_per_pid,
+    bool is_cpu) {
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
   VLOG(8) << "EmitXTileModule for  fusion " << fusion.ToString();
@@ -3120,21 +3190,30 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   b.setInsertionPointToEnd(xtile_module->getBody());
 
   // Compute function argument types.
-  ABSL_ASSIGN_OR_RETURN(SmallVector<Type> fn_arg_types,
-                   GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc,
-                                 TileRequirementsVisitor(tiled_computation)));
-  // Metadata arguments are opaque to the tiling infra.
-  llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
-      "num_opaque_args", b.getI32IntegerAttr(opaque_args_types.size()))};
+  ABSL_ASSIGN_OR_RETURN(SmallVector<Type> io_buffer_types,
+                   GetFnArgTypes(b, fusion, collective_spec, gpu_cc));
+  SmallVector<Type> scratch_buffer_types;
+  Type signal_buffer_type;
+  if (collective_spec.has_signal_and_rank) {
+    signal_buffer_type =
+        mlir::MemRefType::get({collective_spec.world_size}, b.getI64Type());
+    scratch_buffer_types.assign(collective_spec.num_scratch_buffers,
+                                signal_buffer_type);
+  }
 
-  auto fn = xtile::EntryFuncOp::create(b, fn_name, fn_arg_types,
-                                       named_attributes, {});
+  auto fn = xtile::EntryFuncOp::create(b, fn_name, io_buffer_types,
+                                       scratch_buffer_types, signal_buffer_type,
+                                       {}, {});
   fn.addEntryBlock();
+  if (collective_spec.has_signal_and_rank && collective_spec.world_size > 0) {
+    fn.setArgAttr(fn.getRank().getArgNumber(), "xla.range",
+                  b.getIndexArrayAttr({0, collective_spec.world_size - 1}));
+  }
 
   ABSL_ASSIGN_OR_RETURN(auto schedule,
                    GetSchedule(tiled_computation, num_tiles_per_pid));
-  ABSL_RETURN_IF_ERROR(
-      EmitGeneric(b, fusion, tiled_computation, schedule, fn, &mlir_context));
+  ABSL_RETURN_IF_ERROR(EmitGeneric(b, fusion, tiled_computation, schedule, fn,
+                              &mlir_context, is_cpu));
   if (VLOG_IS_ON(8)) {
     std::string s;
     llvm::raw_string_ostream os(s);

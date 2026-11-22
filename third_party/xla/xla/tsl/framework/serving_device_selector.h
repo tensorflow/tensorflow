@@ -152,6 +152,15 @@ class ServingDeviceSelector {
   virtual DeviceReservation ReserveDevice(
       absl::string_view program_fingerprint) = 0;
 
+  // Reserves a device restricted to `candidate_cores` when non-empty.
+  // Defaults to unconstrained `ReserveDevice(program_fingerprint)` for
+  // selector implementations that do not support candidate core filtering.
+  virtual DeviceReservation ReserveDevice(
+      absl::string_view program_fingerprint,
+      absl::Span<const int> candidate_cores) {
+    return ReserveDevice(program_fingerprint);
+  }
+
   // Enqueues a program on the given device. Used only for load tracking
   // purposes when the device selection feature is unused.
   virtual void Enqueue(int32_t device_index, absl::string_view fingerprint) = 0;

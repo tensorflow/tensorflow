@@ -195,6 +195,7 @@ Useful logging and error messages
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
@@ -217,6 +218,11 @@ class PresetAssignments {
   struct AssignmentInformation {
     int64_t size;
     HeapSimulatorTrace heap_simulator_trace;
+    // Optional map from buffer_id (and share_with_canonical_id) in
+    // heap_simulator_trace to the defining HloPosition at trace export time.
+    // BufferAssigner uses this to remap trace buffer IDs when passes between
+    // memory space assignment and buffer assignment shift HloValue IDs.
+    absl::flat_hash_map<int64_t, HloPosition> buffer_id_to_position;
   };
 
   PresetAssignments() = default;

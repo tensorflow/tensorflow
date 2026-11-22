@@ -41,7 +41,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "xla/tsl/platform/env.h"
+#include "tensorflow/compiler/mlir/lite/utils/file_utils.h"
 
 namespace mlir::TFL {
 namespace {
@@ -173,7 +173,7 @@ void ConversionFailureReporter::WriteFailureJson(
     absl::string_view failing_function, int64_t elide_elements_larger_than,
     int64_t elide_resource_strings_larger_than) {
   std::string dir = GetOrCreateDebugDir(working_dir);
-  if (!tsl::Env::Default()->RecursivelyCreateDir(dir).ok()) return;
+  if (!CreateDirectories(dir).ok()) return;
 
   FailureReport report =
       ParseDiagnostic(raw_error, stage, status_code, failing_pass,
@@ -188,8 +188,7 @@ void ConversionFailureReporter::WriteFailureJson(
     flags.elideLargeElementsAttrs(elide_elements_larger_than);
     flags.elideLargeResourceString(elide_resource_strings_larger_than);
     module.print(elided_os, flags);
-    if (tsl::WriteStringToFile(tsl::Env::Default(), elided_path, elided_str)
-            .ok()) {
+    if (WriteStringToFile(elided_path, elided_str).ok()) {
       report.elided_mlir_file = elided_path;
     }
 
@@ -198,7 +197,7 @@ void ConversionFailureReporter::WriteFailureJson(
     std::string bc_str;
     llvm::raw_string_ostream bc_os(bc_str);
     if (mlir::succeeded(mlir::writeBytecodeToFile(module, bc_os))) {
-      if (tsl::WriteStringToFile(tsl::Env::Default(), bc_path, bc_str).ok()) {
+      if (WriteStringToFile(bc_path, bc_str).ok()) {
         report.bytecode_file = bc_path;
       }
     }
@@ -263,7 +262,7 @@ void ConversionFailureReporter::WriteFailureJson(
   std::string json_str;
   llvm::raw_string_ostream os(json_str);
   os << llvm::formatv("{0:2}\n", llvm::json::Value(std::move(root)));
-  (void)tsl::WriteStringToFile(tsl::Env::Default(), file_path, json_str);
+  (void)WriteStringToFile(file_path, json_str);
 }
 
 }  // namespace mlir::TFL

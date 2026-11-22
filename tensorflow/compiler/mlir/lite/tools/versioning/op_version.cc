@@ -150,6 +150,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_EMBEDDING_LOOKUP: {
+      // A table with N-D blockwise quantization is only understood by
+      // runtimes at version 6 or above, whatever the table's storage type.
+      if (op_sig.ext_options.embedding_lookup.is_blockwise_quantized) {
+        return 6;
+      }
       if (op_sig.inputs.at(1).type == kTfLiteInt4 ||
           op_sig.ext_options.embedding_lookup.is_per_channel_quantized) {
         return 4;
@@ -182,6 +187,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       auto fully_connected_params =
           reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(fully_connected_params != nullptr);
+
+      // A weight with N-D blockwise quantization is only understood by
+      // runtimes at version 16 or above, whatever the weight's storage type.
+      // The dynamic range (float32 or float16 input) variant needs version 17.
+      if (op_sig.ext_options.fully_connected.is_weight_blockwise_quantized) {
+        if (!op_sig.inputs.empty() &&
+            (op_sig.inputs.at(0).type == kTfLiteFloat32 ||
+             op_sig.inputs.at(0).type == kTfLiteFloat16)) {
+          return 17;
+        }
+        return 16;
+      }
 
       // A non-empty `quant_spec` describes numerics that a runtime without
       // explicit support for that spec cannot reproduce. It must be checked
@@ -563,6 +580,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
+      if (op_sig.ext_options.dequantize.is_blockwise_quantized) {
+        return 10;
+      }
       if (IsFloat8Type(op_sig.inputs.at(0).type)) {
         return 9;
       }
@@ -917,6 +937,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_BATCH_MATMUL: {
+      if (op_sig.ext_options.batch_matmul.is_rhs_blockwise_quantized ||
+          (op_sig.inputs.size() >= 2 &&
+           (op_sig.inputs.at(1).type == kTfLiteInt4 ||
+            op_sig.inputs.at(1).type == kTfLiteUInt4 ||
+            op_sig.inputs.at(1).type == kTfLiteInt2))) {
+        return 5;
+      }
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
@@ -1146,10 +1173,19 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
+    case BuiltinOperator_GREATER:
+      // Note: GREATER v3 is float16, unlike LESS/GREATER_EQUAL where v3 is
+      // int16.
+      if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SUM:
     case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_GREATER:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_DEPTH_TO_SPACE:
@@ -1195,6 +1231,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     // changed because of builtin op code shortage problem.
     // Quantized broadcast_to is version 3
     case BuiltinOperator_BROADCAST_TO:
+      if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 5;
+      }
       if (IsFloat8Type(op_sig.inputs.at(0).type)) {
         return 4;
       }

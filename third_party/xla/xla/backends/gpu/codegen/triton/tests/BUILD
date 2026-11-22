@@ -23,7 +23,7 @@ load(
 )
 load("//xla:lit.bzl", "lit_device_test", "lit_test_suite")
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -165,7 +165,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     shard_count = 20,
     tags = ["no_mac"],
@@ -210,7 +210,6 @@ xla_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/random:distributions",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
@@ -235,7 +234,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     shard_count = 20,
     tags = ["no_mac"],
@@ -294,7 +293,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     shard_count = 3,
     tags = [
@@ -323,7 +322,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     shard_count = 4,
     tags = ["no_mac"],
@@ -342,8 +341,11 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -371,13 +373,13 @@ xla_test(
     backend_tags = {
         # Intermittently aborts with HSA_STATUS_ERROR_ILLEGAL_INSTRUCTION on the
         # MI350X CI runners; excluded from ROCm CI via --config=no_flaky.
-        "amdgpu_any": ["flaky"],
+        AMD_GPU_ANY_BACKEND: ["flaky"],
     },
     backends = [
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     shard_count = 10,
     tags = ["no_mac"],

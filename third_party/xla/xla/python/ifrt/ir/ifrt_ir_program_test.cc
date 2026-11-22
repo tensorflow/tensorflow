@@ -31,11 +31,14 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/custom_options_util.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/mlir/fingerprint_utils.h"
 #include "xla/python/ifrt/mock.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/service/device_assignment.h"
 #include "xla/tsl/platform/test.h"
 
@@ -81,6 +84,25 @@ TEST(IfrtIRCompileOptionsTest, ToFromProto) {
   EXPECT_EQ(std::vector(from_to_proto.device_ids().begin(),
                         from_to_proto.device_ids().end()),
             std::vector(proto.device_ids().begin(), proto.device_ids().end()));
+}
+
+TEST(IfrtIRCompileOptionsTest, EmptyOutputsBundleSliceSizesToFromProto) {
+  IfrtIRCompileOptions options;
+  options.outputs_bundle_slice_sizes = std::vector<int>{};
+
+  for (const SerDesVersion& version : test_util::AllSupportedSerDesVersions()) {
+    IfrtIrCompileOptionsProto proto;
+    absl::Status status = options.ToProto(proto, version);
+    if (version.version_number() < SerDesVersionNumber(7)) {
+      EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition));
+      continue;
+    }
+    ASSERT_OK(status);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtIRCompileOptions> deserialized,
+                         IfrtIRCompileOptions::FromProto(proto));
+    ASSERT_TRUE(deserialized->outputs_bundle_slice_sizes.has_value());
+    EXPECT_TRUE(deserialized->outputs_bundle_slice_sizes->empty());
+  }
 }
 
 TEST(IfrtIRCompileOptionsTest, FingerprintDeterministic) {
@@ -363,6 +385,12 @@ module @ifrt_mod {
   ASSERT_OK_AND_ASSIGN(uint64_t fp1, FingerprintModuleOp(*module1));
   ASSERT_OK_AND_ASSIGN(uint64_t fp2, FingerprintModuleOp(*module2));
   EXPECT_EQ(fp1, fp2);
+}
+
+TEST(IfrtIRProgramTest, InternalCustomOptionsRegistered) {
+  EXPECT_EQ(IfrtIRProgram::kFillAllStatuses, "fill_all_statuses");
+  EXPECT_TRUE(IsIfrtInternalCustomOption(IfrtIRProgram::kFillAllStatuses));
+  EXPECT_FALSE(IsIfrtInternalCustomOption("non_internal_option"));
 }
 
 }  // namespace

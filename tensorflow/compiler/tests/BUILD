@@ -1601,6 +1601,7 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
@@ -1617,6 +1618,7 @@ tf_xla_py_strict_test(
     name = "segment_reduction_ops_test",
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
+    shard_count = 4,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
@@ -1764,6 +1766,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops_util",
         "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:stateless_random_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops_v2_gen",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",

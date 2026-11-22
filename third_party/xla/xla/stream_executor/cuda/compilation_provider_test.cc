@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider_test.h"
@@ -38,13 +39,15 @@ limitations under the License.
 #include "xla/stream_executor/cuda/nvjitlink_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/nvptxcompiler_compilation_provider.h"
+#include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/path.h"
 
 namespace stream_executor::cuda {
 using ::testing::_;
@@ -864,6 +867,51 @@ TEST_P(CompilationProviderTest,
   EXPECT_GE(latest_ptx_isa_version, 80);
   // Update when PTX 20.0 comes out.
   EXPECT_LE(latest_ptx_isa_version, 200);
+}
+
+TEST_P(CompilationProviderTest, AppliesCompileIqDb) {
+  if (GetParam() != kNvptxcompilerCompilationProviderName &&
+      GetParam() !=
+          kCompositeNvptxCompilerAndNvJitLinkCompilationProviderName) {
+    GTEST_SKIP() << "CompileIQ DB is only supported by nvptxcompiler.";
+  }
+  ASSERT_OK_AND_ASSIGN(SemanticVersion version, GetLibNvPtxCompilerVersion());
+  std::string db_path =
+      tsl::io::JoinPath(testing::TempDir(), "compileiq_db.txtpb");
+  ASSERT_OK(tsl::WriteStringToFile(
+      tsl::Env::Default(), db_path,
+      absl::StrFormat(R"pb(
+                        control_files {
+                          key: "matching_fp"
+                          value {
+                            files {
+                              content: "invalid_acf_content"
+                              gpu_arch: "sm_80"
+                              cuda_version: "%s"
+                            }
+                          }
+                        }
+                      )pb",
+                      version.ToString())));
+  CompilationOptions options;
+  options.compileiq_db = db_path;
+  if (version < SemanticVersion{13, 5, 0}) {
+    EXPECT_THAT(
+        compilation_provider()->Compile(kDefaultComputeCapability,
+                                        kStandalonePtx, "matching_fp", options),
+        absl_testing::StatusIs(absl::StatusCode::kUnimplemented,
+                               HasSubstr("does not support ACF")));
+    return;
+  }
+  EXPECT_THAT(
+      compilation_provider()->Compile(kDefaultComputeCapability, kStandalonePtx,
+                                      "non_matching_fp", options),
+      absl_testing::IsOk());
+  EXPECT_THAT(
+      compilation_provider()->Compile(kDefaultComputeCapability, kStandalonePtx,
+                                      "matching_fp", options),
+      absl_testing::StatusIs(absl::StatusCode::kInternal,
+                             HasSubstr("Invalid compiler controls file")));
 }
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(CompilationProviderTest);

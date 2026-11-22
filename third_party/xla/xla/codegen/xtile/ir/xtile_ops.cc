@@ -90,18 +90,45 @@ static mlir::LogicalResult VerifyBufferOp(TiledBufferInterface op) {
   return mlir::success();
 }
 
-// This is lifted from the func::FuncOp builder, modified to make the tile
-// index implicit.
+// Returns true if `type` is a flat 1D array of 64-bit buffer addresses
+// (for example, `memref<8xi64>` holding one pointer per GPU).
+static bool IsPeerTableMemRef(mlir::Type type) {
+  auto memref_type = mlir::dyn_cast<mlir::MemRefType>(type);
+  return memref_type && memref_type.getRank() == 1 &&
+         memref_type.getDimSize(0) > 0 &&
+         memref_type.getElementType().isInteger(64) &&
+         memref_type.getLayout().isIdentity();
+}
+
+// Builds an entry_func with optional collective arguments laid out as:
+//   (io_buffers..., scratch_buffers..., signal_buffer?, rank?, tile_id)
 void EntryFuncOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
                         mlir::StringRef name,
-                        mlir::ArrayRef<mlir::Type> memref_arg_types,
+                        mlir::ArrayRef<mlir::Type> io_buffer_types,
+                        mlir::ArrayRef<mlir::Type> scratch_buffer_types,
+                        mlir::Type signal_buffer_type,
                         mlir::ArrayRef<mlir::NamedAttribute> attrs,
-                        mlir::ArrayRef<mlir::DictionaryAttr> memref_arg_attrs) {
-  state.getOrAddProperties<Properties>().sym_name = builder.getStringAttr(name);
-  mlir::SmallVector<mlir::Type> arg_types(memref_arg_types.begin(),
-                                          memref_arg_types.end());
-  // Append the tile id index type.
-  arg_types.push_back(builder.getIndexType());
+                        mlir::ArrayRef<mlir::DictionaryAttr> io_arg_attrs) {
+  auto& props = state.getOrAddProperties<Properties>();
+  props.sym_name = builder.getStringAttr(name);
+  if (!scratch_buffer_types.empty()) {
+    props.num_scratch_buffers =
+        builder.getI32IntegerAttr(scratch_buffer_types.size());
+  }
+  const bool has_rank = static_cast<bool>(signal_buffer_type);
+  if (has_rank) {
+    props.has_signal_buffer = builder.getUnitAttr();
+    props.has_rank = builder.getUnitAttr();
+  }
+
+  mlir::SmallVector<mlir::Type> arg_types(io_buffer_types.begin(),
+                                          io_buffer_types.end());
+  arg_types.append(scratch_buffer_types.begin(), scratch_buffer_types.end());
+  if (signal_buffer_type) {
+    arg_types.push_back(signal_buffer_type);
+  }
+  // Append rank (if present) and tile_id, both typed as index.
+  arg_types.append(has_rank ? 2 : 1, builder.getIndexType());
   mlir::FunctionType function_type = builder.getFunctionType(arg_types,
                                                              /*results=*/{});
   state.addAttribute(getFunctionTypeAttrName(state.name),
@@ -109,19 +136,21 @@ void EntryFuncOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
   state.attributes.append(attrs.begin(), attrs.end());
   state.addRegion();
 
-  if (memref_arg_attrs.empty()) {
+  if (io_arg_attrs.empty()) {
     return;
   }
 
-  assert(memref_arg_types.size() == memref_arg_attrs.size());
-  // As the arg attrs passed relate to the memref arg types we need to also
-  // append a tile id attr.
-  llvm::SmallVector<mlir::DictionaryAttr> arg_attrs_with_tile_id(
-      memref_arg_attrs.begin(), memref_arg_attrs.end());
-  arg_attrs_with_tile_id.push_back(
-      mlir::DictionaryAttr::get(builder.getContext(), {}));
+  assert(io_buffer_types.size() == io_arg_attrs.size());
+  // io_arg_attrs only covers HLO I/O buffers; pad empty attr dicts for the
+  // collective buffers, rank, and tile_id.
+  llvm::SmallVector<mlir::DictionaryAttr> arg_attrs_with_trailing(
+      io_arg_attrs.begin(), io_arg_attrs.end());
+  arg_attrs_with_trailing.append(scratch_buffer_types.size() +
+                                     (signal_buffer_type ? 1 : 0) +
+                                     (has_rank ? 2 : 1),
+                                 builder.getDictionaryAttr({}));
   mlir::call_interface_impl::addArgAndResultAttrs(
-      builder, state, arg_attrs_with_tile_id, /*resultAttrs=*/{},
+      builder, state, arg_attrs_with_trailing, /*resultAttrs=*/{},
       getArgAttrsAttrName(state.name), getResAttrsAttrName(state.name));
 }
 
@@ -149,8 +178,20 @@ mlir::LogicalResult EntryFuncOp::verify() {
   if (!getResultTypes().empty()) {
     return emitOpError() << "entry function should not have any return values";
   }
+  const int32_t num_scratch_buffers = getScratchBufferCount();
+  if (num_scratch_buffers < 0) {
+    return emitOpError() << "num_scratch_buffers must be non-negative";
+  }
+  if (getHasSignalBuffer() != getHasRank()) {
+    return emitOpError() << "signal buffer and rank must either both be "
+                            "present or both be absent";
+  }
+  if (num_scratch_buffers > 0 && !getHasSignalBuffer()) {
+    return emitOpError() << "scratch buffers require signal buffer and rank";
+  }
 
-  if (getArgumentTypes().empty()) {
+  const mlir::ArrayRef<mlir::Type> arg_types = getArgumentTypes();
+  if (arg_types.empty()) {
     return emitOpError()
            << "entry function must have at least the workgroup id";
   }
@@ -158,22 +199,72 @@ mlir::LogicalResult EntryFuncOp::verify() {
   // Deciphering the exact user error is non-trivial as they may have the
   // arguments in the wrong order or the incorrect number of workgroup ids etc,
   // so we just give a generic error message.
-  constexpr absl::string_view argument_error =
-      "entry function arguments should be of the form (arg: memref..., "
-      "tile_id: index)";
+  const absl::string_view argument_error =
+      getHasRank()
+          ? "entry function arguments should be of the form (arg: memref..., "
+            "rank: index, tile_id: index)"
+          : "entry function arguments should be of the form (arg: memref..., "
+            "tile_id: index)";
 
-  // + 1 for the tile id.
-  const int64_t num_opaque_args = getNumOpaqueArgs() + 1;
-  for (mlir::Type arg_types : getArgumentTypes().drop_back(num_opaque_args)) {
-    if (!mlir::isa<mlir::MemRefType>(arg_types)) {
+  if (static_cast<int64_t>(arg_types.size()) < getMinRequiredArgs()) {
+    return emitOpError() << argument_error;
+  }
+
+  for (mlir::Type io_type : getInputOutputBufferTypes()) {
+    if (!mlir::isa<mlir::MemRefType>(io_type)) {
       return emitOpError() << argument_error;
     }
   }
 
-  if (!mlir::isa<mlir::IndexType>(getArgumentTypes().back())) {
-    return emitOpError() << argument_error;
+  // Signal and scratch buffers are pointer tables (memref<Nxi64>) with one
+  // 64-bit address per GPU, so they must all share the same device count N.
+  if (mlir::Type signal_type = getSignalBufferType()) {
+    if (!IsPeerTableMemRef(signal_type)) {
+      return emitOpError()
+             << "signal buffer must be a static contiguous 1D i64 memref, got "
+             << signal_type;
+    }
+    const int64_t world_size =
+        mlir::cast<mlir::MemRefType>(signal_type).getDimSize(0);
+    for (mlir::Type scratch_type : getScratchBufferTypes()) {
+      if (!IsPeerTableMemRef(scratch_type) ||
+          mlir::cast<mlir::MemRefType>(scratch_type).getDimSize(0) !=
+              world_size) {
+        return emitOpError() << "scratch buffer must be a static contiguous 1D "
+                                "i64 memref matching signal buffer size ("
+                             << world_size << "), got " << scratch_type;
+      }
+    }
   }
 
+  // Trailing arguments (rank, if present, and tile_id) must be index types.
+  for (mlir::Type trailing_type : getTrailingArgTypes()) {
+    if (!mlir::isa<mlir::IndexType>(trailing_type)) {
+      return emitOpError() << argument_error;
+    }
+  }
+
+  return mlir::success();
+}
+
+mlir::LogicalResult SelectBufferOp::verify() {
+  mlir::MemRefType source_type = getSource().getType();
+  if (!IsPeerTableMemRef(source_type)) {
+    return emitOpError(
+               "expected source to be a static contiguous 1D i64 memref, got ")
+           << source_type;
+  }
+  // Any starting shift must be passed via `offset`, not baked into the result
+  // memref's layout.
+  int64_t result_offset = 0;
+  llvm::SmallVector<int64_t> result_strides;
+  mlir::MemRefType result_type = getResult().getType();
+  if (mlir::failed(
+          result_type.getStridesAndOffset(result_strides, result_offset)) ||
+      result_offset != 0) {
+    return emitOpError("expected result memref to have zero offset, got ")
+           << result_type;
+  }
   return mlir::success();
 }
 

@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/async_work_runner.h"
@@ -216,18 +218,30 @@ class LinearizeThrottler::LazyLinearizedBuffer : public PjRtStagingBuffer {
         numa_node_(numa_node),
         local_device_id_(local_device_id) {}
 
+  absl::Status Allocate() {
+    if (reused_buffer_ || size_ == 0 || data_) {
+      return absl::OkStatus();
+    }
+    data_ = allocator_->Allocate(size_, {
+                                            .numa_node = numa_node_,
+                                            .local_device_id = local_device_id_,
+                                        });
+    if (data_ == nullptr) {
+      credit_ = Throttler::Credit();
+      return absl::ResourceExhaustedError(
+          absl::StrCat("Failed to allocate a ", size_,
+                       "-byte pinned host staging buffer for linearization."));
+    }
+    return absl::OkStatus();
+  }
+
   absl::Span<uint8_t> data() override {
     if (reused_buffer_) {
       return {reinterpret_cast<uint8_t*>(reused_buffer_->GetHostPointer()),
               size_};
     }
-    if (!data_) {
-      data_ =
-          allocator_->Allocate(size_, {
-                                          .numa_node = numa_node_,
-                                          .local_device_id = local_device_id_,
-                                      });
-    }
+    CHECK(data_ || size_ == 0)
+        << "LazyLinearizedBuffer is uninitialized. Call Allocate() first.";
     return {data_.get(), size_};
   }
 
@@ -236,8 +250,8 @@ class LinearizeThrottler::LazyLinearizedBuffer : public PjRtStagingBuffer {
       return {reinterpret_cast<uint8_t*>(reused_buffer_->GetHostPointer()),
               size_};
     }
-    CHECK(data_) << "LazyLinearizedBuffer is uninitialized. The caller must "
-                    "write into data() first.";
+    CHECK(data_ || size_ == 0)
+        << "LazyLinearizedBuffer is uninitialized. Call Allocate() first.";
     return {data_.get(), size_};
   }
 
@@ -252,7 +266,25 @@ class LinearizeThrottler::LazyLinearizedBuffer : public PjRtStagingBuffer {
   HostMemoryAllocator::OwnedPtr data_;
 };
 
-tsl::AsyncValueRef<PjRtStagingBuffer> LinearizeThrottler::AllocateStagingDest(
+absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
+LinearizeThrottler::StagingReservation::Allocate() && {
+  DCHECK(buffer_.IsAvailable());
+  if (const absl::Status* error = buffer_.GetErrorIfPresent()) {
+    absl::Status status = *error;
+    buffer_.reset();
+    return status;
+  }
+  if (buffer_.Isa<LazyLinearizedBuffer>()) {
+    absl::Status status = buffer_.get<LazyLinearizedBuffer>().Allocate();
+    if (!status.ok()) {
+      buffer_.reset();
+      return status;
+    }
+  }
+  return std::move(buffer_);
+}
+
+LinearizeThrottler::StagingReservation LinearizeThrottler::AllocateStagingDest(
     bool sync, size_t size, PjRtRawBufferRef reused_buffer, int numa_node,
     std::optional<LocalDeviceId> local_device_id) {
   if (reused_buffer && reused_buffer->GetHostPointer() == nullptr) {
@@ -273,7 +305,7 @@ tsl::AsyncValueRef<PjRtStagingBuffer> LinearizeThrottler::AllocateStagingDest(
     linearize_throttler_->Schedule</*kForceThreadHop=*/false>(
         std::move(allocator_into_fn), size);
   }
-  return async_result;
+  return StagingReservation(std::move(async_result));
 }
 
 tsl::AsyncValueRef<PjRtStagingBuffer> LinearizeThrottler::CreateFromData(
@@ -302,11 +334,23 @@ LinearizeThrottler::AllocateForDelinearizationAsync(
   delinearize_throttler_->Schedule</*kForceThreadHop=*/false>(
       [host_allocator = host_allocator_, size, numa_node, local_device_id,
        async_result](Throttler::Credit credit) mutable {
+        if (size == 0) {
+          async_result.emplace(absl::Span<uint8_t>(), std::move(credit),
+                               nullptr);
+          return;
+        }
         HostMemoryAllocator::OwnedPtr memory = host_allocator->Allocate(
             size, {
                       .numa_node = numa_node,
                       .local_device_id = local_device_id,
                   });
+        if (memory == nullptr) {
+          credit = Throttler::Credit();
+          async_result.SetError(absl::ResourceExhaustedError(absl::StrCat(
+              "Failed to allocate a ", size,
+              "-byte pinned host staging buffer for delinearization.")));
+          return;
+        }
         absl::Span<uint8_t> span(memory.get(), size);
         async_result.emplace(span, std::move(credit),
                              [memory = std::move(memory)] {});

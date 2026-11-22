@@ -34,7 +34,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
@@ -87,18 +89,85 @@ std::vector<IndexDomain> IndexDomainsSlowPath(
 
 }  // namespace
 
-std::unique_ptr<HloShardingSpec> HloShardingSpec::Create(
+absl::StatusOr<std::unique_ptr<HloShardingSpec>> HloShardingSpec::CreateIfValid(
     int num_shards, xla::HloSharding xla_hlo_sharding) {
-  if (!xla_hlo_sharding.IsReplicated() && !xla_hlo_sharding.IsUnreduced() &&
-      xla_hlo_sharding.IsTiled()) {
-    CHECK_EQ(num_shards, xla_hlo_sharding.num_devices())
-        << "`num_shards` and `xla_hlo_sharding`'s `num_devices` does not "
-           "match: "
-        << num_shards << " vs. " << xla_hlo_sharding.num_devices()
-        << "; sharding=" << xla_hlo_sharding.ToString();
+  if (num_shards < 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "HloShardingSpec requires at least 1 shard, but got %d", num_shards));
+  }
+  if (xla_hlo_sharding.IsTuple()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "HloShardingSpec does not support tuple sharding: sharding=%s",
+        xla_hlo_sharding.ToString()));
+  }
+  if (xla_hlo_sharding.UseNamedShardingLeaf()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("HloShardingSpec does not support XLA HloShardingV3 "
+                        "(NamedSharding): sharding=%s",
+                        xla_hlo_sharding.ToString()));
+  }
+  if (xla_hlo_sharding.IsUnknown()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "HloShardingSpec does not support unknown sharding: sharding=%s",
+        xla_hlo_sharding.ToString()));
+  }
+  if (!(xla_hlo_sharding.GetShardGroup() ==
+        xla::HloSharding::NotShardGroup())) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "HloShardingSpec does not support shard-group sharding: sharding=%s",
+        xla_hlo_sharding.ToString()));
+  }
+  if (xla_hlo_sharding.IsSingleDevice()) {
+    // `SingleDevice` carries a logical or global XLA device ID rather than a
+    // `[0, num_shards)` shard index (`HloShardingSpec` treats `SingleDevice`
+    // via `IsReplicatedOrSingleDevice()` without indexing `[0, num_shards)`).
+    const std::optional<int64_t> unique_device =
+        xla_hlo_sharding.UniqueDevice();
+    if (!unique_device.has_value() || *unique_device < 0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "HloShardingSpec SingleDevice index %d must be non-negative; "
+          "sharding=%s",
+          unique_device.value_or(-1), xla_hlo_sharding.ToString()));
+    }
+  } else if (xla_hlo_sharding.IsTiled()) {
+    if (num_shards != xla_hlo_sharding.num_devices()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "`num_shards` and `xla_hlo_sharding`'s `num_devices` does not "
+          "match: %d vs. %d; sharding=%s",
+          num_shards, xla_hlo_sharding.num_devices(),
+          xla_hlo_sharding.ToString()));
+    }
+    // `xla::IotaTileAssignment` already guarantees a permutation of
+    // `[0, num_devices)`, and `xla::HloSharding` already enforces unique
+    // non-negative explicit device IDs, so checking `< num_shards` establishes
+    // a `[0, num_shards)` bijection.
+    if (!xla_hlo_sharding.tile_assignment().iota().has_value()) {
+      for (int64_t device : xla_hlo_sharding.tile_assignment().array()) {
+        if (device < 0 || device >= num_shards) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "`xla_hlo_sharding` device %d must be in [0, %d); sharding=%s",
+              device, num_shards, xla_hlo_sharding.ToString()));
+        }
+      }
+    }
+    const int64_t num_unique_tiles = xla_hlo_sharding.NumTiles();
+    if (num_unique_tiles < 1 || num_shards % num_unique_tiles != 0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "HloShardingSpec has %d shards, but HloSharding has %d unique "
+          "tiles, which is not a divisor of the number of shards; sharding=%s",
+          num_shards, num_unique_tiles, xla_hlo_sharding.ToString()));
+    }
   }
   return std::unique_ptr<HloShardingSpec>(
       new HloShardingSpec(num_shards, std::move(xla_hlo_sharding)));
+}
+
+std::unique_ptr<HloShardingSpec> HloShardingSpec::Create(
+    int num_shards, xla::HloSharding xla_hlo_sharding) {
+  absl::StatusOr<std::unique_ptr<HloShardingSpec>> spec =
+      CreateIfValid(num_shards, std::move(xla_hlo_sharding));
+  CHECK_OK(spec);
+  return *std::move(spec);
 }
 
 HloShardingSpec::HloShardingSpec(int num_shards,
@@ -136,8 +205,7 @@ absl::StatusOr<ShardingRef> HloShardingSpec::ToSharding(
 
 absl::StatusOr<Shape> HloShardingSpec::GetShardShape(const Shape& shape) const {
   if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
-      xla_hlo_sharding_.IsManual() || xla_hlo_sharding_.IsUnreduced() ||
-      xla_hlo_sharding_.IsUnknown()) {
+      xla_hlo_sharding_.IsManual() || xla_hlo_sharding_.IsUnreduced()) {
     return shape;
   }
   if (shape.dims().size() != xla_hlo_sharding_.TiledDataRank()) {
@@ -254,13 +322,6 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
     result.resize(/*count=*/num_shards_, /*value=*/element);
     return result;
   }
-  if (!xla_hlo_sharding_.IsTiled()) {
-    return IndexDomainsSlowPath(xla_hlo_sharding_, num_shards_, shape);
-  }
-  if (xla_hlo_sharding_.HasNonReplicatedSubgroup()) {
-    return IndexDomainsSlowPath(xla_hlo_sharding_, num_shards_, shape);
-  }
-
   const int64_t tiled_data_rank = xla_hlo_sharding_.TiledDataRank();
   if (shape.dims().size() != tiled_data_rank) {
     return absl::InvalidArgumentError(
@@ -269,10 +330,16 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
                         tiled_data_rank, shape.dims().size(), shape,
                         xla_hlo_sharding_.ToString()));
   }
+  if (xla_hlo_sharding_.HasNonReplicatedSubgroup()) {
+    return IndexDomainsSlowPath(xla_hlo_sharding_, num_shards_, shape);
+  }
 
   ABSL_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
 
   const absl::Span<const int64_t> shape_dims = shape.dims();
+  // `CreateIfValid` guarantees that `EachTile` populates each `[0,
+  // num_shards_)` slot of `all` exactly once (`IndexDomain` is not
+  // default-constructible).
   std::vector<std::optional<IndexDomain>> all(num_shards_);
   ABSL_RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
       shape_dims, [shape_dims, &all](int device_index,
@@ -349,12 +416,8 @@ HloShardingSpec::UniqueIndexDomains(const Shape& shape) const {
   });
 
   const int64_t num_unique_tiles = xla_hlo_sharding_.NumTiles();
-  if (num_shards_ % num_unique_tiles != 0) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "HloShardingSpec has %d shards, but HloSharding has %d unique tiles, "
-        "which is not a divisor of the number of shards; sharding=%s",
-        num_shards_, num_unique_tiles, xla_hlo_sharding_.ToString()));
-  }
+  // `CreateIfValid` guarantees `num_unique_tiles >= 1` and
+  // `num_shards_ % num_unique_tiles == 0` for tiled shardings.
   const int64_t num_replicas = num_shards_ / num_unique_tiles;
 
   xla::Shape xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
@@ -413,12 +476,8 @@ HloShardingSpec::ShardToUniqueIndexDomainIndex() const {
   }
 
   const int64_t num_unique_tiles = xla_hlo_sharding_.NumTiles();
-  if (num_shards_ % num_unique_tiles != 0) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "HloShardingSpec has %d shards, but HloSharding has %d unique tiles, "
-        "which is not a divisor of the number of shards; sharding=%s",
-        num_shards_, num_unique_tiles, xla_hlo_sharding_.ToString()));
-  }
+  // `CreateIfValid` guarantees `num_unique_tiles >= 1` and
+  // `num_shards_ % num_unique_tiles == 0` for tiled shardings.
   const int64_t num_replicas = num_shards_ / num_unique_tiles;
 
   absl::call_once(shard_to_unique_index_domain_index_once_, [&, this] {

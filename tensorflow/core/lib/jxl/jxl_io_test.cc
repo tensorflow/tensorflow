@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/escaping.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -61,6 +62,65 @@ TEST(JxlIoTest, DecodeHeader) {
   EXPECT_TRUE(DecodeHeader(jxl_data, nullptr, nullptr, nullptr, nullptr));
   EXPECT_TRUE(DecodeHeader(jxl_data, &width, nullptr, nullptr, nullptr));
   EXPECT_EQ(width, 128);
+}
+
+TEST(JxlIoTest, DecodeHeaderInvalidDimensions) {
+  // JXL header declaring xsize = 0x80000000, which does not fit in int.
+  const std::string hex_data =
+      "ff0afeffffff7f980208c400b19f200000152aa38c1bbc9ceb3232f24387c5b48"
+      "deb0c6db56f0d68b89028a2e1af323374f8b7e479d69e5c16c2c99153d4c95c14"
+      "669b6c39b9c4f30734c4";
+  std::string data;
+  ASSERT_TRUE(absl::HexStringToBytes(hex_data, &data));
+  int width = 0, height = 0, channels = 0;
+  EXPECT_FALSE(DecodeHeader(data, &width, &height, &channels));
+  EXPECT_FALSE(DecodeHeader(data, nullptr, nullptr, nullptr));
+}
+
+TEST(JxlIoTest, DecodeHeaderEmpty) {
+  int width = 0, height = 0, channels = 0;
+  EXPECT_FALSE(DecodeHeader("", &width, &height, &channels));
+}
+
+TEST(JxlIoTest, DecodeHeaderLargestValidDimensions) {
+  // A minimal codestream header declaring 2^30 x 2^30: the largest size the
+  // libjxl bitstream can express on both axes, since ysize is encoded as
+  // U32(..., BitsOffset(30, 1)) and an explicit xsize uses the same range.
+  // It must still be accepted, so the range check does not turn away large
+  // but valid images.
+  std::string data;
+  ASSERT_TRUE(absl::HexStringToBytes("ff0afefffffff1ffffff1f", &data));
+  int width = 0, height = 0, channels = 0;
+  EXPECT_TRUE(DecodeHeader(data, &width, &height, &channels));
+  EXPECT_EQ(width, 1 << 30);
+  EXPECT_EQ(height, 1 << 30);
+}
+
+TEST(JxlIoTest, DecodeHeaderRejectsDimensionAboveIntMax) {
+  // The same header with the 2:1 aspect ratio set, which makes xsize 2^31:
+  // one above INT_MAX, and the largest xsize libjxl will ever report. Without
+  // the range check DecodeHeader returns true here with width = INT_MIN.
+  std::string data;
+  ASSERT_TRUE(absl::HexStringToBytes("ff0afeffffff1f", &data));
+  int width = 0, height = 0, channels = 0;
+  EXPECT_FALSE(DecodeHeader(data, &width, &height, &channels));
+}
+
+TEST(JxlIoTest, DecodeImageRejectsByteCountOverflow) {
+  // 2^30 x 2^30 passes every check in DecodeHeader, but DecodeImage then sizes
+  // the output as xsize * ysize * channels * bytes_per_sample, which for four
+  // float channels is 2^64 exactly and so wraps to zero in size_t. The
+  // output-size comparison below the guard would accept any buffer.
+  std::string data;
+  ASSERT_TRUE(absl::HexStringToBytes("ff0afefffffff1ffffff1f", &data));
+  int width = 0, height = 0, channels = 0;
+  ASSERT_TRUE(DecodeHeader(data, &width, &height, &channels));
+  ASSERT_EQ(width, 1 << 30);
+  ASSERT_EQ(height, 1 << 30);
+
+  std::vector<float> output(16);
+  EXPECT_FALSE(DecodeImageFloat(data, /*channels=*/4, output.data(),
+                                output.size() * sizeof(float)));
 }
 
 TEST(JxlIoTest, DecodeImageUint8) {

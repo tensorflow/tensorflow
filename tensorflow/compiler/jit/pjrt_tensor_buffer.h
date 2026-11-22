@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_PJRT_TENSOR_BUFFER_H_
 #define TENSORFLOW_COMPILER_JIT_PJRT_TENSOR_BUFFER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
@@ -31,25 +34,65 @@ namespace tensorflow {
 class PjRtTensorBuffer : public TensorBuffer {
  public:
   PjRtTensorBuffer(const void* ptr, size_t expected_size,
-                   std::unique_ptr<xla::PjRtBuffer> pjrt_buffer)
+                   std::unique_ptr<xla::PjRtBuffer> pjrt_buffer,
+                   TensorBuffer* root_buffer = nullptr)
       : TensorBuffer(const_cast<void*>(ptr)),
         expected_size_(expected_size),
-        pjrt_buffer_(std::move(pjrt_buffer)) {}
+        pjrt_buffer_(std::move(pjrt_buffer)),
+        root_buffer_(root_buffer) {}
 
   size_t size() const override { return expected_size_; }
 
-  TensorBuffer* root_buffer() override { return this; }
+  TensorBuffer* root_buffer() override {
+    return root_buffer_ != nullptr ? root_buffer_ : this;
+  }
 
   xla::PjRtBuffer* pjrt_buffer() const { return pjrt_buffer_.get(); }
 
-  // TODO(b/288965065): Implement this.
+  bool GetAllocatedBytes(size_t* out_bytes) const override {
+    if (root_buffer_ != nullptr) {
+      return root_buffer_->GetAllocatedBytes(out_bytes);
+    }
+    return TensorBuffer::GetAllocatedBytes(out_bytes);
+  }
+
+  // TODO(b/288965065): Implement this when root_buffer_ is null.
   void FillAllocationDescription(AllocationDescription* proto) const override {
+    if (root_buffer_ != nullptr) {
+      root_buffer_->FillAllocationDescription(proto);
+      if (!RefCountIsOne()) {
+        proto->set_has_single_reference(false);
+      }
+      return;
+    }
     proto->set_requested_bytes(static_cast<int64_t>(expected_size_));
+  }
+
+  bool OwnsMemory() const override {
+    if (root_buffer_ != nullptr) {
+      return root_buffer_->OwnsMemory();
+    }
+    return TensorBuffer::OwnsMemory();
+  }
+
+  AllocatorMemoryType GetMemoryType() const override {
+    if (root_buffer_ != nullptr) {
+      return root_buffer_->GetMemoryType();
+    }
+    return TensorBuffer::GetMemoryType();
+  }
+
+  bool AllocatesOpaqueHandle() const override {
+    if (root_buffer_ != nullptr) {
+      return root_buffer_->AllocatesOpaqueHandle();
+    }
+    return TensorBuffer::AllocatesOpaqueHandle();
   }
 
  private:
   size_t expected_size_;
   std::unique_ptr<xla::PjRtBuffer> pjrt_buffer_;
+  TensorBuffer* root_buffer_;
 };
 
 }  // namespace tensorflow

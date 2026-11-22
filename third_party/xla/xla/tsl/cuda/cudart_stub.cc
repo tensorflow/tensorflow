@@ -28,8 +28,8 @@ void *GetDsoHandle() {
   static auto handle = []() -> void * {
     auto handle_or = tsl::internal::DsoLoader::GetCudaRuntimeDsoHandle();
     if (!handle_or.ok()) {
-      LOG(INFO) << "Could not find cuda drivers on your machine, "
-                   "GPU will not be used.";
+      VLOG(1) << "Could not find cuda drivers on your machine, "
+                 "GPU will not be used.";
       return nullptr;
     }
     return handle_or.value();

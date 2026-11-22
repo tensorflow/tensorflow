@@ -339,8 +339,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 /* static */ absl::StatusOr<Shape> ShapeInference::InferUnaryOpShape(
     HloOpcode opcode, const Shape& shape) {
   // There is no copy operation at the proto level, so handle copy explicitly.
-  // A domain shape is the same as the input one.
-  if (opcode == HloOpcode::kCopy || opcode == HloOpcode::kDomain) {
+  if (opcode == HloOpcode::kCopy) {
     return shape;
   }
 
@@ -655,6 +654,13 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
           "bit-widths=%d "
           "for bitcast-convert from %s to %s",
           operand_shape.dimensions(last_dimension_idx), ratio,
+          ShapeUtil::HumanString(operand_shape),
+          PrimitiveType_Name(new_element_type));
+    }
+    if (operand_shape.is_dynamic_dimension(last_dimension_idx)) {
+      return InvalidArgument(
+          "Last dimension of input shape must be static for bitcast-convert "
+          "from %s to %s",
           ShapeUtil::HumanString(operand_shape),
           PrimitiveType_Name(new_element_type));
     }
@@ -1516,7 +1522,15 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+      return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
+                                           broadcast_dimensions);
+
     case HloOpcode::kMulhi:
+      if (!primitive_util::IsIntegralType(lhs.element_type())) {
+        return InvalidArgument(
+            "Expected integral type in argument to mulhi operation; got %s.",
+            PrimitiveType_Name(lhs.element_type()));
+      }
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 
@@ -3466,7 +3480,16 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 /* static */ absl::StatusOr<Shape> ShapeInference::InferDynamicSliceShape(
     const Shape& operand_shape, absl::Span<const Shape> start_index_shapes,
     absl::Span<const int64_t> slice_sizes, bool allow_scalar_indices) {
-  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of dynamic slice"));
+  // Allow buffer types in addition to standard arrays so that dynamic slices
+  // can perform read only slicing directly from stream buffer views.
+  // Shape::IsArray() accepts both arrays and buffers (delegating dimensions
+  // and element_type to the buffer's inner shape).
+  if (!operand_shape.IsArray()) {
+    return InvalidArgument(
+        "Expected array or buffer argument for operand of dynamic slice, but "
+        "got %s.",
+        ShapeUtil::HumanString(operand_shape));
+  }
   auto number_of_indices = start_index_shapes.size();
   // TODO(b/118437727): Remove this path.
   if (!allow_scalar_indices ||
@@ -4501,6 +4524,12 @@ static absl::Status ValidateGatherDimensionNumbers(
           "%d->%d.",
           start_indices_shape.size(), i, start_indices_batching_dim_i);
     }
+    if (start_indices_batching_dim_i == dim_numbers.index_vector_dim()) {
+      return InvalidArgument(
+          "Invalid start_indices_batching_dims; index_vector_dim=%d is not "
+          "allowed as a batching dimension, got: %d->%d.",
+          dim_numbers.index_vector_dim(), i, start_indices_batching_dim_i);
+    }
   }
 
   std::vector<int64_t> sorted_start_indices_batching_dims(
@@ -4810,6 +4839,13 @@ absl::Status ValidateScatterDimensionNumbers(
           "Invalid scatter_indices_batching_dims set in scatter op; valid "
           "range is [0, %d), got: %d.",
           scatter_indices_shape.size(), scatter_indices_batching_dim);
+    }
+    if (scatter_indices_batching_dim == dim_numbers.index_vector_dim()) {
+      return InvalidArgument(
+          "Invalid scatter_indices_batching_dims set in scatter op; "
+          "index_vector_dim=%d is not allowed as a batching dimension, got: "
+          "%d.",
+          dim_numbers.index_vector_dim(), scatter_indices_batching_dim);
     }
   }
   std::vector<int64_t> sorted_scatter_indices_batching_dims(

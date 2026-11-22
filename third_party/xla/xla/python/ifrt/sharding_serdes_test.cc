@@ -20,11 +20,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
@@ -32,13 +36,16 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/sharding_serdes.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 
 using ShardingSerDesTestParam =
     std::tuple<SerDesVersion, test_util::DeviceTestParam>;
@@ -98,7 +105,10 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
   auto sharding = ConcreteSharding::Create(
       GetDevices({0, 1}), MemoryKind("abc"),
       /*shape=*/Shape({10, 20}),
-      /*shard_shapes=*/{Shape({3, 20}), Shape({7, 20})});
+      /*shard_shapes=*/{Shape({3, 20}), Shape({7, 20})},
+      /*index_domains=*/
+      std::vector<IndexDomain>{IndexDomain(Index({0, 0}), Shape({3, 20})),
+                               IndexDomain(Index({3, 0}), Shape({7, 20}))});
 
   auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
@@ -114,6 +124,7 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shapes(),
               ElementsAreArray(sharding->shard_shapes()));
+  EXPECT_THAT(out_sharding->index_domains(), sharding->index_domains());
 }
 
 TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
@@ -154,7 +165,7 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
   auto sharding = ConcreteEvenSharding::Create(
       GetDevices({0, 1}), MemoryKind("abc"),
       /*shape=*/Shape({10, 20}),
-      /*shard_shape=*/Shape({5, 20}), /*is_fully_replicated=*/true);
+      /*shard_shape=*/Shape({5, 20}), /*is_fully_replicated=*/false);
 
   auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
@@ -170,6 +181,71 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shape(), sharding->shard_shape());
   EXPECT_THAT(out_sharding->IsFullyReplicated(), sharding->IsFullyReplicated());
+}
+
+TEST_P(ShardingSerDesTest, RejectEmptyDeviceListOnDeserialize) {
+  DeviceListRef empty_devices = GetDevices({});
+  {
+    OpaqueShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    empty_devices->ToProto(*proto.mutable_devices(), version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::OpaqueSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<OpaqueSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("requires at least 1 device")));
+  }
+  {
+    ConcreteShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    empty_devices->ToProto(*proto.mutable_devices(), version());
+    Shape({0}).ToProto(*proto.mutable_shape(), version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<ConcreteSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("requires at least 1 device")));
+  }
+  {
+    ConcreteEvenShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    empty_devices->ToProto(*proto.mutable_devices(), version());
+    Shape({0}).ToProto(*proto.mutable_shape(), version());
+    Shape({0}).ToProto(*proto.mutable_shard_shape(), version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteEvenSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<ConcreteEvenSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("requires at least 1 device")));
+  }
+}
+
+TEST_P(ShardingSerDesTest,
+       RejectFullyReplicatedConcreteEvenShardingWithMismatchedShardShape) {
+  ConcreteEvenShardingProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  GetDevices({0, 1})->ToProto(*proto.mutable_devices(), version());
+  Shape({10, 20}).ToProto(*proto.mutable_shape(), version());
+  Shape({5, 20}).ToProto(*proto.mutable_shard_shape(), version());
+  proto.set_is_fully_replicated(true);
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::ConcreteEvenSharding");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(
+      Deserialize<ConcreteEvenSharding>(
+          wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("requires shape == shard_shape")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -82,6 +82,13 @@ struct GpuClientOptions {
 
   std::optional<int> max_inflight_computations = 32;
 
+  // Priority of the compute stream to create on each GPU device, in the
+  // platform's convention (CUDA: 0 is the default and lowest priority, more
+  // negative values are higher priorities). Every execution of this client
+  // runs at that priority. The H2D and D2H streams are created at the same
+  // priority. If unset, the streams are created at the default priority.
+  std::optional<int> compute_stream_priority;
+
   bool verify_topology_fingerprint = true;
 };
 

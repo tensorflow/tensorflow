@@ -72,7 +72,7 @@ using ShardingSpecRef = absl_nonnull std::shared_ptr<const ShardingSpec>;
 class ShardingSpec : public RTTIExtends<ShardingSpec, Serializable>,
                      public std::enable_shared_from_this<ShardingSpec> {
  public:
-  // Returns the number of shards.
+  // Returns the number of shards. Guaranteed to be >= 1.
   int num_shards() const { return num_shards_; }
 
   // Returns if this sharding spec is fully replicated. A fully replicated
@@ -270,7 +270,13 @@ class SingleDeviceShardingSpec final
 class OpaqueShardingSpec
     : public RTTIExtends<OpaqueShardingSpec, ShardingSpec> {
  public:
+  // Creates an opaque sharding spec. Returns `InvalidArgumentError` if
+  // `num_shards < 1`.
+  static absl::StatusOr<std::unique_ptr<OpaqueShardingSpec>> CreateIfValid(
+      int num_shards);
+
   // Creates an opaque sharding spec. `Disassemble()` will fail.
+  // REQUIRES: `num_shards >= 1`.
   static std::unique_ptr<OpaqueShardingSpec> Create(int num_shards);
 
   // ShardingSpec implementation.
@@ -318,26 +324,41 @@ class ConcreteShardingSpec
     : public RTTIExtends<ConcreteShardingSpec, ShardingSpec> {
  public:
   // Creates a concrete sharding spec that may contain non-identical shard
+  // shapes. Returns `InvalidArgumentError` if `shard_shapes` is empty or
+  // exceeds `INT_MAX`.
+  static absl::StatusOr<std::unique_ptr<ConcreteShardingSpec>> CreateIfValid(
+      Shape shape, std::vector<Shape> shard_shapes,
+      std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains);
+
+  // Creates a concrete sharding spec that may contain non-identical shard
   // shapes.
+  // REQUIRES: `!shard_shapes.empty()` and `shard_shapes.size() <= INT_MAX`.
   static std::unique_ptr<ConcreteShardingSpec> Create(
       Shape shape, std::vector<Shape> shard_shapes,
       std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains =
           std::nullopt);
 
   // Creates a concrete sharding spec that may contain non-identical shard
+  // dynamic shapes. Returns `InvalidArgumentError` if `shard_dynamic_shapes`
+  // is empty or exceeds `INT_MAX`.
+  static absl::StatusOr<std::unique_ptr<ConcreteShardingSpec>> CreateIfValid(
+      DynamicShape dynamic_shape,
+      std::vector<DynamicShape> shard_dynamic_shapes);
+
+  // Creates a concrete sharding spec that may contain non-identical shard
   // dynamic shapes.
+  // REQUIRES: `!shard_dynamic_shapes.empty()` and
+  // `shard_dynamic_shapes.size() <= INT_MAX`.
   static std::unique_ptr<ConcreteShardingSpec> Create(
       DynamicShape dynamic_shape,
       std::vector<DynamicShape> shard_dynamic_shapes);
 
   bool has_dynamic_shape() const {
-    DCHECK(this);
     return std::holds_alternative<DynamicShape>(shape_) &&
            std::holds_alternative<std::vector<DynamicShape>>(shard_shapes_);
   }
 
   bool has_static_shape() const {
-    DCHECK(this);
     return std::holds_alternative<Shape>(shape_) &&
            std::holds_alternative<std::vector<Shape>>(shard_shapes_);
   }
@@ -353,13 +374,11 @@ class ConcreteShardingSpec
   }
 
   const std::vector<Shape>& shard_shapes() const {
-    DCHECK(this);
     DCHECK(std::holds_alternative<std::vector<Shape>>(shard_shapes_));
     return std::get<std::vector<Shape>>(shard_shapes_);
   }
 
   const std::vector<DynamicShape>& shard_dynamic_shapes() const {
-    DCHECK(this);
     DCHECK(std::holds_alternative<std::vector<DynamicShape>>(shard_shapes_));
     return std::get<std::vector<DynamicShape>>(shard_shapes_);
   }
@@ -400,6 +419,8 @@ class ConcreteShardingSpec
   ConcreteShardingSpec(const ConcreteShardingSpec& other);
 
  private:
+  friend class ConcreteSharding;
+
   ConcreteShardingSpec(
       int num_shards, Shape shape, std::vector<Shape> shard_shapes,
       std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains);
@@ -429,19 +450,26 @@ class ConcreteShardingSpec
 class ConcreteEvenShardingSpec
     : public RTTIExtends<ConcreteEvenShardingSpec, ShardingSpec> {
  public:
+  // Creates a concrete even sharding spec. Returns `InvalidArgumentError` if
+  // `num_shards < 1` or if `is_fully_replicated` is true and
+  // `shape != shard_shape`.
+  static absl::StatusOr<std::unique_ptr<ConcreteEvenShardingSpec>>
+  CreateIfValid(int num_shards, Shape shape, Shape shard_shape,
+                bool is_fully_replicated);
+
   // Creates a concrete even sharding spec.
   // TODO(hyeontaek): Remove the default value of `is_fully_replicated` once all
   // callers are updated to provide it explicitly.
+  // REQUIRES: `num_shards >= 1`, and `!is_fully_replicated || shape ==
+  // shard_shape`.
   static std::unique_ptr<ConcreteEvenShardingSpec> Create(
       int num_shards, Shape shape, Shape shard_shape,
       bool is_fully_replicated = false);
 
   Shape shape() const {
-    DCHECK(this);
     return shape_;
   }
   const Shape& shard_shape() const {
-    DCHECK(this);
     return shard_shape_;
   }
 

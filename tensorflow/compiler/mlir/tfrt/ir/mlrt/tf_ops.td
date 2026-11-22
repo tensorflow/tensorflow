@@ -89,7 +89,7 @@ def TFMapFnOp : TensorflowMlrt_Op<"tf_map_fn", [AttrSizedOperandSegments, Pure]>
      Variadic<TF_Tensor>:$result
   );
 
-  let assemblyFormat = "`(`$max_iterations`,` $tensor_list_or_flow_in`,` $invariant_args `)` attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = "`(`$max_iterations`,` $tensor_list_or_flow_in`,` $invariant_args `)` prop-dict attr-dict `:` functional-type(operands, results)";
 }
 
 def TFAsyncWhileOp : TensorflowMlrt_Op<"tf_async_while", [Pure]> {
@@ -109,7 +109,7 @@ def TFAsyncWhileOp : TensorflowMlrt_Op<"tf_async_while", [Pure]> {
   let results = (outs Variadic<MlrtFutureType>);
 
   let assemblyFormat = [{
-    $body_fn `(` $cond `,` $arguments `)` attr-dict `:` `(` type($cond) `,` type($arguments) `)` `->` `(` type(results) `)`
+    $body_fn `(` $cond `,` $arguments `)` prop-dict attr-dict `:` `(` type($cond) `,` type($arguments) `)` `->` `(` type(results) `)`
   }];
 }
 
@@ -144,7 +144,7 @@ def TFTPUCompileAndExecuteOp : TensorflowMlrt_Op<"tf_tpu_compile_and_execute", [
   );
 
   let assemblyFormat = [{
-    `(` $operands_and_static_shapes `)` attr-dict `:` functional-type($operands_and_static_shapes, results)
+    `(` $operands_and_static_shapes `)` prop-dict attr-dict `:` functional-type($operands_and_static_shapes, results)
   }];
 }
 

@@ -2365,5 +2365,68 @@ ENTRY main {
   EXPECT_NE(scores["add"], kNanInfMismatchDiffScore);
 }
 
+TEST(HloDumpUtilsTest, VerifiedMatchRendersGreenWithoutMismatchState) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"hlo(
+HloModule m
+fused_comp {
+  fp = f32[4,8] parameter(0)
+  good_op = f32[4,8] abs(fp)
+  ROOT bad_op = f32[4,8] negate(good_op)
+}
+ENTRY main {
+  p0 = f32[4,8] parameter(0)
+  pre = f32[4,8] exponential(p0)
+  ROOT fus = f32[4,8] fusion(pre), kind=kLoop, calls=fused_comp
+}
+)hlo"));
+
+  MismatchDetails bad;
+  bad.target_instruction_name = "bad_op";
+  bad.actual = 4.0;
+  bad.expected = 2.0;
+  bad.rel_error = 1.0;
+  bad.sample_index = {0, 0};
+  bad.percentage_of_elems_exceeding_both_errors = 100.0;
+
+  auto verified = [](absl::string_view name) {
+    MismatchDetails details;
+    details.target_instruction_name = std::string(name);
+    details.diff_score = 0.0;
+    details.verified_match = true;
+    return details;
+  };
+  std::vector<MismatchDetails> details = {verified("pre"), verified("good_op"),
+                                          bad};
+
+  auto annotations = PopulateMismatchAnnotations(*module, details);
+  EXPECT_FALSE(annotations.contains(TensorKey::Create("p0", {})));
+  EXPECT_EQ(annotations[TensorKey::Create("pre", {})].background_color,
+            "lightgreen");
+  EXPECT_FALSE(
+      annotations[TensorKey::Create("pre", {})].tooltip_data.has_value());
+  EXPECT_EQ(annotations[TensorKey::Create("bad_op", {})].background_color,
+            "pink");
+  EXPECT_TRUE(
+      annotations[TensorKey::Create("bad_op", {})].tooltip_data.has_value());
+
+  GraphData graph =
+      PopulateMismatchGraphData(*module, details, kUnverifiedDiffScore);
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+  EXPECT_DOUBLE_EQ(scores["p0"], kUnverifiedDiffScore);
+  EXPECT_DOUBLE_EQ(scores["fus/fp"], kUnverifiedDiffScore);
+  EXPECT_DOUBLE_EQ(scores["pre"], 0.0);
+  EXPECT_DOUBLE_EQ(scores["fus/good_op"], 0.0);
+  EXPECT_DOUBLE_EQ(scores["fus/bad_op"], 100.0);
+
+  auto vis = PopulateTensorVisualizations(*module, details);
+  EXPECT_FALSE(vis.at("pre").has_mismatch);
+  EXPECT_EQ(vis.at("pre").mismatch_count, 0);
+  EXPECT_TRUE(vis.at("bad_op").has_mismatch);
+}
+
 }  // namespace
 }  // namespace xla::numerics::debug_info

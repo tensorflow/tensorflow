@@ -27,7 +27,9 @@ cc_library(
     srcs = ["dot_kernel_emitter.cc"],
     hdrs = ["dot_kernel_emitter.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/codegen:kernel_emitter",
@@ -39,7 +41,6 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:dot_op_emitter",
         "//xla/service/llvm_ir:ir_array",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",

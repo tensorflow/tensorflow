@@ -724,7 +724,7 @@ void UpdateAndInsertTPUOps(TF::StatefulPartitionedCallOp caller,
   // Adds the TPUReplicateMetatdataOp and TPUCompilationResultOp ops to the
   // function called by the provided 'caller'.
   mlir::CallInterfaceCallable callable = caller.getCallableForCallee();
-  mlir::SymbolRefAttr sym = callable.dyn_cast<mlir::SymbolRefAttr>();
+  auto sym = llvm::dyn_cast_if_present<mlir::SymbolRefAttr>(callable);
   auto func = llvm::dyn_cast<mlir::func::FuncOp>(
       mlir::SymbolTable::lookupNearestSymbolFrom(caller, sym));
   OpBuilder builder(func.getBody());

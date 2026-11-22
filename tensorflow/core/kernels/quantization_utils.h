@@ -389,7 +389,7 @@ inline void RequantizeManyInNewRangeNeon(const qint32* input, int64 count,
 
   // Requantize remaining elements in array without SIMD.
   for (; index < count; ++index) {
-    const int32 input_value = static_cast<int32>(input[index]);
+    const int32 input_value = input[index].value;
     const int32 fp_value =
         static_cast<int32>(
             (static_cast<int32>(input_value >> 16) * (range_scale_fp))) +

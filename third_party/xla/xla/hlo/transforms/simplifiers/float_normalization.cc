@@ -566,7 +566,6 @@ absl::Status FloatNormalizationVisitor::DefaultAction(HloInstruction* hlo) {
   if (hlo->opcode() == HloOpcode::kTuple ||            //
       hlo->opcode() == HloOpcode::kGetTupleElement ||  //
       hlo->opcode() == HloOpcode::kConstant ||         //
-      hlo->opcode() == HloOpcode::kDomain ||           //
       hlo->opcode() == HloOpcode::kParameter ||        //
       hlo->opcode() == HloOpcode::kFusion ||           //
       hlo->opcode() == HloOpcode::kConvert ||          //

@@ -283,11 +283,22 @@ void HloGumgraph::PrecomputeSizeAndHeight() {
     for (HloInstructionNode* node : *it) {
       int64_t height = 0;
       uint64_t fingerprint = node->props.fingerprint;
+      uint64_t canonical_subgraph_fingerprint =
+          node->props.canonical_fingerprint;
+      if (node->children.empty() && node->instruction != nullptr &&
+          node->instruction->opcode() == HloOpcode::kParameter) {
+        canonical_subgraph_fingerprint =
+            tsl::FingerprintCat64(canonical_subgraph_fingerprint,
+                                  node->instruction->parameter_number());
+      }
 
       for (const HloInstructionNode* child : node->children) {
         height = std::max(height, child->props.height);
         fingerprint = tsl::FingerprintCat64(fingerprint,
                                             child->props.subgraph_fingerprint);
+        canonical_subgraph_fingerprint =
+            tsl::FingerprintCat64(canonical_subgraph_fingerprint,
+                                  child->props.canonical_subgraph_fingerprint);
       }
 
       node->props.height = height + 1;
@@ -295,6 +306,8 @@ void HloGumgraph::PrecomputeSizeAndHeight() {
       // subgraph fingerprint, see test case
       // PreComputationsWorksSubgraphFingerprint. This is unexpected.
       node->props.subgraph_fingerprint = fingerprint;
+      node->props.canonical_subgraph_fingerprint =
+          canonical_subgraph_fingerprint;
     }
   }
 }

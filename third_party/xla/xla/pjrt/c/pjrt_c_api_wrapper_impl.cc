@@ -720,29 +720,13 @@ PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
       "PJRT_Client_UpdateGlobalProcessInfo_Args",
       PJRT_Client_UpdateGlobalProcessInfo_Args_STRUCT_SIZE, args->struct_size));
 
-  auto translate_state = [](PJRT_ProcessState state) {
-    switch (state) {
-      case PJRT_ProcessState_kUnspecified:
-        return xla::coordination::TaskState::UNSPECIFIED;
-      case PJRT_ProcessState_kUninitialized:
-        return xla::coordination::TaskState::UNINITIALIZED;
-      case PJRT_ProcessState_kDisconnected:
-        return xla::coordination::TaskState::DISCONNECTED;
-      case PJRT_ProcessState_kConnected:
-        return xla::coordination::TaskState::CONNECTED;
-      case PJRT_ProcessState_kError:
-        return xla::coordination::TaskState::ERROR;
-    }
-    LOG(FATAL) << "Unexpected PJRT_ProcessState " << state;
-  };
-
   std::vector<xla::coordination::TaskInfo> infos;
   for (int i = 0; i < args->num_process_infos; ++i) {
     PJRT_ProcessInfo* p = &args->process_infos[i];
     xla::coordination::TaskInfo info;
     info.set_task_id(p->task_id);
     info.set_incarnation(p->incarnation_id);
-    info.set_state(translate_state(p->state));
+    info.set_state(pjrt::PjRtProcessStateToTaskState(p->state));
     info.set_error_code(p->error_code);
     info.set_error_message(
         absl::string_view(p->error_message, p->error_message_size));
@@ -1761,51 +1745,7 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
       args->struct_size));
   PJRT_ASSIGN_OR_RETURN(tsl::AllocatorStats stats,
                         args->device->device->GetAllocatorStats());
-
-  args->bytes_in_use = stats.bytes_in_use;
-
-  args->peak_bytes_in_use_is_set = true;
-  args->peak_bytes_in_use = stats.peak_bytes_in_use;
-  args->num_allocs_is_set = true;
-  args->num_allocs = stats.num_allocs;
-  args->largest_alloc_size_is_set = true;
-  args->largest_alloc_size = stats.largest_alloc_size;
-
-  args->bytes_limit_is_set = stats.bytes_limit.has_value();
-  if (stats.bytes_limit) {
-    args->bytes_limit = *stats.bytes_limit;
-  }
-
-  args->bytes_reserved_is_set = true;
-  args->bytes_reserved = stats.bytes_reserved;
-  args->peak_bytes_reserved_is_set = true;
-  args->peak_bytes_reserved = stats.peak_bytes_reserved;
-
-  args->bytes_reservable_limit_is_set =
-      stats.bytes_reservable_limit.has_value();
-  if (stats.bytes_reservable_limit) {
-    args->bytes_reservable_limit = *stats.bytes_reservable_limit;
-  }
-
-  args->largest_free_block_bytes_is_set = true;
-  args->largest_free_block_bytes = stats.largest_free_block_bytes;
-
-  args->pool_bytes_is_set = stats.pool_bytes.has_value();
-  if (stats.pool_bytes) {
-    args->pool_bytes = *stats.pool_bytes;
-  }
-
-  args->peak_pool_bytes_is_set = stats.peak_pool_bytes.has_value();
-  if (stats.peak_pool_bytes) {
-    args->peak_pool_bytes = *stats.peak_pool_bytes;
-  }
-
-  if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args,
-                                            peak_allocated_bytes_is_set)) {
-    args->peak_allocated_bytes_is_set = true;
-    args->peak_allocated_bytes = stats.peak_allocated_bytes;
-  }
-
+  pjrt::PopulatePjRtDeviceMemoryStats(stats, args);
   return nullptr;
 }
 
@@ -2328,20 +2268,40 @@ static void CHloOutputCallbacksToCpp(
   }
 }
 
-static std::vector<std::vector<xla::PjRtBuffer*>> Convert2DCBuffersToCppBuffers(
-    PJRT_Buffer* const* const* c_lists, size_t outer_size, size_t inner_size) {
-  std::vector<std::vector<xla::PjRtBuffer*>> cpp_lists;
+// Populates per-device C++ argument buffer lists in place inside an
+// InlinedVector so multi-device launches up to 8 devices avoid an outer
+// std::vector heap allocation.
+static void Populate2DCppBuffers(
+    PJRT_Buffer* const* const* c_lists, size_t outer_size, size_t inner_size,
+    absl::InlinedVector<std::vector<xla::PjRtBuffer*>, 8>& cpp_lists) {
   cpp_lists.reserve(outer_size);
-  for (int i = 0; i < outer_size; ++i) {
+  for (size_t i = 0; i < outer_size; ++i) {
     // Since this function gets called very frequently, we initialize the inner
     // vector with the correct size to avoid resizing and maximize performance.
-    cpp_lists.emplace_back(inner_size);
-    auto& inner_list = cpp_lists.back();
-    for (int j = 0; j < inner_size; ++j) {
-      inner_list[j] = c_lists[i][j]->buffer.get();
+    auto& inner_list = cpp_lists.emplace_back(inner_size);
+    if (inner_size == 0 || c_lists == nullptr) {
+      continue;
+    }
+    PJRT_Buffer* const* c_list = c_lists[i];
+    for (size_t j = 0; j < inner_size; ++j) {
+      inner_list[j] = c_list[j]->buffer.get();
     }
   }
-  return cpp_lists;
+}
+
+// Unpacks single-device C buffer pointers directly into a flat 16-element
+// InlinedVector for the execute_device path.
+static void Populate1DCppBuffers(
+    PJRT_Buffer* const* const* c_lists, size_t num_args,
+    absl::InlinedVector<xla::PjRtBuffer*, 16>& cpp_list) {
+  if (num_args == 0 || c_lists == nullptr) {
+    return;
+  }
+  cpp_list.resize(num_args);
+  PJRT_Buffer* const* c_list = c_lists[0];
+  for (size_t i = 0; i < num_args; ++i) {
+    cpp_list[i] = c_list[i]->buffer.get();
+  }
 }
 
 PJRT_Error* PJRT_LoadedExecutable_Execute(
@@ -2398,6 +2358,8 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
         args->options->use_major_to_minor_data_layout_for_callbacks;
   }
   if (args->options->num_non_donatable_input_indices > 0) {
+    options.non_donatable_input_indices.reserve(
+        args->options->num_non_donatable_input_indices);
     for (int i = 0; i < args->options->num_non_donatable_input_indices; ++i) {
       options.non_donatable_input_indices.insert(
           args->options->non_donatable_input_indices[i]);
@@ -2410,35 +2372,38 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     options.incarnations.insert({task_id, xla::IncarnationId(incarnation_id)});
   }
 
-  std::vector<std::vector<xla::PjRtBuffer*>> cpp_argument_lists =
-      Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
-                                    args->num_args);
-
-  // Set send/recv callbacks in ExecuteOptions. The callbacks
-  // should call the C callbacks provided by the caller.
-  auto cpp_send_callbacks =
-      std::make_shared<std::vector<std::vector<xla::SendCallback>>>();
+  // Set send/recv/hlo_output callbacks in ExecuteOptions. The shared_ptrs are
+  // only allocated when the corresponding callbacks are present, avoiding three
+  // heap allocations per execute call in the common case without callbacks.
+  std::shared_ptr<std::vector<std::vector<xla::SendCallback>>>
+      cpp_send_callbacks = nullptr;
   if (args->options->num_send_ops > 0) {
+    cpp_send_callbacks =
+        std::make_shared<std::vector<std::vector<xla::SendCallback>>>();
     CSendCallbackListsToCpp(args->options->send_callbacks, args->num_devices,
                             args->options->num_send_ops, *cpp_send_callbacks);
     options.send_callbacks = *cpp_send_callbacks;
     CHECK_EQ(options.send_callbacks.size(), args->num_devices);
   }
 
-  auto cpp_recv_callbacks =
-      std::make_shared<std::vector<std::vector<xla::RecvCallback>>>();
+  std::shared_ptr<std::vector<std::vector<xla::RecvCallback>>>
+      cpp_recv_callbacks = nullptr;
   if (args->options->num_recv_ops > 0) {
+    cpp_recv_callbacks =
+        std::make_shared<std::vector<std::vector<xla::RecvCallback>>>();
     CRecvCallbackListsToCpp(args->options->recv_callbacks, args->num_devices,
                             args->options->num_recv_ops, *cpp_recv_callbacks);
     options.recv_callbacks = *cpp_recv_callbacks;
     CHECK_EQ(options.recv_callbacks.size(), args->num_devices);
   }
 
-  auto cpp_hlo_output_callbacks =
-      std::make_shared<std::vector<xla::HloOutputCallback>>();
+  std::shared_ptr<std::vector<xla::HloOutputCallback>>
+      cpp_hlo_output_callbacks = nullptr;
   if (args->options->struct_size >=
       PJRT_STRUCT_SIZE(PJRT_ExecuteOptions, num_hlo_output_callbacks)) {
     if (args->options->num_hlo_output_callbacks > 0) {
+      cpp_hlo_output_callbacks =
+          std::make_shared<std::vector<xla::HloOutputCallback>>();
       CHloOutputCallbacksToCpp(args->options->hlo_output_callbacks,
                                args->options->num_hlo_output_callbacks,
                                *cpp_hlo_output_callbacks);
@@ -2447,10 +2412,13 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   }
 
   if (args->execute_device == nullptr) {
+    absl::InlinedVector<std::vector<xla::PjRtBuffer*>, 8> cpp_argument_lists;
+    Populate2DCppBuffers(args->argument_lists, args->num_devices,
+                         args->num_args, cpp_argument_lists);
     std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
     if (args->device_complete_events != nullptr ||
-        !cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty() ||
-        !cpp_hlo_output_callbacks->empty() || execute_context) {
+        cpp_send_callbacks != nullptr || cpp_recv_callbacks != nullptr ||
+        cpp_hlo_output_callbacks != nullptr || execute_context != nullptr) {
       std::optional<std::vector<xla::Future<>>> returned_futures;
       returned_futures.emplace();
       PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
@@ -2461,8 +2429,8 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
       // We assume that these OnReady callbacks will fire even if
       // returned_futures is destroyed first. This is true for the
       // AsyncValue-based implementation of Future.
-      if (!cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty() ||
-          !cpp_hlo_output_callbacks->empty() || options.context) {
+      if (cpp_send_callbacks != nullptr || cpp_recv_callbacks != nullptr ||
+          cpp_hlo_output_callbacks != nullptr || options.context != nullptr) {
         for (int i = 0; i < returned_futures->size(); ++i) {
           (*returned_futures)[i].OnReady(
               [cpp_send_callbacks, cpp_recv_callbacks, cpp_hlo_output_callbacks,
@@ -2500,36 +2468,47 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
           "num_devices=%i",
           args->num_devices));
     }
-    if (!cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty()) {
+    if (cpp_send_callbacks != nullptr || cpp_recv_callbacks != nullptr) {
       return StatusToPjRtError(xla::Unimplemented(
           "PJRT_Executable_Execute doesn't support using send/recv callbacks "
           "with `execute_device`."));
     }
 
+    absl::InlinedVector<xla::PjRtBuffer*, 16> cpp_argument_list;
+    Populate1DCppBuffers(args->argument_lists, args->num_args,
+                         cpp_argument_list);
+
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
     std::optional<xla::Future<>> returned_future;
-    bool fill_future = args->device_complete_events != nullptr;
+    bool fill_future = args->device_complete_events != nullptr ||
+                       cpp_hlo_output_callbacks != nullptr ||
+                       execute_context != nullptr;
     PJRT_ASSIGN_OR_RETURN(
         xla::CompileOptions compile_options,
         args->executable->get()->GetExecutable()->GetCompileOptions());
     if (compile_options.compile_portable_executable) {
-      PJRT_ASSIGN_OR_RETURN(
-          cpp_buffer_list,
-          args->executable->get()->ExecutePortable(
-              cpp_argument_lists[0], args->execute_device->device, options,
-              returned_future, fill_future));
+      PJRT_ASSIGN_OR_RETURN(cpp_buffer_list,
+                            args->executable->get()->ExecutePortable(
+                                cpp_argument_list, args->execute_device->device,
+                                options, returned_future, fill_future));
     } else {
-      PJRT_ASSIGN_OR_RETURN(
-          cpp_buffer_list,
-          args->executable->get()->ExecuteSharded(
-              cpp_argument_lists[0], args->execute_device->device, options,
-              returned_future, fill_future));
+      PJRT_ASSIGN_OR_RETURN(cpp_buffer_list,
+                            args->executable->get()->ExecuteSharded(
+                                cpp_argument_list, args->execute_device->device,
+                                options, returned_future, fill_future));
     }
     for (int i = 0; i < cpp_buffer_list.size(); ++i) {
       args->output_lists[0][i] = new PJRT_Buffer{std::move(cpp_buffer_list[i]),
                                                  args->executable->client};
     }
-    if (fill_future) {
+    if (cpp_hlo_output_callbacks != nullptr || execute_context != nullptr) {
+      returned_future->OnReady(
+          [cpp_hlo_output_callbacks, execute_context](absl::Status status) {
+            // Keep C++ callbacks and execute context alive until execution
+            // completes on the device.
+          });
+    }
+    if (args->device_complete_events != nullptr) {
       args->device_complete_events[0] =
           new PJRT_Event{std::move((*returned_future))};
     }

@@ -22,6 +22,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/pjrt/transpose.h"
@@ -29,7 +32,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 
 struct StridedGatherTestParam {
   StridedGather::Spec spec;
@@ -263,6 +268,167 @@ INSTANTIATE_TEST_SUITE_P(
                 StridedGather::Chunk{/*offset=*/0, /*size=*/4},
             },
         }));
+
+TEST(StridedGatherBoundsTest, ValidBounds) {
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2, 3},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/-1,
+      /*src_byte_strides=*/{24, 8},
+  };
+  StridedGather gather(spec);
+  // Max accessed offset = 8 + 4 + (2 - 1) * 24 + (3 - 1) * 8 = 12 + 24 + 16 =
+  // 52.
+  EXPECT_OK(gather.ValidateBounds(52));
+  EXPECT_OK(gather.ValidateBounds(64));
+}
+
+TEST(StridedGatherBoundsTest, ZeroChunksAlwaysOk) {
+  StridedGather::Spec spec = {
+      /*element_size=*/0,
+      /*counts=*/{0},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/-1,
+      /*src_byte_strides=*/{0},
+  };
+  StridedGather gather(spec);
+  EXPECT_OK(gather.ValidateBounds(0));
+  EXPECT_OK(gather.ValidateBounds(16));
+}
+
+TEST(StridedGatherBoundsTest, SrcByteSizeExceedsBufferSize) {
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/64,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+  EXPECT_THAT(
+      gather.ValidateBounds(32),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("src_byte_size")));
+}
+
+TEST(StridedGatherBoundsTest, MaxOffsetExceedsBufferSize) {
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{4},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/32,
+      /*src_byte_strides=*/{8},
+  };
+  StridedGather gather(spec);
+  // Max offset = 8 + 4 + 3 * 8 = 36 > 32.
+  EXPECT_THAT(gather.ValidateBounds(32),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("max accessed byte offset")));
+}
+
+TEST(StridedGatherBoundsTest, NegativeOffset) {
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2},
+      /*src_byte_offset=*/-4,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+  EXPECT_THAT(gather.ValidateBounds(16),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("negative offset")));
+}
+
+TEST(StridedGatherBoundsTest, NegativeChunkSize) {
+  StridedGather::Spec spec = {
+      /*element_size=*/-4,
+      /*counts=*/{2},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+  EXPECT_THAT(
+      gather.ValidateBounds(16),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("chunk size")));
+}
+
+TEST(StridedGatherBoundsTest, NegativeCount) {
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{-2},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{8},
+  };
+  StridedGather gather(spec);
+  EXPECT_THAT(gather.ValidateBounds(16),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("negative count")));
+}
+
+TEST(StridedGatherBoundsTest, NegativeStride) {
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{-8},
+  };
+  StridedGather gather(spec);
+  EXPECT_THAT(
+      gather.ValidateBounds(16),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("byte stride")));
+}
+
+TEST(StridedGatherEqualityAndHashTest, SupportsEqualityAndAbslHash) {
+  // Two raw specs that canonicalize to the same StridedGather.
+  const StridedGather::Spec unmerged_spec = {
+      /*element_size=*/4,
+      /*counts=*/{1, 2, 2, 3},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/200,
+      /*src_byte_strides=*/{200, 40, 12, 4},
+  };
+  const StridedGather::Spec canonical_spec = {
+      /*element_size=*/24,
+      /*counts=*/{2},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/200,
+      /*src_byte_strides=*/{40},
+  };
+  const StridedGather::Spec different_offset_spec = {
+      /*element_size=*/24,
+      /*counts=*/{2},
+      /*src_byte_offset=*/16,
+      /*src_byte_size=*/200,
+      /*src_byte_strides=*/{40},
+  };
+  const StridedGather::Spec empty_spec = {
+      /*element_size=*/0,
+      /*counts=*/{0},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/-1,
+      /*src_byte_strides=*/{0},
+  };
+
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      unmerged_spec,
+      canonical_spec,
+      different_offset_spec,
+      empty_spec,
+  }));
+  EXPECT_EQ(StridedGather(unmerged_spec), StridedGather(canonical_spec));
+  EXPECT_NE(StridedGather(canonical_spec),
+            StridedGather(different_offset_spec));
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      StridedGather(unmerged_spec),
+      StridedGather(canonical_spec),
+      StridedGather(different_offset_spec),
+      StridedGather(empty_spec),
+  }));
+}
 
 }  // namespace
 }  // namespace xla

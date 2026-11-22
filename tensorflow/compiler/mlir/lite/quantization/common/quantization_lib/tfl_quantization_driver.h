@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -383,6 +384,14 @@ void ApplyQuantizationParamsPropagation(
     OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
     bool legacy_float_scale, QDQConversionMode qdq_conversion_mode);
+
+namespace internal {
+// Calculates a new merged uniform quantized type from a list of operand/result
+// quantized types. Returns nullptr if qtypes is empty, or returns uniform_qtype
+// early if scale is non-finite or <= 0.0 to prevent division by zero.
+QuantizedType CalculateNewQuantizedType(
+    llvm::ArrayRef<UniformQuantizedType> qtypes);
+}  // namespace internal
 
 }  // namespace temp
 }  // namespace TFL

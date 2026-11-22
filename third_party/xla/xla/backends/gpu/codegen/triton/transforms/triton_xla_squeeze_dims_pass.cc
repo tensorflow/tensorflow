@@ -132,9 +132,9 @@ RankedTensorType SqueezeTensorType(RankedTensorType type,
         cast<DialectInferLayoutInterface>(&encoding.getDialect());
     Attribute dst_encoding;
     [[maybe_unused]] LogicalResult result =
-        inferLayoutInterface->inferReshapeOpEncoding(
-            type.getShape(), encoding, shape, dst_encoding,
-            /*allowReorder=*/false, /*loc=*/std::nullopt);
+        inferLayoutInterface->inferReshapeOpEncoding(type.getShape(), encoding,
+                                                     shape, dst_encoding,
+                                                     /*loc=*/std::nullopt);
     CHECK(succeeded(result));
     if (dst_encoding_hint &&
         succeeded(inferLayoutInterface->verifyLayoutsAreEqual(
@@ -202,7 +202,7 @@ LogicalResult SqueezeInsertTile(::xla::xtile::InsertTileOp op,
 // Extracts unit dimensions from the tt.reshape operand and prepends them as
 // squeeze_dims.
 LogicalResult SqueezeReshapeOperand(ReshapeOp op, PatternRewriter& rewriter) {
-  if (op.getAllowReorderAttr() || op.getEfficientLayoutAttr()) {
+  if (op.getEfficientLayoutAttr()) {
     return rewriter.notifyMatchFailure(op, "Unsupported reshape.");
   }
   auto squeeze_dims = GetDimsToSqueeze(op.getSrc().getType());
@@ -223,7 +223,7 @@ LogicalResult SqueezeReshapeOperand(ReshapeOp op, PatternRewriter& rewriter) {
 // Extracts unit dimensions from the tt.reshape result and appends them as
 // expand_dims.
 LogicalResult ExpandReshapeResult(ReshapeOp op, PatternRewriter& rewriter) {
-  if (op.getAllowReorderAttr() || op.getEfficientLayoutAttr()) {
+  if (op.getEfficientLayoutAttr()) {
     return rewriter.notifyMatchFailure(op, "Unsupported reshape.");
   }
   auto expand_dims = GetDimsToSqueeze(op.getType());
@@ -411,16 +411,19 @@ LogicalResult PushSqueezeDimsUpThroughExpandDims(SqueezeDimsOp op,
     return rewriter.notifyMatchFailure(op, "Expected expand_dims producer.");
   }
 
-  if (expand_dims.getSrc().getType() == op.getType()) {
+  uint32_t expand_axis = expand_dims.getAxis();
+  uint32_t squeeze_axis = op.getAxis();
+  if (expand_axis == squeeze_axis ||
+      expand_dims.getSrc().getType().getRank() == 1) {
+    if (expand_dims.getSrc().getType() != op.getType()) {
+      return rewriter.notifyMatchFailure(
+          op, "Cannot fold when source and result types differ.");
+    }
     rewriter.replaceOp(op, expand_dims.getSrc());
     return success();
   }
 
   // Swap: squeeze_dims(expand_dims) -> expand_dims(squeeze_dims)
-  uint32_t expand_axis = expand_dims.getAxis();
-  uint32_t squeeze_axis = op.getAxis();
-  CHECK_NE(expand_axis, squeeze_axis);
-
   squeeze_axis -= squeeze_axis > expand_axis;
   expand_axis -= expand_axis > squeeze_axis;
 

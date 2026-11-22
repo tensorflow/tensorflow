@@ -21,7 +21,11 @@ for the __future__ division line.
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -32,7 +36,7 @@ class DivisionTestCase(test.TestCase):
     values = [1, 2, 7, 11]
     functions = (lambda x: x), constant_op.constant
     # TODO(irving): Test int8, int16 once we support casts for those.
-    dtypes = np.int32, np.int64, np.float32, np.float64
+    test_dtypes = np.int32, np.int64, np.float32, np.float64
 
     tensors = []
     checks = []
@@ -47,7 +51,7 @@ class DivisionTestCase(test.TestCase):
       checks.append(f)
 
     with self.cached_session() as sess:
-      for dtype in dtypes:
+      for dtype in test_dtypes:
         for x in map(dtype, values):
           for y in map(dtype, values):
             for fx in functions:
@@ -63,6 +67,91 @@ class DivisionTestCase(test.TestCase):
       # Do only one sess.run for speed
       for f, (x, y) in zip(checks, self.evaluate(tensors)):
         f(x, y)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSignedIntegerDivisionOverflow(self):
+    # Signed integer division INT_MIN / -1 overflows the signed integer
+    # range and wraps around to INT_MIN in two's complement arithmetic
+    # without crashing.
+    cases = [
+        (dtypes.int8, -128, -1, -128),
+        (dtypes.int16, -32768, -1, -32768),
+        (dtypes.int32, -2147483648, -1, -2147483648),
+        (dtypes.int64, -9223372036854775808, -1, -9223372036854775808),
+    ]
+    for dtype, min_val, div_val, expected in cases:
+      # 1D vector tensors
+      x = constant_op.constant([min_val], dtype=dtype)
+      y = constant_op.constant([div_val], dtype=dtype)
+      # Test math_ops.floordiv and operator //
+      self.assertAllEqual(self.evaluate(math_ops.floordiv(x, y)), [expected])
+      self.assertAllEqual(self.evaluate(x // y), [expected])
+      # Test raw_ops FloorDiv, TruncateDiv, Div
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.floor_div(x, y)), [expected]
+      )
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.truncate_div(x, y)), [expected]
+      )
+      self.assertAllEqual(self.evaluate(gen_math_ops.div(x, y)), [expected])
+      # Test mod operations INT_MIN % -1 == 0
+      self.assertAllEqual(self.evaluate(gen_math_ops.floor_mod(x, y)), [0])
+      if dtype in (dtypes.int32, dtypes.int64):
+        self.assertAllEqual(self.evaluate(gen_math_ops.truncate_mod(x, y)), [0])
+
+      # Rank-0 scalar tensors
+      x_scalar = constant_op.constant(min_val, dtype=dtype)
+      y_scalar = constant_op.constant(div_val, dtype=dtype)
+      self.assertAllEqual(
+          self.evaluate(math_ops.floordiv(x_scalar, y_scalar)), expected
+      )
+      self.assertAllEqual(self.evaluate(x_scalar // y_scalar), expected)
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.floor_div(x_scalar, y_scalar)), expected
+      )
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.truncate_div(x_scalar, y_scalar)), expected
+      )
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.div(x_scalar, y_scalar)), expected
+      )
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.floor_mod(x_scalar, y_scalar)), 0
+      )
+      if dtype in (dtypes.int32, dtypes.int64):
+        self.assertAllEqual(
+            self.evaluate(gen_math_ops.truncate_mod(x_scalar, y_scalar)), 0
+        )
+
+      # 1D broadcasting: scalar numerator and 1D denominator
+      y_bcast = constant_op.constant([div_val, 1], dtype=dtype)
+      self.assertAllEqual(
+          self.evaluate(math_ops.floordiv(x_scalar, y_bcast)),
+          [expected, min_val],
+      )
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.floor_div(x_scalar, y_bcast)),
+          [expected, min_val],
+      )
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.truncate_div(x_scalar, y_bcast)),
+          [expected, min_val],
+      )
+
+      # 1D broadcasting: 1D numerator and scalar denominator
+      x_bcast = constant_op.constant([min_val, 0, min_val + 1], dtype=dtype)
+      self.assertAllEqual(
+          self.evaluate(math_ops.floordiv(x_bcast, y_scalar)),
+          [expected, 0, -(min_val + 1)],
+      )
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.floor_div(x_bcast, y_scalar)),
+          [expected, 0, -(min_val + 1)],
+      )
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.truncate_div(x_bcast, y_scalar)),
+          [expected, 0, -(min_val + 1)],
+      )
 
 
 if __name__ == "__main__":

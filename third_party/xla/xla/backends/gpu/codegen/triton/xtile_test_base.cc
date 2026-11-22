@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -31,7 +32,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/backends/gpu/codegen/triton/collective_emitter.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/cost_model/triton_emitter_constraints.h"
 #include "xla/codegen/tiling/tiled_hlo.h"
 #include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
@@ -43,12 +46,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/triton_emitter_constraints.h"
-#include "xla/service/instruction_fusion.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 
@@ -84,11 +87,10 @@ XTileTestBase::CreateXTileIrAndFileCheck(
     absl::string_view filecheck_pattern) {
   mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module;
   LoadMlirDialectsForTriton(*mlir_context());
-  namespace ge = ::xla::gpu;
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
-                   ge::TilingSpace::Create(*fusion_adaptor, mlir_context()));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                   TilingSpace::Create(*fusion_adaptor, mlir_context()));
   ABSL_ASSIGN_OR_RETURN(
       llvm::SmallVector<int64_t> concrete_sizes,
       GetTilingSpaceConcreteSizes(
@@ -100,20 +102,30 @@ XTileTestBase::CreateXTileIrAndFileCheck(
   ABSL_RETURN_IF_ERROR(
       tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(concrete_sizes)));
   ABSL_ASSIGN_OR_RETURN(
-      ge::TiledHloComputation tiled_computation,
-      ge::TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+      TiledHloComputation tiled_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
   tiled_computation.Simplify();
   tiled_computation.SortInstructionsPostOrder();
-  if (Decision constraints = ge::VerifyTritonConstraints(
+  if (Decision constraints = VerifyTritonConstraints(
           tiled_computation, TestGpuDeviceInfo::RTXA6000DeviceInfo());
       !constraints) {
     return absl::InternalError(
         absl::StrCat("Triton constraints violated during test codegen: ",
                      constraints.Explain()));
   }
-  ABSL_ASSIGN_OR_RETURN(xtile_dialect_module,
-                   xtile::EmitXTileModule("xtile_dialect_fn", *fusion,
-                                          tiled_computation, *mlir_context()));
+  xtile::CollectiveEntrySpec collective_spec;
+  if (fusion->has_backend_config()) {
+    if (auto backend_config = fusion->backend_config<GpuBackendConfig>();
+        backend_config.ok() && backend_config->fusion_backend_config().kind() ==
+                                   kTritonCollectiveFusionKind) {
+      ABSL_ASSIGN_OR_RETURN(collective_spec, BuildCollectiveEntrySpec(*fusion));
+    }
+  }
+  ABSL_ASSIGN_OR_RETURN(
+      xtile_dialect_module,
+      xtile::EmitXTileModule("xtile_dialect_fn", *fusion, tiled_computation,
+                             *mlir_context(), collective_spec,
+                             /*gpu_cc=*/std::nullopt, /*num_tiles_per_pid=*/1));
   std::string out;
   llvm::raw_string_ostream os(out);
   xtile_dialect_module->print(os);

@@ -542,5 +542,165 @@ TEST_F(HloFusionAnalysisTest, ConcatenateFusionFallbackToLoop) {
   EXPECT_EQ(&analysis.fusion_hero(0).instruction(), multiply);
 }
 
+TEST_F(HloFusionAnalysisTest, MultiOutputConcatenateFusion) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fusion {
+      p0 = f32[32,64] parameter(0)
+      p1 = f32[32,64] parameter(1)
+      c1 = f32[64,64] concatenate(p0, p1), dimensions={0}
+      c2 = f32[64,64] concatenate(p1, p0), dimensions={0}
+      n2 = bf16[64,64] convert(c2)
+      ROOT t = (f32[64,64], bf16[64,64]) tuple(c1, n2)
+    }
+
+    ENTRY entry_computation {
+      p0 = f32[32,64] parameter(0)
+      p1 = f32[32,64] parameter(1)
+      ROOT fusion = (f32[64,64], bf16[64,64]) fusion(p0, p1), kind=kInput,
+          calls=fusion
+  })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  EXPECT_EQ(analysis.emitter_fusion_kind(),
+            HloFusionAnalysis::EmitterFusionKind::kConcatenate);
+  EXPECT_EQ(analysis.fusion_hero(1).name(), "c2");
+}
+
+TEST_F(HloFusionAnalysisTest, MultiOutputConcatenateFusionAtOperandBudget) {
+  // Two roots of three operands each, like the row permutations in the Eigh
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fusion {
+      a = f32[64,64] parameter(0)
+      b = f32[64,64] parameter(1)
+      c = f32[64,64] parameter(2)
+      d = f32[64,64] parameter(3)
+      a0 = f32[1,64] slice(a), slice={[0:1],[0:64]}
+      b0 = f32[1,64] slice(b), slice={[0:1],[0:64]}
+      a1 = f32[62,64] slice(a), slice={[1:63],[0:64]}
+      c0 = f32[1,64] slice(c), slice={[0:1],[0:64]}
+      d0 = f32[1,64] slice(d), slice={[0:1],[0:64]}
+      c1 = f32[62,64] slice(c), slice={[1:63],[0:64]}
+      top_ab = f32[64,64] concatenate(a0, b0, a1), dimensions={0}
+      top_cd = f32[64,64] concatenate(c0, d0, c1), dimensions={0}
+      ROOT t = (f32[64,64], f32[64,64]) tuple(top_ab, top_cd)
+    }
+
+    ENTRY entry_computation {
+      a = f32[64,64] parameter(0)
+      b = f32[64,64] parameter(1)
+      c = f32[64,64] parameter(2)
+      d = f32[64,64] parameter(3)
+      ROOT fusion = (f32[64,64], f32[64,64]) fusion(a, b, c, d), kind=kInput,
+          calls=fusion
+  })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  EXPECT_EQ(analysis.emitter_fusion_kind(),
+            HloFusionAnalysis::EmitterFusionKind::kConcatenate);
+}
+
+TEST_F(HloFusionAnalysisTest, MultiOutputConcatenateFusionWithDifferentShapes) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fusion {
+      p0 = bf16[19200,128] parameter(0)
+      p1 = bf16[3300,128] parameter(1)
+      c1 = bf16[22500,128] concatenate(p0, p1), dimensions={0}
+      c2 = bf16[22500,128] concatenate(p0, p1), dimensions={0}
+      b2 = bf16[150,150,128] bitcast(c2)
+      ROOT t = (bf16[22500,128], bf16[150,150,128]) tuple(c1, b2)
+    }
+
+    ENTRY entry_computation {
+      p0 = bf16[19200,128] parameter(0)
+      p1 = bf16[3300,128] parameter(1)
+      ROOT fusion = (bf16[22500,128], bf16[150,150,128]) fusion(p0, p1),
+          kind=kInput, calls=fusion
+  })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  EXPECT_EQ(analysis.emitter_fusion_kind(),
+            HloFusionAnalysis::EmitterFusionKind::kLoop);
+}
+
+TEST_F(HloFusionAnalysisTest,
+       MultiOutputConcatenateFusionRejectsCrossHeroNonElementwiseRead) {
+  // The second root reads the first root's hero through reverse.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fusion {
+      p0 = f32[32] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[32] parameter(2)
+      p3 = f32[32] parameter(3)
+      concat0 = f32[64] concatenate(p0, p1), dimensions={0}
+      concat1 = f32[64] concatenate(p2, p3), dimensions={0}
+      rev = f32[64] reverse(concat0), dimensions={0}
+      add = f32[64] add(concat1, rev)
+      ROOT t = (f32[64], f32[64]) tuple(concat0, add)
+    }
+
+    ENTRY entry_computation {
+      p0 = f32[32] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[32] parameter(2)
+      p3 = f32[32] parameter(3)
+      ROOT fusion = (f32[64], f32[64]) fusion(p0, p1, p2, p3), kind=kInput,
+          calls=fusion
+  })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  EXPECT_EQ(analysis.emitter_fusion_kind(),
+            HloFusionAnalysis::EmitterFusionKind::kLoop);
+}
+
+TEST_F(HloFusionAnalysisTest,
+       ConcatenateFusionWithNonElementwiseSideInputStaysConcatenate) {
+  // The broadcast is non-elementwise but does not read the hero.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fusion {
+      a = f32[32,64] parameter(0)
+      b = f32[32,64] parameter(1)
+      s = f32[64] parameter(2)
+      c = f32[64,64] concatenate(a, b), dimensions={0}
+      bc = f32[64,64] broadcast(s), dimensions={1}
+      ROOT m = f32[64,64] multiply(c, bc)
+    }
+
+    ENTRY entry_computation {
+      a = f32[32,64] parameter(0)
+      b = f32[32,64] parameter(1)
+      s = f32[64] parameter(2)
+      ROOT fusion = f32[64,64] fusion(a, b, s), kind=kLoop, calls=fusion
+  })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  EXPECT_EQ(analysis.emitter_fusion_kind(),
+            HloFusionAnalysis::EmitterFusionKind::kConcatenate);
+}
+
 }  // namespace
 }  // namespace xla::gpu

@@ -45,6 +45,7 @@ enum class GpuModel {
   MI300,
   MI350,
   MI450,
+  GFX1250_STRICT,
   P100,
   PVC,
   VR_NVL72,

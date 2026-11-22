@@ -230,7 +230,7 @@ TEST_F(BlockingValidatorRunnerTest, ReturnErrorWhenTimedOut) {
     std::cerr << "Skipping test";
     return;
   }
-  options_.per_test_timeout_ms = 50;
+  options_.per_test_timeout_ms = 5;
   BlockingValidatorRunner runner(options_);
   ASSERT_EQ(runner.Init(), kMinibenchmarkSuccess);
   FlatBufferBuilder fbb;

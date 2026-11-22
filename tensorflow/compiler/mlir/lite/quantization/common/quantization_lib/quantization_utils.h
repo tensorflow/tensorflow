@@ -59,9 +59,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
-#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -251,9 +250,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         mins.push_back(rmin);
         maxs.push_back(rmax);
       }
-      quant_type = quantfork::fakeQuantAttrsToType(
-          op.getLoc(), num_bits, *op.getAxis(), mins, maxs, narrow_range,
-          expressed, is_signed);
+      quant_type =
+          TFL::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.getAxis(), mins,
+                                    maxs, narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
         quant_type =
             mlir::TFL::DownCastScale(quant_type, mins, maxs, op->getLoc());
@@ -278,8 +277,8 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       }
       TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
-          quantfork::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
-                                          narrow_range, expressed, is_signed);
+          TFL::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
+                                    narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
         quant_type =
             mlir::TFL::DownCastScale(quant_type, rmin, rmax, op->getLoc());
@@ -428,8 +427,7 @@ class QuantizationPattern : public RewritePattern {
       }
     }
 
-    tensorflow::DataType inference_type =
-        quant_params_.quant_spec.inference_type;
+    InferenceDataType inference_type = quant_params_.quant_spec.inference_type;
     bool weight_only_quantization =
         quant_params_.quant_spec.weight_only_quantization;
     bool enable_verify = quant_params_.numeric_verify_spec.verify_numeric;
@@ -541,7 +539,7 @@ class QuantizationPattern : public RewritePattern {
                                                     custom_map)) {
           auto dq_op = dyn_cast_or_null<DequantizeOpT>(operand.getDefiningOp());
 
-          if (dq_op && inference_type == tensorflow::DT_QINT8 &&
+          if (dq_op && inference_type == InferenceDataType::kQInt8 &&
               !static_cast<const ConcreteT*>(this)->IsWeightOnlyOp(
                   quantizing_op, ops_blocklist, weight_only_quantization,
                   custom_map)) {
@@ -627,7 +625,7 @@ class QuantizationPattern : public RewritePattern {
 
         // For float16 quantization if none of the operand or result is
         // modified, replacing the op. See b/335025403.
-        if (inference_type == tensorflow::DT_HALF &&
+        if (inference_type == InferenceDataType::kHalf &&
             !is_operand_or_result_modified) {
           return failure();
         }

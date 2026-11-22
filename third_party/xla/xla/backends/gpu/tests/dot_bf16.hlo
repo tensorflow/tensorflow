@@ -26,9 +26,11 @@ ENTRY %computation1 {
 // CHECK-SM70: %[[convert2:.+]] = f32[32,1536]{1,0} fusion(%{{.+}})
 // CHECK-SM70: (f32[6144,32]{1,0}, s8[4194304]{0}) custom-call(%[[convert1]], %[[convert2]]), custom_call_target="__cublas${{gemm|lt\$matmul}}"
 
+// The autotune workspace is sized from the device, so it differs per GPU
+// (e.g. 4 MiB on gfx1250, 64 MiB on gfx950, 76 MiB on gfx942); match any size.
 // CHECK-SM80: %[[convert:.+]] = bf16[1536,6144]{1,0} fusion(%{{.+}})
 // CHECK-SM80: %[[b:.+]] = bf16[32,1536]{1,0} parameter(1)
-// CHECK-SM80: (f32[6144,32]{1,0}, s8[4194304]{0}) custom-call(%[[convert]], %[[b]]), custom_call_target="__cublas${{gemm|lt\$matmul}}"
+// CHECK-SM80: (f32[6144,32]{1,0}, s8[{{[0-9]+}}]{0}) custom-call(%[[convert]], %[[b]]), custom_call_target="__cublas${{gemm|lt\$matmul}}"
 
 HloModule module2
 

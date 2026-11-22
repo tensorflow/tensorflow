@@ -76,10 +76,18 @@ void AddOrUpdateVectorOfPairsAsAttribute(HloInstruction* instr,
                                       "}");
                     }) +
       "}";
-  FrontendAttributes attributes;
-  attributes = instr->frontend_attributes();
-  (*attributes.mutable_map())[attr_name] = intervals_str;
-  instr->set_frontend_attributes(attributes);
+  instr->set_frontend_attribute(attr_name, intervals_str);
+}
+
+void UpdateFrontendAttributes(
+    HloInstruction* instruction, FrontendAttributes updates,
+    absl::Span<const absl::string_view> attributes_to_remove) {
+  for (absl::string_view key : attributes_to_remove) {
+    instruction->erase_frontend_attribute(key);
+  }
+  for (const auto& [key, value] : updates.map()) {
+    instruction->set_frontend_attribute(key, value);
+  }
 }
 
 int32_t NestingDepth(const HloInstruction* hlo) {

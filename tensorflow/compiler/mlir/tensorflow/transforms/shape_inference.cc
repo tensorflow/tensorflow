@@ -547,9 +547,9 @@ struct ValuePort {
       : producer(producer), port(port) {}
 
   raw_ostream& print(raw_ostream& os) const {
-    if (auto* op = producer.dyn_cast<Operation*>())
+    if (auto* op = llvm::dyn_cast_if_present<Operation*>(producer))
       os << "op " << op->getName();
-    if (auto ba = producer.dyn_cast<BlockArgument>())
+    if (auto ba = llvm::dyn_cast_if_present<BlockArgument>(producer))
       os << "block_arg " << ba.getArgNumber();
     os << formatv(" [{0}]", llvm::make_range(port.begin(), port.end()));
     return os;
@@ -656,7 +656,7 @@ ValuePort ComputeInputComponentFor(Operation* op, ArrayRef<unsigned int> port) {
 LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
                                              ComputedQueryFn has_been_computed,
                                              ValuePortInputs* inputs) {
-  auto op = value_port.producer.dyn_cast<Operation*>();
+  auto op = llvm::dyn_cast_if_present<Operation*>(value_port.producer);
   auto& port = value_port.port;
   if (!op) return failure();
 
@@ -679,7 +679,7 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
   LLVM_DEBUG(value_port.print(llvm::dbgs() << "Computing output for ") << "\n");
   if (auto known = values(value_port)) return known;
 
-  auto op = value_port.producer.dyn_cast<Operation*>();
+  auto op = llvm::dyn_cast_if_present<Operation*>(value_port.producer);
   if (!op) return nullptr;
   auto& port = value_port.port;
 
@@ -1874,7 +1874,8 @@ std::optional<RankedTensorType> InferWindowOutputShape(
   }
 
   std::vector<int64_t> output_dimensions(window.dimensions_size());
-  std::vector<bool> output_is_dynamic(window.dimensions_size());
+  [[maybe_unused]] std::vector<bool> output_is_dynamic(
+      window.dimensions_size());
   for (int64_t i = 0; i < window.dimensions_size(); ++i) {
     const auto& dim = window.dimensions(i);
     if (dim.size() <= 0) {
@@ -3127,7 +3128,7 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
   for (auto result : zip(op->getResults(), fold_results)) {
     auto fold_result = std::get<1>(result);
     Attribute attr = nullptr;
-    if ((attr = fold_result.dyn_cast<Attribute>())) {
+    if ((attr = llvm::dyn_cast<Attribute>(fold_result))) {
       RecordValue(ValuePort(std::get<0>(result)), attr);
     } else {
       auto value = cast<Value>(fold_result);

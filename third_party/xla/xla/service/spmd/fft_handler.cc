@@ -94,17 +94,19 @@ std::optional<HloInstruction*> PadEachPartitionWithHaloExchange(
       OffsetCalculation(MultiplyAddDivideOffsetCalculation(
           size_padded_per_partition - size_per_partition, 0, 1));
   auto slice_shape = concat->shape();
-  slice_shape.set_dimensions(concat->shape().dimensions().size() - 1,
-                             size_padded_per_partition);
-  auto zero_s32 =
-      b->AddInstruction(HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
-  std::vector<HloInstruction*> slice_offsets(
-      concat->shape().dimensions().size(), zero_s32);
+  int64_t last_dim = concat->shape().dimensions().size() - 1;
+  slice_shape.set_dimensions(last_dim, size_padded_per_partition);
   auto partition_ordinals =
       MakeTiledPartitionOrdinals(sharding, partition_id, b);
-  slice_offsets[concat->shape().dimensions().size() - 1] =
+  HloInstruction* last_offset =
       start_offset_on_padded_concat_calculation.Calculate(
-          partition_ordinals[concat->shape().dimensions().size() - 1], b);
+          partition_ordinals[last_dim], b);
+  PrimitiveType offset_type = last_offset->shape().element_type();
+  auto zero = b->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(offset_type)));
+  std::vector<HloInstruction*> slice_offsets(
+      concat->shape().dimensions().size(), zero);
+  slice_offsets[last_dim] = last_offset;
   return b->AddInstruction(HloInstruction::CreateDynamicSlice(
       slice_shape, concat, slice_offsets, slice_shape.dimensions()));
 }

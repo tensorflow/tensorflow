@@ -31,8 +31,8 @@ limitations under the License.
 #include "stablehlo/dialect/Register.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/python/ifrt/ir/export/vifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
-#include "xla/python/ifrt/ir/vifrt_dialect.h"
 
 namespace xla {
 namespace ifrt {

@@ -109,7 +109,7 @@ class RemapPlan {
   // Constructs `RemapPlan` from `RemapPlanProto`. Devices are looked up
   // using `lookup_device`. Device ids in the proto must be consistent with
   // the devices returned by `lookup_device`.
-  static absl::StatusOr<RemapPlan> FromProto(Client* client,
+  static absl::StatusOr<RemapPlan> FromProto(Client* absl_nonnull client,
                                              const RemapPlanProto& proto);
 
   // Converts this plan to a protobuf.

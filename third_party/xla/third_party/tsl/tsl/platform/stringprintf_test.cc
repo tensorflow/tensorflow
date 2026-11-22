@@ -112,7 +112,7 @@ TEST(PrintfTest, DontOverwriteErrno) {
   // something significantly larger than what people are normally
   // printing in their badly written PLOG() statements.
   errno = ECHILD;
-  std::string value = absl::StrFormat("Hello, %s!", "World");
+  [[maybe_unused]] std::string value = absl::StrFormat("Hello, %s!", "World");
   EXPECT_EQ(ECHILD, errno);
 }
 

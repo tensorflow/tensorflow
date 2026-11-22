@@ -57,8 +57,8 @@ namespace {
 mlir::LogicalResult AttachRetvalLayouts(
     mlir::OpBuilder* builder, mlir::TF::StatefulPartitionedCallOp sp_call_op) {
   // Find the FuncOp that the StatefulPartitionedCallOp is invoking.
-  mlir::SymbolRefAttr sym =
-      sp_call_op.getCallableForCallee().dyn_cast<mlir::SymbolRefAttr>();
+  auto sym = llvm::dyn_cast_if_present<mlir::SymbolRefAttr>(
+      sp_call_op.getCallableForCallee());
   if (!sym)
     return sp_call_op.emitOpError(
         "has no symbolRef for given StatefulPartitionedCallOp");

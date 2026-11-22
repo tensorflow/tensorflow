@@ -46,10 +46,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -63,7 +65,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
-using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 using ::testing::UnorderedElementsAreArray;
 
@@ -3113,6 +3114,80 @@ ENTRY main {
       dataflow_analysis->DoesNotUseOperandBuffer(tuple_param, {0}, fusion));
 }
 
+TEST_F(DoesNotUseOperandBufferTest, LoopFusionDeadAndLiveUsesOfSameValue) {
+  absl::string_view hlo_str = R"hlo(
+HloModule LoopFusionDeadAndLiveUsesOfSameValue
+
+fused_tuple_use {
+  p0 = (f32[8], f32[8]) parameter(0)
+  gte1 = f32[8] get-tuple-element(p0), index=1
+  ROOT neg = f32[8] negate(gte1)
+}
+
+fused_multi_operand_use {
+  p0 = (f32[8], f32[8]) parameter(0)
+  gte1 = f32[8] get-tuple-element(p0), index=1
+  p1 = f32[8] parameter(1)
+  ROOT add = f32[8] add(gte1, p1)
+}
+
+fused_dead_only {
+  p0 = (f32[8], f32[8]) parameter(0)
+  gte1 = f32[8] get-tuple-element(p0), index=1
+  ROOT neg = f32[8] negate(gte1)
+}
+
+ENTRY main {
+  x = f32[8] parameter(0)
+  y = f32[8] parameter(1)
+  tup_xx = (f32[8], f32[8]) tuple(x, x)
+  fusion_tuple = f32[8] fusion(tup_xx), kind=kLoop, calls=fused_tuple_use
+  tup_xy = (f32[8], f32[8]) tuple(x, y)
+  bc = f32[8] bitcast(x)
+  fusion_multi = f32[8] fusion(tup_xy, bc), kind=kLoop, calls=fused_multi_operand_use
+  fusion_dead = f32[8] fusion(tup_xy), kind=kLoop, calls=fused_dead_only
+  ROOT out = (f32[8], f32[8], f32[8]) tuple(fusion_tuple, fusion_multi, fusion_dead)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_str));
+
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* y = FindInstruction(module.get(), "y");
+  HloInstruction* tup_xx = FindInstruction(module.get(), "tup_xx");
+  HloInstruction* fusion_tuple = FindInstruction(module.get(), "fusion_tuple");
+  HloInstruction* tup_xy = FindInstruction(module.get(), "tup_xy");
+  HloInstruction* bc = FindInstruction(module.get(), "bc");
+  HloInstruction* fusion_multi = FindInstruction(module.get(), "fusion_multi");
+  HloInstruction* fusion_dead = FindInstruction(module.get(), "fusion_dead");
+
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = RunAnalysis(*module);
+
+  // Even though `x`'s first use at `fusion_tuple` (tuple index 0) is dead, `x`
+  // is still read through tuple index 1.
+  EXPECT_FALSE(dataflow_analysis->DoesNotUseOperandBuffer(x, {}, fusion_tuple));
+  EXPECT_FALSE(
+      dataflow_analysis->DoesNotUseOperandBuffer(tup_xx, {0}, fusion_tuple));
+  EXPECT_FALSE(
+      dataflow_analysis->DoesNotUseOperandBuffer(tup_xx, {1}, fusion_tuple));
+
+  // Even though `x`'s first use at `fusion_multi` (operand 0, tuple index 0)
+  // is dead, `x`'s buffer is still read through operand 1 (`bc`).
+  EXPECT_FALSE(dataflow_analysis->DoesNotUseOperandBuffer(x, {}, fusion_multi));
+  EXPECT_FALSE(
+      dataflow_analysis->DoesNotUseOperandBuffer(tup_xy, {0}, fusion_multi));
+  EXPECT_FALSE(
+      dataflow_analysis->DoesNotUseOperandBuffer(bc, {}, fusion_multi));
+
+  // When `x` is only passed in the dead tuple slot, its buffer is unused.
+  EXPECT_TRUE(dataflow_analysis->DoesNotUseOperandBuffer(x, {}, fusion_dead));
+  EXPECT_TRUE(
+      dataflow_analysis->DoesNotUseOperandBuffer(tup_xy, {0}, fusion_dead));
+  EXPECT_FALSE(dataflow_analysis->DoesNotUseOperandBuffer(y, {}, fusion_dead));
+  EXPECT_FALSE(
+      dataflow_analysis->DoesNotUseOperandBuffer(tup_xy, {1}, fusion_dead));
+}
+
 class CanShareOperandBufferWithUserTest
     : public HloHardwareIndependentTestBase {
  protected:
@@ -3170,6 +3245,322 @@ ENTRY main {
 
   EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
       param0, {}, fusion, {}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       LoopFusionWithDuplicateOperandNonElementwiseOnSecondParamCantAlias) {
+  std::string hlo_str = R"(
+HloModule LoopFusionWithDuplicateOperandNonElementwiseOnSecondParamCantAlias
+
+fused_computation {
+  p0 = f32[2,2] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  reverse = f32[2,2] reverse(p1), dimensions={0,1}
+  ROOT add = f32[2,2] add(p0, reverse)
+}
+
+ENTRY main {
+  param0 = f32[2,2] parameter(0)
+  ROOT fusion = f32[2,2] fusion(param0, param0), kind=kLoop, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        hlo_str, GetModuleConfigForTest()));
+
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+
+  auto dataflow_analysis = RunAnalysis(*module);
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      param0, {}, fusion, {}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       InPlaceDusFusionWithAliasedBitcastSecondParamCantShareValueBuffer) {
+  absl::string_view hlo_str = R"(
+HloModule InPlaceDusFusionWithAliasedBitcastSecondParamCantShareValueBuffer
+
+fused_computation {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  p2 = s32[] parameter(2)
+  rev = f32[8] reverse(p1), dimensions={0}
+  slice = f32[3] slice(rev), slice={[0:3]}
+  ROOT dus = f32[8] dynamic-update-slice(p0, slice, p2)
+}
+
+ENTRY main {
+  param0 = f32[8] parameter(0)
+  bc = f32[8] bitcast(param0)
+  starts = s32[] constant(2)
+  ROOT fusion = f32[8] fusion(param0, bc, starts), kind=kLoop,
+      calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_str));
+
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* bc = FindInstruction(module.get(), "bc");
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = RunAnalysis(*module);
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      bc, {}, fusion, {}, &alias_info_));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandValueBufferWithUser(
+      dataflow_analysis->GetValueDefinedAt(param0), fusion, {}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       InPlaceDusFusionWithDuplicateOperandNonElementwiseCantAlias) {
+  absl::string_view hlo_str = R"(
+HloModule InPlaceDusFusionWithDuplicateOperandNonElementwiseCantAlias
+
+fused_computation {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  p2 = s32[] parameter(2)
+  rev = f32[8] reverse(p1), dimensions={0}
+  slice = f32[3] slice(rev), slice={[0:3]}
+  ROOT dus = f32[8] dynamic-update-slice(p0, slice, p2)
+}
+
+ENTRY main {
+  param0 = f32[8] parameter(0)
+  starts = s32[] constant(2)
+  ROOT fusion = f32[8] fusion(param0, param0, starts), kind=kLoop,
+      calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_str));
+
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = RunAnalysis(*module);
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      param0, {}, fusion, {}, &alias_info_));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandValueBufferWithUser(
+      dataflow_analysis->GetValueDefinedAt(param0), fusion, {}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       InPlaceDusFusionSameParamAsBaseAndUpdateCantAlias) {
+  absl::string_view hlo_str = R"(
+HloModule InPlaceDusFusionSameParamAsBaseAndUpdateCantAlias
+
+fused_computation {
+  p0 = f32[8] parameter(0)
+  zero = s32[] constant(0)
+  ROOT dus = f32[8] dynamic-update-slice(p0, p0, zero)
+}
+
+ENTRY main {
+  param0 = f32[8] parameter(0)
+  ROOT fusion = f32[8] fusion(param0), kind=kLoop, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_str));
+
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = RunAnalysis(*module);
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      param0, {}, fusion, {}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       InPlaceDusFusionMismatchedDynamicSliceCantAlias) {
+  absl::string_view hlo_str = R"(
+HloModule InPlaceDusFusionMismatchedDynamicSliceCantAlias
+
+fused_computation {
+  p0 = f32[8] parameter(0)
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  ds = f32[4] dynamic-slice(p0, one), dynamic_slice_sizes={4}
+  neg = f32[4] negate(ds)
+  ROOT dus = f32[8] dynamic-update-slice(p0, neg, zero)
+}
+
+ENTRY main {
+  param0 = f32[8] parameter(0)
+  ROOT fusion = f32[8] fusion(param0), kind=kLoop, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_str));
+
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = RunAnalysis(*module);
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      param0, {}, fusion, {}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       InPlaceMultiOutputDusFusionWithExtraUseCantAlias) {
+  absl::string_view hlo_str = R"(
+HloModule InPlaceMultiOutputDusFusionWithExtraUseCantAlias
+
+fused_computation {
+  p0 = f32[8] parameter(0)
+  p1 = f32[4] parameter(1)
+  zero = s32[] constant(0)
+  dus = f32[8] dynamic-update-slice(p0, p1, zero)
+  neg = f32[8] negate(p0)
+  ROOT out = (f32[8], f32[8]) tuple(dus, neg)
+}
+
+ENTRY main {
+  param0 = f32[8] parameter(0)
+  param1 = f32[4] parameter(1)
+  ROOT fusion = (f32[8], f32[8]) fusion(param0, param1), kind=kLoop,
+      calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_str));
+
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = RunAnalysis(*module);
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      param0, {}, fusion, {0}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       InPlaceDusFusionMatchingDynamicSliceCanAlias) {
+  absl::string_view hlo_str = R"(
+HloModule InPlaceDusFusionMatchingDynamicSliceCanAlias
+
+fused_computation {
+  p0 = f32[8] parameter(0)
+  p1 = s32[] parameter(1)
+  ds = f32[4] dynamic-slice(p0, p1), dynamic_slice_sizes={4}
+  neg = f32[4] negate(ds)
+  ROOT dus = f32[8] dynamic-update-slice(p0, neg, p1)
+}
+
+ENTRY main {
+  param0 = f32[8] parameter(0)
+  param1 = s32[] parameter(1)
+  ROOT fusion = f32[8] fusion(param0, param1), kind=kLoop,
+      calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_str));
+
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = RunAnalysis(*module);
+
+  EXPECT_TRUE(dataflow_analysis->CanShareOperandBufferWithUser(
+      param0, {}, fusion, {}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       InPlaceCollectivePermuteStartDuplicateOperandRequiresDisjointRegions) {
+  absl::string_view hlo_str = R"(
+HloModule InPlaceCollectivePermuteStartDuplicateOperand, replica_count=2
+
+ENTRY main {
+  buf0 = f32[128,128]{1,0} parameter(0)
+  buf1 = f32[128,128]{1,0} parameter(1)
+  zero = s32[] constant(0)
+  sixty_four = s32[] constant(64)
+  read_offset = (s32[], s32[]) tuple(zero, zero)
+  write_offset = (s32[], s32[]) tuple(sixty_four, zero)
+  cp_no_attr = (f32[128,128]{1,0}, f32[128,128]{1,0}, u32[], u32[])
+      collective-permute-start(buf0, buf0, read_offset, write_offset),
+      channel_id=1, source_target_pairs={{0,1}}, slice_sizes={{64,128}}
+  done0 = f32[128,128]{1,0} collective-permute-done(cp_no_attr)
+  cp_disjoint = (f32[128,128]{1,0}, f32[128,128]{1,0}, u32[], u32[])
+      collective-permute-start(buf1, buf1, read_offset, write_offset),
+      channel_id=2, source_target_pairs={{0,1}}, slice_sizes={{64,128}},
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  done1 = f32[128,128]{1,0} collective-permute-done(cp_disjoint)
+  ROOT out = (f32[128,128]{1,0}, f32[128,128]{1,0}) tuple(done0, done1)
+}
+)";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_str, config));
+
+  HloInstruction* buf0 = FindInstruction(module.get(), "buf0");
+  HloInstruction* buf1 = FindInstruction(module.get(), "buf1");
+  HloInstruction* cp_no_attr = FindInstruction(module.get(), "cp_no_attr");
+  HloInstruction* cp_disjoint = FindInstruction(module.get(), "cp_disjoint");
+
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = RunAnalysis(*module);
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      buf0, {}, cp_no_attr, {1}, &alias_info_));
+  EXPECT_TRUE(dataflow_analysis->CanShareOperandBufferWithUser(
+      buf1, {}, cp_disjoint, {1}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       InPlaceAsyncStartDuplicateOperandChecksWrappedDisjointRegions) {
+  absl::string_view hlo_str = R"hlo(
+HloModule InPlaceAsyncStartDuplicateOperand
+
+async_no_attr {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT cc = f32[8] custom-call(p0, p1), custom_call_target="foo"
+}
+
+async_wrapped_disjoint {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT cc = f32[8] custom-call(p0, p1), custom_call_target="foo",
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+}
+
+ENTRY main {
+  buf0 = f32[8] parameter(0)
+  buf1 = f32[8] parameter(1)
+  start_no_attr = ((f32[8], f32[8]), f32[8], u32[])
+      async-start(buf0, buf0), calls=async_no_attr,
+      output_to_operand_aliasing={{1}: (0, {})}
+  done0 = f32[8] async-done(start_no_attr)
+  start_disjoint = ((f32[8], f32[8]), f32[8], u32[])
+      async-start(buf1, buf1), calls=async_wrapped_disjoint,
+      output_to_operand_aliasing={{1}: (0, {})}
+  done1 = f32[8] async-done(start_disjoint)
+  ROOT out = (f32[8], f32[8]) tuple(done0, done1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_str));
+
+  HloInstruction* buf0 = FindInstruction(module.get(), "buf0");
+  HloInstruction* buf1 = FindInstruction(module.get(), "buf1");
+  HloInstruction* start_no_attr =
+      FindInstruction(module.get(), "start_no_attr");
+  HloInstruction* start_disjoint =
+      FindInstruction(module.get(), "start_disjoint");
+
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = RunAnalysis(*module);
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      buf0, {}, start_no_attr, {1}, &alias_info_));
+  EXPECT_TRUE(dataflow_analysis->CanShareOperandBufferWithUser(
+      buf1, {}, start_disjoint, {1}, &alias_info_));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
@@ -3545,6 +3936,96 @@ TEST_F(CanShareOperandBufferWithUserTest, MultioutputScatterCanShare) {
       updates1_param, {}, scatter, {0}, &alias_info_));
   EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
       updates1_param, {}, scatter, {1}, &alias_info_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       MultioutputScatterSameShapeOperandsMatchOutputIndex) {
+  const char* hlo_text = R"(
+    HloModule MultioutputScatterSameShape
+
+    update {
+      lhs0 = s32[] parameter(0)
+      lhs1 = s32[] parameter(1)
+      rhs0 = s32[] parameter(2)
+      rhs1 = s32[] parameter(3)
+      ROOT tuple = tuple(rhs0, rhs1)
+    }
+
+    ENTRY main {
+      operand0 = s32[3,3] parameter(0)
+      operand1 = s32[3,3] parameter(1)
+      indices = s32[3] parameter(2)
+      updates0 = s32[3,3] parameter(3)
+      updates1 = s32[3,3] parameter(4)
+      scatter = (s32[3,3], s32[3,3])
+          scatter(operand0, operand1, indices, updates0, updates1),
+          to_apply=update,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+      scatter_dup = (s32[3,3], s32[3,3])
+          scatter(operand0, operand0, indices, updates0, updates1),
+          to_apply=update,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+      ROOT out = tuple(scatter, scatter_dup)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto computation = module->entry_computation();
+
+  HloInstruction* operand0_param = computation->parameter_instruction(0);
+  HloInstruction* operand1_param = computation->parameter_instruction(1);
+  HloInstruction* updates0_param = computation->parameter_instruction(3);
+  HloInstruction* updates1_param = computation->parameter_instruction(4);
+  HloInstruction* scatter = FindInstruction(module.get(), "scatter");
+  HloInstruction* scatter_dup = FindInstruction(module.get(), "scatter_dup");
+
+  auto check_sharing = [&](HloDataflowAnalysis& analysis,
+                           const AliasInfo& alias_info) {
+    EXPECT_TRUE(analysis.CanShareOperandBufferWithUser(
+        operand0_param, {}, scatter, {0}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        operand0_param, {}, scatter, {1}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        operand1_param, {}, scatter, {0}, &alias_info));
+    EXPECT_TRUE(analysis.CanShareOperandBufferWithUser(
+        operand1_param, {}, scatter, {1}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        updates0_param, {}, scatter, {0}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        updates0_param, {}, scatter, {1}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        updates1_param, {}, scatter, {0}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        updates1_param, {}, scatter, {1}, &alias_info));
+
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        operand0_param, {}, scatter_dup, {0}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        operand0_param, {}, scatter_dup, {1}, &alias_info));
+  };
+
+  auto dataflow_analysis = RunAnalysis(*module);
+  check_sharing(*dataflow_analysis, alias_info_);
+
+  class NoInPlaceScatterAliasInfo : public AliasInfo {
+   protected:
+    std::optional<std::vector<std::pair<HloOperandIndex, ShapeIndex>>>
+    GetNonDefaultInPlaceInputOutputPairs(
+        const HloInstruction* user) const override {
+      if (user->opcode() == HloOpcode::kScatter) {
+        return std::vector<std::pair<HloOperandIndex, ShapeIndex>>{};
+      }
+      return std::nullopt;
+    }
+  };
+  NoInPlaceScatterAliasInfo no_in_place_alias_info;
+  auto no_in_place_dataflow_analysis = RunAnalysis(*module);
+  check_sharing(*no_in_place_dataflow_analysis, no_in_place_alias_info);
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, TriangularSolveCanShare) {
@@ -4891,6 +5372,636 @@ ENTRY main {
                 42);
     }
   }
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundAsyncStartWrappingDynamicUpdateSlice) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule late_bound_async_dus
+
+dus_wrapped {
+  dst = f32[2,4]{1,0} parameter(0)
+  upd = f32[1,4]{1,0} parameter(1)
+  idx = s32[] parameter(2)
+  ROOT updated = f32[2,4]{1,0} dynamic-update-slice(dst, upd, idx, idx)
+}
+
+ENTRY main {
+  dst = f32[2,4]{1,0} parameter(0)
+  upd = f32[1,4]{1,0} parameter(1)
+  c0 = s32[] constant(0)
+  start = ((), (), (f32[2,4]{1,0})) async-start(), calls=dus_wrapped
+  update = ((f32[2,4]{1,0}, f32[1,4]{1,0}, s32[]), f32[2,4]{1,0}, (f32[2,4]{1,0})) async-update(start, dst, upd, c0)
+  ROOT done = f32[2,4]{1,0} async-done(update)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kHlo));
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+  const HloInstruction* start = FindInstruction(module_.get(), "start");
+  const HloInstruction* updated = FindInstruction(module_.get(), "updated");
+  const HloInstruction* root = module_->entry_computation()->root_instruction();
+  EXPECT_THAT(HloValuesAt(start, /*index=*/{1}),
+              ElementsAre(&analysis.GetValueDefinedAt(start, /*index=*/{1})));
+  EXPECT_THAT(HloValuesAt(root),
+              ElementsAre(&analysis.GetValueDefinedAt(updated)));
+}
+
+// An async-start wrapping dynamic-update-slice writes into its destination in
+// place, so its output {1} holds the destination operand rather than the
+// wrapped root. Otherwise a loop-carried start feeds the wrapped result back
+// into the shared destination parameter, which then has two values and breaks
+// in place aliasing.
+TEST_P(HloDataflowAnalysisTest,
+       AsyncStartWrappingDynamicUpdateSliceForwardsDestination) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule async_dus
+
+dus_wrapped {
+  dst = f32[2,4]{1,0} parameter(0)
+  upd = f32[1,4]{1,0} parameter(1)
+  idx = s32[] parameter(2)
+  ROOT updated = f32[2,4]{1,0} dynamic-update-slice(dst, upd, idx, idx)
+}
+
+ENTRY main {
+  dst = f32[2,4]{1,0} parameter(0)
+  upd = f32[1,4]{1,0} parameter(1)
+  c0 = s32[] constant(0)
+  start = ((f32[2,4]{1,0}, f32[1,4]{1,0}, s32[]), f32[2,4]{1,0}, s32[]) async-start(dst, upd, c0), calls=dus_wrapped
+  ROOT done = f32[2,4]{1,0} async-done(start)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kHlo));
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+  const HloInstruction* dst =
+      module_->entry_computation()->parameter_instruction(0);
+  const HloInstruction* start = FindInstruction(module_.get(), "start");
+  EXPECT_THAT(HloValuesAt(start, /*index=*/{1}),
+              ElementsAre(&analysis.GetValueDefinedAt(dst)));
+}
+
+// Verifies that configuring `is_passthrough` forwards operand values across
+// stacked, unused, and root passthrough custom calls while filtering non root
+// passthroughs out of HloValue::GetUses (including across wide tuple user lists
+// via UseCache::NestedValueUsers) and unwrapping passthrough operands in
+// CanShareOperandBufferWithUser and CanShareOperandValueBufferWithUser.
+TEST_F(HloDataflowAnalysisTest,
+       PassthroughPredicateForwardsValuesAndFiltersUses) {
+  absl::string_view hlo_str = R"(
+HloModule PassthroughTest
+
+callee {
+  cp = f32[8] parameter(0)
+  neg_cp = f32[8] negate(cp)
+  ROOT m_callee = f32[8] custom-call(neg_cp), custom_call_target="passthrough"
+}
+
+inplace_fus_comp {
+  fp0 = f32[8] parameter(0)
+  fp1 = f32[8] parameter(1)
+  fu = f32[2] parameter(2)
+  fidx = s32[] parameter(3)
+  fdus = f32[8] dynamic-update-slice(fp0, fu, fidx)
+  fneg = f32[8] negate(fp1)
+  ROOT fout = (f32[8], f32[8]) tuple(fdus, fneg)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p_call = f32[8] parameter(1)
+  u = f32[2] parameter(2)
+  c0 = f32[8] constant({0, 1, 2, 3, 4, 5, 6, 7})
+  z = s32[] constant(0)
+  a = f32[8] add(p0, p0)
+  m1 = f32[8] custom-call(a), custom_call_target="passthrough"
+  m2 = f32[8] custom-call(m1), custom_call_target="passthrough"
+  unused_m = f32[8] custom-call(a), custom_call_target="passthrough",
+      custom_call_has_side_effect=true
+  tanh_a = f32[8] tanh(m2)
+  mc = f32[8] custom-call(c0), custom_call_target="passthrough"
+  neg_c = f32[8] negate(mc)
+  msort = f32[8] custom-call(a), custom_call_target="passthrough"
+  sorted = f32[8] sort(msort), dimensions={0}, to_apply={
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT lt = pred[] compare(lhs, rhs), direction=LT
+  }
+  mdus0 = f32[8] custom-call(a), custom_call_target="passthrough"
+  mdus1 = f32[8] custom-call(a), custom_call_target="passthrough"
+  dus_same = f32[8] dynamic-update-slice(mdus0, mdus1, z)
+  dus_disjoint = f32[8] dynamic-update-slice(a, mdus1, z),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  fus_inplace = (f32[8], f32[8]) fusion(mdus0, mdus1, u, z),
+      kind=kLoop, calls=inplace_fus_comp
+  called = f32[8] call(p_call), to_apply=callee
+  out_tuple = (f32[8], f32[8], f32[8], f32[8], f32[8], f32[8], (f32[8], f32[8]))
+      tuple(tanh_a, neg_c, sorted, dus_same, dus_disjoint, called, fus_inplace)
+  gte0 = f32[8] get-tuple-element(out_tuple), index=0
+  gte1 = f32[8] get-tuple-element(out_tuple), index=1
+  gte2 = f32[8] get-tuple-element(out_tuple), index=2
+  gte3 = f32[8] get-tuple-element(out_tuple), index=3
+  gte4 = f32[8] get-tuple-element(out_tuple), index=4
+  gte5 = f32[8] get-tuple-element(out_tuple), index=5
+  nonroot_tup_m0 = (f32[8], f32[8], f32[8], f32[8], f32[8], f32[8],
+                    (f32[8], f32[8]))
+      custom-call(out_tuple), custom_call_target="passthrough",
+      custom_call_has_side_effect=true
+  nonroot_tup_m1 = (f32[8], f32[8], f32[8], f32[8], f32[8], f32[8],
+                    (f32[8], f32[8]))
+      custom-call(out_tuple), custom_call_target="passthrough",
+      custom_call_has_side_effect=true
+  nonroot_tup_m2 = (f32[8], f32[8], f32[8], f32[8], f32[8], f32[8],
+                    (f32[8], f32[8]))
+      custom-call(out_tuple), custom_call_target="passthrough",
+      custom_call_has_side_effect=true
+  ROOT root_m = (f32[8], f32[8], f32[8], f32[8], f32[8], f32[8],
+                 (f32[8], f32[8]))
+      custom-call(out_tuple), custom_call_target="passthrough"
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_str));
+  auto is_passthrough = [](const HloInstruction* inst) {
+    return inst->IsCustomCall("passthrough");
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> analysis,
+      HloDataflowAnalysis::Run(
+          *module_, /*ssa_form=*/true, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/std::nullopt,
+          /*propagate_through_control_flow=*/true, is_passthrough));
+
+  HloInstruction* a = FindInstruction(module_.get(), "a");
+  HloInstruction* p_call = FindInstruction(module_.get(), "p_call");
+  HloInstruction* m1 = FindInstruction(module_.get(), "m1");
+  HloInstruction* m2 = FindInstruction(module_.get(), "m2");
+  HloInstruction* unused_m = FindInstruction(module_.get(), "unused_m");
+  HloInstruction* tanh_a = FindInstruction(module_.get(), "tanh_a");
+  HloInstruction* mc = FindInstruction(module_.get(), "mc");
+  HloInstruction* neg_c = FindInstruction(module_.get(), "neg_c");
+  HloInstruction* msort = FindInstruction(module_.get(), "msort");
+  HloInstruction* sorted = FindInstruction(module_.get(), "sorted");
+  HloInstruction* mdus0 = FindInstruction(module_.get(), "mdus0");
+  HloInstruction* mdus1 = FindInstruction(module_.get(), "mdus1");
+  HloInstruction* dus_same = FindInstruction(module_.get(), "dus_same");
+  HloInstruction* dus_disjoint = FindInstruction(module_.get(), "dus_disjoint");
+  HloInstruction* fus_inplace = FindInstruction(module_.get(), "fus_inplace");
+  HloInstruction* called = FindInstruction(module_.get(), "called");
+  HloInstruction* out_tuple = FindInstruction(module_.get(), "out_tuple");
+  HloInstruction* nonroot_tup_m0 =
+      FindInstruction(module_.get(), "nonroot_tup_m0");
+  HloInstruction* root_m = FindInstruction(module_.get(), "root_m");
+
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(a));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(m1));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(m2));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(unused_m));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(root_m, {}));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(root_m, {0}));
+
+  const HloValue& val_a = analysis->GetValueDefinedAt(a);
+  EXPECT_EQ(&analysis->GetUniqueValueAt(m2), &val_a);
+  EXPECT_THAT(val_a.GetUses(),
+              UnorderedElementsAre(
+                  HloUse{tanh_a, 0, {}}, HloUse{sorted, 0, {}},
+                  HloUse{dus_same, 0, {}}, HloUse{dus_same, 1, {}},
+                  HloUse{dus_disjoint, 0, {}}, HloUse{dus_disjoint, 1, {}},
+                  HloUse{fus_inplace, 0, {}}, HloUse{fus_inplace, 1, {}}));
+
+  // `out_tuple` has 10 users (> kMaxUsersToScan = 8); non root tuple
+  // passthroughs (`nonroot_tup_m0..2`) are filtered out by
+  // UseCache::NestedValueUsers while `root_m` is kept as the computation root.
+  const HloValue& val_tanh = analysis->GetValueDefinedAt(tanh_a);
+  EXPECT_TRUE(val_tanh.live_out_of_module());
+  EXPECT_THAT(val_tanh.GetUses(), ElementsAre(HloUse{root_m, 0, {0}}));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(root_m, {}),
+            &analysis->GetValueDefinedAt(out_tuple, {}));
+
+  AliasInfo alias_info;
+  // Unwraps passthrough around a constant: constants cannot share buffers.
+  EXPECT_FALSE(
+      analysis->CanShareOperandBufferWithUser(mc, {}, neg_c, {}, &alias_info));
+  // Unwraps passthrough chain to detect that `a` has multiple users, so `sort`
+  // cannot share `a`'s buffer in place.
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(msort, {}, sorted, {},
+                                                       &alias_info));
+  // Unwraps distinct passthrough operands (`mdus0`, `mdus1`) to detect that
+  // `dus_same` and `fus_inplace` read the same underlying producer `a` in two
+  // operand slots.
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(mdus0, {}, dus_same, {},
+                                                       &alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(mdus1, {}, dus_same, {},
+                                                       &alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(mdus0, {}, fus_inplace,
+                                                       {0}, &alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(mdus1, {}, fus_inplace,
+                                                       {0}, &alias_info));
+  // When `xla_disjoint_read_write_regions` is set, both the direct in place
+  // operand (`a`) and the passthrough operand (`mdus1`) can share with
+  // `dus_disjoint`.
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(a, {}, dus_disjoint, {},
+                                                      &alias_info));
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(mdus1, {}, dus_disjoint,
+                                                      {}, &alias_info));
+  // Unwraps `m_callee` on `callee`'s root so `kCall` sees the elementwise root.
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(p_call, {}, called, {},
+                                                      &alias_info));
+  // Tuple passthroughs only share buffers at matching tuple indices, and
+  // non root passthroughs return false from CanShareOperandValueBufferWithUser.
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(out_tuple, {0}, root_m,
+                                                      {0}, &alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(out_tuple, {0}, root_m,
+                                                       {1}, &alias_info));
+  EXPECT_TRUE(analysis->CanShareOperandValueBufferWithUser(val_tanh, root_m,
+                                                           {0}, &alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandValueBufferWithUser(val_tanh, root_m,
+                                                            {1}, &alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandValueBufferWithUser(
+      val_tanh, nonroot_tup_m0, {0}, &alias_info));
+}
+
+// Verifies loop-crossing `async-start` / `async-update` / `async-done` value
+// forwarding across passthroughs on the async chain operands.
+TEST_F(HloDataflowAnalysisTest, PassthroughUnwrapsLoopCrossingAsync) {
+  absl::string_view async_hlo = R"(
+HloModule AsyncLoopCrossingPassthrough
+
+async_dus_comp {
+  p0 = f32[8] parameter(0)
+  u = f32[2] parameter(1)
+  c0 = s32[] constant(0)
+  ROOT dus = f32[8] dynamic-update-slice(p0, u, c0)
+}, execution_thread="parallel"
+
+body {
+  state = (((f32[8], f32[2]), f32[8])) parameter(0)
+  prev_chain = ((f32[8], f32[2]), f32[8]) get-tuple-element(state),
+      index=0
+  m_upd = ((f32[8], f32[2]), f32[8]) custom-call(prev_chain),
+      custom_call_target="Sharding"
+  upd = ((f32[8], f32[2]), f32[8]) async-update(m_upd),
+      async_execution_thread="parallel", calls=async_dus_comp
+  ROOT next = (((f32[8], f32[2]), f32[8])) tuple(upd)
+}
+
+cond {
+  state = (((f32[8], f32[2]), f32[8])) parameter(0)
+  ROOT done_pred = pred[] constant(false)
+}
+
+ENTRY main {
+  p = f32[8] parameter(0)
+  u = f32[2] parameter(1)
+  start = ((f32[8], f32[2]), f32[8]) async-start(p, u),
+      async_execution_thread="parallel", calls=async_dus_comp
+  init = (((f32[8], f32[2]), f32[8])) tuple(start)
+  loop = (((f32[8], f32[2]), f32[8])) while(init),
+      condition=cond, body=body
+  loop_chain = ((f32[8], f32[2]), f32[8]) get-tuple-element(loop),
+      index=0
+  m_done = ((f32[8], f32[2]), f32[8]) custom-call(loop_chain),
+      custom_call_target="Sharding"
+  ROOT done = f32[8] async-done(m_done),
+      async_execution_thread="parallel", calls=async_dus_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> async_mod,
+                       ParseAndReturnVerifiedModule(async_hlo));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> async_analysis,
+      HloDataflowAnalysis::Run(
+          *async_mod, /*ssa_form=*/false, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/std::nullopt,
+          /*propagate_through_control_flow=*/true,
+          [](const HloInstruction* inst) {
+            return inst->IsCustomCall("Sharding");
+          }));
+  HloInstruction* p = FindInstruction(async_mod.get(), "p");
+  HloInstruction* start = FindInstruction(async_mod.get(), "start");
+  HloInstruction* upd = FindInstruction(async_mod.get(), "upd");
+  HloInstruction* done = FindInstruction(async_mod.get(), "done");
+  const HloValue& p_val = async_analysis->GetValueDefinedAt(p);
+  EXPECT_EQ(&async_analysis->GetUniqueValueAt(start, {1}), &p_val);
+  EXPECT_EQ(&async_analysis->GetUniqueValueAt(upd, {1}), &p_val);
+  EXPECT_EQ(&async_analysis->GetUniqueValueAt(done, {}), &p_val);
+}
+
+// Verifies custom AliasInfo::MayAlias handling when multiple operand slots
+// unwrap through passthroughs to the same producer.
+TEST_F(HloDataflowAnalysisTest, PassthroughCustomMayAliasMultiSlot) {
+  class TestMayAliasInfo : public AliasInfo {
+   public:
+    std::optional<bool> MayAlias(const HloInstruction* operand,
+                                 const ShapeIndex& operand_index,
+                                 const HloInstruction* user,
+                                 const ShapeIndex& user_index) const override {
+      if (user->opcode() == HloOpcode::kAllReduce) {
+        return user->OperandIndices(operand).size() == 1;
+      }
+      if (user->IsCustomCall("nullopt_then_false")) {
+        if (user->operand(1) == operand) {
+          return false;
+        }
+        return std::nullopt;
+      }
+      if (user->name() == "cond_shape_diff" ||
+          (user->name() == "async_disjoint_start" &&
+           user_index == ShapeIndex{1})) {
+        return true;
+      }
+      if (user->opcode() == HloOpcode::kFusion && !user->IsCustomFusion()) {
+        return absl::c_all_of(
+            user->OperandIndices(operand), [&](int64_t op_num) {
+              return op_num == 0 || user->name() == "fus_both_ok";
+            });
+      }
+      return std::nullopt;
+    }
+  };
+
+  absl::string_view alias_hlo = R"(
+HloModule PassthroughCustomMayAliasMultiSlot
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+fus_both_ok_comp {
+  p0 = f32[8]{0:S(1)} parameter(0)
+  p1 = f32[8]{0:S(1)} parameter(1)
+  ROOT add = f32[8]{0:S(1)} add(p0, p1)
+}
+
+fus_second_bad_comp {
+  p0 = f32[8]{0:S(1)} parameter(0)
+  p1 = f32[8]{0:S(1)} parameter(1)
+  ROOT sub = f32[8]{0:S(1)} subtract(p0, p1)
+}
+
+cond_true_comp {
+  cp = f32[8]{0} parameter(0)
+  ROOT neg = f32[8]{0} negate(cp)
+}
+
+cond_false_comp {
+  cp = f32[8]{0} parameter(0)
+  ROOT exp = f32[8]{0} exponential(cp)
+}
+
+cond_true_2d_comp {
+  cp = f32[8]{0} parameter(0)
+  ROOT bc = f32[2,4]{1,0} bitcast(cp)
+}
+
+cond_false_2d_comp {
+  cp = f32[8]{0} parameter(0)
+  neg = f32[8]{0} negate(cp)
+  ROOT bc = f32[2,4]{1,0} bitcast(neg)
+}
+
+async_disjoint_comp {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  ROOT disjoint_op = f32[2,4]{1,0} custom-call(p0, p1),
+      custom_call_target="disjoint_kernel",
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+}, execution_thread="parallel"
+
+ENTRY main {
+  a = f32[8]{0} parameter(0)
+  b = f32[8]{0} parameter(1)
+  a_s1 = f32[8]{0:S(1)} parameter(2)
+  pred_in = pred[] parameter(3)
+  m0 = f32[8]{0} custom-call(a), custom_call_target="passthrough"
+  m1 = f32[8]{0} custom-call(a), custom_call_target="passthrough"
+  add_wrapped = f32[8]{0} add(m0, m1)
+  add_unwrapped = f32[8]{0} add(b, b)
+  cond_wrapped = f32[8]{0} conditional(pred_in, m0, m1),
+      true_computation=cond_true_comp, false_computation=cond_false_comp
+  cond_shape_diff = f32[2,4]{1,0} conditional(pred_in, m0, m1),
+      true_computation=cond_true_2d_comp, false_computation=cond_false_2d_comp
+  veto_second = f32[8]{0} custom-call(m0, m1),
+      custom_call_target="nullopt_then_false"
+  ar_single = f32[8]{0} all-reduce(m0), replica_groups={}, to_apply=sum
+  ar_both_wrapped = (f32[8]{0}, f32[8]{0}) all-reduce(m0, m1),
+      replica_groups={}, to_apply=sum
+  ar_mixed = (f32[8]{0}, f32[8]{0}) all-reduce(a, m0),
+      replica_groups={}, to_apply=sum
+  ms0 = f32[8]{0:S(1)} custom-call(a_s1), custom_call_target="passthrough"
+  ms1 = f32[8]{0:S(1)} custom-call(a_s1), custom_call_target="passthrough"
+  fus_both_ok = f32[8]{0:S(1)} fusion(ms0, ms1),
+      kind=kLoop, calls=fus_both_ok_comp
+  fus_second_bad = f32[8]{0:S(1)} fusion(ms0, ms1),
+      kind=kLoop, calls=fus_second_bad_comp
+  async_disjoint_start = ((f32[8]{0}, f32[8]{0}), f32[2,4]{1,0}, s32[])
+      async-start(m0, m1), async_execution_thread="parallel",
+      calls=async_disjoint_comp
+  async_disjoint_done = f32[2,4]{1,0} async-done(async_disjoint_start),
+      async_execution_thread="parallel", calls=async_disjoint_comp
+  ROOT out = (f32[8]{0}, f32[8]{0}, f32[8]{0}, f32[2,4]{1,0}, f32[8]{0},
+              f32[8]{0}, (f32[8]{0}, f32[8]{0}), (f32[8]{0}, f32[8]{0}),
+              f32[8]{0:S(1)}, f32[8]{0:S(1)}, f32[2,4]{1,0})
+      tuple(add_wrapped, add_unwrapped, cond_wrapped, cond_shape_diff,
+            veto_second, ar_single, ar_both_wrapped, ar_mixed, fus_both_ok,
+            fus_second_bad, async_disjoint_done)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> alias_mod,
+                       ParseAndReturnVerifiedModule(alias_hlo));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> analysis,
+      HloDataflowAnalysis::Run(
+          *alias_mod, /*ssa_form=*/true, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/std::nullopt,
+          /*propagate_through_control_flow=*/true,
+          [](const HloInstruction* inst) {
+            return inst->IsCustomCall("passthrough");
+          }));
+
+  TestMayAliasInfo test_alias_info;
+  HloInstruction* a = FindInstruction(alias_mod.get(), "a");
+  HloInstruction* b = FindInstruction(alias_mod.get(), "b");
+  HloInstruction* m0 = FindInstruction(alias_mod.get(), "m0");
+  HloInstruction* add_wrapped = FindInstruction(alias_mod.get(), "add_wrapped");
+  HloInstruction* add_unwrapped =
+      FindInstruction(alias_mod.get(), "add_unwrapped");
+  HloInstruction* cond_wrapped =
+      FindInstruction(alias_mod.get(), "cond_wrapped");
+  HloInstruction* cond_shape_diff =
+      FindInstruction(alias_mod.get(), "cond_shape_diff");
+  HloInstruction* veto_second = FindInstruction(alias_mod.get(), "veto_second");
+  HloInstruction* ar_single = FindInstruction(alias_mod.get(), "ar_single");
+  HloInstruction* ar_both_wrapped =
+      FindInstruction(alias_mod.get(), "ar_both_wrapped");
+  HloInstruction* ar_mixed = FindInstruction(alias_mod.get(), "ar_mixed");
+  HloInstruction* ms0 = FindInstruction(alias_mod.get(), "ms0");
+  HloInstruction* fus_both_ok = FindInstruction(alias_mod.get(), "fus_both_ok");
+  HloInstruction* fus_second_bad =
+      FindInstruction(alias_mod.get(), "fus_second_bad");
+  HloInstruction* async_disjoint_start =
+      FindInstruction(alias_mod.get(), "async_disjoint_start");
+
+  // Multi-operand elementwise and conditional instructions fall through
+  // `query_may_alias` to standard sharing rules, `query_may_alias` combines
+  // `true` hints for `kConditional` and `HasDisjointReadWriteRegions`, and
+  // explicit `false` on a later slot vetoes sharing after an earlier
+  // `std::nullopt` slot.
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(m0, {}, add_wrapped, {},
+                                                      &test_alias_info));
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(b, {}, add_unwrapped, {},
+                                                      &test_alias_info));
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(m0, {}, cond_wrapped, {},
+                                                      &test_alias_info));
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(m0, {}, cond_shape_diff,
+                                                      {}, &test_alias_info));
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(
+      m0, {}, async_disjoint_start, {1}, &test_alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(m0, {}, veto_second, {},
+                                                       &test_alias_info));
+
+  // Single-slot MayAlias allows `ar_single(m0)` and rejects both
+  // `ar_both_wrapped(m0, m1)` and `ar_mixed(a, m0)`.
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(m0, {}, ar_single, {},
+                                                      &test_alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(m0, {}, ar_both_wrapped,
+                                                       {0}, &test_alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(a, {}, ar_mixed, {0},
+                                                       &test_alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(m0, {}, ar_mixed, {1},
+                                                       &test_alias_info));
+
+  // Multi-operand fusion MayAlias checks every shared operand slot.
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(ms0, {}, fus_both_ok, {},
+                                                      &test_alias_info));
+  EXPECT_FALSE(analysis->CanShareOperandBufferWithUser(ms0, {}, fus_second_bad,
+                                                       {}, &test_alias_info));
+}
+
+// Verifies that `kCall` unwraps passthrough wrappers on the callee root when
+// checking buffer sharing for tuple operands.
+TEST_F(HloDataflowAnalysisTest, PassthroughCallTupleUnwrapping) {
+  absl::string_view hlo_str = R"(
+HloModule PassthroughCallTupleUnwrapping
+
+callee_tup {
+  cp = (f32[8]{0}) parameter(0)
+  gte = f32[8]{0} get-tuple-element(cp), index=0
+  m_in = f32[8]{0} custom-call(gte), custom_call_target="passthrough"
+  neg = f32[8]{0} negate(m_in)
+  ROOT m_out = f32[8]{0} custom-call(neg), custom_call_target="passthrough"
+}
+
+ENTRY main {
+  p_tup = (f32[8]{0}) parameter(0)
+  ROOT call_tup = f32[8]{0} call(p_tup), to_apply=callee_tup
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> analysis,
+      HloDataflowAnalysis::Run(
+          *module_, /*ssa_form=*/true, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/std::nullopt,
+          /*propagate_through_control_flow=*/true,
+          [](const HloInstruction* inst) {
+            return inst->IsCustomCall("passthrough");
+          }));
+  AliasInfo alias_info;
+  HloInstruction* p_tup = FindInstruction(module_.get(), "p_tup");
+  HloInstruction* call_tup = FindInstruction(module_.get(), "call_tup");
+  EXPECT_TRUE(analysis->CanShareOperandBufferWithUser(p_tup, {0}, call_tup, {},
+                                                      &alias_info));
+}
+
+// Verifies that `IsPassthrough` respects `execution_threads` filtering.
+TEST_F(HloDataflowAnalysisTest, PassthroughRespectsExecutionThreads) {
+  absl::string_view hlo_str = R"(
+HloModule PassthroughRespectsExecutionThreads
+
+// `parallel_comp` is an async wrapped computation where passthroughs are
+// forbidden by `REQUIRES:`, so `m_par` lives in `parallel_callee` (a regular
+// computation on the excluded "parallel" thread).
+parallel_callee {
+  pp = f32[8]{0} parameter(0)
+  ROOT m_par = f32[8]{0} custom-call(pp), custom_call_target="passthrough"
+}, execution_thread="parallel"
+
+parallel_comp {
+  pp = f32[8]{0} parameter(0)
+  ROOT call_par = f32[8]{0} call(pp), to_apply=parallel_callee
+}, execution_thread="parallel"
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  m_main = f32[8]{0} custom-call(p0), custom_call_target="passthrough"
+  async_start = ((f32[8]{0}), f32[8]{0}, s32[]) async-start(m_main),
+      async_execution_thread="parallel", calls=parallel_comp
+  ROOT async_done = f32[8]{0} async-done(async_start),
+      async_execution_thread="parallel", calls=parallel_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> main_analysis,
+      HloDataflowAnalysis::Run(
+          *module_, /*ssa_form=*/true, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{HloInstruction::kMainExecutionThread},
+          /*propagate_through_calls=*/true, /*precompute_uses=*/std::nullopt,
+          /*propagate_through_control_flow=*/true,
+          [](const HloInstruction* inst) {
+            return inst->IsCustomCall("passthrough");
+          }));
+  HloInstruction* m_main = FindInstruction(module_.get(), "m_main");
+  HloInstruction* m_par = FindInstruction(module_.get(), "m_par");
+  EXPECT_TRUE(main_analysis->IsPassthrough(m_main));
+  EXPECT_FALSE(main_analysis->IsPassthrough(m_par));
+}
+
+// Verifies that passing a non-null `is_passthrough` predicate on a module where
+// no instruction matches leaves `IsPassthrough` false and still executes
+// `PrecomputeUses`.
+TEST_F(HloDataflowAnalysisTest,
+       NonMatchingPassthroughPredicatePrecomputesUses) {
+  absl::string_view hlo_str = R"(
+HloModule NonMatchingPassthroughPredicate
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  neg = f32[8]{0} negate(p0)
+  ROOT out = f32[8]{0} tanh(neg)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> analysis,
+      HloDataflowAnalysis::Run(
+          *module_, /*ssa_form=*/true, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/std::nullopt,
+          /*propagate_through_control_flow=*/true,
+          [](const HloInstruction* inst) {
+            return inst->IsCustomCall("passthrough");
+          }));
+
+  HloInstruction* p0 = FindInstruction(module_.get(), "p0");
+  HloInstruction* neg = FindInstruction(module_.get(), "neg");
+  HloInstruction* out = FindInstruction(module_.get(), "out");
+
+  EXPECT_FALSE(analysis->IsPassthrough(p0));
+  EXPECT_FALSE(analysis->IsPassthrough(neg));
+  EXPECT_FALSE(analysis->IsPassthrough(out));
+
+  EXPECT_THAT(analysis->GetValueDefinedAt(p0).GetUses(),
+              ElementsAre(HloUse{neg, 0, {}}));
+  EXPECT_THAT(analysis->GetValueDefinedAt(neg).GetUses(),
+              ElementsAre(HloUse{out, 0, {}}));
 }
 
 }  // namespace

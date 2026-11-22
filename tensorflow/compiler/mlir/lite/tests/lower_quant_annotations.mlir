@@ -63,3 +63,14 @@ func.func @multi_result_test(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor
 
   return %0#0, %1 : tensor<1x4xf32>, tensor<1x4xf32>
 }
+
+// CHECK-LABEL: func.func @remove_tf_identity_like_ops
+// CHECK-SAME: (%[[ARG0:.+]]: tensor<1x4xf32>)
+func.func @remove_tf_identity_like_ops(%arg0: tensor<1x4xf32>) -> tensor<1x4xf32> {
+  // CHECK-NOT: tf.PreventGradient
+  // CHECK-NOT: tf.Identity
+  // CHECK: return %[[ARG0]]
+  %0 = "tf.PreventGradient"(%arg0) : (tensor<1x4xf32>) -> tensor<1x4xf32>
+  %1 = "tf.Identity"(%0) : (tensor<1x4xf32>) -> tensor<1x4xf32>
+  return %1 : tensor<1x4xf32>
+}

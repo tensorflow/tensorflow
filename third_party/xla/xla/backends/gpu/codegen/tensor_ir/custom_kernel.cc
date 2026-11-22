@@ -49,14 +49,14 @@ absl::StatusOr<KernelReuseCache::Entry> MakeKernelCacheEntry(
     // fine as far as loading goes: `cuModuleLoadData`, which StreamExecutor
     // calls to load a cubin, documents "Tile IR data" alongside cubin, fatbin
     // and PTX as an accepted image, and JITs it. But that JIT lives in the
-    // driver and needs r610 or newer, so say so once per process -- this is a
+    // driver and needs r615 or newer, so say so once per process -- this is a
     // property of the installation, not of any one kernel.
     LOG_FIRST_N(WARNING, 1)
         << "TensorIR kernel '" << artifact.getKernelName()
         << "' is TileIR bytecode rather than an assembled cubin, because no "
-           "'tileiras' assembler was found; CUDA 13.3 or newer ships one. The "
-           "CUDA driver will JIT the bytecode when the kernel is loaded, which "
-           "needs a native r610 or newer driver.";
+           "compatible 'tileiras' assembler was found; CUDA 13.4 or newer "
+           "ships one. The CUDA driver will JIT the bytecode when the kernel "
+           "is loaded, which needs a native r615 or newer driver.";
   }
 
   // The launch grid is fixed at compile time for everything XLA emits: the

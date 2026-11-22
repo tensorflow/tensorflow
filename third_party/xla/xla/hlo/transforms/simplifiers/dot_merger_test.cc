@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
@@ -2091,6 +2092,31 @@ TEST_F(DotMergerTest, MergeRHSPreservesMetadata) {
   EXPECT_EQ(merged_dot->metadata().op_name(), "op2");
 }
 
+TEST_F(DotMergerTest, MergePreservesBackendConfig) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    lhs  = f32[200,100] parameter(0)
+    rhs0 = f32[100, 10] parameter(1)
+    rhs1 = f32[100, 50] parameter(2)
+    dot0 = f32[200, 10] dot(lhs, rhs0), lhs_contracting_dims={1}, rhs_contracting_dims={0}, backend_config={"operation_queue_id":"2"}
+    dot1 = f32[200, 50] dot(lhs, rhs1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, backend_config={"operation_queue_id":"2"}
+    ROOT tuple = (f32[200,10], f32[200,50]) tuple(dot0, dot1)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* merged_dot =
+      hlo_query::FindInstruction(module->entry_computation(), HloOpcode::kDot);
+  ASSERT_NE(merged_dot, nullptr);
+  EXPECT_EQ(merged_dot->raw_backend_config_string(),
+            R"({"operation_queue_id":"2"})");
+}
+
 TEST_F(DotMergerTest, NoMergeSubByteUpcast) {
   absl::string_view module_string = R"(
   HloModule module
@@ -2146,6 +2172,120 @@ TEST_F(DotMergerTest, MergeRespectsMaxSizeThreshold) {
     ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
     EXPECT_TRUE(changed);
   }
+}
+
+TEST_F(DotMergerTest, MergedDotKeepsIdenticalFrontendAttributes) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    lhs  = f32[200,100] parameter(0)
+    rhs0 = f32[100, 10] parameter(1)
+    rhs1 = f32[100, 50] parameter(2)
+    dot0 = f32[200, 10] dot(lhs, rhs0), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={_scheduling_group_id="1"}
+    dot1 = f32[200, 50] dot(lhs, rhs1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={_scheduling_group_id="1"}
+    ROOT tuple = (f32[200,10], f32[200,50]) tuple(dot0, dot1)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* dot0 = nullptr;
+  const HloInstruction* dot1 = nullptr;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::Op(&dot0)), m::Slice(m::Op(&dot1)))));
+  EXPECT_EQ(dot0, dot1);
+  ASSERT_NE(dot0, nullptr);
+  EXPECT_EQ(dot0->opcode(), HloOpcode::kDot);
+  EXPECT_EQ(dot0->get_frontend_attribute("_scheduling_group_id"), "1");
+}
+
+TEST_F(DotMergerTest, NoMergeAcrossDifferentFrontendAttributes) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    lhs  = f32[200,100] parameter(0)
+    rhs0 = f32[100, 10] parameter(1)
+    rhs1 = f32[100, 50] parameter(2)
+    dot0 = f32[200, 10] dot(lhs, rhs0), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={_scheduling_group_id="1"}
+    dot1 = f32[200, 50] dot(lhs, rhs1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={_scheduling_group_id="2"}
+    ROOT tuple = (f32[200,10], f32[200,50]) tuple(dot0, dot1)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
+  const HloInstruction* dot0 = FindInstruction(module.get(), "dot0");
+  const HloInstruction* dot1 = FindInstruction(module.get(), "dot1");
+  ASSERT_NE(dot0, nullptr);
+  ASSERT_NE(dot1, nullptr);
+  EXPECT_EQ(dot0->get_frontend_attribute("_scheduling_group_id"), "1");
+  EXPECT_EQ(dot1->get_frontend_attribute("_scheduling_group_id"), "2");
+}
+
+// The two attribute maps below would render to the same "key=value;..." string
+// (a=b;c=d); they are different and must not be merged.
+TEST_F(DotMergerTest, NoMergeOfDifferentFrontendAttributesWithSameRendering) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    lhs  = f32[200,100] parameter(0)
+    rhs0 = f32[100, 10] parameter(1)
+    rhs1 = f32[100, 50] parameter(2)
+    dot0 = f32[200, 10] dot(lhs, rhs0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    dot1 = f32[200, 50] dot(lhs, rhs1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ROOT tuple = (f32[200,10], f32[200,50]) tuple(dot0, dot1)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  HloInstruction* dot0 = FindInstruction(module.get(), "dot0");
+  HloInstruction* dot1 = FindInstruction(module.get(), "dot1");
+  ASSERT_NE(dot0, nullptr);
+  ASSERT_NE(dot1, nullptr);
+  FrontendAttributes attrs0;
+  (*attrs0.mutable_map())["a"] = "b;c=d";
+  dot0->set_frontend_attributes(attrs0);
+  FrontendAttributes attrs1;
+  (*attrs1.mutable_map())["a"] = "b";
+  (*attrs1.mutable_map())["c"] = "d";
+  dot1->set_frontend_attributes(attrs1);
+
+  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(dot0->get_frontend_attribute("a"), "b;c=d");
+  EXPECT_EQ(dot1->get_frontend_attribute("a"), "b");
+  EXPECT_EQ(dot1->get_frontend_attribute("c"), "d");
+}
+
+TEST_F(DotMergerTest, NoMergeOfTaggedAndUntaggedDots) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    lhs  = f32[200,100] parameter(0)
+    rhs0 = f32[100, 10] parameter(1)
+    rhs1 = f32[100, 50] parameter(2)
+    dot0 = f32[200, 10] dot(lhs, rhs0), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={_scheduling_group_id="1"}
+    dot1 = f32[200, 50] dot(lhs, rhs1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ROOT tuple = (f32[200,10], f32[200,50]) tuple(dot0, dot1)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
+  const HloInstruction* dot0 = FindInstruction(module.get(), "dot0");
+  const HloInstruction* dot1 = FindInstruction(module.get(), "dot1");
+  ASSERT_NE(dot0, nullptr);
+  ASSERT_NE(dot1, nullptr);
+  EXPECT_EQ(dot0->get_frontend_attribute("_scheduling_group_id"), "1");
+  EXPECT_FALSE(dot1->has_frontend_attributes());
 }
 
 }  // namespace

@@ -55,6 +55,12 @@ const HloInstruction& InstrForConstantBufferAllocation(
   return *const_instr;
 }
 
+const HloInstruction& InstrForConstantBufferAllocation(
+    const BufferAssignment& assignment, const BufferAllocation& allocation) {
+  // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
+  return InstrForConstantBufferAllocation(allocation);
+}
+
 std::string SanitizeConstantName(const HloInstruction& instr) {
   CHECK_EQ(instr.opcode(), HloOpcode::kConstant);
   return SanitizeConstantName(instr.name());
@@ -84,6 +90,11 @@ std::string ConstantNameToGlobalName(absl::string_view name) {
 const Literal& LiteralForConstantAllocation(
     const BufferAllocation& allocation) {
   return InstrForConstantBufferAllocation(allocation).literal();
+}
+
+const Literal& LiteralForConstantAllocation(
+    const BufferAssignment& assignment, const BufferAllocation& allocation) {
+  return InstrForConstantBufferAllocation(assignment, allocation).literal();
 }
 }  // namespace llvm_ir
 }  // namespace xla

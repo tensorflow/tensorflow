@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -24,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallSet.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -48,11 +51,17 @@ llvm::SmallSet<int64_t, 4> ComputeUnrollFactors(
   llvm::SmallSet<int64_t, 4> unroll_factors;
   unroll_factors.insert(default_unroll_factor);
 
-  auto analysis = HloFusionAnalysis::Create(instr, device_description);
-  int64_t num_elements = ShapeUtil::ElementsIn(analysis.first_result_shape());
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(instr, device_description);
+  // Explore unrolled candidates whenever either the output or a reduction input
+  // can saturate the GPU; `default_unroll_factor` remains in `unroll_factors`
+  // so hardware profiling can reject candidates that lose wave occupancy.
+  int64_t max_elements =
+      std::max(ShapeUtil::ElementsIn(analysis.first_result_shape()),
+               GetMaxReduceInputElements(analysis.fusion()).value_or(0));
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
-  if (num_elements >= n_threads_max &&
+  if (max_elements >= n_threads_max &&
       !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
     int64_t max_unroll_factor = MaxUnrollFactor(&analysis);
     unroll_factors.insert(max_unroll_factor);
@@ -114,6 +123,10 @@ NativeEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>>
 NativeEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
+  if (IsGenericTritonFusion(instr)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "NativeEmitterBackend: unsupported instruction: ", instr.name()));
+  }
   auto config = std::make_unique<BackendConfig>();
   NativeEmitterBackendConfig* native_emitter_config =
       config->mutable_native_emitter();
@@ -138,6 +151,10 @@ absl::Status NativeEmitterBackend::ApplyConfig(HloInstruction& instr,
                                                const BackendConfig& config) {
   if (!config.has_native_emitter()) {
     return absl::InvalidArgumentError("Expected NativeEmitterBackendConfig.");
+  }
+  if (IsGenericTritonFusion(instr)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "NativeEmitterBackend: unsupported instruction: ", instr.name()));
   }
   const NativeEmitterBackendConfig& native_emitter_fusion_config =
       config.native_emitter();

@@ -319,7 +319,9 @@ static void BM_ChainOfAddF32(benchmark::State& state,
       ShapeUtil::MakeShape(F32, {12}), &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1};
-  for (int i = 2; i <= size; ++i) args.push_back(&pN);
+  for (int i = 2; i <= size; ++i) {
+    args.push_back(&pN);
+  }
 
   CHECK_OK(RunHloBenchmark(state, hlo, args,
                            {{"$size", absl::StrCat(size)},

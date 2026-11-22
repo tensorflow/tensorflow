@@ -22,9 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tools/safe_cast.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tflite_migration {
 namespace optimize {
@@ -91,26 +89,29 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
                                        std::vector<int8_t>* output_value) {
   // Quantize the values.
   int indices[kPerChannelMaxDim];
-  tensorflow::TensorShape unextended_shape;
-  CHECK_OK(tensorflow::TensorShapeUtils::MakeShape(absl::MakeSpan(dimension),
-                                                   &unextended_shape));
-  tensorflow::TensorShape shape;
-  for (int i = 0; i < kPerChannelMaxDim - unextended_shape.dims(); ++i) {
-    CHECK_OK(shape.AddDimWithStatus(1));
+  // Left-pad the shape with 1s up to `kPerChannelMaxDim` dimensions.
+  const int num_dims = static_cast<int>(dimension.size());
+  std::vector<int64_t> shape;
+  shape.reserve(std::max(num_dims, kPerChannelMaxDim));
+  for (int i = 0; i < kPerChannelMaxDim - num_dims; ++i) {
+    shape.push_back(1);
   }
-  CHECK_OK(shape.AppendShapeWithStatus(unextended_shape));
-  channel_dim_index += kPerChannelMaxDim - unextended_shape.dims();
+  for (const int32_t dim : dimension) {
+    CHECK_GE(dim, 0) << "Dimension must be non-negative.";  // Crash OK
+    shape.push_back(dim);
+  }
+  channel_dim_index += kPerChannelMaxDim - num_dims;
 
-  for (indices[0] = 0; indices[0] < shape.dim_size(0); indices[0]++) {
-    for (indices[1] = 0; indices[1] < shape.dim_size(1); indices[1]++) {
-      for (indices[2] = 0; indices[2] < shape.dim_size(2); indices[2]++) {
-        for (indices[3] = 0; indices[3] < shape.dim_size(3); indices[3]++) {
+  for (indices[0] = 0; indices[0] < shape.at(0); indices[0]++) {
+    for (indices[1] = 0; indices[1] < shape.at(1); indices[1]++) {
+      for (indices[2] = 0; indices[2] < shape.at(2); indices[2]++) {
+        for (indices[3] = 0; indices[3] < shape.at(3); indices[3]++) {
           int channel_idx = indices[channel_dim_index];
           int index = 0;
           int current_stride = 1;
           for (int i = kPerChannelMaxDim - 1; i >= 0; --i) {
             index += indices[i] * current_stride;
-            current_stride *= shape.dim_size(i);
+            current_stride *= shape.at(i);
           }
           const float val = input[index];
           const int32_t quantized_value =

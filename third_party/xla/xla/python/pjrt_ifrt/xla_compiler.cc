@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -74,13 +75,22 @@ class XlaCompileOptionsSerDes
           "xla::ifrt::XlaCompileOptions with loaded_host_callbacks is not "
           "serializable");
     }
+    if (xla_compile_options.entrypoint_relocatable != nullptr ||
+        !xla_compile_options.dependent_relocatables.empty()) {
+      return absl::UnimplementedError(
+          "xla::ifrt::XlaCompileOptions with relocatables is not serializable");
+    }
     if (xla_compile_options.outputs_bundle_slice_sizes.has_value()) {
-      if (version.version_number() < SerDesVersionNumber(4)) {
+      const SerDesVersionNumber min_version(
+          xla_compile_options.outputs_bundle_slice_sizes->empty() ? 7 : 4);
+      if (version.version_number() < min_version) {
         return absl::FailedPreconditionError(
             absl::StrCat("Unsupported ", version.version_number(),
                          " for XlaCompileOptions serialization with "
                          "outputs_bundle_slice_sizes"));
       }
+      proto.set_version_number(min_version.value());
+      proto.set_has_outputs_bundle_slice_sizes(true);
       proto.mutable_outputs_bundle_slice_sizes()->Add(
           xla_compile_options.outputs_bundle_slice_sizes->begin(),
           xla_compile_options.outputs_bundle_slice_sizes->end());
@@ -97,7 +107,7 @@ class XlaCompileOptionsSerDes
           "Unable to parse serialized XlaCompileOptionsProto");
     }
     const SerDesVersionNumber version_number(proto.version_number());
-    if (version_number > SerDesVersionNumber(4)) {
+    if (version_number > SerDesVersionNumber(7)) {
       return absl::FailedPreconditionError(
           absl::StrCat("Unsupported ", version_number,
                        " for XlaCompileOptions deserialization"));
@@ -107,7 +117,8 @@ class XlaCompileOptionsSerDes
     ABSL_ASSIGN_OR_RETURN(options->compile_options,
                      xla::CompileOptions::FromProto(proto.compile_options()));
     if (version_number >= SerDesVersionNumber(4)) {
-      if (!proto.outputs_bundle_slice_sizes().empty()) {
+      if (proto.has_outputs_bundle_slice_sizes() ||
+          !proto.outputs_bundle_slice_sizes().empty()) {
         options->outputs_bundle_slice_sizes.emplace(
             proto.outputs_bundle_slice_sizes().begin(),
             proto.outputs_bundle_slice_sizes().end());
@@ -142,8 +153,8 @@ absl::StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
 
 absl::StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
 GetXlaDeserializeExecutableOptions(
-    std::unique_ptr<DeserializeExecutableOptions> options) {
-  if (!isa<XlaDeserializeExecutableOptions>(options.get())) {
+    absl_nullable std::unique_ptr<DeserializeExecutableOptions> options) {
+  if (!isa_and_nonnull<XlaDeserializeExecutableOptions>(options.get())) {
     return xla::InvalidArgument(
         "options must be XlaDeserializeExecutableOptions");
   }
@@ -152,7 +163,7 @@ GetXlaDeserializeExecutableOptions(
 }
 
 absl::StatusOr<xla::ifrt::DeviceListRef> GetDeviceListFromDeviceAssignment(
-    xla::ifrt::Client* ifrt_client,
+    xla::ifrt::Client* absl_nonnull ifrt_client,
     const xla::DeviceAssignment& device_assignment) {
   std::vector<xla::ifrt::Device*> devices;
   devices.reserve(device_assignment.replica_count() *
@@ -169,7 +180,7 @@ absl::StatusOr<xla::ifrt::DeviceListRef> GetDeviceListFromDeviceAssignment(
 }
 
 absl::StatusOr<xla::ifrt::DeviceListRef> GetDeviceListFromXlaCompileOptions(
-    xla::ifrt::Client* ifrt_client,
+    xla::ifrt::Client* absl_nonnull ifrt_client,
     const xla::CompileOptions& compile_options) {
   if (compile_options.executable_build_options.has_device_assignment()) {
     return GetDeviceListFromDeviceAssignment(

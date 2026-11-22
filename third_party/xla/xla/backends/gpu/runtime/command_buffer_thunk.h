@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
@@ -38,15 +41,32 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
+
+struct CommandBufferThunkOptions {
+  // When true, allows command buffers to be used while profiling is active.
+  // When false, the thunk runs its thunk sequence op-by-op while a profiler
+  // session is active, to work around b/290773547 (CUPTI tracing of CUDA
+  // graphs has corrupted memory).
+  // TODO(b/355487968): Remove this option when validation complete.
+  bool enable_command_buffers_during_profiling = false;
+
+  // When true, requests that the HLO annotation of each command buffer graph
+  // node be recorded into the backend's annotation registry whenever the
+  // command buffer is recorded or updated. Recording happens only if the
+  // command buffer `SupportsNodeAnnotations()` (CUDA 13.2+); otherwise the
+  // request is ignored with a one-time warning.
+  bool enable_command_buffer_telemetry = false;
+};
 
 class CommandBufferThunk : public Thunk {
  public:
   CommandBufferThunk(CommandExecutor commands, ThunkInfo thunk_info,
                      int devices_in_process,
                      std::unique_ptr<SequentialThunk> thunks = nullptr,
-                     bool enable_command_buffers_during_profiling = false);
+                     CommandBufferThunkOptions options = {});
 
   const std::unique_ptr<SequentialThunk>& thunks() const { return thunks_; }
 
@@ -86,7 +106,16 @@ class CommandBufferThunk : public Thunk {
     return enable_command_buffers_during_profiling_;
   }
 
+  // Returns whether command buffer telemetry was requested for this thunk.
+  // Annotations are recorded only if the command buffer also
+  // `SupportsNodeAnnotations()`.
+  bool IsCommandBufferTelemetryEnabled() const {
+    return enable_command_buffer_telemetry_;
+  }
+
  private:
+  struct CliqueState;
+
   // Command buffer instantiated on a `se::StreamExecutor` instance, and
   // auxiliary state required for efficient command buffer updates.
   struct ExecutorCommandBuffer {
@@ -142,12 +171,23 @@ class CommandBufferThunk : public Thunk {
     // will do the proper NCCL setup, so later iterations running through
     // command buffer does not need to call NCCL setup APIs.
     bool warmup_done ABSL_GUARDED_BY(mutex) = false;
+
+    // Handles tied to the GPU cliques active when this command buffer was
+    // created.
+    std::vector<tsl::TiedRef<CliqueState>> clique_refs;
   };
 
   struct DeviceState {
     absl::Mutex mutex;
     std::shared_ptr<ExecutorCommandBuffer> command_buffer
         ABSL_GUARDED_BY(mutex);
+
+    // Symmetric memories (see `CollectiveMemory::symmetric_memory_ids`) that
+    // were passed to the last successful `commands_.Record(...)` into
+    // `command_buffer`. Unset until `command_buffer` is recorded for the first
+    // time.
+    std::optional<std::vector<CollectiveMemory::SymmetricMemoryId>>
+        recorded_symmetric_memory_ids ABSL_GUARDED_BY(mutex);
   };
 
   // Command buffer thunk owns one command buffer for each executor it runs on.
@@ -158,9 +198,31 @@ class CommandBufferThunk : public Thunk {
     PerDeviceState<DeviceState> device_states;
   };
 
-  // Returns a command buffer for `executor` or creates a new one.
+  // Returns a command buffer for `executor` or creates a new one. Replaces the
+  // existing command buffer with a new one if it was recorded with different
+  // symmetric memories than `collective_memory` has (or might have) now.
   absl::StatusOr<std::shared_ptr<ExecutorCommandBuffer>>
-  GetOrCreateCommandBuffer(se::StreamExecutor* executor);
+  GetOrCreateCommandBuffer(se::StreamExecutor* executor,
+                           CollectiveCliques* collective_cliques = nullptr,
+                           const CollectiveMemory* collective_memory = nullptr);
+
+  // Records `commands_` into `cmd_buffer` and remembers the symmetric memory
+  // IDs of `collective_memory` that were captured.
+  absl::Status RecordCommands(se::StreamExecutor* executor,
+                              const Thunk::ExecuteParams& execute_params,
+                              Command::RecordParams record_params,
+                              ExecutorCommandBuffer* cmd_buffer,
+                              const CollectiveMemory* collective_memory)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(cmd_buffer->mutex);
+
+  // Remembers the symmetric memories of `collective_memory` as the ones
+  // recorded into `cmd_buffer`, if it is still the command buffer of
+  // `executor`. Must be called after a successful `commands_.Record(...)`
+  // while holding `cmd_buffer->mutex` (lock order: `ExecutorCommandBuffer`
+  // mutex before `DeviceState` mutex).
+  void SetRecordedSymmetricMemoryIds(se::StreamExecutor* executor,
+                                     const ExecutorCommandBuffer* cmd_buffer,
+                                     const CollectiveMemory* collective_memory);
 
   // Each individual command buffer allocates state on device (CUDA graph) and
   // it adds up pretty quickly. To prevent OOM errors we proactively evict
@@ -178,6 +240,10 @@ class CommandBufferThunk : public Thunk {
   // Evicts all previously instantiated command buffers.
   static void EvictCommandBuffers();
 
+  // Returns true if telemetry is requested and `cmd_buffer` supports node
+  // annotations; logs a warning once otherwise.
+  bool ShouldRecordTelemetry(const se::CommandBuffer& cmd_buffer) const;
+
   // Commands executor that initializes command buffers on each stream executor.
   CommandExecutor commands_;
 
@@ -192,6 +258,9 @@ class CommandBufferThunk : public Thunk {
   // When true, allows command buffers to be used while profiling active.
   // TODO(b/355487968): Remove this option when validation complete.
   bool enable_command_buffers_during_profiling_;
+
+  // See `CommandBufferThunkOptions::enable_command_buffer_telemetry`.
+  bool enable_command_buffer_telemetry_;
 
   // Command buffer thunk state allocated in heap to allow global (per-process)
   // management of instantiated command buffers.

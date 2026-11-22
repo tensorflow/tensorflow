@@ -18,6 +18,7 @@ limitations under the License.
 #include <exception>
 #include <variant>
 
+#include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -67,6 +68,7 @@ struct BackendVisitor {
         gpu.cpu_target_machine_options,
         gpu.computation_streams,
         gpu.communication_streams,
+        gpu.command_buffer_requests,
     };
   }
 };
@@ -89,11 +91,9 @@ static XLA_FFI_InvokeContext CreateExecutionContext(
 }
 
 template <typename Handler>
-static absl::StatusOr<XLA_FFI_Future*> Invoke(const XLA_FFI_Api* api,
-                                              Handler& handler,
-                                              CallFrame& call_frame,
-                                              const InvokeContext& context,
-                                              ExecutionStage stage) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI static absl::StatusOr<XLA_FFI_Future*> Invoke(
+    const XLA_FFI_Api* api, Handler& handler, CallFrame& call_frame,
+    const InvokeContext& context, ExecutionStage stage) {
   XLA_FFI_InvokeContext ctx = CreateExecutionContext(context);
 
   XLA_FFI_CallFrame ffi_call_frame =
@@ -218,8 +218,8 @@ absl::StatusOr<XLA_FFI_Metadata> GetMetadata(const XLA_FFI_Api* api,
   return metadata;
 }
 
-absl::StatusOr<XLA_FFI_Metadata> GetMetadata(const XLA_FFI_Api* api,
-                                             XLA_FFI_Handler* handler) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<XLA_FFI_Metadata> GetMetadata(
+    const XLA_FFI_Api* api, XLA_FFI_Handler* handler) {
   XLA_FFI_Metadata metadata = PrepareMetadata();
   XLA_FFI_Metadata_Extension extension = PrepareMetadataExtension(&metadata);
   XLA_FFI_CallFrame call_frame = PrepareMetadataCallFrame(api, &extension);

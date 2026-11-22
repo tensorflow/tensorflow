@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -825,30 +826,50 @@ std::tuple<double, double> ExtractMinMax(UniformQuantizedType type) {
   return {real_min, real_max};
 }
 
+}  // namespace
+
+namespace internal {
+
 QuantizedType CalculateNewQuantizedType(
     llvm::ArrayRef<UniformQuantizedType> qtypes) {
+  if (qtypes.empty()) {
+    return nullptr;
+  }
   if (qtypes.size() == 1) {
     return qtypes[0];
   }
 
   double real_min = std::numeric_limits<double>::max();
-  double real_max = std::numeric_limits<double>::min();
+  double real_max = std::numeric_limits<double>::lowest();
   for (auto uniform_qtype : qtypes) {
     auto min_max = ExtractMinMax(uniform_qtype);
     real_min = std::min(real_min, std::get<0>(min_max));
     real_max = std::max(real_max, std::get<1>(min_max));
   }
   auto uniform_qtype = qtypes[0];
-  double q_min = static_cast<double>(uniform_qtype.getStorageTypeMin());
-  double q_max = static_cast<double>(uniform_qtype.getStorageTypeMax());
+  int64_t storage_min = uniform_qtype.getStorageTypeMin();
+  int64_t storage_max = uniform_qtype.getStorageTypeMax();
+  double q_min = static_cast<double>(storage_min);
+  double q_max = static_cast<double>(storage_max);
   double scale = (real_max - real_min) / (q_max - q_min);
-  int64_t zero_point = static_cast<int64_t>(q_min - (real_min / scale));
+  if (!std::isfinite(scale) || scale <= 0.0) {
+    return uniform_qtype;
+  }
+  const double clamped_zp =
+      std::clamp(q_min - (real_min / scale), q_min, q_max);
+  int64_t zero_point = std::llround(clamped_zp);
 
   return UniformQuantizedType::get(
       uniform_qtype.getFlags(), uniform_qtype.getStorageType(),
       uniform_qtype.getExpressedType(), scale, zero_point,
       uniform_qtype.getStorageTypeMin(), uniform_qtype.getStorageTypeMax());
 }
+
+}  // namespace internal
+
+namespace {
+
+using internal::CalculateNewQuantizedType;
 
 }  // namespace
 

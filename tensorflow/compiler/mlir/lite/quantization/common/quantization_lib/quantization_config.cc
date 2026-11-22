@@ -21,26 +21,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "tensorflow/core/framework/types.pb.h"
-
-// Returns whether the given dtype is a quantization type in TensorFlow.
-static bool IsQuantizationType(tensorflow::DataType dtype) {
-  switch (dtype) {
-    case tensorflow::DT_QINT8:
-    case tensorflow::DT_QUINT8:
-    case tensorflow::DT_QINT16:
-    case tensorflow::DT_QUINT16:
-    case tensorflow::DT_QINT32:
-      return true;
-    default:
-      return false;
-  }
-}
 
 namespace mlir {
 namespace TFL {
@@ -52,6 +36,51 @@ bool GetBooleanSpecs(const std::string& bool_val) {
   return result;
 }
 }  // namespace
+
+absl::string_view InferenceDataTypeName(const InferenceDataType type) {
+  switch (type) {
+    case InferenceDataType::kInvalid:
+      return "DT_INVALID";
+    case InferenceDataType::kFloat:
+      return "DT_FLOAT";
+    case InferenceDataType::kHalf:
+      return "DT_HALF";
+    case InferenceDataType::kInt8:
+      return "DT_INT8";
+    case InferenceDataType::kUInt8:
+      return "DT_UINT8";
+    case InferenceDataType::kInt16:
+      return "DT_INT16";
+    case InferenceDataType::kUInt16:
+      return "DT_UINT16";
+    case InferenceDataType::kInt32:
+      return "DT_INT32";
+    case InferenceDataType::kQInt8:
+      return "DT_QINT8";
+    case InferenceDataType::kQUInt8:
+      return "DT_QUINT8";
+    case InferenceDataType::kQInt16:
+      return "DT_QINT16";
+    case InferenceDataType::kQUInt16:
+      return "DT_QUINT16";
+    case InferenceDataType::kQInt32:
+      return "DT_QINT32";
+  }
+  return "DT_INVALID";
+}
+
+bool IsQuantizedInferenceDataType(const InferenceDataType type) {
+  switch (type) {
+    case InferenceDataType::kQInt8:
+    case InferenceDataType::kQUInt8:
+    case InferenceDataType::kQInt16:
+    case InferenceDataType::kQUInt16:
+    case InferenceDataType::kQInt32:
+      return true;
+    default:
+      return false;
+  }
+}
 
 void ParseCustomOpSpecs(const absl::string_view node_names,
                         const CustomOpUpdateOptions& update_option,
@@ -87,51 +116,10 @@ void ParseCustomOpSpecs(const absl::string_view node_names,
   }
 }
 
-bool ParseInputNodeQuantSpecs(const absl::string_view node_names,
-                              const absl::string_view min_values,
-                              const absl::string_view max_values,
-                              const absl::string_view inference_type,
-                              QuantizationSpecs* quant_specs) {
-  const std::vector<std::string> input_nodes = absl::StrSplit(node_names, ',');
-  std::vector<std::optional<double>> node_mins;
-  if (!min_values.empty()) {
-    std::vector<std::string> node_mins_str = absl::StrSplit(min_values, ',');
-    for (const std::string& node_mins_str : node_mins_str) {
-      double value;
-      if (!absl::SimpleAtod(node_mins_str, &value)) {
-        llvm::errs() << "Unexpected mins: " << node_mins_str << "\n";
-        return true;
-      }
-      node_mins.push_back(value);
-    }
-  }
-
-  std::vector<std::optional<double>> node_maxs;
-  if (!max_values.empty()) {
-    const std::vector<std::string> node_maxs_str =
-        absl::StrSplit(max_values, ',');
-    for (const std::string& node_maxs_str : node_maxs_str) {
-      double value;
-      if (!absl::SimpleAtod(node_maxs_str, &value)) {
-        llvm::errs() << "Unexpected mins: " << node_maxs_str << "\n";
-        return true;
-      }
-      node_maxs.push_back(value);
-    }
-  }
-
-  tensorflow::DataType final_type = tensorflow::DT_FLOAT;
-  if (!inference_type.empty() && !DataType_Parse(inference_type, &final_type)) {
-    return true;
-  }
-  return GetInputNodeQuantSpecs(input_nodes, node_mins, node_maxs, final_type,
-                                quant_specs);
-}
-
 bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
                             const std::vector<std::optional<double>>& node_mins,
                             const std::vector<std::optional<double>>& node_maxs,
-                            const tensorflow::DataType inference_type,
+                            const InferenceDataType inference_type,
                             QuantizationSpecs* quant_specs) {
   quant_specs->inference_type = inference_type;
 
@@ -139,7 +127,7 @@ bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
   if (node_mins.empty() || node_maxs.empty()) return false;
 
   // Otherwise make sure min/max has the same size as inputs.
-  if (IsQuantizationType(inference_type)) {
+  if (IsQuantizedInferenceDataType(inference_type)) {
     // min/max should have same size as inputs, or shouldn't be specified.
     if (node_names.size() != node_mins.size() ||
         node_names.size() != node_maxs.size()) {

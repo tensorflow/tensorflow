@@ -98,9 +98,9 @@ xla_test(
         "//xla/backends/gpu/runtime:command_executor",
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/runtime:thunk_test_utils",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
-        "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service:shaped_slice",
         "//xla/service/gpu:buffer_allocations",
@@ -122,7 +122,6 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

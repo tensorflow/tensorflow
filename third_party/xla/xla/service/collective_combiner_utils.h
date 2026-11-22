@@ -91,6 +91,10 @@ absl::StatusOr<bool> CombineInstructionsByKey(
   }
 
   bool changed = false;
+  // Only a combine can change the graph, so the reachability map and the post
+  // order stay valid until then. A null map means they have to be rebuilt.
+  std::unique_ptr<HloReachabilityMap> reachability;
+  std::vector<HloInstruction*> post_order;
 
   // Keys are removed after the instruction is combined (or never will be).
   while (!keys.empty()) {
@@ -101,11 +105,12 @@ absl::StatusOr<bool> CombineInstructionsByKey(
     // Recompute reachability after every combine group because we can't
     // maintain a cross group topological order to be able to rely on the
     // transitive dependencies to detect cycles.
-    std::unique_ptr<HloReachabilityMap> reachability =
-        HloReachabilityMap::Build(computation);
+    if (reachability == nullptr) {
+      reachability = HloReachabilityMap::Build(computation);
+      post_order = computation->MakeInstructionPostOrder();
+    }
 
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
+    for (HloInstruction* instruction : post_order) {
       auto it = keys.find(instruction);
       if (it == keys.end()) continue;
 
@@ -193,6 +198,9 @@ absl::StatusOr<bool> CombineInstructionsByKey(
     if (to_combine.size() > 1) {
       ABSL_RETURN_IF_ERROR(combine_fn(to_combine));
       changed = true;
+      // Free the stale map now, so that it is gone before the next one is
+      // built.
+      reachability.reset();
     }
   }
 

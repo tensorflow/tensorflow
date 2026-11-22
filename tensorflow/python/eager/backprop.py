@@ -1192,8 +1192,11 @@ class GradientTape:
             " to compute the jacobian with eager execution enabled and with "
             " experimental_use_pfor set to False.")
       output = pfor_ops.for_loop(
-          loop_fn, [target.dtype] * len(flat_sources), target_size,
-          parallel_iterations=parallel_iterations)
+          loop_fn,
+          [dtypes.as_dtype(source.dtype) for source in flat_sources],
+          target_size,
+          parallel_iterations=parallel_iterations,
+      )
 
     for i, out in enumerate(output):
       if out is not None:
@@ -1338,14 +1341,18 @@ class GradientTape:
             "GradientTape must be created with persistent=True"
             " to compute the batch_jacobian with eager execution enabled and "
             " with experimental_use_pfor set to False.")
-      output = pfor_ops.for_loop(loop_fn, target.dtype, target_row_size,
-                                 parallel_iterations=parallel_iterations)
+      output = pfor_ops.for_loop(
+          loop_fn,
+          dtypes.as_dtype(source.dtype),
+          target_row_size,
+          parallel_iterations=parallel_iterations,
+      )
     new_shape = array_ops.concat([target_shape, source_shape[1:]], axis=0)
     if output is None:
       # Note that this block is returning zeros when it could use `None` to
       # represent unconnected gradients. This is to maintain compatibility with
       # the previous behavior, which ignored `unconnected_gradients`.
-      output = array_ops.zeros(new_shape, target.dtype)
+      output = array_ops.zeros(new_shape, dtypes.as_dtype(source.dtype))
       return output
     else:
       output = array_ops.reshape(output,

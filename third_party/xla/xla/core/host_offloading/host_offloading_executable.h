@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/host_offloading/host_offloading_allocator.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
+#include "xla/custom_options.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -44,7 +45,6 @@ namespace xla {
 // Sets up host-offloading-specific options in HLO module config.
 inline void SetHostOffloadingHloModuleConfig(HloModuleConfig& config) {
   auto& debug_options = config.mutable_debug_options();
-  debug_options.set_xla_cpu_copy_insertion_use_region_analysis(true);
   // TODO(b/374556751): Megascale custom calls do not have correct data
   // dependencies and can be scheduled in wrong order.
   debug_options.set_xla_cpu_scheduler_type(
@@ -83,9 +83,10 @@ class HostOffloadingExecutable {
   virtual ~HostOffloadingExecutable() = default;
 
   struct ExecuteOptions {
-    int32_t device_index;
-    int32_t launch_id;
-    const ExecuteContext* context;
+    int32_t device_index = 0;
+    int32_t launch_id = 0;
+    const ExecuteContext* context = nullptr;
+    std::shared_ptr<const CustomOptions> custom_options;
   };
 
   // Executes host offloading executable with given `parameters` and writes

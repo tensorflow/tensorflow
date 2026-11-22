@@ -13,11 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/util/strided_slice_op.h"
+
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <vector>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -30,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/util/strided_slice_op.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 namespace {
@@ -121,6 +128,193 @@ void BM_ValidateStridedSliceOp(::testing::benchmark::State& state) {
 }
 
 BENCHMARK(BM_ValidateStridedSliceOp);
+
+class StridedSliceZeroCopyTest : public OpsTestBase {
+ protected:
+  void MakeStridedSliceOp(DataType dtype, int begin_mask = 0, int end_mask = 0,
+                          int shrink_axis_mask = 0) {
+    TF_ASSERT_OK(NodeDefBuilder("strided_slice", "StridedSlice")
+                     .Input(FakeInput(dtype))
+                     .Input(FakeInput(DT_INT32))
+                     .Input(FakeInput(DT_INT32))
+                     .Input(FakeInput(DT_INT32))
+                     .Attr("T", dtype)
+                     .Attr("Index", DT_INT32)
+                     .Attr("begin_mask", begin_mask)
+                     .Attr("end_mask", end_mask)
+                     .Attr("shrink_axis_mask", shrink_axis_mask)
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(StridedSliceZeroCopyTest,
+       ZeroCopiesPrefixSliceWithLeadingUnitDimAndUnalignedInnerDim) {
+  MakeStridedSliceOp(DT_FLOAT, /*begin_mask=*/0b101, /*end_mask=*/0b101);
+
+  std::vector<float> values(1 * 8 * 7);
+  for (int i = 0; i < static_cast<int>(values.size()); ++i) {
+    values[i] = static_cast<float>(i);
+  }
+  AddInputFromArray<float>(TensorShape({1, 8, 7}), values);
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 3, 7});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 1, 1});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ(output->shape(), TensorShape({1, 3, 7}));
+  EXPECT_TRUE(output->IsAligned());
+  EXPECT_EQ(output->data(), GetInput(0).data());
+  for (int i = 0; i < 3 * 7; ++i) {
+    EXPECT_FLOAT_EQ(output->flat<float>()(i), static_cast<float>(i))
+        << "at index " << i;
+  }
+}
+
+TEST_F(StridedSliceZeroCopyTest, ZeroCopies2DPrefixSliceWithLeadingUnitDim) {
+  MakeStridedSliceOp(DT_FLOAT);
+
+  AddInputFromArray<float>(TensorShape({1, 10}),
+                           {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 3});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ(output->shape(), TensorShape({1, 3}));
+  EXPECT_TRUE(output->IsAligned());
+  EXPECT_EQ(output->data(), GetInput(0).data());
+  test::ExpectTensorEqual<float>(
+      *output, test::AsTensor<float>({0, 1, 2}, TensorShape({1, 3})));
+}
+
+TEST_F(StridedSliceZeroCopyTest, ZeroCopiesShrunkLeadingUnitDim) {
+  MakeStridedSliceOp(DT_FLOAT, /*begin_mask=*/0b100, /*end_mask=*/0b100,
+                     /*shrink_axis_mask=*/0b001);
+
+  std::vector<float> values(1 * 6 * 5);
+  for (int i = 0; i < static_cast<int>(values.size()); ++i) {
+    values[i] = static_cast<float>(i);
+  }
+  AddInputFromArray<float>(TensorShape({1, 6, 5}), values);
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 2, 5});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 1, 1});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ(output->shape(), TensorShape({2, 5}));
+  EXPECT_TRUE(output->IsAligned());
+  EXPECT_EQ(output->data(), GetInput(0).data());
+}
+
+TEST_F(StridedSliceZeroCopyTest, CopiesWhenStartOffsetIsNonZero) {
+  MakeStridedSliceOp(DT_FLOAT, /*begin_mask=*/0b101, /*end_mask=*/0b101);
+
+  // Even when the row stride is 64-byte aligned, non-zero start offsets copy
+  // rather than aliasing.
+  std::vector<float> values(1 * 6 * 16);
+  for (int i = 0; i < static_cast<int>(values.size()); ++i) {
+    values[i] = static_cast<float>(i);
+  }
+  AddInputFromArray<float>(TensorShape({1, 6, 16}), values);
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 2, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 5, 16});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 1, 1});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ(output->shape(), TensorShape({1, 3, 16}));
+  EXPECT_TRUE(output->IsAligned());
+  EXPECT_FALSE(output->SharesBufferWith(GetInput(0)));
+  for (int i = 0; i < 3 * 16; ++i) {
+    EXPECT_FLOAT_EQ(output->flat<float>()(i), static_cast<float>(i + 2 * 16))
+        << "at index " << i;
+  }
+}
+
+TEST_F(StridedSliceZeroCopyTest,
+       DoesNotShareBufferForEmptySliceWithLeadingUnitDim) {
+  MakeStridedSliceOp(DT_FLOAT, /*begin_mask=*/0b101, /*end_mask=*/0b101);
+
+  std::vector<float> values(1 * 8 * 7, 1.0f);
+  AddInputFromArray<float>(TensorShape({1, 8, 7}), values);
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 0, 7});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 1, 1});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ(output->shape(), TensorShape({1, 0, 7}));
+  EXPECT_FALSE(output->SharesBufferWith(GetInput(0)));
+}
+
+TEST_F(StridedSliceZeroCopyTest,
+       DoesNotShareBufferForDegenerateEmptySliceWithLeadingUnitDim) {
+  MakeStridedSliceOp(DT_FLOAT, /*begin_mask=*/0b101, /*end_mask=*/0b101);
+
+  std::vector<float> values(1 * 8 * 7, 1.0f);
+  AddInputFromArray<float>(TensorShape({1, 8, 7}), values);
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 5, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 3, 7});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 1, 1});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ(output->shape(), TensorShape({1, 0, 7}));
+  EXPECT_FALSE(output->SharesBufferWith(GetInput(0)));
+}
+
+TEST_F(StridedSliceZeroCopyTest, DoesNotZeroCopyNonMemcpyStringType) {
+  MakeStridedSliceOp(DT_STRING, /*begin_mask=*/0b01, /*end_mask=*/0b01);
+
+  AddInputFromArray<tstring>(TensorShape({1, 4}), {"a", "b", "c", "d"});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ(output->shape(), TensorShape({1, 2}));
+  EXPECT_NE(output->data(), GetInput(0).data());
+  test::ExpectTensorEqual<tstring>(
+      *output, test::AsTensor<tstring>({"a", "b"}, TensorShape({1, 2})));
+}
+
+TEST_F(StridedSliceZeroCopyTest, CopiesWhenOuterBatchDimExceedsOne) {
+  MakeStridedSliceOp(DT_FLOAT, /*begin_mask=*/0b101, /*end_mask=*/0b101);
+
+  std::vector<float> values(2 * 4 * 8);
+  for (int i = 0; i < static_cast<int>(values.size()); ++i) {
+    values[i] = static_cast<float>(i);
+  }
+  AddInputFromArray<float>(TensorShape({2, 4, 8}), values);
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {2, 2, 8});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 1, 1});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ(output->shape(), TensorShape({2, 2, 8}));
+  EXPECT_NE(output->data(), GetInput(0).data());
+  for (int b = 0; b < 2; ++b) {
+    for (int i = 0; i < 2 * 8; ++i) {
+      EXPECT_FLOAT_EQ(output->flat<float>()(b * 16 + i),
+                      static_cast<float>(b * 32 + i))
+          << "at batch " << b << ", index " << i;
+    }
+  }
+}
 
 }  // namespace
 }  // namespace tensorflow

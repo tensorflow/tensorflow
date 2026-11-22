@@ -112,6 +112,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:sparse_utils",
         "//tensorflow/core/kernels:transpose_functor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/util:cuda_solvers",

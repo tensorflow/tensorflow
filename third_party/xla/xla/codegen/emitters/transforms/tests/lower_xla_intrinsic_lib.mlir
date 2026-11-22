@@ -330,6 +330,17 @@ func.func @log1p_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
 
 // -----
 
+func.func @log_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
+  %ret = math.log %arg0 : vector<16xf32>
+  return %ret : vector<16xf32>
+}
+// CHECK-LABEL: @log_f32_vector_16
+// CHECK-NOT: vector.extract_strided_slice
+// CHECK: %[[CALL:.*]] = call @xla.log.v16f32(%arg0) : (vector<16xf32>) -> vector<16xf32>
+// CHECK: return %[[CALL]]
+
+// -----
+
 func.func @erf_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
   %ret = math.erf %arg0 : vector<16xf32>
   return %ret : vector<16xf32>

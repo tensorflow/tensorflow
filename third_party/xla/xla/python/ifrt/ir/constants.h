@@ -74,6 +74,13 @@ inline constexpr llvm::StringLiteral kIfrtModuleTypeXla = "xla";
 inline constexpr llvm::StringLiteral kIfrtModuleTypeMpmdReshard =
     "mpmd_reshard";
 
+// Name of StringAttr on CallOp or CallLoadedExecutableOp used to contain the
+// mesh name the IFRT atom program will execute on. The mesh name is used as a
+// key into a mapping of optional compile options provided by users per mesh.
+// If no compile options are provided for a mesh, then the default compile
+// options are used.
+inline constexpr llvm::StringLiteral kIfrtMeshNameAttrName = "ifrt.mesh_name";
+
 // String value used as a default value for an optional `mlir::StringAttr` when
 // converting to and from VIFRT.
 inline constexpr llvm::StringLiteral kVifrtDefaultString = "vifrt.default";

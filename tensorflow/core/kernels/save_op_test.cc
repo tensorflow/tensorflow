@@ -659,7 +659,7 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
                                      reloaded.flat<float>().data()));
 
     for (int64_t i = 0; i < reloaded.NumElements(); ++i) {
-      EXPECT_EQ(static_cast<float>(i) / 10, reloaded.flat<float>().data()[i]);
+      EXPECT_EQ(static_cast<float>(i) / 10, reloaded.flat<float>()(i));
     }
   }
 }

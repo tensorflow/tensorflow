@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/execution_stream_assignment.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/transforms/collectives/collective_domain.h"
@@ -34,6 +37,120 @@ namespace xla::gpu {
 namespace {
 
 class ExecutionStreamAssignmentTest : public HloHardwareIndependentTestBase {};
+
+std::string AnnotatedCallStartModule(absl::string_view annotation,
+                                     bool communication_scope = false) {
+  return absl::StrCat(R"(
+    HloModule m
+
+    leaf {
+      p0 = f32[2] parameter(0)
+      ROOT add = f32[2] add(p0, p0)
+    }
+
+    ENTRY entry {
+      p0 = f32[2] parameter(0)
+      start = ((f32[2]), f32[2]) call-start(p0), to_apply=leaf,
+        frontend_attributes={_xla_stream_annotation=")",
+                      annotation, "\"",
+                      communication_scope ? R"(, _collectives_group="")" : "",
+                      R"(}
+      ROOT done = f32[2] call-done(start)
+    }
+  )");
+}
+
+struct LocalityDomainAnnotationTestCase {
+  const char* name;
+  const char* annotation;
+  uint64_t expected_domain_id;
+};
+
+class ValidLocalityDomainAnnotationTest
+    : public ExecutionStreamAssignmentTest,
+      public ::testing::WithParamInterface<LocalityDomainAnnotationTestCase> {};
+
+TEST_P(ValidLocalityDomainAnnotationTest, AssignsLocalityDomainStream) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(
+                           AnnotatedCallStartModule(GetParam().annotation)));
+
+  ExecutionStreamAssignment assignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(
+          LocalityDomainStreamId(GetParam().expected_domain_id))));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    LocalityDomainIds, ValidLocalityDomainAnnotationTest,
+    ::testing::ValuesIn<LocalityDomainAnnotationTestCase>({
+        {"Zero", "locality_domain:0", 0},
+        {"LeadingZero", "locality_domain:01", 1},
+    }),
+    [](const ::testing::TestParamInfo<LocalityDomainAnnotationTestCase>& info) {
+      return info.param.name;
+    });
+
+struct MalformedLocalityDomainAnnotationTestCase {
+  const char* name;
+  const char* annotation;
+  const char* message_regex;
+};
+
+class MalformedLocalityDomainAnnotationTest
+    : public ExecutionStreamAssignmentTest,
+      public ::testing::WithParamInterface<
+          MalformedLocalityDomainAnnotationTestCase> {};
+
+TEST_P(MalformedLocalityDomainAnnotationTest, DiesWithCheckMessage) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(
+                           AnnotatedCallStartModule(GetParam().annotation)));
+
+  EXPECT_DEATH(ExecutionStreamAssignment(module.get()),
+               GetParam().message_regex);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    InvalidSyntax, MalformedLocalityDomainAnnotationTest,
+    ::testing::ValuesIn<MalformedLocalityDomainAnnotationTestCase>({
+        {"MissingColon", "locality_domain",
+         "Invalid locality-domain stream annotation: expected"},
+        {"EmptySuffix", "locality_domain:",
+         "Invalid locality-domain stream annotation: expected"},
+        {"NegativeSign", "locality_domain:-1",
+         "domain id must be an unsigned decimal integer"},
+        {"PositiveSign", "locality_domain:+1",
+         "domain id must be an unsigned decimal integer"},
+        {"LeadingWhitespace", "locality_domain: 1",
+         "domain id must be an unsigned decimal integer"},
+        {"TrailingWhitespace", "locality_domain:1 ",
+         "domain id must be an unsigned decimal integer"},
+        {"Alphabetic", "locality_domain:abc",
+         "domain id must be an unsigned decimal integer"},
+        {"Decimal", "locality_domain:1.0",
+         "domain id must be an unsigned decimal integer"},
+        {"TrailingJunk", "locality_domain:1x",
+         "domain id must be an unsigned decimal integer"},
+        {"Uint64Overflow", "locality_domain:18446744073709551616",
+         "domain id is out of range"},
+    }),
+    [](const ::testing::TestParamInfo<
+        MalformedLocalityDomainAnnotationTestCase>& info) {
+      return info.param.name;
+    });
+
+TEST_F(ExecutionStreamAssignmentTest,
+       LocalityDomainAnnotationRejectsCommunicationScope) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(AnnotatedCallStartModule(
+                           "locality_domain:0",
+                           /*communication_scope=*/true)));
+
+  EXPECT_DEATH(ExecutionStreamAssignment(module.get()),
+               "cannot be assigned to a communication execution scope");
+}
 
 TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
   const char* kModuleStr = R"(
@@ -383,6 +500,53 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
   EXPECT_THAT(assignment.GetExecutionStreamId(
                   FindInstruction(module.get(), "call-done")),
               absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       LocalityDomainDoesNotConsumeRoundRobinStream) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    leaf0 {
+      p0 = f32[2] parameter(0)
+      ROOT add = f32[2] add(p0, p0)
+    }
+    leaf1 {
+      p0 = f32[2] parameter(0)
+      ROOT add = f32[2] add(p0, p0)
+    }
+    leaf2 {
+      p0 = f32[2] parameter(0)
+      ROOT add = f32[2] add(p0, p0)
+    }
+
+    ENTRY entry {
+      p0 = f32[2] parameter(0)
+      start0 = ((f32[2]), f32[2]) call-start(p0), to_apply=leaf0
+      done0 = f32[2] call-done(start0)
+      locality = ((f32[2]), f32[2]) call-start(done0), to_apply=leaf1,
+        frontend_attributes={_xla_stream_annotation="locality_domain:7"}
+      locality_done = f32[2] call-done(locality)
+      start1 = ((f32[2]), f32[2]) call-start(locality_done), to_apply=leaf2
+      ROOT done1 = f32[2] call-done(start1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
+
+  ExecutionStreamAssignment assignment(
+      module.get(), {/*number_of_compute_execution_streams=*/2,
+                     /*number_of_communication_execution_streams=*/1});
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start0")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "locality")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(LocalityDomainStreamId(7))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start1")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
 }
 
 TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
@@ -783,6 +947,169 @@ TEST_F(ExecutionStreamAssignmentTest,
       assignment.GetExecutionStreamId(
           FindInstruction(module.get(), "ag-start.1")),
       absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(1))));
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       MultipleD2DCopyStartsShareSingleDedicatedStream) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m
+
+    ENTRY main {
+      p0 = f32[16]{0} parameter(0)
+      p1 = f32[16]{0} parameter(1)
+      cs0 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p0)
+      cs1 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p1)
+      cs2 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p0)
+      cd0 = f32[16]{0} copy-done(cs0)
+      cd1 = f32[16]{0} copy-done(cs1)
+      cd2 = f32[16]{0} copy-done(cs2)
+      ROOT out = (f32[16]{0}, f32[16]{0}, f32[16]{0}) tuple(cd0, cd1, cd2)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+  for (absl::string_view name : {"cs0", "cs1", "cs2"}) {
+    EXPECT_THAT(
+        assignment.GetExecutionStreamId(FindInstruction(module.get(), name)),
+        absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  }
+
+  // When dedicated memcpy streams are disabled, D2D copy-start falls back to
+  // round-robin assignment across the compute stream pool.
+  ExecutionStreamAssignment round_robin(
+      module.get(), {/*number_of_compute_execution_streams=*/2,
+                     /*number_of_communication_execution_streams=*/1,
+                     /*enable_dedicated_memcpy_streams=*/false});
+  EXPECT_THAT(
+      round_robin.GetExecutionStreamId(FindInstruction(module.get(), "cs0")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  EXPECT_THAT(
+      round_robin.GetExecutionStreamId(FindInstruction(module.get(), "cs1")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
+  EXPECT_THAT(
+      round_robin.GetExecutionStreamId(FindInstruction(module.get(), "cs2")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       ExplicitlyAnnotatedD2DCopyAvoidsUnannotatedD2DStreamCollision) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m
+
+    ENTRY main {
+      p0 = f32[16]{0} parameter(0)
+      p1 = f32[16]{0} parameter(1)
+      cs_annotated = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p0),
+          frontend_attributes={_xla_stream_annotation="0"}
+      cs0 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p1)
+      cs1 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p0)
+      cd_annotated = f32[16]{0} copy-done(cs_annotated)
+      cd0 = f32[16]{0} copy-done(cs0)
+      cd1 = f32[16]{0} copy-done(cs1)
+      ROOT out = (f32[16]{0}, f32[16]{0}, f32[16]{0}) tuple(
+          cd_annotated, cd0, cd1)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "cs_annotated")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  for (absl::string_view name : {"cs0", "cs1"}) {
+    EXPECT_THAT(
+        assignment.GetExecutionStreamId(FindInstruction(module.get(), name)),
+        absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
+  }
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       DynamicSliceCopyFusionsShareSingleStreamDisjointFromCompute) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m
+
+    compute_leaf0 {
+      p0 = f32[4] parameter(0)
+      ROOT add = f32[4] add(p0, p0)
+    }
+
+    compute_leaf1 {
+      p0 = f32[4] parameter(0)
+      ROOT mul = f32[4] multiply(p0, p0)
+    }
+
+    dus_copy0 {
+      base = f32[8] parameter(0)
+      upd = f32[4] parameter(1)
+      c0 = s32[] constant(0)
+      ROOT dus = f32[8] dynamic-update-slice(base, upd, c0),
+          backend_config={"dynamic_slice_config":
+              {"linear":{"byte_offset":"0","byte_stride":"0"}}}
+    }
+
+    ds_copy1 {
+      src = f32[8] parameter(0)
+      c1 = s32[] constant(4)
+      ROOT ds = f32[4] dynamic-slice(src, c1), dynamic_slice_sizes={4},
+          backend_config={"dynamic_slice_config":
+              {"linear":{"byte_offset":"16","byte_stride":"0"}}}
+    }
+
+    ENTRY main {
+      p_base = f32[8] parameter(0)
+      p_vec = f32[4] parameter(1)
+      comp0 = ((f32[4]), f32[4], u32[]) fusion-start(p_vec),
+          kind=kLoop, calls=compute_leaf0
+      dus0 = ((f32[8], f32[4]), f32[8], u32[]) fusion-start(p_base, p_vec),
+          kind=kLoop, calls=dus_copy0
+      comp1 = ((f32[4]), f32[4], u32[]) fusion-start(p_vec),
+          kind=kLoop, calls=compute_leaf1
+      ds1 = ((f32[8]), f32[4], u32[]) fusion-start(p_base),
+          kind=kLoop, calls=ds_copy1
+      cs_d2d = (f32[4], f32[4], u32[]) copy-start(p_vec)
+      comp0_done = f32[4] fusion-done(comp0)
+      dus0_done = f32[8] fusion-done(dus0)
+      comp1_done = f32[4] fusion-done(comp1)
+      ds1_done = f32[4] fusion-done(ds1)
+      cs_d2d_done = f32[4] copy-done(cs_d2d)
+      ROOT out = (f32[4], f32[8], f32[4], f32[4], f32[4]) tuple(
+          comp0_done, dus0_done, comp1_done, ds1_done, cs_d2d_done)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  // Compute fusions use streams 0 and 1 without being shifted by interleaved
+  // D2D copies; all D2D copy fusions and copy-starts share stream 2.
+  ExecutionStreamAssignment assignment(
+      module.get(), {/*number_of_compute_execution_streams=*/4,
+                     /*number_of_communication_execution_streams=*/1});
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "comp0")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "comp1")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
+  for (absl::string_view name : {"dus0", "ds1", "cs_d2d"}) {
+    EXPECT_THAT(
+        assignment.GetExecutionStreamId(FindInstruction(module.get(), name)),
+        absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(2))));
+  }
+
+  // When all compute pool streams (0..1) are occupied, the shared D2D stream
+  // still gets a disjoint stream ID (2).
+  ExecutionStreamAssignment full_pool(
+      module.get(), {/*number_of_compute_execution_streams=*/2,
+                     /*number_of_communication_execution_streams=*/1});
+  for (absl::string_view name : {"dus0", "ds1", "cs_d2d"}) {
+    EXPECT_THAT(
+        full_pool.GetExecutionStreamId(FindInstruction(module.get(), name)),
+        absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(2))));
+  }
 }
 
 }  // namespace

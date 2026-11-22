@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -99,12 +100,15 @@ absl::Status ThunkExecutor::ExecuteOnStream(
 
     // If progress tracker is installed for current thread, verify that a
     // thunk indexing record exists for the given `thunk`.
+    size_t thunk_idx = 0;
     if (progress_tracker) {
-      if (!progress_tracker->indexing_.contains(thunk.get())) {
+      auto it = progress_tracker->indexing_.find(thunk.get());
+      if (it == progress_tracker->indexing_.end()) {
         return Internal(
             "[thunk=%d/%d] Progress tracker is missing a record for thunk `%s`",
             i, thunks_.size(), thunk->profile_annotation());
       }
+      thunk_idx = it->second;
     }
 
     if (params.mock_collectives && thunk->IsCollective()) {
@@ -142,7 +146,7 @@ absl::Status ThunkExecutor::ExecuteOnStream(
       ABSL_RETURN_IF_ERROR(params.stream->RecordEvent(event->get()));
 
       absl::MutexLock lock(progress_tracker->mu_);
-      progress_tracker->events_.emplace_back(thunk.get(), std::move(event),
+      progress_tracker->events_.emplace_back(thunk_idx, std::move(event),
                                              loop_nest.nest);
     }
 
@@ -251,17 +255,18 @@ thread_local ThunkExecutor::ProgressTracker*
     ThunkExecutor::ScopedProgressTracker::installed = nullptr;
 
 ThunkExecutor::ProgressTracker::ThunkExecutionEvent::ThunkExecutionEvent(
-    const Thunk* thunk, EventPool::Event event,
+    size_t thunk_idx, EventPool::Event event,
     absl::Span<const WhileLoopState> loop_nest)
-    : thunk(thunk),
+    : thunk_idx(thunk_idx),
       executed(absl::Now()),
       event(std::move(event)),
       loop_nest(loop_nest.begin(), loop_nest.end()) {}
 
 ThunkExecutor::ScopedProgressTracker::ScopedProgressTracker(
-    EventPool* event_pool, ThunkIndexing indexing)
-    : tracker_(
-          std::make_shared<ProgressTracker>(std::move(indexing), event_pool)) {
+    EventPool* event_pool, ThunkIndexing indexing,
+    std::vector<ThunkMetadata> metadata)
+    : tracker_(std::make_shared<ProgressTracker>(
+          std::move(indexing), std::move(metadata), event_pool)) {
   CHECK_EQ(installed, nullptr)  // Crash OK
       << "Tried to install multiple progress trackers";
   installed = tracker_.get();
@@ -304,9 +309,9 @@ std::vector<ThunkExecution> ThunkExecutor::ProgressTracker::CollectThunks(
 
   auto collect = [&](size_t exec_idx, const ThunkExecutionEvent& event) {
     if (event.event->get()->PollForStatus() == status) {
-      result.push_back({exec_idx, indexing_.at(event.thunk), event.executed,
-                        event.thunk->kind(), event.thunk->profile_annotation(),
-                        event.loop_nest});
+      const ThunkMetadata& meta = metadata_.at(event.thunk_idx);
+      result.push_back({exec_idx, meta.thunk_idx, event.executed, meta.kind,
+                        meta.name, event.loop_nest, meta.nested_thunks});
     }
   };
 
@@ -352,19 +357,44 @@ absl::StatusOr<ThunkExecutor::ScopedProgressTracker> InstallProgressTracker(
   tsl::profiler::TraceMe trace("InstallProgressTracker");
 
   ThunkExecutor::ScopedProgressTracker::ThunkIndexing indexing;
+  std::vector<Thunk*> ordered_thunks;
   ABSL_RETURN_IF_ERROR(
       executor.thunks().WalkNested([&](Thunk* thunk) -> absl::Status {
         size_t index = indexing.size();
         indexing[thunk] = index;
+        ordered_thunks.push_back(thunk);
         return absl::OkStatus();
       }));
+
+  std::vector<ThunkExecutor::ScopedProgressTracker::ThunkMetadata> metadata;
+  metadata.reserve(ordered_thunks.size());
+  for (size_t thunk_idx = 0; thunk_idx < ordered_thunks.size(); ++thunk_idx) {
+    Thunk* thunk = ordered_thunks[thunk_idx];
+    std::vector<ThunkExecutor::ScopedProgressTracker::NestedThunk>
+        nested_thunks;
+    if (thunk->kind() == Thunk::kCommandBuffer) {
+      thunk->Walk([&](const Thunk* nested) {
+        if (nested == thunk || (nested->kind() == Thunk::kSequential &&
+                                nested->profile_annotation().empty())) {
+          return;
+        }
+        if (auto it = indexing.find(nested); it != indexing.end()) {
+          nested_thunks.push_back({it->second, nested->kind(),
+                                   std::string(nested->profile_annotation())});
+        }
+      });
+    }
+    metadata.push_back({thunk_idx, thunk->kind(),
+                        std::string(thunk->profile_annotation()),
+                        std::move(nested_thunks)});
+  }
 
   XLA_VLOG_DEVICE(1, stream_executor->device_ordinal()) << absl::StreamFormat(
       "Installed progress tracker for %d thunks", indexing.size());
 
   return ThunkExecutor::ScopedProgressTracker(
       stream_executor->GetOrConstructResource<EventPool>(stream_executor),
-      std::move(indexing));
+      std::move(indexing), std::move(metadata));
 }
 
 }  // namespace xla::gpu

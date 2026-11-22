@@ -105,6 +105,51 @@ TEST(MMapHandleTest, MoveConstructs) {
   EXPECT_THAT(handle2, ElementsAreArray(payload));
 }
 
+TEST(MMapHandleTest, MoveAssignsAndSwaps) {
+  const std::string payload1 = "First mapped file payload.";
+  const std::string payload2 = "Second mapped file payload with more bytes.";
+
+  TempFileDesc tmp_file1;
+  ASSERT_TRUE(tmp_file1.IsValid());
+  ASSERT_TRUE(tmp_file1.Write(payload1.c_str(), payload1.size()));
+  tmp_file1.Close();
+
+  TempFileDesc tmp_file2;
+  ASSERT_TRUE(tmp_file2.IsValid());
+  ASSERT_TRUE(tmp_file2.Write(payload2.c_str(), payload2.size()));
+  tmp_file2.Close();
+
+  MMapHandle handle1;
+  ASSERT_TRUE(handle1.Map(tmp_file1.GetCPath()));
+
+  MMapHandle moved(std::move(handle1));
+  // NOLINTBEGIN(bugprone-use-after-move)
+  EXPECT_FALSE(handle1.IsMapped());
+  EXPECT_EQ(handle1.data(), nullptr);
+  EXPECT_EQ(handle1.size(), 0);
+  // NOLINTEND(bugprone-use-after-move)
+
+  MMapHandle assigned;
+  assigned = std::move(moved);
+  // NOLINTBEGIN(bugprone-use-after-move)
+  EXPECT_FALSE(moved.IsMapped());
+  EXPECT_EQ(moved.data(), nullptr);
+  EXPECT_EQ(moved.size(), 0);
+  // NOLINTEND(bugprone-use-after-move)
+  EXPECT_TRUE(assigned.IsMapped());
+  EXPECT_NE(assigned.data(), nullptr);
+  EXPECT_EQ(assigned.size(), payload1.size());
+  EXPECT_THAT(assigned, ElementsAreArray(payload1));
+
+  MMapHandle other;
+  ASSERT_TRUE(other.Map(tmp_file2.GetCPath()));
+  swap(assigned, other);
+  EXPECT_EQ(assigned.size(), payload2.size());
+  EXPECT_THAT(assigned, ElementsAreArray(payload2));
+  EXPECT_EQ(other.size(), payload1.size());
+  EXPECT_THAT(other, ElementsAreArray(payload1));
+}
+
 TEST(MMapHandleTest, Resize) {
   const std::string payload = "This is some data in the file.";
 

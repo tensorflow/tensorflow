@@ -333,6 +333,9 @@ class PjRtDeviceEventPromiseRef {
   static PjRtDeviceEventPromiseRef FormRef(PJRT_DeviceEventPromise* promise);
 
   PJRT_DeviceEventPromise* get() const { return promise_; }
+  PJRT_DeviceEventPromise* release() && {
+    return std::exchange(promise_, nullptr);
+  }
 
   // The underlying AsyncValue.
   PjRtDeviceEventPtr event() const;

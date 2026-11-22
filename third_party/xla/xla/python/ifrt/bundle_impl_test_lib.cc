@@ -16,9 +16,13 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
@@ -26,12 +30,14 @@ limitations under the License.
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -41,9 +47,24 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
+using ::testing::SizeIs;
+
+absl::StatusOr<ArrayRef> MakeArbitrarySingleDeviceArray(Client* client) {
+  std::vector<float> data = {1.0f, 2.0f};
+  Device* const device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  return client->MakeArrayFromHostBuffer(
+      data.data(), DType(DType::kF32), Shape({2}),
+      /*byte_strides=*/std::nullopt, std::move(sharding), /*layout=*/nullptr,
+      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      /*on_done_with_host_buffer=*/nullptr);
+}
 
 void CheckArrayContents(Array* lhs, Array* rhs) {
   ASSERT_EQ(lhs->dtype(), rhs->dtype());
@@ -85,7 +106,7 @@ TEST(BundleImplTest, Roundtrip) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array2,
@@ -93,14 +114,17 @@ TEST(BundleImplTest, Roundtrip) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values = {array1, array2};
   ASSERT_OK_AND_ASSIGN(
       BundleRef bundle,
       client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
 
+  EXPECT_EQ(bundle->client(), client.get());
   EXPECT_EQ(bundle->num_values(), 2);
+  EXPECT_OK(bundle->GetReadyFuture().Await());
+  EXPECT_FALSE(bundle->DebugString().empty());
 
   ASSERT_OK_AND_ASSIGN(std::vector<ValueRef> retrieved_values,
                        bundle->GetValues(ArrayCopySemantics::kReuseInput));
@@ -130,7 +154,7 @@ TEST(BundleImplTest, ConcatBundles) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array2,
@@ -138,7 +162,7 @@ TEST(BundleImplTest, ConcatBundles) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values1 = {array1};
   ASSERT_OK_AND_ASSIGN(
@@ -187,7 +211,7 @@ TEST(BundleImplTest, Slice) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array2,
@@ -195,7 +219,7 @@ TEST(BundleImplTest, Slice) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array3,
@@ -203,7 +227,7 @@ TEST(BundleImplTest, Slice) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values = {array1, array2, array3};
   ASSERT_OK_AND_ASSIGN(
@@ -255,7 +279,7 @@ TEST(BundleImplTest, Alias) {
             data.data(), dtype, shape,
             /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/nullptr));
+            /*host_buffer_hold=*/nullptr));
   }
 
   ASSERT_OK_AND_ASSIGN(
@@ -290,7 +314,7 @@ TEST(BundleImplTest, CopyArrays) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values = {array};
 
@@ -335,7 +359,7 @@ TEST(BundleImplTest, ReshardArrays) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values = {array};
 
@@ -390,7 +414,7 @@ TEST(BundleImplTest, CopyArraysExhaustive) {
                 /*byte_strides=*/std::nullopt, sharding,
                 /*layout=*/nullptr,
                 Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                /*on_done_with_host_buffer=*/{}));
+                /*host_buffer_hold=*/{}));
         EXPECT_EQ(array->sharding(), *sharding);
 
         std::vector<ValueRef> values = {array};
@@ -456,7 +480,7 @@ TEST(BundleImplTest, CopyArraysSubByteDType) {
                 /*byte_strides=*/std::nullopt, sharding,
                 /*layout=*/nullptr,
                 Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                /*on_done_with_host_buffer=*/{}));
+                /*host_buffer_hold=*/{}));
         EXPECT_EQ(array->sharding(), *sharding);
 
         std::vector<ValueRef> values = {array};
@@ -531,16 +555,16 @@ TEST(BundleImplTest, CopyArraysWithPartialReuse) {
         /*buffers=*/{
             {{0},
              {data0->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
-              /*on_done_with_host_buffer=*/[data0]() {}}},
+              /*on_done=*/data0}},
             {{1},
              {data1->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
-              /*on_done_with_host_buffer=*/[data1]() {}}},
+              /*on_done=*/data1}},
             {{2},
              {data2->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
-              /*on_done_with_host_buffer=*/[data2]() {}}},
+              /*on_done=*/data2}},
             {{3},
              {data3->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
-              /*on_done_with_host_buffer=*/[data3]() {}}},
+              /*on_done=*/data3}},
         },
         /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
     });
@@ -590,6 +614,482 @@ TEST(BundleImplTest, CopyArraysWithPartialReuse) {
     ASSERT_OK(future.Await());
     EXPECT_THAT(out_data, Each(i));
   }
+}
+
+TEST(BundleImplTest, CopyArraysDifferentDeviceLists) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+
+  absl::Span<Device* const> devices = client->addressable_devices();
+  if (devices.size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
+
+  std::vector<std::vector<float>> expected_data(devices.size(),
+                                                std::vector<float>(6));
+  std::vector<ValueRef> values;
+  values.reserve(devices.size());
+
+  for (int i = 0; i < devices.size(); ++i) {
+    absl::c_iota(expected_data[i], i * 10);
+    ShardingRef sharding =
+        SingleDeviceSharding::Create(devices[i], MemoryKind());
+    ASSERT_OK_AND_ASSIGN(
+        values.emplace_back(),
+        client->MakeArrayFromHostBuffer(
+            expected_data[i].data(), dtype, shape,
+            /*byte_strides=*/std::nullopt, std::move(sharding),
+            /*layout=*/nullptr,
+            Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*host_buffer_hold=*/nullptr));
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  std::vector<int> slice_sizes = {static_cast<int>(values.size())};
+  std::vector<Bundle::CopySpec> reuse_specs = {{
+      /*devices=*/std::nullopt,
+      /*memory_kind=*/std::nullopt,
+  }};
+  ASSERT_OK_AND_ASSIGN(BundleRef reused_bundle,
+                       bundle->CopyArrays(slice_sizes, reuse_specs,
+                                          ArrayCopySemantics::kReuseInput));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ValueRef> reused_values,
+      reused_bundle->GetValues(ArrayCopySemantics::kReuseInput));
+  ASSERT_EQ(reused_values.size(), values.size());
+  for (int i = 0; i < reused_values.size(); ++i) {
+    auto* const src_array = cast<Array>(values[i].get());
+    auto* const reused_array = cast<Array>(reused_values[i].get());
+    EXPECT_EQ(*reused_array->sharding().devices(),
+              *src_array->sharding().devices());
+    EXPECT_EQ(reused_array->sharding().memory_kind(),
+              src_array->sharding().memory_kind());
+
+    std::vector<float> out_data(6);
+    tsl::Future<> future = reused_array->CopyToHostBuffer(
+        out_data.data(), /*byte_strides=*/std::nullopt,
+        ArrayCopySemantics::kAlwaysCopy);
+    ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAreArray(expected_data[i]));
+  }
+
+  std::vector<Bundle::CopySpec> copy_specs = {{
+      /*devices=*/std::nullopt,
+      /*memory_kind=*/MemoryKind("pinned_host"),
+  }};
+  ASSERT_OK_AND_ASSIGN(BundleRef copied_bundle,
+                       bundle->CopyArrays(slice_sizes, copy_specs,
+                                          ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ValueRef> copied_values,
+      copied_bundle->GetValues(ArrayCopySemantics::kReuseInput));
+  ASSERT_EQ(copied_values.size(), values.size());
+  for (int i = 0; i < copied_values.size(); ++i) {
+    auto* const src_array = cast<Array>(values[i].get());
+    auto* const copied_array = cast<Array>(copied_values[i].get());
+    EXPECT_EQ(*copied_array->sharding().devices(),
+              *src_array->sharding().devices());
+    EXPECT_EQ(copied_array->sharding().memory_kind(),
+              MemoryKind("pinned_host"));
+
+    std::vector<float> out_data(6);
+    tsl::Future<> future = copied_array->CopyToHostBuffer(
+        out_data.data(), /*byte_strides=*/std::nullopt,
+        ArrayCopySemantics::kAlwaysCopy);
+    ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAreArray(expected_data[i]));
+  }
+
+  ASSERT_OK_AND_ASSIGN(BundleRef donated_bundle,
+                       bundle->CopyArrays(slice_sizes, reuse_specs,
+                                          ArrayCopySemantics::kDonateInput));
+  EXPECT_TRUE(bundle->IsDeleted());
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ValueRef> donated_values,
+      donated_bundle->GetValues(ArrayCopySemantics::kReuseInput));
+  ASSERT_EQ(donated_values.size(), values.size());
+  for (int i = 0; i < donated_values.size(); ++i) {
+    auto* const src_array = cast<Array>(values[i].get());
+    auto* const donated_array = cast<Array>(donated_values[i].get());
+    EXPECT_EQ(*donated_array->sharding().devices(),
+              *src_array->sharding().devices());
+    EXPECT_EQ(donated_array->sharding().memory_kind(),
+              src_array->sharding().memory_kind());
+
+    std::vector<float> out_data(6);
+    tsl::Future<> future = donated_array->CopyToHostBuffer(
+        out_data.data(), /*byte_strides=*/std::nullopt,
+        ArrayCopySemantics::kAlwaysCopy);
+    ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAreArray(expected_data[i]));
+  }
+}
+
+TEST(BundleImplTest, BundleCapturesCurrentUserContext) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+
+  UserContextScope user_context_scope(test_util::MakeUserContext(100));
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  ASSERT_NE(bundle->user_context(), nullptr);
+  EXPECT_EQ(bundle->user_context()->Id(), UserContextId(100));
+}
+
+TEST(BundleImplTest, ConcatBundlesCapturesCurrentUserContext) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array2,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values1 = {array1};
+  std::vector<ValueRef> values2 = {array2};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle1,
+      client->Bundle(absl::MakeSpan(values1), ArrayCopySemantics::kReuseInput));
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle2,
+      client->Bundle(absl::MakeSpan(values2), ArrayCopySemantics::kReuseInput));
+  std::vector<BundleRef> bundles = {bundle1, bundle2};
+
+  UserContextScope user_context_scope(test_util::MakeUserContext(200));
+  ASSERT_OK_AND_ASSIGN(BundleRef concat_bundle,
+                       client->ConcatBundles(absl::MakeSpan(bundles),
+                                             ArrayCopySemantics::kReuseInput));
+
+  ASSERT_NE(concat_bundle->user_context(), nullptr);
+  EXPECT_EQ(concat_bundle->user_context()->Id(), UserContextId(200));
+}
+
+TEST(BundleImplTest, SliceCapturesCurrentUserContext) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array2,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array1, array2};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  UserContextScope user_context_scope(test_util::MakeUserContext(300));
+  ASSERT_OK_AND_ASSIGN(std::vector<BundleRef> slices,
+                       bundle->Slice({1, 1}, ArrayCopySemantics::kReuseInput));
+
+  ASSERT_THAT(slices, SizeIs(2));
+  ASSERT_NE(slices[0]->user_context(), nullptr);
+  EXPECT_EQ(slices[0]->user_context()->Id(), UserContextId(300));
+  ASSERT_NE(slices[1]->user_context(), nullptr);
+  EXPECT_EQ(slices[1]->user_context()->Id(), UserContextId(300));
+}
+
+TEST(BundleImplTest, CopyArraysCapturesCurrentUserContext) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceListRef dst_devices,
+      client->MakeDeviceList({client->addressable_devices().at(0)}));
+  std::vector<Bundle::CopySpec> specs = {{
+      /*devices=*/std::move(dst_devices),
+      /*memory_kind=*/MemoryKind(),
+  }};
+
+  UserContextScope user_context_scope(test_util::MakeUserContext(400));
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef copied_bundle,
+      bundle->CopyArrays({1}, specs, ArrayCopySemantics::kAlwaysCopy));
+
+  ASSERT_NE(copied_bundle->user_context(), nullptr);
+  EXPECT_EQ(copied_bundle->user_context()->Id(), UserContextId(400));
+}
+
+TEST(BundleImplTest, SliceWithNegativeSliceSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array2,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array1, array2};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_THAT(bundle->Slice({-1, 3}, ArrayCopySemantics::kReuseInput),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, CopyArraysWithFewerDestinationDevicesFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  absl::Span<Device* const> devices = client->addressable_devices();
+  if (devices.size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
+
+  std::vector<float> data = {1.0f, 2.0f};
+  ASSERT_OK_AND_ASSIGN(DeviceListRef two_devices,
+                       client->MakeDeviceList(devices.subspan(0, 2)));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef one_device,
+                       client->MakeDeviceList(devices.subspan(0, 1)));
+  ShardingRef two_device_sharding = ConcreteEvenSharding::Create(
+      std::move(two_devices), MemoryKind(), Shape({2}),
+      /*shard_shape=*/Shape({2}), /*is_fully_replicated=*/true);
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef two_device_array,
+      client->MakeArrayFromHostBuffer(
+          data.data(), DType(DType::kF32), Shape({2}),
+          /*byte_strides=*/std::nullopt, std::move(two_device_sharding),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+  std::vector<ValueRef> values = {two_device_array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<Bundle::CopySpec> specs = {{
+      /*devices=*/std::move(one_device),
+      /*memory_kind=*/MemoryKind(),
+  }};
+
+  EXPECT_THAT(bundle->CopyArrays({1}, specs, ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, GetArraySpecsMatchesBundledArrays) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Device* const device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  std::vector<float> f32_data = {1.0f, 2.0f};
+  std::vector<int32_t> s32_data = {1, 2, 3, 4, 5, 6};
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array0,
+      client->MakeArrayFromHostBuffer(
+          f32_data.data(), DType(DType::kF32), Shape({2}),
+          /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*host_buffer_hold=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array1,
+      client->MakeArrayFromHostBuffer(
+          s32_data.data(), DType(DType::kS32), Shape({2, 3}),
+          /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*host_buffer_hold=*/nullptr));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  ASSERT_OK_AND_ASSIGN(absl::Span<const ArraySpec> specs,
+                       bundle->GetArraySpecs());
+
+  ASSERT_THAT(specs, SizeIs(2));
+  EXPECT_EQ(specs[0].dtype, DType(DType::kF32));
+  EXPECT_EQ(specs[0].shape, Shape({2}));
+  EXPECT_EQ(*specs[0].sharding, *sharding);
+  EXPECT_EQ(specs[1].dtype, DType(DType::kS32));
+  EXPECT_EQ(specs[1].shape, Shape({2, 3}));
+  EXPECT_EQ(*specs[1].sharding, *sharding);
+}
+
+TEST(BundleImplTest, DeleteMarksBundleDeletedAndIsIdempotent) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_FALSE(bundle->IsDeleted());
+  tsl::Future<> future1 = bundle->Delete();
+  tsl::Future<> future2 = bundle->Delete();
+  EXPECT_TRUE(bundle->IsDeleted());
+  EXPECT_OK(future1.Await());
+  EXPECT_OK(future2.Await());
+}
+
+TEST(BundleImplTest, GetReadyFuturePropagatesErrorFromPoisonedArray) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Device* const device = client->addressable_devices().at(0);
+  ArraySpec error_spec = {
+      /*dtype=*/DType(DType::kF32),
+      /*shape=*/Shape({2}),
+      /*sharding=*/SingleDeviceSharding::Create(device, MemoryKind()),
+  };
+  absl::StatusOr<std::vector<ArrayRef>> poisoned_arrays =
+      client->MakeErrorArrays(absl::InternalError("injected error"),
+                              {error_spec});
+  if (absl::IsUnimplemented(poisoned_arrays.status())) {
+    GTEST_SKIP() << "MakeErrorArrays is not supported.";
+  }
+  ASSERT_OK(poisoned_arrays.status());
+  ASSERT_OK_AND_ASSIGN(ArrayRef healthy_array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {healthy_array, poisoned_arrays->front()};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_THAT(bundle->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(BundleImplTest, BundleWithAlwaysCopyFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+
+  EXPECT_THAT(
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kAlwaysCopy),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, ConcatBundlesWithAlwaysCopyFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<BundleRef> bundles = {bundle};
+
+  EXPECT_THAT(client->ConcatBundles(absl::MakeSpan(bundles),
+                                    ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, GetValuesWithAlwaysCopyFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_THAT(bundle->GetValues(ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, EmptyBundleAndDeleteIfSupported) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  absl::StatusOr<BundleRef> bundle =
+      client->Bundle({}, ArrayCopySemantics::kReuseInput);
+  if (absl::IsInvalidArgument(bundle.status())) {
+    GTEST_SKIP() << "Empty bundles are not supported.";
+  }
+  ASSERT_OK(bundle.status());
+
+  EXPECT_EQ((*bundle)->num_values(), 0);
+  EXPECT_OK((*bundle)->GetReadyFuture().Await());
+  EXPECT_THAT((*bundle)->GetValues(ArrayCopySemantics::kReuseInput),
+              IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT((*bundle)->GetArraySpecs(), IsOkAndHolds(IsEmpty()));
+  EXPECT_FALSE((*bundle)->IsDeleted());
+  EXPECT_OK((*bundle)->Delete().Await());
+  EXPECT_TRUE((*bundle)->IsDeleted());
+}
+
+TEST(BundleImplTest, ConcatEmptyBundlesAndDeleteIfSupported) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  absl::StatusOr<BundleRef> bundle =
+      client->ConcatBundles({}, ArrayCopySemantics::kReuseInput);
+  if (absl::IsInvalidArgument(bundle.status())) {
+    GTEST_SKIP() << "Empty bundle concatenation is not supported.";
+  }
+  ASSERT_OK(bundle.status());
+
+  EXPECT_EQ((*bundle)->num_values(), 0);
+  EXPECT_OK((*bundle)->GetReadyFuture().Await());
+  EXPECT_FALSE((*bundle)->IsDeleted());
+  EXPECT_OK((*bundle)->Delete().Await());
+  EXPECT_TRUE((*bundle)->IsDeleted());
+}
+
+TEST(BundleImplTest, CopyArraysWithMismatchedCopySpecsSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array0,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<Bundle::CopySpec> specs = {Bundle::CopySpec{}};
+
+  EXPECT_THAT(
+      bundle->CopyArrays({1, 1}, specs, ArrayCopySemantics::kReuseInput),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, CopyArraysWithNegativeSliceSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array0,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<Bundle::CopySpec> specs = {Bundle::CopySpec{},
+                                         Bundle::CopySpec{}};
+
+  EXPECT_THAT(
+      bundle->CopyArrays({-1, 3}, specs, ArrayCopySemantics::kReuseInput),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, CopyArraysWithMismatchedSliceSizesSumFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array0,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<Bundle::CopySpec> specs = {Bundle::CopySpec{}};
+
+  EXPECT_THAT(bundle->CopyArrays({1}, specs, ArrayCopySemantics::kReuseInput),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, ReshardArraysWithMismatchedArraySpecsSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array0,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<ArraySpec> specs = {array0->array_spec()};
+
+  EXPECT_THAT(bundle->ReshardArrays(specs, ArrayCopySemantics::kDonateInput),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_FALSE(bundle->IsDeleted());
 }
 
 }  // namespace

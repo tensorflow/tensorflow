@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -390,6 +391,110 @@ ENTRY test {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(0)));
 }
+
+TEST_F(AllReduceSimplifierTest, ReplicatedProductPreservesControlDependencies) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+HloModule m, replica_count=2
+
+product {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT result = f32[] multiply(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0), parameter_replication={true}
+  before = f32[8] negate(p0)
+  ar = f32[8] all-reduce(p0), replica_groups={{0,1}}, to_apply=product,
+    control-predecessors={before}, metadata={op_name="replicated_product"},
+    frontend_attributes={test_attr="value"}
+  after = f32[8] negate(p0), control-predecessors={ar}
+  ROOT result = (f32[8], f32[8]) tuple(ar, after)
+}
+)hlo"));
+  ASSERT_OK_AND_ASSIGN(bool changed, AllReduceSimplifier().Run(module.get()));
+  ASSERT_TRUE(changed);
+  const HloInstruction* replacement =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_THAT(replacement,
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
+  EXPECT_THAT(replacement->control_predecessors(),
+              ::testing::ElementsAre(FindInstruction(module.get(), "before")));
+  EXPECT_THAT(FindInstruction(module.get(), "after")->control_predecessors(),
+              ::testing::ElementsAre(replacement));
+  EXPECT_EQ(replacement->metadata().op_name(), "replicated_product");
+  EXPECT_EQ(replacement->frontend_attributes().map().at("test_attr"), "value");
+}
+
+struct ProductAllReduceTestCase {
+  const char* name;
+  const char* element_type;
+  const char* dimensions;
+  const char* replica_count;
+  const char* replica_groups;
+  const char* replicated;
+  bool expect_change;
+};
+
+class ProductAllReduceSimplifierTest
+    : public HloHardwareIndependentTestBase,
+      public ::testing::WithParamInterface<ProductAllReduceTestCase> {};
+
+TEST_P(ProductAllReduceSimplifierTest, SimplifyOnlyReplicatedPairs) {
+  const ProductAllReduceTestCase& test = GetParam();
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunAndCheckHloRewrite(
+                           R"hlo(
+HloModule m, replica_count=$replicas
+
+product {
+  lhs = $type[] parameter(0)
+  rhs = $type[] parameter(1)
+  ROOT result = $type[] multiply(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = $type$dims parameter(0), parameter_replication={$replicated}
+  ROOT ar = $type$dims all-reduce(p0), replica_groups=$groups, to_apply=product
+}
+)hlo",
+                           AllReduceSimplifier(), test.expect_change,
+                           {{"$type", test.element_type},
+                            {"$dims", test.dimensions},
+                            {"$replicas", test.replica_count},
+                            {"$groups", test.replica_groups},
+                            {"$replicated", test.replicated}}));
+  if (test.expect_change) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
+  } else {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::AllReduce(m::Parameter(0))));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ProductAllReduce, ProductAllReduceSimplifierTest,
+    ::testing::Values(
+        ProductAllReduceTestCase{"FloatArray", "f32", "[8,16]", "2", "{{0,1}}",
+                                 "true", true},
+        ProductAllReduceTestCase{"FloatScalar", "f32", "[]", "2", "{}", "true",
+                                 true},
+        ProductAllReduceTestCase{"IntegerScalar", "s32", "[]", "2", "{{0,1}}",
+                                 "true", true},
+        ProductAllReduceTestCase{"TwoReplicaSubgroups", "f32", "[8]", "4",
+                                 "{{0,2},{1,3}}", "true", true},
+        ProductAllReduceTestCase{"NonReplicatedInput", "f32", "[8]", "2",
+                                 "{{0,1}}", "false", false},
+        ProductAllReduceTestCase{"ThreeReplicas", "f32", "[8]", "3", "{}",
+                                 "true", false},
+        ProductAllReduceTestCase{"FourReplicas", "f32", "[8]", "4", "{}",
+                                 "true", false},
+        ProductAllReduceTestCase{"UnequalGroups", "f32", "[8]", "3",
+                                 "{{0},{1,2}}", "true", false}),
+    [](const ::testing::TestParamInfo<ProductAllReduceTestCase>& info) {
+      return info.param.name;
+    });
 
 }  // namespace
 }  // namespace xla

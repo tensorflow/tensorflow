@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_device_address_vmm_allocator.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -32,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_memory_reservation.h"
 #include "xla/stream_executor/rocm/rocm_raw_memory_allocation.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
+#include "xla/stream_executor/rocm/rocm_vmm_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -46,17 +47,27 @@ namespace stream_executor::gpu {
 
 RocmDeviceAddressVmmAllocator::RocmDeviceAddressVmmAllocator(
     const Platform* platform,
-    std::optional<int64_t> reclaim_exempt_memory_space)
-    : DeviceAddressVmmAllocator(platform, reclaim_exempt_memory_space) {}
+    std::optional<int64_t> reclaim_exempt_memory_space,
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors,
+    const RocmVmmAllocator::Options& vmm_options)
+    : DeviceAddressVmmAllocator(platform, reclaim_exempt_memory_space,
+                                std::move(host_allocator),
+                                std::move(free_visitors)),
+      vmm_options_(vmm_options) {}
 
 RocmDeviceAddressVmmAllocator::~RocmDeviceAddressVmmAllocator() = default;
 
 absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>>
 RocmDeviceAddressVmmAllocator::Create(
     const Platform* platform, absl::Span<const DeviceConfig> devices,
-    std::optional<int64_t> reclaim_exempt_memory_space) {
-  auto allocator = absl::WrapUnique(
-      new RocmDeviceAddressVmmAllocator(platform, reclaim_exempt_memory_space));
+    std::optional<int64_t> reclaim_exempt_memory_space,
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors,
+    const RocmVmmAllocator::Options& vmm_options) {
+  auto allocator = absl::WrapUnique(new RocmDeviceAddressVmmAllocator(
+      platform, reclaim_exempt_memory_space, std::move(host_allocator),
+      std::move(free_visitors), vmm_options));
   ABSL_RETURN_IF_ERROR(PopulateDevices(allocator.get(), devices));
   return allocator;
 }
@@ -64,10 +75,13 @@ RocmDeviceAddressVmmAllocator::Create(
 absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>>
 RocmDeviceAddressVmmAllocator::Create(
     StreamExecutor* executor, Stream* stream, uint64_t pa_budget,
-    std::optional<int64_t> reclaim_exempt_memory_space) {
+    std::optional<int64_t> reclaim_exempt_memory_space,
+    std::vector<FreeVisitor> free_visitors,
+    const RocmVmmAllocator::Options& vmm_options) {
   return Create(executor->GetPlatform(),
                 {{DeviceConfig{executor, stream, pa_budget}}},
-                reclaim_exempt_memory_space);
+                reclaim_exempt_memory_space, /*host_allocator=*/nullptr,
+                std::move(free_visitors), vmm_options);
 }
 
 absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>>
@@ -75,7 +89,10 @@ RocmDeviceAddressVmmAllocator::Create(
     const Platform* platform, double memory_fraction,
     std::optional<int64_t> gpu_system_memory_size,
     absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
-    std::optional<int64_t> reclaim_exempt_memory_space) {
+    std::optional<int64_t> reclaim_exempt_memory_space,
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors,
+    const RocmVmmAllocator::Options& vmm_options) {
   LOG(INFO) << "Using VMM (Virtual Memory Management) allocator for ROCm.";
   std::vector<DeviceConfig> device_configs;
   device_configs.reserve(devices.size());
@@ -97,7 +114,9 @@ RocmDeviceAddressVmmAllocator::Create(
               << executor->device_ordinal() << ": " << pa_budget << " bytes.";
     device_configs.push_back({executor, stream, pa_budget});
   }
-  return Create(platform, device_configs, reclaim_exempt_memory_space);
+  return Create(platform, device_configs, reclaim_exempt_memory_space,
+                std::move(host_allocator), std::move(free_visitors),
+                vmm_options);
 }
 
 absl::Status RocmDeviceAddressVmmAllocator::InitializeDeviceState(
@@ -105,21 +124,12 @@ absl::Status RocmDeviceAddressVmmAllocator::InitializeDeviceState(
   int ordinal = state.executor->device_ordinal();
 
   // Query allocation granularity for this device.
-  size_t granularity = 0;
   {
     std::unique_ptr<ActivateContext> activation = state.executor->Activate();
-    hipDevice_t hip_device;
-    ABSL_RETURN_IF_ERROR(
-        ToStatus(hipDeviceGet(&hip_device, ordinal), "hipDeviceGet"));
-    hipMemAllocationProp alloc_props = {};
-    alloc_props.type = hipMemAllocationTypePinned;
-    alloc_props.location.type = hipMemLocationTypeDevice;
-    alloc_props.location.id = hip_device;
-    alloc_props.requestedHandleTypes = hipMemHandleTypeNone;
-    ABSL_RETURN_IF_ERROR(ToStatus(hipMemGetAllocationGranularity(
-        &granularity, &alloc_props, hipMemAllocationGranularityRecommended)));
+    ABSL_ASSIGN_OR_RETURN(RocmVmmAllocationParams params,
+                     GetRocmVmmAllocationParams(state.executor, vmm_options_));
+    state.allocation_granularity = static_cast<uint64_t>(params.granularity);
   }
-  state.allocation_granularity = static_cast<uint64_t>(granularity);
 
   // Allocate coherent host memory for the per-device timeline counter.
   // hipStreamWriteValue64 writes to this location; the CPU polls it to
@@ -151,13 +161,13 @@ absl::Status RocmDeviceAddressVmmAllocator::InitializeDeviceState(
 absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 RocmDeviceAddressVmmAllocator::CreateAllocation(StreamExecutor* executor,
                                                 uint64_t size) {
-  return RocmRawMemoryAllocation::Create(executor, size);
+  return RocmRawMemoryAllocation::Create(executor, size, vmm_options_);
 }
 
 absl::StatusOr<std::unique_ptr<MemoryReservation>>
 RocmDeviceAddressVmmAllocator::CreateReservation(StreamExecutor* executor,
                                                  uint64_t size) {
-  return RocmMemoryReservation::Create(executor, size);
+  return RocmMemoryReservation::Create(executor, size, vmm_options_);
 }
 
 absl::Status RocmDeviceAddressVmmAllocator::EnqueueDeferredDeallocation(

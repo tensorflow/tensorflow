@@ -156,33 +156,69 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
   @parameterized.product(
       ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
       sparse=[True, False],
-      label=[-1, 10, 2147483647],
+      blank_index=[-1, 0],
+      label=[-2147483648, -1, 10, 2147483647],
   )
-  def testOutOfRangeLabelRejected(self, ctc_loss_fn, sparse, label):
+  def testOutOfRangeLabelRejected(
+      self, ctc_loss_fn, sparse, blank_index, label
+  ):
     """Tests that out-of-range label ids are rejected in eager mode."""
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
         self._out_of_range_error(sparse, label),
     ):
       self.evaluate(
-          self._call_ctc_loss_with_labels(ctc_loss_fn, sparse, [label])
+          self._call_ctc_loss_with_labels(
+              ctc_loss_fn, sparse, [label], blank_index=blank_index
+          )
       )
 
   @parameterized.product(
       ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
       sparse=[True, False],
-      label=[-1, 10, 2147483647],
+      blank_index=[-1, 0],
+      label=[-2147483648, -1, 10, 2147483647],
   )
-  def testOutOfRangeLabelRejectedInFunction(self, ctc_loss_fn, sparse, label):
+  def testOutOfRangeLabelRejectedInFunction(
+      self, ctc_loss_fn, sparse, blank_index, label
+  ):
     """Tests that out-of-range label ids are rejected inside tf.function."""
 
     @def_function.function
     def test_fn():
-      return self._call_ctc_loss_with_labels(ctc_loss_fn, sparse, [label])
+      return self._call_ctc_loss_with_labels(
+          ctc_loss_fn, sparse, [label], blank_index=blank_index
+      )
 
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
         self._out_of_range_error(sparse, label),
+    ):
+      self.evaluate(test_fn())
+
+  @parameterized.product(blank_index=[-1, 0])
+  def testOutOfRangeInt32MinLabelRejectedInFunctionWithGradient(
+      self, blank_index
+  ):
+    """INT32_MIN in a real label is rejected when a gradient is built."""
+
+    @def_function.function
+    def test_fn():
+      logits = array_ops.zeros([3, 1, 10], dtype=dtypes.float32)
+      with backprop.GradientTape() as tape:
+        tape.watch(logits)
+        loss = ctc_ops.ctc_loss_v3(
+            labels=constant_op.constant([[-2147483648]], dtype=dtypes.int32),
+            logits=logits,
+            label_length=constant_op.constant([1], dtype=dtypes.int32),
+            logit_length=constant_op.constant([3], dtype=dtypes.int32),
+            blank_index=blank_index,
+        )
+      return loss, tape.gradient(loss, logits)
+
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        r"All labels must be in the range \[0, num_classes\)",
     ):
       self.evaluate(test_fn())
 
@@ -250,6 +286,63 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
           loss_padded,
           msg=f"Padding value {pad_val} should be ignored",
       )
+
+  @parameterized.product(
+      pad=[-2147483648, 2147483647],
+      blank_index=[-1, 0],
+  )
+  def testDensePaddingExtremeValueIgnoredWithGradient(self, pad, blank_index):
+    """Extreme int32 padding past label_length must not overflow in grad."""
+    logits = array_ops.zeros([3, 1, 10], dtype=dtypes.float32)
+    label_length = constant_op.constant([1], dtype=dtypes.int32)
+    logit_length = constant_op.constant([3], dtype=dtypes.int32)
+
+    def loss_and_grad(pad_val):
+      with backprop.GradientTape() as tape:
+        tape.watch(logits)
+        loss = ctc_ops.ctc_loss_v3(
+            labels=constant_op.constant([[3, pad_val]], dtype=dtypes.int32),
+            logits=logits,
+            label_length=label_length,
+            logit_length=logit_length,
+            blank_index=blank_index,
+        )
+      return loss, tape.gradient(loss, logits)
+
+    loss_ref, grad_ref = self.evaluate(loss_and_grad(0))
+    loss_padded, grad_padded = self.evaluate(loss_and_grad(pad))
+    self.assertAllClose(loss_ref, loss_padded)
+    self.assertAllClose(grad_ref, grad_padded)
+
+  @parameterized.product(blank_index=[-1, 2])
+  def testDenseUniqueWithBlankIndexMatchesDense(self, blank_index):
+    """The unique fast path with a non-zero blank matches the dense path."""
+    logits = constant_op.constant(
+        np.random.RandomState(0).randn(6, 2, 5).astype(np.float32)
+    )
+    labels = constant_op.constant([[1, 3, 0], [3, 0, 0]], dtype=dtypes.int64)
+    label_length = constant_op.constant([2, 1], dtype=dtypes.int32)
+    logit_length = constant_op.constant([6, 6], dtype=dtypes.int32)
+
+    def loss_and_grad(unique):
+      with backprop.GradientTape() as tape:
+        tape.watch(logits)
+        loss = ctc_ops.ctc_loss_dense(
+            labels=labels,
+            logits=logits,
+            label_length=label_length,
+            logit_length=logit_length,
+            unique=unique,
+            blank_index=blank_index,
+        )
+      return loss, tape.gradient(loss, logits)
+
+    loss_ref, grad_ref = self.evaluate(loss_and_grad(None))
+    loss_uniq, grad_uniq = self.evaluate(
+        loss_and_grad(ctc_ops.ctc_unique_labels(labels))
+    )
+    self.assertAllClose(loss_ref, loss_uniq)
+    self.assertAllClose(grad_ref, grad_uniq)
 
   @parameterized.product(
       ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],

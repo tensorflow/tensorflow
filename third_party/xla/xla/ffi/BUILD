@@ -165,6 +165,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -285,6 +286,17 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
+    name = "kernel_registry_ffi",
+    hdrs = ["kernel_registry_ffi.h"],
+    deps = [
+        ":api",
+        ":ffi",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:kernel_registry_api",
     ],
 )
 
@@ -516,6 +528,27 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "kernel_registry_ffi_test",
+    srcs = ["kernel_registry_ffi_test.cc"],
+    deps = [
+        ":api",
+        ":call_frame",
+        ":ffi",
+        ":ffi_api",  # buildcleaner: keep
+        ":invoke",
+        ":kernel_registry_ffi",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:kernel_api",
+        "//xla/ffi/api:kernel_registry_api",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
     name = "record_ffi_test",
     srcs = ["record_ffi_test.cc"],
     deps = [
@@ -526,9 +559,12 @@ xla_cc_test(
         ":invoke",
         ":record_ffi",
         "//xla/ffi/api:c_api",
+        "//xla/ffi/api:kernel_api",
+        "//xla/ffi/api:record_api",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -24,98 +24,101 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
-CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
-                           se::BlockDim block_dims, se::ThreadDim thread_dims,
-                           size_t shared_memory_bytes)
-    : name_(std::move(name)),
-      kernel_spec_(std::move(kernel_spec)),
-      block_dims_(block_dims),
-      thread_dims_(thread_dims),
-      cluster_dims_(std::nullopt),
-      shared_memory_bytes_(shared_memory_bytes) {}
+CustomKernel::CustomKernel(const GpuKernelSpec& spec,
+                           se::KernelLoaderSpec kernel_spec)
+    : loader_spec_(std::move(kernel_spec)), spec_(spec) {}
 
-CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
-                           se::BlockDim block_dims, se::ThreadDim thread_dims,
-                           se::ClusterDim cluster_dims,
-                           size_t shared_memory_bytes)
-    : name_(std::move(name)),
-      kernel_spec_(std::move(kernel_spec)),
-      block_dims_(block_dims),
-      thread_dims_(thread_dims),
-      cluster_dims_(cluster_dims),
-      shared_memory_bytes_(shared_memory_bytes) {}
+absl::string_view CustomKernel::name() const { return spec_.name(); }
 
-absl::string_view CustomKernel::name() const { return name_; }
-
-const se::KernelLoaderSpec& CustomKernel::kernel_spec() const {
-  return kernel_spec_;
+const se::BlockDim& CustomKernel::block_dims() const {
+  return spec_.launch_dimensions().block_counts();
 }
 
-se::BlockDim CustomKernel::block_dims() const { return block_dims_; }
-
-se::ThreadDim CustomKernel::thread_dims() const { return thread_dims_; }
-
-std::optional<se::ClusterDim> CustomKernel::cluster_dims() const {
-  return cluster_dims_;
+const se::ThreadDim& CustomKernel::thread_dims() const {
+  return spec_.launch_dimensions().thread_counts_per_block();
 }
 
-size_t CustomKernel::shared_memory_bytes() const {
-  return shared_memory_bytes_;
+const std::optional<se::ClusterDim>& CustomKernel::cluster_dims() const {
+  return spec_.launch_dimensions().cluster_dims();
 }
+
+size_t CustomKernel::shared_memory_bytes() const { return spec_.shmem_bytes(); }
 
 std::string CustomKernel::ToString() const {
   std::string cluster_dims_str =
-      cluster_dims_.has_value()
-          ? absl::StrFormat("cluster: [%d, %d, %d]", cluster_dims_->x,
-                            cluster_dims_->y, cluster_dims_->z)
+      cluster_dims().has_value()
+          ? absl::StrFormat("cluster: [%d, %d, %d]", cluster_dims()->x,
+                            cluster_dims()->y, cluster_dims()->z)
           : "";
   return absl::StrFormat(
       "%s grid: [%d, %d, %d] threads: [%d, %d, %d] %s "
       "shared_memory: %d bytes",
-      name_, block_dims_.x, block_dims_.y, block_dims_.z, thread_dims_.x,
-      thread_dims_.y, thread_dims_.z, cluster_dims_str, shared_memory_bytes_);
+      spec_.name(), block_dims().x, block_dims().y, block_dims().z,
+      thread_dims().x, thread_dims().y, thread_dims().z, cluster_dims_str,
+      shared_memory_bytes());
 }
 
 absl::StatusOr<CustomKernelProto> CustomKernel::ToProto() const {
   CustomKernelProto proto;
-  proto.set_name(name_);
-  ABSL_ASSIGN_OR_RETURN(*proto.mutable_kernel_spec(), kernel_spec_.ToProto());
-  *proto.mutable_block_dims() = block_dims_.ToProto();
-  *proto.mutable_thread_dims() = thread_dims_.ToProto();
-  if (cluster_dims_.has_value()) {
-    *proto.mutable_cluster_dim() = cluster_dims_->ToProto();
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_kernel_spec(), loader_spec_.ToProto());
+
+  // TODO(b/578658607) remove forward compatibility code after Nov 30.
+  proto.set_name(spec_.name());
+  *proto.mutable_block_dims() =
+      spec_.launch_dimensions().block_counts().ToProto();
+  *proto.mutable_thread_dims() =
+      spec_.launch_dimensions().thread_counts_per_block().ToProto();
+  if (cluster_dims().has_value()) {
+    *proto.mutable_cluster_dim() = cluster_dims()->ToProto();
   }
-  proto.set_shared_memory_bytes(shared_memory_bytes_);
+  proto.set_shared_memory_bytes(spec_.shmem_bytes());
+
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_spec(), spec_.ToProto());
   return proto;
 }
 
 absl::StatusOr<CustomKernel> CustomKernel::FromProto(
     const CustomKernelProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
     const std::optional<se::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver) {
   ABSL_ASSIGN_OR_RETURN(
       se::KernelLoaderSpec kernel_spec,
       se::KernelLoaderSpec::FromProto(proto.kernel_spec(), symbol_resolver));
+  if (proto.has_spec()) {
+    ABSL_ASSIGN_OR_RETURN(GpuKernelSpec spec, GpuKernelSpec::FromProto(
+                                             proto.spec(), buffer_allocations));
+    return CustomKernel(std::move(spec), std::move(kernel_spec));
+  }
+
+  // TODO(b/578658607) remove backward compatibility code after Nov 13 2026 +
+  // AOT compatibility window duration.
   ABSL_ASSIGN_OR_RETURN(se::BlockDim block_dims,
                    se::BlockDim::FromProto(proto.block_dims()));
   ABSL_ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
                    se::ThreadDim::FromProto(proto.thread_dims()));
+  std::optional<se::ClusterDim> cluster_dim;
   if (proto.has_cluster_dim()) {
-    ABSL_ASSIGN_OR_RETURN(se::ClusterDim cluster_dims,
+    ABSL_ASSIGN_OR_RETURN(cluster_dim,
                      se::ClusterDim::FromProto(proto.cluster_dim()));
-    return CustomKernel(proto.name(), std::move(kernel_spec), block_dims,
-                        thread_dims, cluster_dims, proto.shared_memory_bytes());
   }
 
-  return CustomKernel(proto.name(), std::move(kernel_spec), block_dims,
-                      thread_dims, proto.shared_memory_bytes());
+  GpuKernelSpec spec{
+      proto.name(), LaunchDimensions{block_dims, thread_dims, cluster_dim},
+      emitters::KernelArguments({}), proto.shared_memory_bytes()};
+
+  return CustomKernel(std::move(spec), std::move(kernel_spec));
 }
 
 }  // namespace xla::gpu

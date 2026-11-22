@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,8 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/index_domain.pb.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -34,7 +37,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_serdes.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -162,7 +164,10 @@ class OpaqueShardingSerDes : public RTTIExtends<OpaqueShardingSerDes, SerDes> {
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());
     }
-    return OpaqueSharding::Create(std::move(devices), memory_kind);
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<OpaqueSharding> sharding,
+        OpaqueSharding::CreateIfValid(std::move(devices), memory_kind));
+    return sharding;
   }
 
   static char ID;  // NOLINT
@@ -197,6 +202,11 @@ class ConcreteShardingSerDes
       sharding.shape().ToProto(*proto.mutable_shape(), version);
       for (const Shape& shape : sharding.shard_shapes()) {
         *proto.add_shard_shapes() = shape.ToProto(version);
+      }
+      if (sharding.index_domains().has_value()) {
+        for (const IndexDomain& index_domain : *sharding.index_domains()) {
+          *proto.add_index_domains() = index_domain.ToProto(version);
+        }
       }
     } else {
       sharding.dynamic_shape().ToProto(*proto.mutable_dynamic_shape(), version);
@@ -244,9 +254,21 @@ class ConcreteShardingSerDes
         ABSL_ASSIGN_OR_RETURN(auto shard_shape, Shape::FromProto(shard_shape_proto));
         shard_shapes.push_back(std::move(shard_shape));
       }
-      return ConcreteSharding::Create(std::move(devices), memory_kind,
-                                      std::move(shape),
-                                      std::move(shard_shapes));
+      std::optional<std::vector<IndexDomain>> index_domains;
+      if (!proto.index_domains().empty()) {
+        index_domains.emplace();
+        index_domains->reserve(proto.index_domains_size());
+        for (const auto& index_domain_proto : proto.index_domains()) {
+          ABSL_ASSIGN_OR_RETURN(auto index_domain,
+                           IndexDomain::FromProto(index_domain_proto));
+          index_domains->push_back(std::move(index_domain));
+        }
+      }
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ConcreteSharding> sharding,
+                       ConcreteSharding::CreateIfValid(
+                           std::move(devices), memory_kind, std::move(shape),
+                           std::move(shard_shapes), std::move(index_domains)));
+      return sharding;
     }
     if (!proto.has_dynamic_shape()) {
       return absl::InvalidArgumentError(
@@ -261,9 +283,12 @@ class ConcreteShardingSerDes
                        DynamicShape::FromProto(shard_dynamic_shape_proto));
       shard_dynamic_shapes.push_back(std::move(dynamic_shape));
     }
-    return ConcreteSharding::Create(std::move(devices), memory_kind,
-                                    std::move(dynamic_shape),
-                                    std::move(shard_dynamic_shapes));
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<ConcreteSharding> sharding,
+        ConcreteSharding::CreateIfValid(std::move(devices), memory_kind,
+                                        std::move(dynamic_shape),
+                                        std::move(shard_dynamic_shapes)));
+    return sharding;
   }
 
   static char ID;  // NOLINT
@@ -331,9 +356,11 @@ class ConcreteEvenShardingSerDes
     }
     ABSL_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
     ABSL_ASSIGN_OR_RETURN(auto shard_shape, Shape::FromProto(proto.shard_shape()));
-    return ConcreteEvenSharding::Create(
-        std::move(devices), memory_kind, std::move(shape),
-        std::move(shard_shape), proto.is_fully_replicated());
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ConcreteEvenSharding> sharding,
+                     ConcreteEvenSharding::CreateIfValid(
+                         std::move(devices), memory_kind, std::move(shape),
+                         std::move(shard_shape), proto.is_fully_replicated()));
+    return sharding;
   }
 
   static char ID;  // NOLINT

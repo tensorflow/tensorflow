@@ -235,6 +235,39 @@ class EluGradOpTest(test.TestCase):
           elu_grad.shape)
       self.assertLess(error, 1e-4)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testEluGradEdgeCases(self):
+    for dtype in (
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ):
+      with self.subTest(dtype=dtype.name):
+        np_dtype = dtype.as_numpy_dtype
+        values = np.array(
+            [-np.inf, -2.0, -0.0, 0.0, 2.0, np.inf, np.nan], dtype=np_dtype
+        )
+        inputs = constant_op.constant(values, dtype=dtype)
+        grads = constant_op.constant(np.ones_like(values), dtype=dtype)
+        activations = gen_nn_ops.elu(inputs)
+
+        elu_grad = self.evaluate(gen_nn_ops.elu_grad(grads, activations))
+        expected = np.array(
+            [
+                0.0,
+                np.exp(np_dtype(-2.0)),
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                np.nan,
+            ],
+            dtype=np_dtype,
+        )
+        tol = 2e-2 if dtype in (dtypes.float16, dtypes.bfloat16) else 1e-6
+        self.assertAllClose(expected, elu_grad, rtol=tol, atol=tol)
+
 
 class SeluGradOpTest(test.TestCase):
 
@@ -322,6 +355,80 @@ class SeluGradOpTest(test.TestCase):
           selu_grad,
           selu_grad.shape)
       self.assertLess(error, 1e-4)
+
+
+class LeakyReluGradOpTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLeakyReluGradEdgeCases(self):
+    alpha = 0.2
+    for dtype in (
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ):
+      with self.subTest(dtype=dtype.name):
+        np_dtype = dtype.as_numpy_dtype
+        values = np.array(
+            [-np.inf, -2.0, -0.0, 0.0, 2.0, np.inf, np.nan], dtype=np_dtype
+        )
+        inputs = constant_op.constant(values, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          leaky_relu = gen_nn_ops.leaky_relu(inputs, alpha=alpha)
+
+        leaky_relu_grad = self.evaluate(tape.gradient(leaky_relu, inputs))
+        expected = np.array(
+            [
+                alpha,
+                alpha,
+                alpha,
+                alpha,
+                1.0,
+                1.0,
+                np.nan,
+            ],
+            dtype=np_dtype,
+        )
+        self.assertAllClose(expected, leaky_relu_grad)
+
+
+class Relu6GradOpTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRelu6GradEdgeCases(self):
+    for dtype in (
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ):
+      with self.subTest(dtype=dtype.name):
+        np_dtype = dtype.as_numpy_dtype
+        values = np.array(
+            [-np.inf, -2.0, 0.0, 3.0, 6.0, 8.0, np.inf, np.nan], dtype=np_dtype
+        )
+        inputs = constant_op.constant(values, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          relu6 = gen_nn_ops.relu6(inputs)
+
+        relu6_grad = self.evaluate(tape.gradient(relu6, inputs))
+        expected = np.array(
+            [
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                np.nan,
+            ],
+            dtype=np_dtype,
+        )
+        self.assertAllClose(expected, relu6_grad)
 
 
 class SwishGradOpTest(test.TestCase):

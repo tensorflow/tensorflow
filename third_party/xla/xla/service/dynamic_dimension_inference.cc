@@ -50,9 +50,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/transforms/call_inliner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/call_inliner.h"
 #include "xla/service/dynamic_window_utils.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_value.h"
@@ -216,8 +216,6 @@ class DynamicDimensionInferenceVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleScatter(HloInstruction* hlo) override;
 
   absl::Status HandleMap(HloInstruction* hlo) override;
-
-  absl::Status HandleDomain(HloInstruction* hlo) override;
 
   absl::Status HandleOptimizationBarrier(HloInstruction* hlo) override;
 
@@ -1134,11 +1132,6 @@ absl::Status DynamicDimensionInferenceVisitor::PassThroughDynamicDimension(
     SetDynamicSizes(hlo, index, sizes);
   });
   return absl::OkStatus();
-}
-
-absl::Status DynamicDimensionInferenceVisitor::HandleDomain(
-    HloInstruction* hlo) {
-  return PassThroughDynamicDimension(hlo);
 }
 
 absl::Status DynamicDimensionInferenceVisitor::HandleOptimizationBarrier(
@@ -2308,6 +2301,13 @@ absl::Status DynamicDimensionInferenceVisitor::HandleWhile(
       }));
   if (operands_to_add.empty()) {
     return absl::OkStatus();
+  }
+  // The dynamic sizes are passed through the loop as extra tuple elements,
+  // which requires tuple-shaped loop state.
+  if (!original_shape.IsTuple()) {
+    return Unimplemented(
+        "Dynamic dimension in non-tuple while loop state is not supported: %s",
+        hlo->ToString());
   }
 
   HloInstruction* old_tuple_operand = hlo->mutable_operand(0);

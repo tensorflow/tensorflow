@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/outfeed_thunk.h"
 #include "xla/backends/cpu/runtime/reduce_scatter_thunk.h"
 #include "xla/backends/cpu/runtime/rng_seed_thunk.h"
+#include "xla/backends/cpu/runtime/rng_state_resource.h"
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
 #include "xla/backends/cpu/runtime/serdes_base.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
@@ -556,14 +557,16 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             buffer_allocations_[buffer_allocations_.size() - 1]));
   }
 
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateRngGetAndUpdateStateThunk() {
+  absl::StatusOr<std::unique_ptr<Thunk>> CreateRngGetAndUpdateStateThunk(
+      int64_t delta = 0, std::shared_ptr<RngStateResource> rng_state =
+                             std::make_shared<RngStateResource>()) {
     ABSL_RETURN_IF_ERROR(AddBufferAllocations(1));
     return RngGetAndUpdateStateThunk::Create(
         Thunk::Info(),
         /*state_buffer=*/
         CreateBufferAllocationSlice(
             buffer_allocations_[buffer_allocations_.size() - 1]),
-        /*delta=*/0);
+        delta, std::move(rng_state));
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateTopKThunk() {
@@ -1005,7 +1008,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
       const RngGetAndUpdateStateThunk& thunk_2) {
     return VerifySliceEquality(thunk_1.state_buffer(),
                                thunk_2.state_buffer()) &&
-           thunk_1.delta() == thunk_2.delta();
+           thunk_1.delta() == thunk_2.delta() &&
+           thunk_1.rng_state() != nullptr && thunk_2.rng_state() != nullptr;
   }
 
   bool VerifyRngSeedThunkEquality(const RngSeedThunk& thunk_1,
@@ -1429,6 +1433,63 @@ TYPED_TEST(ThunkSequenceSerdesTest, NestedResourceSharingReconstruction) {
     }
   };
   verify_sequence_resources(verify_sequence_resources, *deserialized);
+}
+
+TYPED_TEST(ThunkSequenceSerdesTest, NestedRngStateSharingReconstruction) {
+  auto rng_state = std::make_shared<RngStateResource>();
+
+  ThunkSequence thunk_sequence;
+  ASSERT_OK_AND_ASSIGN(
+      thunk_sequence.emplace_back(),
+      this->CreateRngGetAndUpdateStateThunk(/*delta=*/128, rng_state));
+
+  ThunkSequence call_seq;
+  ASSERT_OK_AND_ASSIGN(
+      call_seq.emplace_back(),
+      this->CreateRngGetAndUpdateStateThunk(/*delta=*/256, rng_state));
+  ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(),
+                       CallThunk::Create(Thunk::Info(), std::move(call_seq)));
+
+  ASSERT_OK_AND_ASSIGN(std::string serialized, this->Serialize(thunk_sequence));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkSequence> deserialized,
+                       this->Deserialize(serialized));
+  EXPECT_TRUE(this->VerifyThunkSequenceEquality(thunk_sequence, *deserialized));
+
+  const auto* top_rng = absl::down_cast<const RngGetAndUpdateStateThunk*>(
+      (*deserialized)[0].get());
+  const auto* call_thunk =
+      absl::down_cast<const CallThunk*>((*deserialized)[1].get());
+  const auto* nested_rng = absl::down_cast<const RngGetAndUpdateStateThunk*>(
+      call_thunk->called_executor().thunk_sequence()[0].get());
+  ASSERT_NE(top_rng->rng_state(), nullptr);
+  EXPECT_EQ(top_rng->rng_state().get(), nested_rng->rng_state().get());
+}
+
+TYPED_TEST(ThunkSequenceSerdesTest,
+           RngGetAndUpdateStateThunkWithoutResourceFallback) {
+  if (!std::is_same_v<TypeParam, ThunkSequenceSerDesProtobuf>) {
+    GTEST_SKIP() << "This test is intended only for "
+                    "ThunkSequenceSerDesProtobuf. Skipping for "
+                 << typeid(TypeParam).name();
+  }
+
+  ThunkSequence thunk_sequence;
+  ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(),
+                       this->CreateRngGetAndUpdateStateThunk());
+
+  auto* proto_serdes = absl::down_cast<ThunkSequenceSerDesProtobuf*>(
+      this->thunk_sequence_serdes());
+  ASSERT_NE(proto_serdes, nullptr);
+  ASSERT_OK_AND_ASSIGN(ThunkSequenceProto proto,
+                       proto_serdes->ToProto(thunk_sequence));
+  proto.clear_thunk_resources();
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkSequence> deserialized,
+                       proto_serdes->FromProto(proto));
+  ASSERT_EQ(deserialized->size(), 1);
+  const auto* rng_thunk = absl::down_cast<const RngGetAndUpdateStateThunk*>(
+      (*deserialized)[0].get());
+  EXPECT_NE(rng_thunk->rng_state(), nullptr);
 }
 
 void ForEachThunkProtoCountTestHelper(

@@ -34,9 +34,6 @@ limitations under the License.
 
 namespace xla::codegen {
 
-const std::string& GetCppGenIrString(
-    const intrinsics::IntrinsicOptions& options);
-
 // Helper to parse embedded bitcode into a module.
 // Wraps llvm::parseIR and handles initialization of MemoryBuffer.
 std::unique_ptr<llvm::Module> ParseEmbeddedBitcode(
@@ -45,7 +42,6 @@ std::unique_ptr<llvm::Module> ParseEmbeddedBitcode(
 
 // Returns true if the C++ bitcode intrinsics were compiled and are available.
 // If the compiler does not support vector extensions, this will return false.
-bool AreEigenIntrinsicsAvailable(absl::string_view features = "");
 bool AreCppGenIntrinsicsAvailable();
 
 class CppGenIntrinsicLibrary;

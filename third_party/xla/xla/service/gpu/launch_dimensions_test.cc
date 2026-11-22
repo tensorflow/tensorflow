@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/launch_dimensions.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "google/protobuf/text_format.h"
+#include "xla/runtime/work_cluster.h"
 #include "xla/service/gpu/launch_dimensions.pb.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -36,6 +38,27 @@ TEST(LaunchDimensionsTest, DefaultConstruction) {
   EXPECT_EQ(dimensions.thread_counts_per_block().x, 1);
   EXPECT_EQ(dimensions.thread_counts_per_block().y, 1);
   EXPECT_EQ(dimensions.thread_counts_per_block().z, 1);
+  EXPECT_EQ(dimensions.cluster_dims(), std::nullopt);
+}
+
+TEST(LaunchDimensionsTest, ConstexprAndClusterDims) {
+  constexpr LaunchDimensions kUnclustered{se::BlockDim(8, 2, 1),
+                                          se::ThreadDim(128, 1, 1)};
+  constexpr LaunchDimensions kClustered{
+      se::BlockDim(8, 2, 1), se::ThreadDim(128, 1, 1), se::ClusterDim(2, 2, 1)};
+  static_assert(!kUnclustered.cluster_dims().has_value());
+  static_assert(kClustered.cluster_dims() == se::ClusterDim(2, 2, 1));
+  static_assert(kUnclustered != kClustered);
+  static_assert(kClustered == LaunchDimensions(se::BlockDim(8, 2, 1),
+                                               se::ThreadDim(128, 1, 1),
+                                               se::ClusterDim(2, 2, 1)));
+
+  EXPECT_EQ(kUnclustered.ToString(),
+            "blocks: {8, 2, 1}, threads/block: {128, 1, 1}");
+  EXPECT_EQ(kClustered.ToString(),
+            "blocks: {8, 2, 1}, threads/block: {128, 1, 1}, "
+            "cluster: {2, 2, 1}");
+  EXPECT_EQ(kClustered.AsWorkDimensions().num_work_clusters, NumWorkClusters{});
 }
 
 TEST(LaunchDimensionsTest, LinearConstruction) {
@@ -83,6 +106,21 @@ TEST(LaunchDimensionsTest, FromAndToProto) {
   ASSERT_OK_AND_ASSIGN(LaunchDimensions launch_dimensions,
                        LaunchDimensions::FromProto(proto));
   EXPECT_THAT(launch_dimensions.ToProto(), EqualsProto(proto));
+}
+
+TEST(LaunchDimensionsTest, ToAndFromProtoWithClusterDims) {
+  LaunchDimensions dimensions{se::BlockDim{10, 20, 30},
+                              se::ThreadDim{44, 55, 66},
+                              se::ClusterDim{2, 4, 5}};
+
+  LaunchDimensionsProto proto = dimensions.ToProto();
+  EXPECT_THAT(proto, EqualsProto(R"pb(
+                block_counts { coordinates { x: 10 y: 20 z: 30 } }
+                thread_counts_per_block { coordinates { x: 44 y: 55 z: 66 } }
+                cluster_dims { coordinates { x: 2 y: 4 z: 5 } }
+              )pb"));
+  EXPECT_THAT(LaunchDimensions::FromProto(proto),
+              absl_testing::IsOkAndHolds(dimensions));
 }
 
 }  // namespace

@@ -477,8 +477,6 @@ absl::Status CLArguments::SetGPUResources(
 std::string CLArguments::GetListOfArgs() {
   std::string result;
   for (auto& t : buffers_) {
-    const std::string type_name =
-        t.second.desc.data_type == DataType::FLOAT32 ? "float" : "half";
     std::string attributes;
     for (const auto& attr : t.second.desc.attributes) {
       attributes += absl::StrCat("  __attribute__((", attr, "))");

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
+#include "xla/backends/gpu/runtime/zeroed_outputs.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_assignment.pb.h"
 #include "xla/service/shaped_slice.h"
@@ -47,16 +48,18 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
-                       std::vector<ShapedSlice> args,
-                       std::vector<bool> output_args, bool should_memzero,
-                       std::optional<int64_t> sdpa_dropout_seed)
+CuDnnThunk::CuDnnThunk(
+    std::string fingerprint, ThunkInfo thunk_info,
+    std::vector<ShapedSlice> args, std::vector<bool> output_args,
+    bool should_memzero, std::optional<int64_t> sdpa_dropout_seed,
+    std::optional<se::dnn::DnnGraphTargetDevice> target_device)
     : TracedCommand(Kind::kCuDnn, std::move(thunk_info)),
       fingerprint_(std::move(fingerprint)),
       args_(std::move(args)),
       output_args_(std::move(output_args)),
       should_memzero_(should_memzero),
-      sdpa_dropout_seed_(sdpa_dropout_seed) {}
+      sdpa_dropout_seed_(sdpa_dropout_seed),
+      target_device_(std::move(target_device)) {}
 
 absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
   return graphs_.GetOrCreateAndInitialize(
@@ -83,7 +86,8 @@ absl::StatusOr<std::unique_ptr<se::dnn::DnnGraph>> CuDnnThunk::CreateGraph(
     return Internal("No serialized cuDNN graph with fingerprint '%s'",
                     fingerprint_);
   }
-  return dnn->DeserializeGraph(*params.stream, serialized->second);
+  return dnn->DeserializeGraph(*params.stream, serialized->second,
+                               target_device_);
 }
 
 absl::StatusOr<se::dnn::DnnGraph*> CuDnnThunk::GetGraph(
@@ -129,21 +133,42 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
   ABSL_ASSIGN_OR_RETURN(se::dnn::DnnGraph * graph,
                    GetGraph(execute_params.stream->parent()));
   std::vector<se::DeviceAddressBase> operands;
+  std::vector<se::DeviceAddressBase> zeroed_outputs;
   operands.reserve(args_.size());
   for (const ShapedSlice& arg : args_) {
     se::DeviceAddressBase buf =
         execute_params.buffer_allocations->GetDeviceAddress(arg.slice);
     VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
+    if (should_memzero_ && output_args_[operands.size()]) {
+      zeroed_outputs.push_back(buf);
+    }
     operands.push_back(buf);
+  }
+
+  // The outputs are zeroed by memset commands that the graph command depends
+  // on, mirroring what ExecuteOnStream does with stream->MemZero. Rewriting the
+  // dependencies here rather than in each branch keeps the explicit and the
+  // traced path on one mechanism; RecordTracedCommand reads them straight out
+  // of `record_action`, so this must happen before it is moved from.
+  ABSL_ASSIGN_OR_RETURN(ZeroedOutputs zeroed,
+                   RecordZeroedOutputs(this, record_params, record_action,
+                                       command_buffer, zeroed_outputs));
+  if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+    create->dependencies = zeroed.dependencies(create->dependencies);
   }
 
   ABSL_ASSIGN_OR_RETURN(const bool supports_explicit,
                    graph->SupportsExplicitCommandBufferConstruction());
   if (supports_explicit) {
     if (auto* create = std::get_if<RecordCreate>(&record_action)) {
-      return command_buffer->CreateDnnGraphCommand(
-          *graph, *execute_params.stream,
-          absl::Span<se::DeviceAddressBase>(operands), create->dependencies);
+      ABSL_ASSIGN_OR_RETURN(const se::CommandBuffer::Command* command,
+                       command_buffer->CreateDnnGraphCommand(
+                           *graph, *execute_params.stream,
+                           absl::Span<se::DeviceAddressBase>(operands),
+                           create->dependencies));
+      ABSL_RETURN_IF_ERROR(AttachZeroedOutputs(this, record_params, command_buffer,
+                                          command, std::move(zeroed)));
+      return command;
     }
     if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
       ABSL_RETURN_IF_ERROR(command_buffer->UpdateDnnGraphCommand(
@@ -153,13 +178,18 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
     }
     return Internal("Invalid record action");
   }
-  return RecordTracedCommand(
-      execute_params, record_params, std::move(record_action), command_buffer,
-      [&](se::Stream* stream) {
-        return graph->Execute(
-            *stream, absl::Span<se::DeviceAddressBase>(operands),
-            execute_params.collective_params->local_device_id.value());
-      });
+  ABSL_ASSIGN_OR_RETURN(
+      const se::CommandBuffer::Command* command,
+      RecordTracedCommand(
+          execute_params, record_params, std::move(record_action),
+          command_buffer, [&](se::Stream* stream) {
+            return graph->Execute(
+                *stream, absl::Span<se::DeviceAddressBase>(operands),
+                execute_params.collective_params->local_device_id.value());
+          }));
+  ABSL_RETURN_IF_ERROR(AttachZeroedOutputs(this, record_params, command_buffer,
+                                      command, std::move(zeroed)));
+  return command;
 }
 
 absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
@@ -177,6 +207,13 @@ absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
   if (sdpa_dropout_seed_.has_value()) {
     proto.mutable_cudnn_thunk()->set_sdpa_dropout_seed(
         static_cast<int64_t>(*sdpa_dropout_seed_));
+  }
+  if (target_device_.has_value()) {
+    CudnnTargetDeviceProto* target_device_proto =
+        proto.mutable_cudnn_thunk()->mutable_target_device();
+    target_device_proto->set_core_count(target_device_->core_count);
+    target_device_proto->set_serialized_device_properties(
+        target_device_->serialized_device_properties);
   }
   return proto;
 }
@@ -199,9 +236,18 @@ absl::StatusOr<std::unique_ptr<CuDnnThunk>> CuDnnThunk::FromProto(
   if (proto.has_sdpa_dropout_seed()) {
     sdpa_dropout_seed = static_cast<uint64_t>(proto.sdpa_dropout_seed());
   }
+  std::optional<se::dnn::DnnGraphTargetDevice> target_device;
+  if (proto.has_target_device()) {
+    const CudnnTargetDeviceProto& target_device_proto = proto.target_device();
+    target_device.emplace();
+    target_device->core_count = target_device_proto.core_count();
+    target_device->serialized_device_properties =
+        target_device_proto.serialized_device_properties();
+  }
   return std::make_unique<CuDnnThunk>(
       proto.fingerprint(), std::move(thunk_info), std::move(args),
-      std::move(output_args), proto.should_memzero(), sdpa_dropout_seed);
+      std::move(output_args), proto.should_memzero(), sdpa_dropout_seed,
+      std::move(target_device));
 }
 
 }  // namespace gpu

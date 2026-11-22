@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/python/framework/op_def_util.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace py = pybind11;
 
@@ -86,9 +87,21 @@ inline std::string PyRepr(const py::handle& value) {
   return value.attr("__repr__")().cast<std::string>();
 }
 
+// Converts `data_type` to a Python `tf.DType`. Every valid `DataType` has a
+// Python `DType`, so the conversion only fails if the C++ `DataType` enum and
+// the Python dtype tables in dtypes.py are out of sync (e.g. an op registration
+// uses a `DataType` that dtypes.py does not support yet). In that case this
+// rethrows the pending Python exception (usually a `TypeError`) as
+// `py::error_already_set`, or raises a `TypeError` if no exception is pending,
+// instead of returning a null object that callers would dereference.
 py::object DataTypeToPybindObject(const DataType& data_type) {
-  return py::reinterpret_steal<py::object>(
-      DataTypeToPyObject(data_type).release());
+  tensorflow::Safe_PyObjectPtr result = DataTypeToPyObject(data_type);
+  if (result == nullptr) {
+    if (PyErr_Occurred()) throw py::error_already_set();
+    throw PyTypeError(
+        absl::StrCat("Unsupported DataType: ", static_cast<int>(data_type)));
+  }
+  return py::reinterpret_steal<py::object>(result.release());
 }
 
 // Converts the py:object to the AttributeType.

@@ -362,8 +362,6 @@ Status ImportGenericFunction(
                         ConvertAttributeValue(tf_attr, builder));
     attrs.append(name, attr);
   }
-  SmallString<8> arg_or_res_attr_name;
-  SmallString<8> sub_arg_attr_name;
   // Iterate of the input in the signature. Each input will correspond to
   // potentially multiple arguments because of how the OpDef allows repeated
   // arguments controlled by `number_attr` for example.

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 
@@ -206,6 +207,44 @@ TEST(CompositeRewriterTest, MultipleContractingDimensionsRejects) {
   CompositeRewriter rewriter;
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_THAT(rewriter.Run(module.get()), absl_testing::IsOkAndHolds(false));
+}
+
+TEST(CompositeRewriterTest, KeepsCallMetadata) {
+  absl::string_view hlo_string = R"(
+    HloModule test_module
+
+    %xla.scaled_dot.1 {
+      %p0 = f8e4m3fn[128,256]{1,0} parameter(0)
+      %p1 = f8e4m3fn[256,128]{1,0} parameter(1)
+      %p2 = f8e8m0fnu[128,8]{1,0} parameter(2)
+      %p3 = f8e8m0fnu[8,128]{1,0} parameter(3)
+      ROOT %dummy = bf16[128,128]{1,0} constant({...})
+    }
+
+    ENTRY %main {
+      %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+      %rhs = f8e4m3fn[256,128]{1,0} parameter(1)
+      %lhs_scales = f8e8m0fnu[128,8]{1,0} parameter(2)
+      %rhs_scales = f8e8m0fnu[8,128]{1,0} parameter(3)
+      ROOT %call = bf16[128,128]{1,0} call(%lhs, %rhs, %lhs_scales, %rhs_scales),
+          to_apply=%xla.scaled_dot.1,
+          is_composite=true,
+          frontend_attributes={
+            composite.attributes="{dimension_numbers=[[[1],[0]],[[],[]]]}",
+            composite.name="xla.scaled_dot",
+            composite.version="1"
+          },
+          metadata={op_name="jit(f)/scaled_dot" source_file="model.py" source_line=7}
+    }
+  )";
+  CompositeRewriter rewriter;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(rewriter.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kScaledDot);
+  EXPECT_EQ(root->metadata().op_name(), "jit(f)/scaled_dot");
+  EXPECT_EQ(root->metadata().source_file(), "model.py");
+  EXPECT_EQ(root->metadata().source_line(), 7);
 }
 
 INSTANTIATE_TEST_SUITE_P(

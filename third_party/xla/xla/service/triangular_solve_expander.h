@@ -16,61 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_TRIANGULAR_SOLVE_EXPANDER_H_
 #define XLA_SERVICE_TRIANGULAR_SOLVE_EXPANDER_H_
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-
-class TriangularSolveExpander : public OpExpanderPass {
- public:
-  explicit TriangularSolveExpander(int64_t block_size = 128);
-
-  absl::string_view name() const override {
-    return "triangular_solve_expander";
-  }
-
- protected:
-  // Should we use direct solves for batched inputs?
-  virtual bool UseDirectSolves() const { return true; }
-
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-
-  // Performs a triangular solve using an algorithm from MAGMA, which inverts
-  // diagonal blocks and multiplies them using matrix multiplications.
-  XlaOp SolveByInvertingDiagonalBlocks(XlaOp a, XlaOp b, bool left_side,
-                                       bool lower, bool transpose_a,
-                                       bool conjugate_a, bool unit_diagonal,
-                                       PrecisionConfig::Precision precision);
-
-  // Helper function used by SolveByInvertingDiagonalBlocks
-  virtual XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower_triangular,
-                                     PrecisionConfig::Precision precision);
-
-  // Performs a direct triangular solve, suitable for case with small matrices
-  // or with large batch.
-  XlaOp SolveDirectly(XlaOp a, XlaOp b, bool left_side, bool lower,
-                      bool transpose_a, bool conjugate_a, bool unit_diagonal,
-                      PrecisionConfig::Precision precision);
-
-  XlaOp BuildTriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
-                             bool transpose_a, bool conjugate_a,
-                             bool unit_diagonal, int64_t block_size,
-                             PrecisionConfig::Precision precision);
-
- private:
-  // Block size for BuildTriangularSolve
-  const int64_t block_size_;
-  // Mapping from op signatures to existing computations.
-  absl::flat_hash_map<std::string, HloComputation*> computation_cache_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/expanders/triangular_solve_expander.h"
+#include "xla/hlo/transforms/expanders/triangular_solve_expander.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_TRIANGULAR_SOLVE_EXPANDER_H_

@@ -1,18 +1,5 @@
-diff --git a/python/private/pypi/platform.bzl b/python/private/pypi/platform.bzl
-index 00000000..00000000 100644
---- a/python/private/pypi/platform.bzl
-+++ b/python/private/pypi/platform.bzl
-@@ -25,7 +25,7 @@ def platform(*, name, arch_name, os_name, config_settings = [], env = {}, marker
-         # the lowest priority one needs to be the first one
-         whl_platform_tags = ["any"] + whl_platform_tags
-
--    whl_abi_tags = whl_abi_tags or ["abi3", "cp{major}{minor}"]
-+    whl_abi_tags = whl_abi_tags or ["abi3", "cp{major}{minor}", "cp{major}{minor}t"]
-     if "none" not in whl_abi_tags:
-         # the lowest priority one needs to be the first one
-         whl_abi_tags = ["none"] + whl_abi_tags
 diff --git a/python/private/pypi/pep508_env.bzl b/python/private/pypi/pep508_env.bzl
-index 00000000..00000000 100644
+index 9fe9dca..abd41c0 100644
 --- a/python/private/pypi/pep508_env.bzl
 +++ b/python/private/pypi/pep508_env.bzl
 @@ -23,6 +23,7 @@ _DEFAULT = "//conditions:default"
@@ -23,11 +10,24 @@ index 00000000..00000000 100644
      "arm": "aarch32",
      "arm64": "aarch64",
  }
+diff --git a/python/private/pypi/platform.bzl b/python/private/pypi/platform.bzl
+index e8f36a9..439082c 100644
+--- a/python/private/pypi/platform.bzl
++++ b/python/private/pypi/platform.bzl
+@@ -25,7 +25,7 @@ def platform(*, name, arch_name, os_name, config_settings = [], env = {}, marker
+         # the lowest priority one needs to be the first one
+         whl_platform_tags = ["any"] + whl_platform_tags
+ 
+-    whl_abi_tags = whl_abi_tags or ["abi3", "cp{major}{minor}"]
++    whl_abi_tags = whl_abi_tags or ["abi3", "cp{major}{minor}", "cp{major}{minor}t"]
+     if "none" not in whl_abi_tags:
+         # the lowest priority one needs to be the first one
+         whl_abi_tags = ["none"] + whl_abi_tags
 diff --git a/python/private/python_register_toolchains.bzl b/python/private/python_register_toolchains.bzl
-index 9e75c419..ba6d8f7a 100644
+index 770c6a6..b6c1a90 100644
 --- a/python/private/python_register_toolchains.bzl
 +++ b/python/private/python_register_toolchains.bzl
-@@ -94,6 +94,7 @@ def python_register_toolchains(
+@@ -97,6 +97,7 @@ def python_register_toolchains(
      minor_mapping = minor_mapping or MINOR_MAPPING
  
      python_version = full_version(version = python_version, minor_mapping = minor_mapping)
@@ -35,7 +35,7 @@ index 9e75c419..ba6d8f7a 100644
  
      toolchain_repo_name = "{name}_toolchains".format(name = name)
  
-@@ -174,6 +175,7 @@ def python_register_toolchains(
+@@ -183,6 +184,7 @@ def python_register_toolchains(
          name = name + "_host",
          platforms = loaded_platforms,
          python_version = python_version,
@@ -44,10 +44,10 @@ index 9e75c419..ba6d8f7a 100644
  
      toolchains_repo(
 diff --git a/python/private/toolchains_repo.bzl b/python/private/toolchains_repo.bzl
-index f7ff19c3..458f2885 100644
+index 359fc51..aab6ddb 100644
 --- a/python/private/toolchains_repo.bzl
 +++ b/python/private/toolchains_repo.bzl
-@@ -445,6 +445,10 @@ Full python version, Major.Minor.Micro.
+@@ -470,6 +470,10 @@ Full python version, Major.Minor.Micro.
  Only set in workspace calls.
  """,
          ),
@@ -58,7 +58,7 @@ index f7ff19c3..458f2885 100644
          "python_versions": attr.string_dict(
              doc = """
  If set, the Python version for the corresponding selected platform. Values in
-@@ -603,6 +607,9 @@ def _get_host_impl_repo_name(*, rctx, logger, python_version, os_name, cpu_name,
+@@ -628,6 +632,9 @@ def _get_host_impl_repo_name(*, rctx, logger, python_version, os_name, cpu_name,
          else:
              candidates = [preference]
  

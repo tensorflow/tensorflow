@@ -16,29 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SCAN_EXPANDER_H_
 #define XLA_SERVICE_SCAN_EXPANDER_H_
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
-
-namespace xla {
-
-// A pass which rewrites scan operations into a while loop.
-class ScanExpander : public OpExpanderPass {
- public:
-  explicit ScanExpander(bool expand_associative_scans = true)
-      : expand_associative_scans_(expand_associative_scans) {}
-  absl::string_view name() const override { return "scan_expander"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-
- private:
-  bool expand_associative_scans_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/expanders/scan_expander.h"
+#include "xla/hlo/transforms/expanders/scan_expander.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_SCAN_EXPANDER_H_

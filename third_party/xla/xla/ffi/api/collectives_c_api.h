@@ -29,10 +29,10 @@ extern "C" {
 // XLA FFI Collectives API
 //===----------------------------------------------------------------------===//
 
-// Exposes the XLA-owned host collective communicator and collective memory
-// window to FFI handlers.
+// Exposes the XLA-owned host collective communicator, collective memory window,
+// and communicator information to FFI handlers.
 // `request_communicator` requests a clique in the Prepare stage;
-// `get_communicator` returns the handle once cliques are acquired.
+// `get_communicator` returns the handle and metadata once cliques are acquired.
 // `request_window` requests window registration for a batch of already-
 // allocated buffers with the clique in Prepare; `get_window` returns the
 // corresponding window handle once collective memory is acquired.
@@ -42,9 +42,14 @@ extern "C" {
 // This API is backend agnostic; backend wiring lives in the runtime that
 // attaches the extension.
 
+// Minor versions add backward-compatible fields or callbacks. Callers and
+// implementations must honor struct_size; incompatible changes require a major
+// version bump.
+// The 0.2 C ABI remains supported for six months starting 2026-12-01;
+// compatibility code may be removed on or after 2027-06-01.
 #define XLA_FFI_Extension_Collectives 129
 #define XLA_FFI_Extension_Collectives_MajorVersion 0
-#define XLA_FFI_Extension_Collectives_MinorVersion 2
+#define XLA_FFI_Extension_Collectives_MinorVersion 3
 
 // Mirrors `xla::CollectiveOpGroupMode`.
 typedef enum XLA_FFI_CollectiveGroupMode {
@@ -101,12 +106,15 @@ typedef struct XLA_FFI_Communicator_Get_Args {
   size_t num_groups;
   int64_t communication_id;
   XLA_FFI_Communicator* communicator;  // out
+  int32_t rank;  // zero-based rank in the communicator (out)
+  int32_t size;  // total participant count (out)
 } XLA_FFI_Communicator_Get_Args;
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Communicator_Get_Args, communicator);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Communicator_Get_Args, size);
 
-// Returns the non-owning communicator handle for the clique. Valid once
-// cliques are acquired (Initialize/Execute stages).
+// Returns the non-owning communicator handle and metadata for the current
+// device's clique. Valid once cliques are acquired (Initialize/Execute/Record
+// stages).
 typedef XLA_FFI_Error* XLA_FFI_Communicator_Get(
     const XLA_FFI_Collectives_Extension* self,
     XLA_FFI_Communicator_Get_Args* args);

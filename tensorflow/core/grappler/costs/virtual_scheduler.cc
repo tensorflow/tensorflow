@@ -196,7 +196,7 @@ const NodeDef* HeapReadyManager::GetCurrNode() {
   if (nodes_.empty()) {
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
   }
-  const std::string node_name = nodes_.front()->name();
+  [[maybe_unused]] const std::string node_name = nodes_.front()->name();
   // Next time we call GetCurrNode(), it just returns the cached copy
   // curr_node_, until we call the RemoveCurrNode().
   curr_node_ = nodes_.front();

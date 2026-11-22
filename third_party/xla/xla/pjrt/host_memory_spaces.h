@@ -57,7 +57,7 @@ class UnpinnedHostMemorySpace : public PjRtMemorySpace {
   PjRtDevice* device_ = nullptr;
   std::string debug_string_;
   std::string to_string_;
-  PjRtMemorySpaceCApiDelegator capi_delegator_{this};
+  PjRtMemorySpaceCApiDelegator capi_delegator_;
 };
 
 // Represents the pinned host memory accessible to a `PjRtDevice`.
@@ -94,7 +94,7 @@ class PinnedHostMemorySpace : public PjRtMemorySpace {
   PjRtDevice* device_ = nullptr;
   std::string debug_string_;
   std::string to_string_;
-  PjRtMemorySpaceCApiDelegator capi_delegator_{this};
+  PjRtMemorySpaceCApiDelegator capi_delegator_;
 };
 
 // Specifically meant for CPU devices, and represents unpinned RAM memory.
@@ -132,7 +132,7 @@ class CpuDeviceMemorySpace : public PjRtMemorySpace {
   PjRtDevice* device_ = nullptr;
   std::string debug_string_;
   std::string to_string_;
-  PjRtMemorySpaceCApiDelegator capi_delegator_{this};
+  PjRtMemorySpaceCApiDelegator capi_delegator_;
 };
 
 }  // namespace xla

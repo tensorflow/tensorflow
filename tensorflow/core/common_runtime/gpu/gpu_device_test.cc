@@ -15,31 +15,53 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
-#define TF_GPU_USE_PJRT
-#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
-
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
-#include "absl/synchronization/notification.h"
-#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
-#include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/tsl/framework/device_id.h"
-#include "xla/tsl/framework/device_id_manager.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-#ifdef TF_GPU_USE_PJRT
+#include <gmock/gmock.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_id_manager.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#endif  // TF_GPU_USE_PJRT
 
 #if GOOGLE_CUDA
 // Needed for CUDA_VERSION preprocessor directive
@@ -328,7 +350,6 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
       "list.");
 }
 
-#ifdef TF_GPU_USE_PJRT
 TEST_F(GPUDeviceTest, GpuDeviceWithPjrt) {
   SessionOptions opts = MakeSessionOptions("0");
   std::vector<std::unique_ptr<Device>> devices;
@@ -338,7 +359,7 @@ TEST_F(GPUDeviceTest, GpuDeviceWithPjrt) {
   EXPECT_GE(devices[0]->attributes().memory_limit(), 0);
   EXPECT_EQ(static_cast<BaseGPUDevice*>(devices[0].get())->priority(), 0);
   auto pjrt_client = GetPjRtClient(DeviceType(DEVICE_GPU));
-  EXPECT_OK(pjrt_client.status());
+  TF_EXPECT_OK(pjrt_client.status());
 }
 
 TEST_F(GPUDeviceTest, TestOnlyResetRecreatesPjRtClient) {
@@ -370,11 +391,11 @@ TEST_F(GPUDeviceTest, TestOnlyResetAllowsDifferentVisibleDeviceList) {
   TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       MakeSessionOptions("0"), kDeviceNamePrefix, &devices));
   EXPECT_THAT(devices, SizeIs(1));
-  // CreateDevices creates the process-global GPU XLA LocalClient restricted to
-  // the visible devices; GetOrCreateLocalClient returns that cached instance.
-  TF_ASSERT_OK_AND_ASSIGN(
-      xla::LocalClient * local_client,
-      xla::ClientLibrary::GetOrCreateLocalClient(se::GPUMachineManager()));
+  // CreateDevices creates the GPU XLA LocalClient restricted to the visible
+  // devices; GetOrCreateLocalClient returns that cached instance.
+  TF_ASSERT_OK_AND_ASSIGN(xla::LocalClient * local_client,
+                          xla::ClientLibrary::GetOrCreateLocalClient(
+                              se::GPUMachineManager(), std::set<int>{0}));
   EXPECT_EQ(local_client->device_count(), 1);
   devices.clear();
 
@@ -383,9 +404,9 @@ TEST_F(GPUDeviceTest, TestOnlyResetAllowsDifferentVisibleDeviceList) {
   TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       MakeSessionOptions("0,1", 0, 2), kDeviceNamePrefix, &devices));
   EXPECT_THAT(devices, SizeIs(2));
-  TF_ASSERT_OK_AND_ASSIGN(
-      local_client,
-      xla::ClientLibrary::GetOrCreateLocalClient(se::GPUMachineManager()));
+  TF_ASSERT_OK_AND_ASSIGN(local_client,
+                          xla::ClientLibrary::GetOrCreateLocalClient(
+                              se::GPUMachineManager(), std::set<int>{0, 1}));
   EXPECT_EQ(local_client->device_count(), 2);
   TF_ASSERT_OK_AND_ASSIGN(xla::PjRtClient * pjrt_client,
                           GetPjRtClient(DeviceType(DEVICE_GPU)));
@@ -428,7 +449,6 @@ TEST_F(GPUDeviceTest, TestOnlyResetReleasesAllocatorMemory) {
   EXPECT_GE(GetGpuMemoryUsage(gpu_id).available_bytes - available_alive,
             kMemoryLimitMb / 2 * kMb);
 }
-#endif  // TF_GPU_USE_PJRT
 
 TEST_F(GPUDeviceTest, EmptyVirtualDeviceConfig) {
   // It'll create single virtual device when the virtual device config is empty.

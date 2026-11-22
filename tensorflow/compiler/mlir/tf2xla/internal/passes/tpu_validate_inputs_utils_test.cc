@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -43,7 +44,8 @@ TEST(IsPotentialUnsupportedOp, ClusterOpReturnsFalse) {
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = mlir::tf_device::ClusterOp::create(
       builder, mlir::UnknownLoc::get(&context), result_types);
-  cluster->dump();
+  cluster->print(llvm::errs());
+  llvm::errs() << "\n";
   EXPECT_FALSE(IsPotentialUnsupportedOp(cluster));
 }
 

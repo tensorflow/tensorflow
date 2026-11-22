@@ -16,28 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SELECT_AND_SCATTER_EXPANDER_H_
 #define XLA_SERVICE_SELECT_AND_SCATTER_EXPANDER_H_
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
-
-namespace xla {
-
-// This pass rewrites select-and-scatter operations into a window reduction and
-// a scatter as described in the conceptual explanation of the "select" and
-// "scatter" steps of this operation.
-class SelectAndScatterExpander : public OpExpanderPass {
- public:
-  absl::string_view name() const override {
-    return "select_and_scatter_expander";
-  }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* inst) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* inst) override;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/expanders/select_and_scatter_expander.h"
+#include "xla/hlo/transforms/expanders/select_and_scatter_expander.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_SELECT_AND_SCATTER_EXPANDER_H_

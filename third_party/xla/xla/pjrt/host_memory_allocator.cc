@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "xla/tsl/framework/allocator.h"
 
 namespace xla {
@@ -28,7 +29,7 @@ BasicHostMemoryAllocator::BasicHostMemoryAllocator(
     std::unique_ptr<tsl::Allocator> allocator, size_t alignment)
     : allocator_(std::move(allocator)), alignment_(alignment) {}
 
-HostMemoryAllocator::OwnedPtr BasicHostMemoryAllocator::Allocate(
+absl_nullable HostMemoryAllocator::OwnedPtr BasicHostMemoryAllocator::Allocate(
     size_t size, const AllocateOptions&) {
   if (size == 0) {
     return nullptr;

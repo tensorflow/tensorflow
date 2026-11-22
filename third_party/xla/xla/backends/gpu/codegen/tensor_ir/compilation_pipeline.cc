@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensor_ir/Compiler/CudaTile/TileIRAssembly.h"
 #include "tensor_ir/Dialect/TensorIRAttrs.h"
 #include "tensor_ir/Options/Options.h"
 #include "tensor_ir/Options/OptionsEnums.h"
+#include "tensor_ir/Support/TileIRAssembly.h"
 #include "tensor_ir/Utils/ComputeCapability.h"
 #include "absl/base/call_once.h"
 #include "absl/log/log.h"
@@ -74,18 +74,19 @@ void SetUpTileIrAssembler() {
   absl::call_once(once, [] {
     // The same search that finds `ptxas`: the CUDA toolkit roots first, `$PATH`
     // last. `tileiras` ships next to `ptxas` from CUDA 13.1 on; TensorIR itself
-    // needs the 13.3 release or newer.
+    // emits the CUDA 13.4 bytecode format by default and needs the 13.4 release
+    // or newer.
     static constexpr stream_executor::SemanticVersion kMinimumTileirasVersion{
-        13, 3, 0};
+        13, 4, 0};
     static constexpr absl::Span<const stream_executor::SemanticVersion>
         kNoExcludedVersions{};
     absl::StatusOr<std::string> path = stream_executor::FindCudaExecutable(
         "tileiras", /*preferred_cuda_dir=*/"", kMinimumTileirasVersion,
         kNoExcludedVersions);
     if (!path.ok()) {
-      LOG(WARNING) << "TensorIR: no Tile IR assembler (CUDA 13.3 or newer "
-                      "ships one), falling back to Tile IR bytecode for the "
-                      "driver to JIT: "
+      LOG(WARNING) << "TensorIR: no Tile IR assembler (CUDA 13.4 or newer "
+                      "ships a compatible one), falling back to Tile IR "
+                      "bytecode for the driver to JIT: "
                    << path.status();
       return;
     }

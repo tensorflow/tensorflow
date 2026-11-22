@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <vector>
+
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/metrics.h"
@@ -21,13 +24,23 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -346,6 +359,108 @@ TEST_F(LoaderTest, BadNodeAttr) {
   EXPECT_FALSE(st.ok());
   EXPECT_NE(st.message().find("constant tensor but no value has been provided"),
             std::string::npos);
+}
+
+// Writes a SavedModel with one "serve" MetaGraphDef holding a single Const
+// node whose `value` is `value`, either in the graph or in the body of a
+// library function, and returns its export directory.
+string WriteSingleConstSavedModel(const string& name, const TensorProto& value,
+                                  bool in_function) {
+  const string export_dir = io::JoinPath(testing::TmpDir(), name);
+  TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(export_dir));
+  SavedModel saved_model;
+  MetaGraphDef* meta_graph = saved_model.add_meta_graphs();
+  meta_graph->mutable_meta_info_def()->add_tags(kSavedModelTagServe);
+  NodeDef* node;
+  if (in_function) {
+    FunctionDef* function =
+        meta_graph->mutable_graph_def()->mutable_library()->add_function();
+    function->mutable_signature()->set_name("const_fn");
+    node = function->add_node_def();
+  } else {
+    node = meta_graph->mutable_graph_def()->add_node();
+  }
+  node->set_name("c");
+  node->set_op("Const");
+  (*node->mutable_attr())["dtype"].set_type(value.dtype());
+  *(*node->mutable_attr())["value"].mutable_tensor() = value;
+  TF_CHECK_OK(WriteBinaryProto(Env::Default(),
+                               io::JoinPath(export_dir, kSavedModelFilenamePb),
+                               saved_model));
+  return export_dir;
+}
+
+// A float tensor proto with the given dimensions and no values.
+TensorProto FloatTensorProtoWithDims(const std::vector<int64_t>& dims) {
+  TensorProto value;
+  value.set_dtype(DT_FLOAT);
+  for (int64_t dim : dims) {
+    value.mutable_tensor_shape()->add_dim()->set_size(dim);
+  }
+  return value;
+}
+
+TEST_F(LoaderTest, ConstWithValidShape) {
+  TensorProto value;
+  test::AsTensor<float>({1, 2, 3, 4, 5, 6}, TensorShape({2, 3}))
+      .AsProtoTensorContent(&value);
+  const string export_dir =
+      WriteSingleConstSavedModel("const_with_valid_shape", value, false);
+
+  SavedModelBundle bundle;
+  TF_ASSERT_OK(LoadSavedModel(SessionOptions(), RunOptions(), export_dir,
+                              {kSavedModelTagServe}, &bundle));
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(bundle.session->Run({}, {"c:0"}, {}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+  test::ExpectTensorEqual<float>(
+      outputs[0],
+      test::AsTensor<float>({1, 2, 3, 4, 5, 6}, TensorShape({2, 3})));
+}
+
+TEST_F(LoaderTest, ConstShapeElementCountOverflow) {
+  const string export_dir = WriteSingleConstSavedModel(
+      "const_shape_element_count_overflow",
+      FloatTensorProtoWithDims({int64_t{1} << 62, 4}), false);
+
+  SavedModelBundle bundle;
+  absl::Status st = LoadSavedModel(SessionOptions(), RunOptions(), export_dir,
+                                   {kSavedModelTagServe}, &bundle);
+  EXPECT_EQ(st.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_NE(st.message().find("which initializes from a tensor with an "
+                              "invalid shape"),
+            std::string::npos)
+      << st;
+}
+
+TEST_F(LoaderTest, ConstShapeWithTooManyDimensionsRejected) {
+  const string export_dir = WriteSingleConstSavedModel(
+      "const_shape_too_many_dimensions",
+      FloatTensorProtoWithDims(std::vector<int64_t>(255, 1)), false);
+
+  SavedModelBundle bundle;
+  absl::Status st = LoadSavedModel(SessionOptions(), RunOptions(), export_dir,
+                                   {kSavedModelTagServe}, &bundle);
+  EXPECT_EQ(st.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_NE(st.message().find("which initializes from a tensor with an "
+                              "invalid shape"),
+            std::string::npos)
+      << st;
+}
+
+TEST_F(LoaderTest, FunctionConstShapeElementCountOverflow) {
+  const string export_dir = WriteSingleConstSavedModel(
+      "function_const_shape_element_count_overflow",
+      FloatTensorProtoWithDims({int64_t{1} << 62, 4}), true);
+
+  SavedModelBundle bundle;
+  absl::Status st = LoadSavedModel(SessionOptions(), RunOptions(), export_dir,
+                                   {kSavedModelTagServe}, &bundle);
+  EXPECT_EQ(st.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_NE(st.message().find("which initializes from a tensor with an "
+                              "invalid shape"),
+            std::string::npos)
+      << st;
 }
 
 TEST_F(LoaderTest, UpdateMetricsV2) {

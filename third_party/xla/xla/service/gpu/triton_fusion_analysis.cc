@@ -33,10 +33,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
@@ -248,31 +248,6 @@ absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
   TritonFusionAnalysis analysis;
   ABSL_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot));
   return analysis;
-}
-
-bool TritonFusionAnalysis::IsBatchDimMinorForInt4Parameter(
-    const HloInstruction& dot, Scope scope) const {
-  CHECK(scope == Scope::LHS || scope == Scope::RHS);
-  const auto& dims = dot.dot_dimension_numbers();
-  const auto& batch_dims = (scope == Scope::LHS) ? dims.lhs_batch_dimensions()
-                                                 : dims.rhs_batch_dimensions();
-
-  if (batch_dims.empty()) return true;
-
-  int32_t batch_dim = batch_dims.Get(0);
-  CHECK_EQ(batch_dims.size(), 1);
-  const auto& params = parameters_.at(scope);
-  for (const auto& param : params) {
-    if (param->shape().element_type() != S4) continue;
-
-    const auto* strides = IterSpec(scope, param, batch_dim);
-    if (strides == nullptr) continue;
-    // The hacky way to check if the batch dimension is minor.
-    // It also covers the case when the batch dimension is second to last but
-    // the minor dimension is equal to 1.
-    if (strides->front().stride == 1) return false;
-  }
-  return true;
 }
 
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(

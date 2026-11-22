@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
-#include "tensorflow/core/framework/types.pb.h"
 
 //===----------------------------------------------------------------------===//
 // The prepare-quantize Pass for LSTM.
@@ -68,8 +67,8 @@ constexpr const char* intermediate_attributes[] = {
 // Calculates the minimum power of two that is not less than the value.
 double PowerOfTwoBound(double value);
 
-tensorflow::DataType GetQuantizedInferenceType(bool is_signed,
-                                               int activation_number_of_bits);
+InferenceDataType GetQuantizedInferenceType(bool is_signed,
+                                            int activation_number_of_bits);
 
 // Returns the element type of LSTM's intermediate tensor designated by the
 // index.

@@ -26,15 +26,23 @@ limitations under the License.
 namespace tflite::ops::builtin {
 namespace {
 
+// The tests below check every version up to this bound. A registered version
+// at the bound fails OpVersionMissing, so the bound has to be raised first.
+constexpr int kMaxCheckedVersion = 64;
+
 // This test will fail if an op version is added to a builtin op, but not
-// registered to runtime version.
+// registered to runtime version. Ranges need not start at version 1
+// (BROADCAST_TO starts at 2), so every version up to the bound is checked.
 TEST(BuiltinOpResolverTest, OpVersionMissing) {
   BuiltinOpResolver resolver;
 
   for (int id = BuiltinOperator_MIN; id <= BuiltinOperator_MAX; ++id) {
-    for (int version = 1;; ++version) {
-      auto op_code = static_cast<tflite::BuiltinOperator>(id);
-      if (resolver.FindOp(op_code, version) == nullptr) break;
+    auto op_code = static_cast<tflite::BuiltinOperator>(id);
+    EXPECT_EQ(resolver.FindOp(op_code, kMaxCheckedVersion), nullptr)
+        << tflite::EnumNamesBuiltinOperator()[op_code]
+        << " reaches kMaxCheckedVersion; raise it";
+    for (int version = 1; version <= kMaxCheckedVersion; ++version) {
+      if (resolver.FindOp(op_code, version) == nullptr) continue;
       // Throw error if the version is not registered in runtime version.
       std::string runtime_version =
           tflite::FindMinimumRuntimeVersionForOp(op_code, version);
@@ -42,6 +50,25 @@ TEST(BuiltinOpResolverTest, OpVersionMissing) {
           << "Please add the version " << version << " of "
           << tflite::EnumNamesBuiltinOperator()[op_code]
           << " to runtime_version.cc";
+    }
+  }
+}
+
+// runtime_version.cc names the first runtime release that runs a version, so
+// every version it lists must be one that the builtin op resolver registers.
+TEST(BuiltinOpResolverTest, RuntimeVersionOfUnregisteredOpVersion) {
+  BuiltinOpResolver resolver;
+
+  for (int id = BuiltinOperator_MIN; id <= BuiltinOperator_MAX; ++id) {
+    auto op_code = static_cast<tflite::BuiltinOperator>(id);
+    for (int version = 1; version <= kMaxCheckedVersion; ++version) {
+      std::string runtime_version =
+          tflite::FindMinimumRuntimeVersionForOp(op_code, version);
+      if (runtime_version.empty()) continue;
+      EXPECT_NE(resolver.FindOp(op_code, version), nullptr)
+          << "runtime_version.cc maps version " << version << " of "
+          << tflite::EnumNamesBuiltinOperator()[op_code] << " to "
+          << runtime_version << ", but no kernel is registered for it";
     }
   }
 }

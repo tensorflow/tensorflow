@@ -730,6 +730,66 @@ class MathTest(test.TestCase, parameterized.TestCase):
         self.assertEqual((2, 3, 3), fn(start, stop, 3, axis=2).shape)
         self.assertEqual((3, 2, 3), fn(start, stop, 3, axis=-3).shape)
 
+  def testTensordotAxesOutOfBounds(self):
+    # NumPy raises IndexError before any computation when `axes` indexes past
+    # an input's shape; the backend instead normalizes the raw entries and
+    # only checks an integer count against the first input, so out-of-bounds
+    # entries fail later with an IndexError or a transpose-permutation error
+    # that does not mention `axes`. Validate statically-known ranks up front.
+    a = np_array_ops.array(np.ones([2, 3]))
+    b = np_array_ops.array(np.ones([3, 4]))
+    # Integer `axes` counts contracted axes, so bounds are the input ranks;
+    # the error message reports the offending input's shape, not the tensor.
+    with self.assertRaisesRegex(
+        ValueError, r'out of bounds for input with shape \(2, 3\)'
+    ):
+      np_math_ops.tensordot(a, b, axes=3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.tensordot(a, np_array_ops.array(np.ones([4])), axes=2)
+    # Sequence entries are checked element-wise against each input.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.tensordot(a, b, axes=([0], [3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.tensordot(a, b, axes=(-3, 0))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.tensordot(a, b, axes=([0], [-3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.tensordot(a, b, axes=(np.int64(2), 0))
+    # Valid axes, negative entries included, must keep working.
+    onesa = np_array_ops.array(np.ones([2, 3]))
+    onesb = np_array_ops.array(np.ones([3, 4]))
+    self.assertAllClose(
+        np_math_ops.tensordot(onesa, onesb, axes=1),
+        np.tensordot(np.ones([2, 3]), np.ones([3, 4]), axes=1),
+    )
+    self.assertAllClose(
+        np_math_ops.tensordot(onesa, onesb, axes=([], [])),
+        np.ones([2, 3, 3, 4]),
+    )
+    self.assertAllClose(
+        np_math_ops.tensordot(onesa, onesb, axes=([1], [0])),
+        np.tensordot(np.ones([2, 3]), np.ones([3, 4]), axes=([1], [0])),
+    )
+    self.assertAllClose(
+        np_math_ops.tensordot(onesa, onesa, axes=([-2], [0])),
+        np.tensordot(np.ones([2, 3]), np.ones([2, 3]), axes=([-2], [0])),
+    )
+    # Mixed integer/sequence form: a bare integer names that side's single
+    # contraction axis, as in NumPy.
+    self.assertAllClose(
+        np_math_ops.tensordot(onesa, onesb, axes=(1, [0])),
+        np.tensordot(np.ones([2, 3]), np.ones([3, 4]), axes=(1, [0])),
+    )
+    # Full contraction of two equally-shaped inputs.
+    self.assertAllClose(
+        np_math_ops.tensordot(onesa, onesa, axes=2),
+        np.tensordot(np.ones([2, 3]), np.ones([2, 3]), axes=2),
+    )
+    # NumPy treats a negative integer `axes` as an empty contraction.
+    self.assertAllClose(
+        np_math_ops.tensordot(onesa, onesb, axes=-1), np.ones([2, 3, 3, 4])
+    )
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
@@ -1046,6 +1106,68 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.diff(a, axis=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.diff(a, axis=-3)
+    # Scalar `prepend`/`append` values expand to length 1 along `axis` and
+    # all other dimensions of `a`, then the differences run.
+    self.match(np_math_ops.diff(a, prepend=3), np.diff(a, prepend=3))
+    self.match(
+        np_math_ops.diff(a, append=9, axis=0), np.diff(a, append=9, axis=0)
+    )
+    self.match(
+        np_math_ops.diff(a, n=2, prepend=1, append=0),
+        np.diff(a, n=2, prepend=1, append=0),
+    )
+    # Array `prepend`/`append` values are concatenated as-is after dtype
+    # promotion; their dimensions must match `a` except along `axis`.
+    self.match(
+        np_math_ops.diff(a, prepend=[[0, 0, 0]], axis=0),
+        np.diff(a, prepend=np.array([[0, 0, 0]]), axis=0),
+    )
+    self.match(
+        np_math_ops.diff(a, append=[[9], [9]], axis=1),
+        np.diff(a, append=np.array([[9], [9]]), axis=1),
+    )
+    # A dimension not matching `a` outside `axis` raises NumPy's ValueError.
+    with self.assertRaisesRegex(
+        ValueError,
+        'all the input array dimensions except for the concatenation axis '
+        'must match exactly',
+    ):
+      np_math_ops.diff(a, prepend=[[0, 0, 0]])
+    # Mixed dtypes are promoted like NumPy's concatenate would.
+    self.match(
+        np_math_ops.diff(
+            np_array_ops.array([1, 2, 3], dtype=np.int32), prepend=1.5
+        ),
+        np.diff(np.array([1, 2, 3], dtype=np.int32), prepend=1.5),
+    )
+    # Non-scalar `prepend`/`append` with mixed dtypes promote both sides.
+    self.match(
+        np_math_ops.diff(
+            np_array_ops.array([1.0, 2.0, 4.0], dtype=np.float32),
+            prepend=[0],
+            append=[5],
+        ),
+        np.diff(
+            np.array([1.0, 2.0, 4.0], dtype=np.float32),
+            prepend=[0],
+            append=[5],
+        ),
+    )
+    # Non-scalar `prepend`/`append` with wrong rank raises ValueError.
+    with self.assertRaisesRegex(
+        ValueError, 'all the input arrays must have same number of dimensions'
+    ):
+      np_math_ops.diff(a, prepend=[0, 0, 0], axis=0)
+    # n=0 returns `a` unchanged even when `prepend`/`append` are provided.
+    self.match(
+        np_math_ops.diff(a, n=0, prepend=3, append=9),
+        np.diff(a, n=0, prepend=3, append=9),
+    )
+    # Boolean inputs keep the boolean semantics with a boolean boundary.
+    self.match(
+        np_math_ops.diff(np_array_ops.array([True, False, True]), append=True),
+        np.diff(np.array([True, False, True]), append=True),
+    )
 
   def testTrace(self):
     a = np.arange(6).reshape(2, 3)
@@ -1058,19 +1180,22 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.trace(a, axis1=0, axis2=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.trace(a, axis1=-3, axis2=1)
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(
+        ValueError, r'axis1 and axis2 cannot be the same$'
+    ):
       np_math_ops.trace(a, axis1=1, axis2=1)
     # Mixed-sign duplicates normalize to the same axis.
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
       np_math_ops.trace(a, axis1=1, axis2=-1)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # NumPy raises its "diag requires" error for rank < 2 before any
+    # per-axis checks.
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array(5))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array([1, 2, 3]))
-    # A rank-1 input has no valid trace axes: the out-of-bounds default
-    # axes (axis1=-2, axis2=-1) must raise, not silently route the input
-    # to the rank>=2-only `math_ops.trace` fast path.
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # NumPy checks the rank first, so explicit axes on a rank-1 input
+    # still raise the "diag requires" error.
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array([1.0, 2.0, 3.0]), axis1=-2, axis2=-1)
 
   def testTracePromotesSmallIntegersAndBool(self):

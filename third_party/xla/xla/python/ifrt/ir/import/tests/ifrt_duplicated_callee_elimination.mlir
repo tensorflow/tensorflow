@@ -1,0 +1,87 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+// RUN: ifrt-opt %s -ifrt-duplicated-callee-elimination -split-input-file | FileCheck %s
+
+// CHECK-LABEL: @main
+func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>,
+                                   #ifrt.sharding_param<1x1 to [0] on 1>, [0]>)
+    attributes {ifrt.function} {
+  // CHECK: %[[CTRL:.+]] = ifrt.Call @callee
+  %ctrl_0 = ifrt.Call @callee() on devices [0,1] : () -> ()
+  // CHECK: ifrt.Call @callee
+  // CHECK-SAME: after %[[CTRL]]
+  %ctrl_1 = ifrt.Call @callee_dup() after %ctrl_0 on devices [0,1] : () -> ()
+  // CHECK-NOT: ifrt.Call @callee
+  // CHECK: ifrt.Call @callee_different_body
+  %ctrl_2 = ifrt.Call @callee_different_body() on devices [0,1] : () -> ()
+  // CHECK-NOT: ifrt.Call @callee
+  // CHECK: ifrt.Call @callee_different_attr
+  %ctrl_3 = ifrt.Call @callee_different_attr() on devices [0,1] : () -> ()
+  // CHECK-NOT: ifrt.Call @callee
+  // CHECK: ifrt.Call @callee_different_signature
+  %ctrl_4 = ifrt.Call @callee_different_signature(%arg0) on devices [0,1]
+      : (!ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 1>, [0]>) -> ()
+  return
+}
+
+func.func private @callee() {
+  return
+}
+
+func.func private @callee_dup() {
+  return
+}
+
+func.func private @callee_different_body() {
+  %0 = builtin.unrealized_conversion_cast to tensor<4x4xi32>
+  return
+}
+
+func.func private @callee_different_attr() attributes {_ifrt.attr} {
+  return
+}
+
+func.func private @callee_different_signature(%arg0: tensor<2x2xi32>) {
+  return
+}
+
+// -----
+
+// CHECK-LABEL: module @multiple_ifrt_functions
+module @multiple_ifrt_functions {
+  // CHECK-LABEL: func.func @main
+  func.func @main() attributes {ifrt.function} {
+    // CHECK: ifrt.Call @callee()
+    %ctrl_0 = ifrt.Call @callee() on devices [0,1] : () -> ()
+    return
+  }
+
+  // CHECK-LABEL: func.func @secondary
+  func.func @secondary() attributes {ifrt.function} {
+    // CHECK-NEXT: ifrt.Call @callee()
+    // CHECK-NEXT: return
+    %ctrl_0 = ifrt.Call @callee_dup() on devices [0,1] : () -> ()
+    return
+  }
+
+  func.func private @callee() {
+    return
+  }
+
+  func.func private @callee_dup() {
+    return
+  }
+}

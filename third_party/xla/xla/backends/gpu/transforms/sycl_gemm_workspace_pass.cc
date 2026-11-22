@@ -48,9 +48,12 @@ absl::StatusOr<size_t> ComputeOneDnnScratchpadSize(
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    matmul_instr->backend_config<GpuBackendConfig>());
   const GemmBackendConfig& config = gpu_config.gemm_backend_config();
+  ABSL_ASSIGN_OR_RETURN(
+      auto sycl_epilogue,
+      stream_executor::sycl::sycl_gemm::AsSYCLEpilogue(config.epilogue()));
   ABSL_ASSIGN_OR_RETURN(auto prim_desc,
                    stream_executor::sycl::CreateMatMulPrimDescFromGemmConfig(
-                       gemm_config, config.epilogue()));
+                       gemm_config, sycl_epilogue));
   return prim_desc->scratchpad_desc().get_size();
 }
 

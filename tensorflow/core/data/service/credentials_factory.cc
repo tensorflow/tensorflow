@@ -20,7 +20,15 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "grpcpp/security/auth_context.h"  // IWYU pragma: keep
+#include "grpcpp/security/credentials.h"  // IWYU pragma: keep
+#include "grpcpp/security/server_credentials.h"  // IWYU pragma: keep
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
@@ -85,6 +93,13 @@ absl::Status CredentialsFactory::CreateClientCredentials(
   TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, &factory));
   TF_RETURN_IF_ERROR(factory->CreateClientCredentials(out));
   return absl::OkStatus();
+}
+
+absl::Status CredentialsFactory::Authorize(
+    absl::string_view protocol, const ::grpc::AuthContext* auth_context) {
+  CredentialsFactory* factory;
+  TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, &factory));
+  return factory->Authorize(auth_context);
 }
 
 bool CredentialsFactory::Exists(absl::string_view protocol) {

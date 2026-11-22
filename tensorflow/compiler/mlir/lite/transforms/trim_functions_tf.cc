@@ -100,7 +100,6 @@ void TrimFunctionsPass::Verify() {
   // TODO(ashwinm): Instead, we should make sure that references to all
   // SymbolRefAttrs of all ops are present.
   SymbolTable symbol_table = SymbolTable(getOperation());
-  llvm::SetVector<func::FuncOp> reachable_funcs;
   for (auto func : getOperation().getOps<func::FuncOp>()) {
     auto walk_result = func.walk([&](func::CallOp op) -> WalkResult {
       if (!symbol_table.lookup<func::FuncOp>(op.getCallee()))

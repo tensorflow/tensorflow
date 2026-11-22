@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -46,6 +47,12 @@ class QuantizeOpModel : public SingleOpModel {
 
   void SetInput(std::initializer_list<float> data) {
     PopulateTensor(input_, data);
+  }
+
+  void SetInputFloat16(std::initializer_list<float> data) {
+    std::vector<half> half_data;
+    for (float x : data) half_data.push_back(half(x));
+    PopulateTensor<half>(input_, half_data);
   }
 
   template <typename T>
@@ -175,6 +182,78 @@ TEST(QuantizeOpTest, UINT4) {
               ElementsAreArray({0, 0, 1, 8, 9, 14, 15, 15}));
 }
 
+TEST(QuantizeOpTest, Float16ToINT8) {
+  // Float16 inputs are quantized as float32: [-63.5, 64], scale=0.5,
+  // zero_point=-1.
+  QuantizeOpModel m({TensorType_FLOAT16, {2, 5}},
+                    {TensorType_INT8, {2, 5}, 0, 0, 0.5, -1});
+
+  m.SetInputFloat16({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray(
+                  {-128, -127, -126, -125, -124, 123, 124, 125, 126, 127}));
+}
+
+TEST(QuantizeOpTest, Float16ToUINT8) {
+  QuantizeOpModel m({TensorType_FLOAT16, {2, 5}},
+                    {TensorType_UINT8, {2, 5}, 0, 0, 0.5, 127});
+
+  m.SetInputFloat16({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({0, 1, 2, 3, 4, 251, 252, 253, 254, 255}));
+}
+
+TEST(QuantizeOpTest, Float16ToINT16) {
+  QuantizeOpModel m({TensorType_FLOAT16, {2, 5}},
+                    {TensorType_INT16, {2, 5}, 0, 0, 0.125, 0});
+
+  m.SetInputFloat16({-63.5, -63, -3, -2, -1, 1, 2, 3, 63.5, 64});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput<int16_t>(),
+      ElementsAreArray({-508, -504, -24, -16, -8, 8, 16, 24, 508, 512}));
+}
+
+TEST(QuantizeOpTest, Float16ToINT4) {
+  QuantizeOpModel m({TensorType_FLOAT16, {2, 5}},
+                    {TensorType_INT4, {2, 5}, 0, 0, 0.5, 0});
+
+  m.SetInputFloat16({-4.5, -3, -2.5, -2, -1.5, 2, 2.5, 3, 3.5, 4});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // Range of int4 is [-8, 7]. Values over the range are clamped to the range.
+  EXPECT_THAT(m.GetOutputUnpackedInt4(),
+              ElementsAreArray({-8, -6, -5, -4, -3, 4, 5, 6, 7, 7}));
+}
+
+TEST(QuantizeOpTest, Float16ToUINT4) {
+  QuantizeOpModel m({TensorType_FLOAT16, {1, 8}},
+                    {TensorType_UINT4, {1, 8}, 0, 0, 0.5, 8});
+
+  m.SetInputFloat16({-4.5, -4, -3.5, 0, 0.5, 3, 3.5, 4});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputUnpackedUInt4(),
+              ElementsAreArray({0, 0, 1, 8, 9, 14, 15, 15}));
+}
+
+TEST(QuantizeOpTest, Float16ToINT8MatchesFloat32) {
+  // A non power-of-two scale: float16 inputs (exactly representable values)
+  // round as the same values in float32.
+  const std::initializer_list<float> values = {-1.2109375, -0.03125, 0.0625,
+                                               0.6875,     1.0,      3.9921875};
+  QuantizeOpModel m16({TensorType_FLOAT16, {6}},
+                      {TensorType_INT8, {6}, 0, 0, 0.0311, 0});
+  m16.SetInputFloat16(values);
+  ASSERT_EQ(m16.Invoke(), kTfLiteOk);
+  QuantizeOpModel m32({TensorType_FLOAT32, {6}},
+                      {TensorType_INT8, {6}, 0, 0, 0.0311, 0});
+  m32.SetInput(values);
+  ASSERT_EQ(m32.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m16.GetOutput<int8_t>(),
+              ElementsAreArray(m32.GetOutput<int8_t>()));
+}
+
 // Per-channel quantization tests.
 
 TEST(QuantizePerChannelOpTest, UINT8) {
@@ -210,6 +289,17 @@ TEST(QuantizePerChannelOpTest, INT16) {
   EXPECT_THAT(m.GetOutput<int16_t>(),
               ElementsAreArray({-12700, -12600, -600, -400, -200, 200, 400, 600,
                                 12700, 12800}));
+}
+
+TEST(QuantizePerChannelOpTest, Float16ToINT8) {
+  QuantizePerChannelOpModel m(TensorType_FLOAT16, TensorType_INT8, {2, 5},
+                              {0.5, 0.25}, {-1, 0}, 0);
+
+  m.SetInputFloat16({-63.5, -63, -62.5, -62, -61.5, 2, 2.5, 3, 3.5, 4});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput<int8_t>(),
+      ElementsAreArray({-128, -127, -126, -125, -124, 8, 10, 12, 14, 16}));
 }
 
 // Requantization tests.

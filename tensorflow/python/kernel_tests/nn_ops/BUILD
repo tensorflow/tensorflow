@@ -319,7 +319,7 @@ cuda_py_strict_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.py"],
-    shard_count = 4,
+    shard_count = 12,
     tags = [
         "no_mac_arm64",
         "optonly",  # times out
@@ -374,6 +374,7 @@ cuda_py_strict_test(
     name = "ctc_loss_op_test",
     size = "medium",
     srcs = ["ctc_loss_op_test.py"],
+    shard_count = 3,
     xla_enable_strict_auto_jit = False,  # b/148153828
     deps = [
         "//tensorflow/python/eager:backprop",
@@ -692,6 +693,7 @@ cuda_py_strict_test(
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",

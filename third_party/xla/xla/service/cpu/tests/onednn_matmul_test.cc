@@ -76,6 +76,10 @@ class MatmulTest : public HloInterpreterReferenceMixin<HloTestBase> {
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
+  const char* matmul_no_bias_fusion_str_ = R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK-NOT: "BIAS"
+    )";
   const char* fused_matmul_bias_gelu_tanh_ = R"(
     ; CHECK:     custom_call_target="__onednn$matmul",
     ; CHECK:       backend_config={
@@ -466,6 +470,137 @@ TEST_F(MatmulTest, F32BiasAddFusionNonCompatibleBias) {
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
   MatchOptimizedHlo(matmul_module_str, matmul_rewrite_str_);
+}
+
+// Test that bias addend with trailing dims matching the bitcast shape gets
+// fused as BIAS when their product equals the matmul's last dimension.
+TEST_F(MatmulTest, BiasAddFusionThroughBitcastTrailingDims) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.biasadd.bitcast.test.f32
+
+  ENTRY matmul.biasadd.bitcast.test.f32 {
+    arg0.1 = f32[50432,512] parameter(0), parameter_replication={false}
+    arg0.2 = f32[512,768] parameter(1), parameter_replication={false}
+    arg0.3 = f32[12,64] parameter(2), parameter_replication={false}
+    dot.0 = f32[50432,768] dot(arg0.1, arg0.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f32[256,197,12,64] reshape(dot.0)
+    broadcast.0 = f32[256,197,12,64] broadcast(arg0.3), dimensions={2,3}
+    add.0 = f32[256,197,12,64] add(reshape.0, broadcast.0)
+    ROOT out = f32[50432,768] reshape(add.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+}
+
+// Broadcast maps addend onto leading dims of the bitcast (not trailing/N-axis).
+// Must NOT fuse as BIAS.
+TEST_F(MatmulTest, BiasAddFusionThroughBitcastLeadingDimsNotFused) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.biasadd.bitcast.leading.test.f32
+
+  ENTRY matmul.biasadd.bitcast.leading.test.f32 {
+    arg0.1 = f32[768,768] parameter(0), parameter_replication={false}
+    arg0.2 = f32[768,768] parameter(1), parameter_replication={false}
+    arg0.3 = f32[12,64] parameter(2), parameter_replication={false}
+    dot.0 = f32[768,768] dot(arg0.1, arg0.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f32[12,64,12,64] reshape(dot.0)
+    broadcast.0 = f32[12,64,12,64] broadcast(arg0.3), dimensions={0,1}
+    add.0 = f32[12,64,12,64] add(reshape.0, broadcast.0)
+    ROOT out = f32[768,768] reshape(add.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, matmul_no_bias_fusion_str_);
+}
+
+// Broadcast maps the addend onto a single non-last trailing dim of the bitcast,
+// so the adjusted addend shape ([12,1]) has a higher rank than the broadcast
+// dimensions. Must NOT fuse as BIAS (and must not read out of bounds).
+TEST_F(MatmulTest, BiasAddFusionThroughBitcastPartialTrailingDimNotFused) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.biasadd.bitcast.partial.test.f32
+
+  ENTRY matmul.biasadd.bitcast.partial.test.f32 {
+    arg0.1 = f32[768,768] parameter(0), parameter_replication={false}
+    arg0.2 = f32[768,768] parameter(1), parameter_replication={false}
+    arg0.3 = f32[12] parameter(2), parameter_replication={false}
+    dot.0 = f32[768,768] dot(arg0.1, arg0.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f32[12,64,12,64] reshape(dot.0)
+    broadcast.0 = f32[12,64,12,64] broadcast(arg0.3), dimensions={2}
+    add.0 = f32[12,64,12,64] add(reshape.0, broadcast.0)
+    ROOT out = f32[768,768] reshape(add.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, matmul_no_bias_fusion_str_);
+}
+
+// The addend has a column-major layout, so reshaping it to [1,768] is not a
+// bitcast. The result must stay numerically correct, i.e. the addend buffer
+// must not be reinterpreted without a physical transpose. (Layout assignment
+// currently inserts a copy to row-major ahead of the rewriter, after which the
+// BIAS fusion is valid.)
+TEST_F(MatmulTest, BiasAddFusionThroughBitcastColumnMajorAddendNotFused) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.biasadd.bitcast.colmajor.test.f32
+
+  ENTRY matmul.biasadd.bitcast.colmajor.test.f32 {
+    arg0.1 = f32[50432,512] parameter(0), parameter_replication={false}
+    arg0.2 = f32[512,768] parameter(1), parameter_replication={false}
+    arg0.3 = f32[12,64]{0,1} parameter(2), parameter_replication={false}
+    dot.0 = f32[50432,768] dot(arg0.1, arg0.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f32[256,197,12,64] reshape(dot.0)
+    broadcast.0 = f32[256,197,12,64] broadcast(arg0.3), dimensions={2,3}
+    add.0 = f32[256,197,12,64] add(reshape.0, broadcast.0)
+    ROOT out = f32[50432,768] reshape(add.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+}
+
+// Batched matmul (rank 3) with an addend of lower rank (2) broadcast onto the
+// trailing dims of the bitcast. AdjustAddendShape must not leave an extra
+// leading 1 that shifts the trailing-dims check; fuse as BIAS [1,1,768].
+TEST_F(MatmulTest, BiasAddFusionThroughBitcastBatchedMatmul) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.biasadd.bitcast.batched.test.f32
+
+  ENTRY matmul.biasadd.bitcast.batched.test.f32 {
+    arg0.1 = f32[4,197,512] parameter(0), parameter_replication={false}
+    arg0.2 = f32[4,512,768] parameter(1), parameter_replication={false}
+    arg0.3 = f32[12,64] parameter(2), parameter_replication={false}
+    dot.0 = f32[4,197,768] dot(arg0.1, arg0.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    reshape.0 = f32[4,197,12,64] reshape(dot.0)
+    broadcast.0 = f32[4,197,12,64] broadcast(arg0.3), dimensions={2,3}
+    add.0 = f32[4,197,12,64] add(reshape.0, broadcast.0)
+    ROOT out = f32[4,197,768] reshape(add.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+}
+
+// Addend rank (3) exceeds the matmul rank (2) but its dims are exactly the
+// trailing dims of the bitcast, with product equal to N. Must fuse as BIAS
+// [1,768] instead of being rejected by the generic rank check.
+TEST_F(MatmulTest, BiasAddFusionThroughBitcastHigherRankAddend) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.biasadd.bitcast.highrank.test.f32
+
+  ENTRY matmul.biasadd.bitcast.highrank.test.f32 {
+    arg0.1 = f32[50432,512] parameter(0), parameter_replication={false}
+    arg0.2 = f32[512,768] parameter(1), parameter_replication={false}
+    arg0.3 = f32[12,8,8] parameter(2), parameter_replication={false}
+    dot.0 = f32[50432,768] dot(arg0.1, arg0.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f32[256,197,12,8,8] reshape(dot.0)
+    broadcast.0 = f32[256,197,12,8,8] broadcast(arg0.3), dimensions={2,3,4}
+    add.0 = f32[256,197,12,8,8] add(reshape.0, broadcast.0)
+    ROOT out = f32[50432,768] reshape(add.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
 }
 
 TEST_F(MatmulTest, ApproxGELUTestF32) {

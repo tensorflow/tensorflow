@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/aot_compatibility/gpu/collective_aot_test_base.h"
+#include "xla/tests/aot_compatibility/gpu/gpu_aot_test_params.h"
 #include "xla/tests/aot_compatibility/test_lib.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"

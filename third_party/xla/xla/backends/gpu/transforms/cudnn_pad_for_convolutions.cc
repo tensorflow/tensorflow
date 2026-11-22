@@ -338,6 +338,13 @@ absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
     return false;
   }
 
+  // When convolution is grouped, the shapes are in agreement with the group
+  // size. We cannot pad them independently.
+  if (conv->feature_group_count() > 1 || conv->batch_group_count() > 1) {
+    VLOG(2) << "Do not pad grouped convolution.";
+    return false;
+  }
+
   const auto& dnums = conv->convolution_dimension_numbers();
   std::vector<Shape>& new_input_shapes = *new_input_shapes_ptr;
   for (auto operand : conv->operands()) {

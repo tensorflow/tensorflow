@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -831,6 +834,31 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
                   absl::StatusCode::kUnimplemented,
                   ::testing::HasSubstr("The only FP8 types supported in "
                                        "convolutions are f8e5m2 and f8e4m3")));
+}
+
+TEST_F(ConvRewriterTest, IntegralConvolutionNotRewrittenOnOneAPI) {
+  const std::string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = TYPE[1,17,9,9] parameter(0)
+      filter = TYPE[3,3,17,32] parameter(1)
+      ROOT conv = OUT_TYPE[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    })");
+
+  const se::GpuComputeCapability oneapi_cc{se::OneAPIComputeCapability::BMG()};
+  for (auto [type, out_type] :
+       std::vector<std::pair<absl::string_view, absl::string_view>>{
+           {"s8", "s8"}, {"s8", "s32"}, {"s32", "s32"}, {"u8", "u8"}}) {
+    const std::string module_with_type = absl::StrReplaceAll(
+        module_str, {{"OUT_TYPE", out_type}, {"TYPE", type}});
+    ASSERT_OK_AND_ASSIGN(auto m,
+                         ParseAndReturnVerifiedModule(module_with_type));
+    ASSERT_OK_AND_ASSIGN(bool changed, ConvRewriter(oneapi_cc).Run(m.get()));
+    EXPECT_FALSE(changed) << type << "->" << out_type;
+    EXPECT_THAT(m->entry_computation()->root_instruction(),
+                GmockMatch(m::Convolution(m::Parameter(0), m::Parameter(1))));
+  }
 }
 
 TEST_F(ConvRewriterTest, ConvolutionWithKindSkipped) {

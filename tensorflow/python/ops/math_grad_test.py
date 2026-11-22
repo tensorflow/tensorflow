@@ -937,6 +937,43 @@ class PowGradTest(test.TestCase):
     self.assertAllClose(3.9032448403173547e306, dgydx, rtol=1e-6)
     self.assertTrue(np.isfinite(dgydy))
 
+  def test_pow_grad_x_zero_base_zero_exponent(self):
+    # d/dx x**0 is 0 everywhere, including x = 0 where x**(y - 1) is inf.
+    for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ]:
+      with self.subTest(dtype=dtype):
+        x = constant_op.constant([0.0, -0.0, 0.0, 2.0], dtype=dtype)
+        y = constant_op.constant([0.0, 0.0, 1.0, 0.0], dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch([x, y])
+          z = math_ops.pow(x, y)
+        gx = self.evaluate(tape.gradient(z, x))
+        self.assertAllEqual([0.0, 0.0, 1.0, 0.0], gx)
+
+        # Scalar exponent with only x watched.
+        x1 = constant_op.constant([0.0, 1.0], dtype=dtype)
+        y1 = constant_op.constant(0.0, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(x1)
+          z1 = math_ops.pow(x1, y1)
+        gx1 = self.evaluate(tape.gradient(z1, x1))
+        self.assertAllEqual([0.0, 0.0], gx1)
+
+    # A nonzero exponent below 1 keeps the infinite slope, and NaN
+    # still propagates.
+    x = constant_op.constant([0.0, np.nan], dtype=dtypes.float64)
+    y = constant_op.constant([0.5, 0.0], dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      z = math_ops.pow(x, y)
+    gx = self.evaluate(tape.gradient(z, x))
+    self.assertTrue(np.isposinf(gx[0]))
+    self.assertTrue(np.isnan(gx[1]))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NextAfterTest(test.TestCase):
@@ -1154,6 +1191,159 @@ class TanhGradFloat64PrecisionTest(test.TestCase):
     with backprop.GradientTape() as tape:
       tape.watch(x)
       y = math_ops.tanh(x)
+    g = tape.gradient(y, x)
+    self.assertIsNotNone(g)
+
+
+class SigmoidGradFloat64PrecisionTest(test.TestCase):
+  """Regression tests for GitHub issues #126060 and #126631.
+
+  tf.math.sigmoid / tf.nn.sigmoid used to return 0.0 for the gradient at
+  float64 inputs once x reached about +37, because the C++ SigmoidGrad kernel
+  computed grad*y*(1 - y) from the rounded forward value `y`. At that point
+  `y` rounds to 1.0 while the derivative `exp(-x)` is still representable, so
+  `1 - y` is exactly 0 and the gradient is silently zeroed. The float64 path
+  now computes the equivalent factor `sigmoid(-x)`, which avoids the
+  subtraction; the other dtypes keep using the kernel unchanged. The branch
+  lives in the registered `Sigmoid` gradient rather than in the op itself, so
+  the op type of `tf.nn.sigmoid` stays `Sigmoid` and `tf.raw_ops.Sigmoid` is
+  covered too.
+  """
+
+  def _expected_sigmoid_grad(self, x_val):
+    """Analytic sigmoid derivative: exp(-|x|) / (1 + exp(-|x|))^2."""
+    e = math.exp(-abs(x_val))
+    return e / (1.0 + e) ** 2
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSigmoidGradFloat64TailPositive(self):
+    """Gradient must be finite and correct at x=+50.0 (float64)."""
+    x = constant_op.constant(50.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.sigmoid(x)
+    g = float(self.evaluate(tape.gradient(y, x)))
+    expected = self._expected_sigmoid_grad(50.0)
+    self.assertNotEqual(
+        g, 0.0, msg="Gradient must not be zero at x=50.0 (float64)"
+    )
+    self.assertNear(
+        g,
+        expected,
+        err=expected * 1e-10,
+        msg=f"Expected ~{expected:.6e}, got {g:.6e}",
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSigmoidGradFloat64TailNegative(self):
+    """Gradient at x=-50.0 must stay correct (float64)."""
+    x = constant_op.constant(-50.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.sigmoid(x)
+    g = float(self.evaluate(tape.gradient(y, x)))
+    expected = self._expected_sigmoid_grad(-50.0)
+    self.assertNear(
+        g,
+        expected,
+        err=expected * 1e-10,
+        msg=f"Expected ~{expected:.6e}, got {g:.6e}",
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSigmoidGradFloat64ReportedValues(self):
+    """The two values reported in #126631 and #126060."""
+    for value, expected in [
+        (37.42994775023705, 5.551115123125775e-17),
+        (50.0, 1.928749847963918e-22),
+    ]:
+      x = constant_op.constant(value, dtype=dtypes.float64)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.sigmoid(x)
+      g = float(self.evaluate(tape.gradient(y, x)))
+      self.assertNear(
+          g,
+          expected,
+          err=expected * 1e-10,
+          msg=f"x={value!r}: expected ~{expected:.6e}, got {g:.6e}",
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSigmoidGradFloat64NearZeroUnchanged(self):
+    """Gradient at x=1.0 must still be correct (standard range, float64)."""
+    x = constant_op.constant(1.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.sigmoid(x)
+    g = float(self.evaluate(tape.gradient(y, x)))
+    expected = self._expected_sigmoid_grad(1.0)
+    self.assertNear(
+        g,
+        expected,
+        err=expected * 1e-12,
+        msg=f"Standard range broken: expected ~{expected:.6e}, got {g:.6e}",
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSigmoidGradFloat64HigherOrder(self):
+    """Second and third derivatives must keep their sign in both tails."""
+    values = np.array([-50.0, 50.0])
+    x = constant_op.constant(values, dtype=dtypes.float64)
+    with backprop.GradientTape() as third_tape:
+      third_tape.watch(x)
+      with backprop.GradientTape() as second_tape:
+        second_tape.watch(x)
+        with backprop.GradientTape() as first_tape:
+          first_tape.watch(x)
+          y = math_ops.sigmoid(x)
+        first = first_tape.gradient(y, x)
+      second = second_tape.gradient(first, x)
+    third = third_tape.gradient(second, x)
+
+    e = np.exp(-np.abs(values))
+    expected_first = e / (1.0 + e) ** 2
+    expected_second = -expected_first * np.tanh(values / 2.0)
+    expected_third = expected_first * (1.0 - 6.0 * expected_first)
+    self.assertAllClose(
+        expected_first, self.evaluate(first), rtol=1e-12, atol=0.0
+    )
+    self.assertAllClose(
+        expected_second, self.evaluate(second), rtol=1e-12, atol=0.0
+    )
+    self.assertAllClose(
+        expected_third, self.evaluate(third), rtol=1e-12, atol=0.0
+    )
+
+  def testSigmoidGraphOpTypeByDtype(self):
+    """Both dtypes keep the `Sigmoid` op; the float64 branch is in the grad."""
+    with ops.Graph().as_default():
+      x32 = constant_op.constant(20.0, dtype=dtypes.float32)
+      self.assertEqual(math_ops.sigmoid(x32).op.type, "Sigmoid")
+      x64 = constant_op.constant(20.0, dtype=dtypes.float64)
+      self.assertEqual(math_ops.sigmoid(x64).op.type, "Sigmoid")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSigmoidGradFloat64ViaGradientChecker(self):
+    """Gradient checker must pass for float64 over a range with the tail."""
+    xs = np.array([-40.0, -20.0, -1.0, 0.0, 1.0, 20.0, 40.0], dtype=np.float64)
+    err = gradient_checker_v2.max_error(
+        *gradient_checker_v2.compute_gradient(math_ops.sigmoid, [xs])
+    )
+    # The finite difference uses delta=1/1024, whose O(delta^2) truncation
+    # error dominates here (~2e-8 at x=0). The tail contributes nothing to the
+    # error because the analytic derivative there is below 1e-17.
+    self.assertLess(
+        err, 1e-6, msg=f"Gradient checker failed for sigmoid: err={err}"
+    )
+
+  @test_util.run_v2_only
+  def testSigmoidGradEagerDoesNotCrash(self):
+    """In eager mode (TF2), gradient computation must not raise TypeError."""
+    x = constant_op.constant(2.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.sigmoid(x)
     g = tape.gradient(y, x)
     self.assertIsNotNone(g)
 

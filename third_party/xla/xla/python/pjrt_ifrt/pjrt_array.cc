@@ -97,6 +97,9 @@ absl::Status ValidateArrayCreationInput(
           "sharding client mismatches array client: %s vs %s",
           sharding_devices[i]->DebugString(), client->platform_version());
     }
+    if (pjrt_buffers[i] == nullptr) {
+      return InvalidArgument("PjRtBuffer %d is null", i);
+    }
     if (pjrt_buffers[i]->device() != device->pjrt_device()) {
       return InvalidArgument(
           "PjRtBuffer's memory space is addressed by device %s vs sharding is "
@@ -120,10 +123,16 @@ absl::Status ValidateArrayCreationInput(
 // kind.
 absl::StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
     const PjRtArray::PjRtBuffers& pjrt_buffers) {
+  if (pjrt_buffers.front() == nullptr) {
+    return InvalidArgument("PjRtBuffer 0 is null");
+  }
   const auto first_memory_kind =
       MakeMemoryKindFromPjRtBuffer(pjrt_buffers.front().get());
-  for (const auto& pjrt_buffer : pjrt_buffers) {
-    if (auto memory_kind = MakeMemoryKindFromPjRtBuffer(pjrt_buffer.get());
+  for (int i = 0; i < pjrt_buffers.size(); ++i) {
+    if (pjrt_buffers[i] == nullptr) {
+      return InvalidArgument("PjRtBuffer %d is null", i);
+    }
+    if (auto memory_kind = MakeMemoryKindFromPjRtBuffer(pjrt_buffers[i].get());
         first_memory_kind != memory_kind) {
       return InvalidArgument(
           "Memory kind mismatch between PjRtBuffers. Got one buffer with "
@@ -161,6 +170,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     ShardingRef sharding, PjRtBuffers pjrt_buffers,
     std::shared_ptr<const xla::ifrt::PjRtLayout> layout) {
+  ABSL_RETURN_IF_ERROR(ValidateArrayCreationInput(client, sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding), std::move(pjrt_buffers),
                                  std::move(layout));
@@ -179,6 +189,9 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer,
     bool has_custom_layout) {
+  if (pjrt_buffer == nullptr) {
+    return InvalidArgument("PjRtBuffer is null");
+  }
   ABSL_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
   Shape shape(pjrt_buffer->dimensions());
   ABSL_ASSIGN_OR_RETURN(auto device,
@@ -198,6 +211,18 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 
 absl::StatusOr<ArrayRef> PjRtArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
+  if (IsDeleted()) {
+    return InvalidArgument("Array has already been deleted or donated.");
+  }
+  if (array_spec_.dtype.kind() != DType::kToken) {
+    absl::StatusOr<Shape> shard_shape =
+        array_spec_.sharding->GetShardShape(array_spec_.shape);
+    if (shard_shape.ok() && *shard_shape != array_spec_.shape) {
+      return InvalidArgument(
+          "FullyReplicatedShard: Array is not fully replicated: %v",
+          array_spec_);
+    }
+  }
   if (array_spec_.sharding->devices()->AddressableDeviceList()->empty()) {
     return FailedPrecondition(
         "FullyReplicatedShard: Array has no addressable shards.");
@@ -228,10 +253,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
   if (pjrt_buffers.empty()) {
     return InvalidArgument("PjRtBuffers must be non-empty.");
   }
-  ABSL_ASSIGN_OR_RETURN(auto dtype,
-                   xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
   ABSL_ASSIGN_OR_RETURN(MemoryKind memory_kind,
                    GetMemoryKindFromPjRtBuffers(pjrt_buffers));
+  ABSL_ASSIGN_OR_RETURN(auto dtype,
+                   xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
 
   BasicDeviceList::Devices devices;
   devices.reserve(pjrt_buffers.size());
@@ -264,10 +289,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
   if (pjrt_buffers.empty()) {
     return InvalidArgument("PjRtBuffers must be non-empty.");
   }
-  ABSL_ASSIGN_OR_RETURN(auto dtype,
-                   xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
   ABSL_ASSIGN_OR_RETURN(auto memory_kind,
                    GetMemoryKindFromPjRtBuffers(pjrt_buffers));
+  ABSL_ASSIGN_OR_RETURN(auto dtype,
+                   xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
 
   BasicDeviceList::Devices devices;
   devices.reserve(pjrt_buffers.size());
@@ -345,7 +370,9 @@ absl::StatusOr<std::vector<ArrayRef>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
-  DCHECK(this);
+  if (IsDeleted()) {
+    return InvalidArgument("Array has already been deleted or donated.");
+  }
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
       !array_spec_.sharding->devices()->IsFullyAddressable()) {
     return InvalidArgument(
@@ -388,7 +415,10 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(
 tsl::Future<> PjRtArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
+  if (IsDeleted()) {
+    return tsl::Future<>(
+        InvalidArgument("Array has already been deleted or donated."));
+  }
   if (array_spec_.sharding->devices()->size() != 1) {
     if (array_spec_.sharding->IsFullyReplicated()) {
       absl::StatusOr<ArrayRef> replicated = FullyReplicatedShard(semantics);
@@ -480,12 +510,14 @@ absl::StatusOr<Memory*> GetMemorySpaceFromMemoryKind(
 absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
     int index, Device* dst_device, std::optional<MemoryKind> dst_memory_kind,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
   if (index >= pjrt_buffers_.size() || index < 0) {
     return InvalidArgument(
         "Index %d nust be non-negative and less than the number of buffers "
         "(=%d)",
         index, pjrt_buffers_.size());
+  }
+  if (pjrt_buffers_[index] == nullptr || pjrt_buffers_[index]->IsDeleted()) {
+    return InvalidArgument("Array has already been deleted or donated.");
   }
   ABSL_ASSIGN_OR_RETURN(Device * buffer_device,
                    client_->LookupPjRtDevice(pjrt_buffers_[index]->device()));
@@ -541,11 +573,9 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
         std::unique_ptr<PjRtBuffer> copied_buffer,
         pjrt_buffers_[index]->CopyToMemorySpace(pjrt_memory_space));
     if (semantics == ArrayCopySemantics::kDonateInput) {
-      if (!memory_kind_equal) {
-        return Unimplemented(
-            "Donation across different memory kinds is not implemented.");
+      if (memory_kind_equal) {
+        pjrt_buffers_[index]->Delete();
       }
-      pjrt_buffers_[index] = nullptr;
     }
     return copied_buffer;
   }
@@ -570,7 +600,13 @@ absl::StatusOr<ArrayRef> PjRtArray::CopyImpl(
     std::optional<xla::ifrt::DeviceListRef> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind, PjRtArray* donated_dst,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
+  if (IsDeleted()) {
+    return InvalidArgument("Array has already been deleted or donated.");
+  }
+  if (donated_dst != nullptr && donated_dst->IsDeleted()) {
+    return FailedPrecondition(
+        "Destination array has already been deleted or donated.");
+  }
   ABSL_ASSIGN_OR_RETURN(auto new_sharding,
                    sharding().WithDeviceAssignment(devices, memory_kind));
   if (new_sharding->devices()->size() !=
@@ -642,7 +678,12 @@ absl::StatusOr<ArrayRef> PjRtArray::CopyImpl(
 }
 
 tsl::Future<> PjRtArray::GetReadyFuture() const {
-  DCHECK(this);
+  if (IsDeleted()) {
+    // Match `PjRtBuffer::GetReadyFuture()`'s error message, which JAX relies on
+    // to translate deleted/donated buffer errors in `AwaitBuffersReady()`.
+    return tsl::Future<>(InvalidArgument(
+        "GetReadyFuture() called on deleted or donated buffer"));
+  }
   if (pjrt_buffers_.size() == 1) {
     return pjrt_buffers_.front()->GetReadyFuture();
   }
@@ -655,7 +696,6 @@ tsl::Future<> PjRtArray::GetReadyFuture() const {
 }
 
 tsl::Future<> PjRtArray::Delete() {
-  DCHECK(this);
   for (auto& buffer : pjrt_buffers_) {
     if (buffer != nullptr) {
       buffer->Delete();
@@ -667,7 +707,6 @@ tsl::Future<> PjRtArray::Delete() {
 }
 
 bool PjRtArray::IsDeleted() const {
-  DCHECK(this);
   if (is_deleted_) {
     return true;
   }
@@ -680,7 +719,6 @@ bool PjRtArray::IsDeleted() const {
 }
 
 std::string PjRtArray::DebugString() const {
-  DCHECK(this);
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout_ptr =
       pjrt_layout();
   if (layout_ptr.ok() && *layout_ptr == nullptr) {
@@ -710,13 +748,15 @@ std::string PjRtArray::DebugString() const {
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> PjRtArray::pjrt_layout()
     const {
   if constexpr (tsl::kIsDebugBuild) {
-    for (int i = 1; i < pjrt_buffers_.size(); ++i) {
-      std::shared_ptr<const xla::PjRtLayout> layout_i =
-          pjrt_buffers_[i]->layout();
-      DCHECK(*pjrt_buffers_[0]->layout() == *layout_i)
-          << "PjRtArray has mismatched layouts across shards! "
-          << "shard 0: " << pjrt_buffers_[0]->layout()->ToString() << ", shard "
-          << i << ": " << layout_i->ToString();
+    if (!IsDeleted()) {
+      for (int i = 1; i < pjrt_buffers_.size(); ++i) {
+        std::shared_ptr<const xla::PjRtLayout> layout_i =
+            pjrt_buffers_[i]->layout();
+        DCHECK(*pjrt_buffers_[0]->layout() == *layout_i)
+            << "PjRtArray has mismatched layouts across shards! "
+            << "shard 0: " << pjrt_buffers_[0]->layout()->ToString()
+            << ", shard " << i << ": " << layout_i->ToString();
+      }
     }
   }
   if (layout_ == nullptr) {

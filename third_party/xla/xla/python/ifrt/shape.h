@@ -19,16 +19,16 @@ limitations under the License.
 #include <stdbool.h>
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -48,10 +48,22 @@ class Shape {
   // Maximum dimensions to inline.
   static constexpr int kInlineDimensionSize = 6;
 
+  // Maximum number of elements such that bit-size calculations (e.g.,
+  // `(num_elements() * *dtype.bit_size() + 7) / 8` in `CompactLayout::ByteSize`
+  // for 128-bit `DType::kC128`) fit in `int64_t` without overflow.
+  static constexpr int64_t kMaxNumElements =
+      std::numeric_limits<int64_t>::max() / 128;
+
   using Dimensions = absl::InlinedVector<int64_t, kInlineDimensionSize>;
 
-  explicit Shape(absl::Span<const int64_t> dims)
-      : dims_(std::make_shared<Dimensions>(dims.begin(), dims.end())) {}
+  // Constructs a `Shape` from `dims`. Returns `InvalidArgumentError` if any
+  // dimension size is negative or if the product of non-zero dimension sizes
+  // exceeds `kMaxNumElements`.
+  static absl::StatusOr<Shape> Create(absl::Span<const int64_t> dims);
+
+  // Constructs a `Shape` from `dims`. `CHECK`-fails if `Create(dims)` returns
+  // an error.
+  explicit Shape(absl::Span<const int64_t> dims);
 
   Shape(const Shape&) = default;
   Shape(Shape&&) = default;
@@ -84,7 +96,8 @@ class Shape {
   template <typename H>
   friend H AbslHashValue(H h, const Shape& shape);
 
-  // Total number of elements in this shape.
+  // Total number of elements in this shape. Guaranteed to be in
+  // `[0, kMaxNumElements]`.
   int64_t num_elements() const;
 
   template <typename Sink>
@@ -93,6 +106,10 @@ class Shape {
   }
 
  private:
+  struct UncheckedTag {};
+  Shape(UncheckedTag, absl_nonnull std::shared_ptr<const Dimensions> dims)
+      : dims_(std::move(dims)) {}
+
   absl_nonnull std::shared_ptr<const Dimensions> dims_;
 };
 
@@ -112,12 +129,14 @@ class BoundedDynamicShapeTag {
 
   using DynamicDimensions = absl::InlinedVector<bool, kInlineDimensionSize>;
 
-  explicit BoundedDynamicShapeTag(absl::Span<const bool> dynamic_dims)
-      : dynamic_dims_(
-            DynamicDimensions(dynamic_dims.begin(), dynamic_dims.end())) {
-    CHECK(absl::c_any_of(dynamic_dims_, [](bool b) { return b; }))
-        << "At least one dimension needs to be dynamically sized.";
-  }
+  // Constructs a `BoundedDynamicShapeTag` from `dynamic_dims`. Returns
+  // `InvalidArgumentError` if no dimension is dynamically sized.
+  static absl::StatusOr<BoundedDynamicShapeTag> Create(
+      absl::Span<const bool> dynamic_dims);
+
+  // Constructs a `BoundedDynamicShapeTag` from `dynamic_dims`. `CHECK`-fails if
+  // `Create(dynamic_dims)` returns an error.
+  explicit BoundedDynamicShapeTag(absl::Span<const bool> dynamic_dims);
 
   BoundedDynamicShapeTag(const BoundedDynamicShapeTag&) = default;
   BoundedDynamicShapeTag(BoundedDynamicShapeTag&&) = default;
@@ -158,6 +177,10 @@ class BoundedDynamicShapeTag {
   }
 
  private:
+  struct UncheckedTag {};
+  BoundedDynamicShapeTag(UncheckedTag, DynamicDimensions dynamic_dims)
+      : dynamic_dims_(std::move(dynamic_dims)) {}
+
   // This vector is the same size as `Shape`'s 'dims()' and indicates whether
   // the respective dimension is dynamically sized.
   DynamicDimensions dynamic_dims_;

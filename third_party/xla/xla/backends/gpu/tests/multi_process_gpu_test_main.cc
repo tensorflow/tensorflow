@@ -175,6 +175,11 @@ int main(int argc, char* argv[]) {
     tsl::setenv("XLA_FLAGS", xla_flags, /*overwrite=*/true);
   }
 
+  // Disable external NCCL network plugins by default in single-host
+  // multi-process tests so plugins do not start background threads that race
+  // with leak checking at process exit.
+  tsl::setenv("NCCL_NET_PLUGIN", "none", /*overwrite=*/false);
+
   // Ensure all workers use the exact same shuffle seed when test shuffling is
   // enabled without an explicit non-zero seed. Otherwise each worker
   // independently samples the current millisecond clock and may shuffle tests

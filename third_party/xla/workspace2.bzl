@@ -46,7 +46,6 @@ load("//third_party/fxdiv:workspace.bzl", fxdiv = "repo")
 load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("//third_party/gloo:workspace.bzl", gloo = "repo")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
-load("//third_party/gutil:workspace.bzl", gutil = "repo")
 load("//third_party/highway:workspace.bzl", highway = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
@@ -119,7 +118,6 @@ def _initialize_third_party():
     brotli()
     gemmlowp()
     gloo()
-    gutil()
     highway()
     highwayhash()
     hwloc()
@@ -351,7 +349,6 @@ def _tf_repositories():
         patch_file = [
             "//third_party/googletest:googletest.patch",
             "//third_party/googletest:0001-Add-ASSERT_OK-EXPECT_OK-ASSERT_OK_AND_ASSIGN-macros.patch",
-            "//third_party/googletest:0002-Rename-dependencies-for-workspace.bzl-build.patch",
         ],
         urls = tf_mirror_urls("https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c940189.zip"),
         repo_mapping = {

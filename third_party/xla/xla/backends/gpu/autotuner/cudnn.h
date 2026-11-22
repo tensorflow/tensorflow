@@ -80,7 +80,6 @@ class CudnnBackend : public GpuCodegenBackend {
     return target_config().device_description.dnn_version().ToString();
   }
 
- private:
   bool IsSupported(const HloInstruction& instr) override;
 };
 

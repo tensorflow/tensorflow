@@ -31,6 +31,22 @@ func.func @good_disassemble(
 
 // -----
 
+func.func @good_disassemble_donated(
+    %arg0: !ifrt.array<tensor<2x4xi32>,
+                       #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]> {ifrt.donated})
+    attributes {ifrt.function} {
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0) <donated=true>
+      : (!ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>)
+      -> (!ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>,
+          !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>)
+  return
+}
+
+// -----
+
 func.func @disassemble_requires_in_ifrt_function(
     %arg0: !ifrt.array<tensor<2x4xi32>,
                        #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>) {
@@ -79,5 +95,151 @@ func.func @disassemble_requires_same_device_list(
                       #ifrt.sharding_param<1x1 to [0] on 1>, [1]>,
           !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>)
+  return
+}
+
+// -----
+
+func.func @disassemble_rejects_fewer_input_devices_than_outputs(
+    %arg0: !ifrt.array<tensor<2x2xi32>,
+                       #ifrt.sharding_param<1x1 to [0] on 1>, [0]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Disassemble' op requires the same input/output device list. Input 0 vs Output 0, 1}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 1>, [0]>)
+      -> (!ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>,
+          !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>)
+  return
+}
+
+// -----
+
+func.func @disassemble_rejects_more_input_devices_than_outputs(
+    %arg0: !ifrt.array<tensor<2x6xi32>,
+                       #ifrt.sharding_param<1x3 to [0] on 3>, [0,1,2]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Disassemble' op requires the same input/output device list. Input 0, 1, 2 vs Output 0, 1}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!ifrt.array<tensor<2x6xi32>,
+                     #ifrt.sharding_param<1x3 to [0] on 3>, [0,1,2]>)
+      -> (!ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>,
+          !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>)
+  return
+}
+
+// -----
+
+!assembled = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                         [0, 1], memory_kind = "pinned_host", layout = "{0,1}">
+!shard0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [0], memory_kind = "pinned_host", layout = "{0,1}">
+!shard1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [1], memory_kind = "pinned_host", layout = "{0,1}">
+func.func @good_disassemble_with_memory_kind_and_layout(%arg0: !assembled)
+    attributes {ifrt.function} {
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!assembled) -> (!shard0, !shard1)
+  return
+}
+
+// -----
+
+!assembled = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                         [0, 1]>
+!shard0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [0], layout = "auto">
+!shard1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [1]>
+func.func @disassemble_rejects_auto_layout_output(%arg0: !assembled)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Disassemble' op does not allow output array #0 with `auto` layout}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!assembled) -> (!shard0, !shard1)
+  return
+}
+
+// -----
+
+!assembled = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                         [0, 1], layout = "auto">
+!shard0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [0]>
+!shard1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [1]>
+func.func @disassemble_rejects_auto_layout_input(%arg0: !assembled)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Disassemble' op does not allow input array with `auto` layout}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!assembled) -> (!shard0, !shard1)
+  return
+}
+
+// -----
+
+!assembled = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                         [0, 1]>
+!shard0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [0]>
+!shard1 = !ifrt.array<tensor<2x2xf32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [1]>
+func.func @disassemble_requires_same_dtype(%arg0: !assembled)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Disassemble' op requires input array and output array #1 to have the same dtype}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!assembled) -> (!shard0, !shard1)
+  return
+}
+
+// -----
+
+!assembled = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                         [0, 1]>
+!shard0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [0], memory_kind = "pinned_host">
+!shard1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [1]>
+func.func @disassemble_requires_same_memory_kind(%arg0: !assembled)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Disassemble' op requires input array and output array #0 to have the same memory kind}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!assembled) -> (!shard0, !shard1)
+  return
+}
+
+// -----
+
+!assembled = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                         [0, 1], layout = "{0,1}">
+!shard0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [0], layout = "{0,1}">
+!shard1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [1], layout = "{1,0}">
+func.func @disassemble_requires_same_layout(%arg0: !assembled)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Disassemble' op requires input array and output array #1 to have the same layout}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!assembled) -> (!shard0, !shard1)
+  return
+}
+
+// -----
+
+!assembled = !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                         [0, 1]>
+!shard0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [0]>
+!shard1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>,
+                      [1]>
+func.func @disassemble_requires_same_per_shard_shape(%arg0: !assembled)
+    attributes {ifrt.function} {
+  // expected-error@+2 {{'ifrt.Disassemble' op Arrays have different per-shard shapes:}}
+  // expected-error@+1 {{'ifrt.Disassemble' op requires input array and output array #0 to have the same per-shard shape}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!assembled) -> (!shard0, !shard1)
   return
 }

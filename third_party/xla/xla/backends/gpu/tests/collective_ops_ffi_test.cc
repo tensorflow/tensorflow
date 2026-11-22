@@ -24,8 +24,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/ffi.h"
@@ -49,22 +52,27 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/collectives_api.h"
 #include "xla/ffi/api/collectives_c_api.h"
 #include "xla/ffi/collectives_ffi.h"
 #include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_interop.h"
 #include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -304,6 +312,14 @@ static absl::Status PreparePeerAllReduce(
 }
 
 namespace {
+struct RawCollectives : ffi::Collectives {
+  using Type = const XLA_FFI_Collectives_Extension*;
+
+  static Type Create(const XLA_FFI_Api*, const CExtension* extension) {
+    return extension;
+  }
+};
+
 std::vector<std::vector<int64_t>> PublicApiReplicaGroups() {
   std::vector<int64_t> ids;
   ids.reserve(kNumReplicas);
@@ -335,6 +351,60 @@ absl::Status PublicApiAllReduce(se::Stream* stream, ffi::BufferR0<U32> src,
   return CommunicatorAllReduceU32(
       stream, communicator, src.device_memory().opaque(),
       dst->device_memory().opaque(), src.element_count());
+}
+
+absl::Status PreparePublicApiCommunicatorRank(ffi::Communicator comm) {
+  return comm.RequestCommunicator(ffi::GroupMode::kFlattenedId, {{1, 0}},
+                                  /*communication_id=*/0);
+}
+
+absl::Status CheckPublicApiCommunicatorRank(
+    se::Stream* stream, ffi::Result<ffi::BufferR0<S32>> rank,
+    ffi::Communicator comm, const XLA_FFI_Collectives_Extension* extension) {
+  ABSL_ASSIGN_OR_RETURN(
+      ffi::CommunicatorWithRankInfo info,
+      comm.GetCommunicatorWithRankInfo(ffi::GroupMode::kFlattenedId, {{1, 0}},
+                                       /*communication_id=*/0));
+  TF_RET_CHECK(info.communicator != nullptr);
+  EXPECT_EQ(info.size, kNumReplicas);
+
+  const int64_t ids[] = {1, 0};
+  XLA_FFI_ReplicaGroup group{ids, 2};
+  XLA_FFI_Communicator_Get_Args args = {};
+  args.group_mode = XLA_FFI_GROUP_FLATTENED_ID;
+  args.groups = &group;
+  args.num_groups = 1;
+  args.rank = -1;
+  args.size = -1;
+  args.struct_size =
+      XLA_FFI_STRUCT_SIZE(XLA_FFI_Communicator_Get_Args, communicator);
+  ABSL_RETURN_IF_ERROR(
+      ffi::TakeError(extension->get_communicator(extension, &args)));
+  EXPECT_EQ(args.communicator, info.communicator);
+  EXPECT_EQ(args.rank, -1);
+  EXPECT_EQ(args.size, -1);
+
+  for (size_t struct_size : {
+           XLA_FFI_STRUCT_SIZE(XLA_FFI_Communicator_Get_Args, communicator) - 1,
+           XLA_FFI_STRUCT_SIZE(XLA_FFI_Communicator_Get_Args, size) - 1,
+       }) {
+    SCOPED_TRACE(struct_size);
+    args.struct_size = struct_size;
+    args.communicator = nullptr;
+    args.rank = -1;
+    args.size = -1;
+    EXPECT_THAT(ffi::TakeError(extension->get_communicator(extension, &args)),
+                absl_testing::StatusIs(
+                    absl::StatusCode::kInvalidArgument,
+                    ::testing::HasSubstr(
+                        "Unexpected XLA_FFI_Communicator_Get_Args size")));
+    EXPECT_EQ(args.communicator, nullptr);
+    EXPECT_EQ(args.rank, -1);
+    EXPECT_EQ(args.size, -1);
+  }
+  se::DeviceAddressBase output = rank->device_memory();
+  return stream->Memset32(&output, static_cast<uint32_t>(info.rank),
+                          output.size());
 }
 
 absl::Status PreparePublicApiWindow(ffi::BufferR0<U32> src,
@@ -704,10 +774,15 @@ static absl::Status BlockedSymMulticastAllReduce(
   return stream->BlockHostUntilDone();
 }
 
-static absl::Status SymPeerAllReduce(
-    se::Stream* stream, ffi::BufferR0<U32> src,
-    ffi::Result<ffi::BufferR0<U32>> dst,
-    const CollectiveParams* collective_params,
+struct ResolvedSymPeerAddresses {
+  SymmetricMemory* sym_memory;
+  size_t offset;
+  se::DeviceAddressBase peer0;
+  se::DeviceAddressBase peer1;
+};
+
+static absl::StatusOr<ResolvedSymPeerAddresses> ResolveSymPeerAddresses(
+    se::DeviceAddressBase src_addr, const CollectiveParams* collective_params,
     const CollectiveMemory* collective_memory) {
   TF_RET_CHECK(collective_params && collective_memory);
 
@@ -717,22 +792,32 @@ static absl::Status SymPeerAllReduce(
           *collective_params, {AllDevices()},
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID));
 
-  // Find collective memory for src buffer.
   auto [sym_src, src_offset] =
-      collective_memory->FindSymmetricMemory(clique_key, src.device_memory());
+      collective_memory->FindSymmetricMemory(clique_key, src_addr);
+  TF_RET_CHECK(sym_src != nullptr) << "src is not in a symmetric window";
+
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer0, sym_src->peer_addr(RankId(0)));
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer1, sym_src->peer_addr(RankId(1)));
+  if (peer0.is_null() || peer1.is_null()) {
+    return absl::InternalError("Peer address can't be resolved");
+  }
+  return ResolvedSymPeerAddresses{sym_src, src_offset, peer0, peer1};
+}
+
+static absl::Status SymPeerAllReduce(
+    se::Stream* stream, ffi::BufferR0<U32> src,
+    ffi::Result<ffi::BufferR0<U32>> dst,
+    const CollectiveParams* collective_params,
+    const CollectiveMemory* collective_memory) {
+  ABSL_ASSIGN_OR_RETURN(
+      ResolvedSymPeerAddresses peers,
+      ResolveSymPeerAddresses(src.device_memory(), collective_params,
+                              collective_memory));
 
   // Load custom kernel that does device-initiated collectives.
   ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
                                     .LoadKernel<Peer2AllReduce>(
                                         collective_params->executor));
-
-  // Get peer addresses for src buffer.
-  ABSL_ASSIGN_OR_RETURN(auto src0, sym_src->peer_addr(RankId(0)));
-  ABSL_ASSIGN_OR_RETURN(auto src1, sym_src->peer_addr(RankId(1)));
-
-  if (!src0 || !src1) {
-    return absl::InternalError("Peer address can't be resolved");
-  }
 
   // Block the host CPU thread until the asynchronous GPU copies / memory maps
   // are complete.
@@ -749,10 +834,13 @@ static absl::Status SymPeerAllReduce(
   se::BlockDim block_dims(1);
   se::ThreadDim thread_dims(8);
 
-  ABSL_RETURN_IF_ERROR(kernel.Launch(thread_dims, block_dims, stream,
-                                se::DeviceAddress<uint32_t>(src0),
-                                se::DeviceAddress<uint32_t>(src1),
-                                dst->device_memory(), src.element_count()));
+  ABSL_RETURN_IF_ERROR(kernel.Launch(
+      thread_dims, block_dims, stream,
+      se::DeviceAddress<uint32_t>(
+          peers.peer0.GetByteSlice(peers.offset, sizeof(uint32_t))),
+      se::DeviceAddress<uint32_t>(
+          peers.peer1.GetByteSlice(peers.offset, sizeof(uint32_t))),
+      dst->device_memory(), src.element_count()));
   ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   SynchronizationSignals* signals = global_signals->get();
   signals->IncrementFinishedKernels();
@@ -871,6 +959,18 @@ XLA_FFI_DEFINE_HANDLER(kPublicApiAllReduce, PublicApiAllReduce,
                            .Arg<ffi::BufferR0<U32>>()  // src
                            .Ret<ffi::BufferR0<U32>>()  // dst
                            .Ctx<ffi::Extension<ffi::Collectives>>());
+
+XLA_FFI_DEFINE_HANDLER(
+    kPreparePublicApiCommunicatorRank, PreparePublicApiCommunicatorRank,
+    ffi::Ffi::BindPrepare().Ctx<ffi::Extension<ffi::Collectives>>());
+
+XLA_FFI_DEFINE_HANDLER(kCheckPublicApiCommunicatorRank,
+                       CheckPublicApiCommunicatorRank,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Ret<ffi::BufferR0<S32>>()
+                           .Ctx<ffi::Extension<ffi::Collectives>>()
+                           .Ctx<ffi::Extension<RawCollectives>>());
 
 XLA_FFI_DEFINE_HANDLER(kPreparePublicApiWindow, PreparePublicApiWindow,
                        ffi::Ffi::BindPrepare()
@@ -1072,6 +1172,15 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                              /*execute=*/kPublicApiAllReduce,
                          });
 
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test$$public_api_communicator_rank", "gpu",
+                         XLA_FFI_Handler_Bundle{
+                             /*instantiate=*/nullptr,
+                             /*prepare=*/kPreparePublicApiCommunicatorRank,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kCheckPublicApiCommunicatorRank,
+                         });
+
 // Register handler bundle for the public collectives FFI window test.
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$public_api_window",
                          "gpu",
@@ -1228,6 +1337,72 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test_multi_gpu_barrier",
                              /*execute=*/kExecuteMultiGpuBarrier,
                          });
 
+// Per-device state recorded by the command-buffer compatible handler below, so
+// tests can tell whether a run re-recorded the custom call or replayed the
+// recorded command buffer.
+struct CmdBufferSymPeerState {
+  absl::Mutex mu;
+  std::array<int, kNumReplicas> record_calls ABSL_GUARDED_BY(mu) = {};
+};
+
+CmdBufferSymPeerState& GetCmdBufferSymPeerState() {
+  static absl::NoDestructor<CmdBufferSymPeerState> state;
+  return *state;
+}
+
+// Command-buffer compatible variant of SymPeerAllReduce: no host
+// synchronization, so it can be captured into a CUDA graph. The peer addresses
+// of the symmetric window are resolved on the host when the handler runs, i.e.
+// once at record time, and are baked into the recorded kernel launch.
+static absl::Status CmdBufferSymPeerAllReduce(
+    se::Stream* stream, ffi::BufferR0<U32> src,
+    ffi::Result<ffi::BufferR0<U32>> dst,
+    const CollectiveParams* collective_params,
+    const CollectiveMemory* collective_memory) {
+  ABSL_ASSIGN_OR_RETURN(
+      ResolvedSymPeerAddresses peers,
+      ResolveSymPeerAddresses(src.device_memory(), collective_params,
+                              collective_memory));
+
+  {
+    CmdBufferSymPeerState& state = GetCmdBufferSymPeerState();
+    const int d = stream->parent()->device_ordinal();
+    TF_RET_CHECK(d >= 0 && d < kNumReplicas);
+    absl::MutexLock lock(state.mu);
+    ++state.record_calls[d];
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+                                    .LoadKernel<Peer2AllReduce>(
+                                        collective_params->executor));
+  se::BlockDim block_dims(1);
+  se::ThreadDim thread_dims(8);
+  return kernel.Launch(thread_dims, block_dims, stream,
+                       se::DeviceAddress<uint32_t>(peers.peer0.GetByteSlice(
+                           peers.offset, sizeof(uint32_t))),
+                       se::DeviceAddress<uint32_t>(peers.peer1.GetByteSlice(
+                           peers.offset, sizeof(uint32_t))),
+                       dst->device_memory(), src.element_count());
+}
+
+XLA_FFI_DEFINE_HANDLER(kCmdBufferSymPeerAllReduce, CmdBufferSymPeerAllReduce,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Arg<ffi::BufferR0<U32>>()  // src
+                           .Ret<ffi::BufferR0<U32>>()  // dst
+                           .Ctx<ffi::CollectiveParams>()
+                           .Ctx<ffi::CollectiveMemory>(),
+                       {ffi::Traits::kCmdBufferCompatible});
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test_cmd_buffer_sym_peer_all_reduce", "gpu",
+                         XLA_FFI_Handler_Bundle{
+                             /*instantiate=*/nullptr,
+                             /*prepare=*/kPrepareSymPeerAllReduce,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kCmdBufferSymPeerAllReduce,
+                         });
+
 TEST_F(CollectiveOpsTestFFI, AllReduce) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
@@ -1306,6 +1481,34 @@ TEST_F(CollectiveOpsTestFFI, PublicApiAllReduce) {
   const uint32_t expected = kNumReplicas * (kNumReplicas - 1) / 2;
   for (int i = 0; i < kNumReplicas; ++i) {
     LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, results[i]);
+  }
+}
+
+TEST_F(CollectiveOpsTestFFI, PublicApiCommunicatorRankWithReversedGroup) {
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  constexpr absl::string_view hlo_string = R"hlo(
+      HloModule m, replica_count=2
+      ENTRY test_computation {
+        ROOT rank = s32[] custom-call(),
+          custom_call_target="__xla_test$$public_api_communicator_rank",
+          api_version=API_VERSION_TYPED_FFI
+      }
+    )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module),
+                                         /*arguments=*/std::vector<Literal*>(),
+                                         /*run_hlo_passes=*/false));
+  ASSERT_EQ(execution_result.results.size(), kNumReplicas);
+  for (int32_t replica = 0; replica < kNumReplicas; ++replica) {
+    LiteralTestUtil::ExpectR0Equal<int32_t>(kNumReplicas - 1 - replica,
+                                            execution_result.results[replica]);
   }
 }
 
@@ -1801,6 +2004,125 @@ TEST_F(CollectiveOpsTestFFI, MultiGpuBarrier) {
 
   for (int i = 0; i < kNumReplicas; ++i) {
     LiteralTestUtil::ExpectR0Equal<uint32_t>(i, results[i]);
+  }
+}
+
+// Checks that a recorded command buffer is re-recorded after the GPU clique is
+// destroyed and the symmetric window it captured is re-created over the same
+// buffers.
+using StaleSymmetricWindowTest = CollectiveOpsTestFFI;
+
+TEST_F(StaleSymmetricWindowTest, CommandBufferRerecordsAfterCliqueDestroyed) {
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "Test requires Hopper+ since on a previous platforms there "
+                    "are no guarantees that GPUs have direct peer access";
+  }
+
+  constexpr absl::string_view kHloString = R"(
+      HloModule m, replica_count=2
+
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        in = u32[]{:S(7)} copy(id)
+        all-reduce = u32[] custom-call(in),
+          custom_call_target="__xla_test_cmd_buffer_sym_peer_all_reduce",
+          api_version=API_VERSION_TYPED_FFI
+        ROOT out = u32[] copy(all-reduce)
+      }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloString, kNumReplicas));
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+
+  CmdBufferSymPeerState& state = GetCmdBufferSymPeerState();
+  auto record_calls = [&] {
+    absl::MutexLock lock(state.mu);
+    return state.record_calls;
+  };
+  const std::vector<std::vector<Literal*>> no_args(kNumReplicas);
+  // sum [0, num_devices)
+  const uint32_t expected = kNumReplicas * (kNumReplicas - 1) / 2;
+
+  // The first runs may execute the custom call op-by-op (command buffer warm
+  // up) and then record it. Their results are not checked: there is no
+  // cross-device synchronization inside the graph, so a rank may read the
+  // peer's `in` before the peer has written it for the first time. Keep
+  // running until a run replays the recorded command buffer, i.e. does not
+  // invoke the handler again.
+  ASSERT_OK_AND_ASSIGN(ExecutionResult first,
+                       ExecuteReplicated(std::move(module), no_args,
+                                         /*run_hlo_passes=*/false));
+  std::array<int, kNumReplicas> calls_after_record = record_calls();
+  for (int d = 0; d < kNumReplicas; ++d) {
+    ASSERT_GE(calls_after_record[d], 1)
+        << "custom call never ran on device " << d;
+  }
+  constexpr int kMaxWarmupRuns = 4;
+  bool replayed = false;
+  std::vector<Literal> replay;
+  for (int run = 0; run < kMaxWarmupRuns && !replayed; ++run) {
+    ASSERT_OK_AND_ASSIGN(replay,
+                         ExecuteReplicated(first.executable.get(), no_args,
+                                           /*run_hlo_passes=*/false));
+    std::array<int, kNumReplicas> calls = record_calls();
+    replayed = calls == calls_after_record;
+    calls_after_record = calls;
+  }
+  ASSERT_TRUE(replayed)
+      << "custom call was never replayed from a recorded command buffer";
+  for (int i = 0; i < kNumReplicas; ++i) {
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, replay[i]);
+  }
+
+  // Destroy all acquired cliques, which destroys the symmetric windows tied to
+  // them. The next run acquires a new clique and creates new windows over the
+  // same buffers.
+  internal::DestroyAcquiredCliques();
+
+  // Same executable, same buffer addresses, new window: the command buffer
+  // must warm up, re-record with the new window, and then replay from the
+  // recorded command buffer.
+  const std::array<int, kNumReplicas> calls_before_destroy = calls_after_record;
+  replayed = false;
+  for (int run = 0; run < kMaxWarmupRuns && !replayed; ++run) {
+    ASSERT_OK_AND_ASSIGN(replay,
+                         ExecuteReplicated(first.executable.get(), no_args,
+                                           /*run_hlo_passes=*/false));
+    std::array<int, kNumReplicas> calls = record_calls();
+    replayed = calls == calls_after_record;
+    calls_after_record = calls;
+  }
+  ASSERT_TRUE(replayed)
+      << "custom call was never replayed from a recorded command buffer after "
+         "clique destruction";
+  for (int d = 0; d < kNumReplicas; ++d) {
+    EXPECT_GT(calls_after_record[d], calls_before_destroy[d])
+        << "device " << d
+        << ": command buffer was not re-recorded after clique destruction";
+  }
+  for (int i = 0; i < kNumReplicas; ++i) {
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, replay[i]);
+  }
+
+  // Subsequent runs must replay the newly recorded command buffer without
+  // invoking the handler again.
+  ASSERT_OK_AND_ASSIGN(replay,
+                       ExecuteReplicated(first.executable.get(), no_args,
+                                         /*run_hlo_passes=*/false));
+  for (int d = 0; d < kNumReplicas; ++d) {
+    EXPECT_EQ(record_calls()[d], calls_after_record[d])
+        << "device " << d
+        << ": command buffer was unexpectedly re-recorded on subsequent replay";
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, replay[d]);
   }
 }
 

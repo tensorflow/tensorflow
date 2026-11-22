@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 #include "xla/comparison_util.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -148,17 +148,6 @@ class BufferOffsetRecordingThunk : public Thunk {
   std::vector<se::DeviceAddressBase> recorded_buffers_;
 };
 
-Thunk::ExecuteParams MakeExecuteParams(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
-  static ServiceExecutableRunOptions run_options;
-  return Thunk::ExecuteParams::Create(
-      run_options, buffer_allocations, stream,
-      /*command_buffer_trace_stream=*/nullptr, /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr,
-      /*additional_compute_streams=*/{}, /*execution_scoped_state=*/nullptr,
-      /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
-}
-
 TEST(DynamicSliceFusionV2ThunkTest, VerifyBufferAssignment) {
   BufferAllocation parameter_buffer(0, 1024, 0);
   BufferAllocation unaliased_result_buffer(1, 1024, 0);
@@ -222,7 +211,9 @@ TEST(DynamicSliceFusionV2ThunkTest, NoSlicing) {
       /*result_buffers=*/{BufferAllocation::Slice(&buffer1, 0, 1024)},
       slice_allocs, ThunkSequence::Of(std::move(recording)));
 
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   ASSERT_EQ(recording_ptr->recorded_buffers().size(), 2);
@@ -260,7 +251,9 @@ TEST(DynamicSliceFusionV2ThunkTest, StaticOffset) {
       /*result_buffers=*/{}, slice_allocs,
       ThunkSequence::Of(std::move(recording)));
 
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   ASSERT_EQ(recording_ptr->recorded_buffers().size(), 1);
@@ -305,7 +298,9 @@ TEST(DynamicSliceFusionV2ThunkTest, LoopDependentOffset) {
   loop.IncLoopIteration();  // 2
   loop.IncLoopIteration();  // 3
 
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   // offset = 0 + 3 * 1024 = 3072.
@@ -346,7 +341,9 @@ TEST(DynamicSliceFusionV2ThunkTest, LoopDependentWithBaseOffset) {
   loop.IncLoopIteration();  // 1
   loop.IncLoopIteration();  // 2
 
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   // offset = 256 + 2 * 1024 = 2304.
@@ -392,7 +389,9 @@ TEST(DynamicSliceFusionV2ThunkTest, VerifiesComputedOffsetExpression) {
       /*result_buffers=*/{}, slice_allocs,
       ThunkSequence::Of(std::move(recording)), /*verify_offsets=*/true);
 
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   ASSERT_EQ(recording_ptr->recorded_buffers().size(), 1);
@@ -445,7 +444,9 @@ TEST(DynamicSliceFusionV2ThunkTest, ArgumentAndResultSlicing) {
   ScopedWhileLoop loop("test_loop", 4);
   loop.IncLoopIteration();  // 1
 
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   // iteration=1, stride=1024 => offset=1024.
@@ -500,7 +501,9 @@ TEST(DynamicSliceFusionV2ThunkTest, NestedLoops) {
   inner.IncLoopIteration();  // 4
   inner.IncLoopIteration();  // 5
 
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   // loop_nest = [outer, inner]. loop_index=1 => nest[size-1-1] = nest[0] =
@@ -538,7 +541,9 @@ TEST(DynamicSliceFusionV2ThunkTest, NotInsideLoop) {
       ThunkSequence::Of(std::move(recording)));
 
   // No ScopedWhileLoop — not inside any loop.
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   // iteration=0, offset = 128 + 0*1024 = 128.
@@ -594,7 +599,9 @@ TEST(DynamicSliceFusionV2ThunkTest, TwoResultsDifferentStrides) {
   loop.IncLoopIteration();  // 1
   loop.IncLoopIteration();  // 2
 
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   // iteration=2.
@@ -652,7 +659,9 @@ TEST(DynamicSliceFusionV2ThunkTest, OneSlicedOnePassthrough) {
   loop.IncLoopIteration();  // 2
   loop.IncLoopIteration();  // 3
 
-  auto params = MakeExecuteParams(allocs, stream.get());
+  TestThunkParams thunk_params(executor, &allocs, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
 
   // iteration=3.
@@ -731,11 +740,12 @@ TEST_P(DynamicSliceFusionV2CommandBufferTest, UpdatesLoopDependentOffsets) {
                            std::move(commands),
                            CommandExecutor::SynchronizationMode::kSerialize));
 
-  CommandBufferThunk command_buffer_thunk(
-      std::move(command_executor), Thunk::ThunkInfo(),
-      /*devices_in_process=*/1,
-      /*thunks=*/nullptr,
-      /*enable_command_buffers_during_profiling=*/true);
+  CommandBufferThunkOptions options;
+  options.enable_command_buffers_during_profiling = true;
+  CommandBufferThunk command_buffer_thunk(std::move(command_executor),
+                                          Thunk::ThunkInfo(),
+                                          /*devices_in_process=*/1,
+                                          /*thunks=*/nullptr, options);
 
   se::DeviceAddress<int32_t> src = executor->AllocateArray<int32_t>(4, 0);
   std::vector<int32_t> src_data{10, 20, 30, 40};
@@ -748,16 +758,13 @@ TEST_P(DynamicSliceFusionV2CommandBufferTest, UpdatesLoopDependentOffsets) {
   BufferAllocations allocations({src, dst}, executor->device_ordinal(),
                                 &allocator);
 
-  Thunk::PrepareParams prepare_params;
-  prepare_params.executor = executor;
-  prepare_params.buffer_allocations = &allocations;
-  ASSERT_OK(command_buffer_thunk.Prepare(prepare_params));
+  TestThunkParams thunk_params(executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
+  ASSERT_OK(command_buffer_thunk.Prepare(thunk_params.PrepareParams()));
+  ASSERT_OK(command_buffer_thunk.Initialize(thunk_params.InitializeParams()));
 
-  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  ASSERT_OK(command_buffer_thunk.Initialize(
-      {executor, source, &allocations, stream.get(), stream.get()}));
-
-  auto params = MakeExecuteParams(allocations, stream.get());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   ScopedWhileLoop loop("dynamic_slice_fusion_v2_command_buffer",
                        /*trip_count=*/4);
@@ -986,13 +993,10 @@ TEST(DynamicSliceFusionV2ThunkTest,
       ThunkSequence::Of<DeviceToDeviceCopyThunk>(Thunk::ThunkInfo(), src_slice,
                                                  dst_slice, 1024));
 
-  Thunk::PrepareParams prepare_params;
-  prepare_params.buffer_allocations = &parent_buffer_allocations;
-  EXPECT_OK(thunk.Prepare(prepare_params));
-
-  Thunk::InitializeParams init_params;
-  init_params.buffer_allocations = &parent_buffer_allocations;
-  EXPECT_OK(thunk.Initialize(init_params));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, CreateExecutor());
+  TestThunkParams thunk_params(executor, &parent_buffer_allocations);
+  EXPECT_OK(thunk.Prepare(thunk_params.PrepareParams()));
+  EXPECT_OK(thunk.Initialize(thunk_params.InitializeParams()));
 }
 
 }  // namespace

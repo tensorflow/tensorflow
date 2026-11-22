@@ -332,6 +332,22 @@ TEST_F(PrefetchDatasetOpTest, InvalidBufferSize) {
   EXPECT_EQ(Initialize(dataset_params).code(), error::INVALID_ARGUMENT);
 }
 
+TEST_F(PrefetchDatasetOpTest, CancelIterator) {
+  auto dataset_params = PrefetchDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  std::vector<Tensor> next;
+  bool end_of_sequence = false;
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+
+  cancellation_manager_->StartCancel();
+  absl::Status status =
+      iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence);
+  EXPECT_EQ(status.code(), absl::StatusCode::kCancelled);
+  EXPECT_FALSE(end_of_sequence);
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

@@ -29,9 +29,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -62,14 +60,14 @@ void MaybeUnfoldLargeSplatConstant(mlir::OpBuilder* op_builder,
   op_builder->setInsertionPoint(const_op);
   mlir::arith::ConstantOp fill_shape = mlir::arith::ConstantOp::create(
       *op_builder, const_op->getLoc(),
-      DenseIntElementsAttr::get(tensorflow::GetTypeFromTFTensorShape(
+      DenseIntElementsAttr::get(mlir::TFL::GetTypeFromTFLiteShape(
                                     {splat_elements_attr.getType().getRank()},
                                     op_builder->getI64Type()),
                                 splat_elements_attr.getType().getShape()));
   mlir::arith::ConstantOp fill_value = mlir::arith::ConstantOp::create(
       *op_builder, const_op->getLoc(),
       DenseElementsAttr::get(
-          tensorflow::GetTypeFromTFTensorShape(
+          mlir::TFL::GetTypeFromTFLiteShape(
               {}, splat_elements_attr.getType().getElementType()),
           splat_elements_attr.getSplatValue<Attribute>()));
   TFL::FillOp fill = TFL::FillOp::create(*op_builder, const_op->getLoc(),

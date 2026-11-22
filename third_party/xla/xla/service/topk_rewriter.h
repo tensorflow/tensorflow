@@ -16,76 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_TOPK_REWRITER_H_
 #define XLA_SERVICE_TOPK_REWRITER_H_
 
-#include <functional>
-#include <memory>
-#include <optional>
-#include <utility>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/comparison_util.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// This pass pattern-matches soups of HLOs executing a TopK operation and
-// replaces them with a TopK CustomCall when the given values are supported by
-// the CustomCall and it is more efficient to use that implementation.
-class TopkRewriter : public HloModulePass {
- public:
-  explicit TopkRewriter(std::function<bool(const HloSortInstruction*, int64_t)>
-                            is_profitable_to_convert)
-      : is_profitable_to_convert_(std::move(is_profitable_to_convert)) {}
-
-  absl::string_view name() const override { return "topk-rewriter"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  // Check if the sort instruction is in TopK.
-  std::optional<int64_t> SortIsInTopK(HloInstruction* inst,
-                                      ComparisonOrder* order = nullptr);
-
-  // Transform to CustomCall.
-  absl::StatusOr<bool> TransformToCustomCall(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
-
- private:
-  // Predicate that returns true if a sort instruction is profitable to be
-  // converted into a custom call.
-  std::function<bool(const HloSortInstruction*, int64_t)>
-      is_profitable_to_convert_;
-
-  // Matches the input to the sort+iota+slice pattern and converts to custom
-  // call if profitable. Returns the custom call if one was created.
-  absl::StatusOr<HloInstruction*> TransformPatternToCustomCall(
-      HloInstruction* inst);
-};
-
-class TopkDecomposer : public HloModulePass {
- public:
-  absl::string_view name() const override { return "topk-decomposer"; }
-
-  explicit TopkDecomposer(HloPredicate should_decompose = {})
-      : should_decompose_(should_decompose) {}
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  HloPredicate should_decompose_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/topk_rewriter.h"
+#include "xla/hlo/transforms/topk_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_TOPK_REWRITER_H_

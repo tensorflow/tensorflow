@@ -46,12 +46,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.h"
-#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
-#include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
-#include "tensorflow/compiler/mlir/tools/optimize/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/tools/optimize/quantization_utils.h"
 
 namespace mlir {
 
@@ -278,8 +278,7 @@ Type GetQuantizedType(Builder builder, const Type input_type,
                       const bool narrow_range, const bool is_signed,
                       const bool legacy_float_scale,
                       const bool use_fake_quant_num_bits) {
-  auto converter =
-      mlir::quant::ir::ExpressedToQuantizedConverter::forInputType(input_type);
+  auto converter = TFL::ExpressedToQuantizedConverter::forInputType(input_type);
 
   // Expand the range to prevent extremely small scales and large quantized
   // integers which can cause overflow. This leads to scale
@@ -289,7 +288,7 @@ Type GetQuantizedType(Builder builder, const Type input_type,
 
   quant::QuantizedType quantized_element_type;
   if (min.size() == 1 && max.size() == 1 && quant_dim == -1) {
-    quantized_element_type = quantfork::fakeQuantAttrsToType(
+    quantized_element_type = TFL::fakeQuantAttrsToType(
         builder.getUnknownLoc(), storage_type_width, effective_mins[0],
         effective_maxs[0], narrow_range, converter.expressed_type, is_signed);
     if (legacy_float_scale) {
@@ -304,7 +303,7 @@ Type GetQuantizedType(Builder builder, const Type input_type,
       return {};
     }
     // The quantization dim is set to the last dimension.
-    quantized_element_type = quantfork::fakeQuantAttrsToType(
+    quantized_element_type = TFL::fakeQuantAttrsToType(
         builder.getUnknownLoc(), storage_type_width, quant_dim, effective_mins,
         effective_maxs, narrow_range, converter.expressed_type, is_signed);
     if (legacy_float_scale) {
@@ -673,7 +672,7 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
                      std::back_inserter(scales_inv),
                      [](float scale) { return 1.0 / scale; });
 
-      tflite_migration::optimize::utils::SymmetricPerChannelQuantizeValues(
+      TFL::SymmetricPerChannelQuantizeValues(
           real_values.data(), scales_inv, dimension,
           uniform_type.getQuantizedDimension(), &quantized_values);
     } else {
@@ -693,9 +692,8 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
     return Quantize(real_value, tensor_type);
   } else if (width == 16) {
     if (const auto uniform_type = dyn_cast<UniformQuantizedType>(q_type)) {
-      const auto quantized_values =
-          tflite_migration::optimize::utils::SymmetricQuantizeFloatsToInt16(
-              real_values.data(), real_values.size(), uniform_type.getScale());
+      const auto quantized_values = TFL::SymmetricQuantizeFloatsToInt16(
+          real_values.data(), real_values.size(), uniform_type.getScale());
       std::transform(quantized_values.begin(), quantized_values.end(),
                      std::back_inserter(quantized_attr),
                      [&](int16_t value) -> APInt {
@@ -714,9 +712,8 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
     } else {
       return {};
     }
-    const auto quantized_bias =
-        tflite_migration::optimize::utils::SymmetricBiasQuantize<std::int32_t>(
-            real_values.data(), real_values.size(), scales);
+    const auto quantized_bias = TFL::SymmetricBiasQuantize<std::int32_t>(
+        real_values.data(), real_values.size(), scales);
     std::transform(quantized_bias.begin(), quantized_bias.end(),
                    std::back_inserter(quantized_attr),
                    [&](int32_t value) -> APInt {
@@ -754,7 +751,7 @@ quant::QuantizedType DownCastScale(QuantizedType type,
   SmallVector<double, 4> scales(mins.size());
   SmallVector<int64_t, 4> zero_points(mins.size());
   if (auto q_type = dyn_cast<UniformQuantizedType>(type)) {
-    zero_points.push_back(q_type.getZeroPoint());
+    zero_points.assign(mins.size(), q_type.getZeroPoint());
   } else if (auto q_type = dyn_cast<quant::UniformQuantizedPerAxisType>(type)) {
     zero_points = {q_type.getZeroPoints().begin(),
                    q_type.getZeroPoints().end()};

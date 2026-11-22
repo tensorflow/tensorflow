@@ -39,12 +39,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -57,6 +58,88 @@ limitations under the License.
 namespace xla::gpu {
 
 using ::xla::xtile::BlockLevelParameters;
+
+bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
+  namespace pu = ::xla::primitive_util;
+
+  switch (opcode) {
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+    case HloOpcode::kNot:
+      return type == PRED || pu::IsIntegralType(type);
+    case HloOpcode::kAtan2:
+    case HloOpcode::kCos:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
+    case HloOpcode::kTan:
+    case HloOpcode::kTanh:
+    case HloOpcode::kReal:
+    case HloOpcode::kImag:
+    case HloOpcode::kLogistic:
+    case HloOpcode::kCholesky:
+    case HloOpcode::kTriangularSolve:
+      return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAtanh:
+    case HloOpcode::kSinh:
+    case HloOpcode::kAsin:
+    case HloOpcode::kCbrt:
+    case HloOpcode::kCosh:
+    case HloOpcode::kErf:
+    case HloOpcode::kFloor:
+    case HloOpcode::kCeil:
+    case HloOpcode::kFma:
+    case HloOpcode::kIsFinite:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
+    case HloOpcode::kReducePrecision:
+      return pu::IsFloatingPointType(type);
+    case HloOpcode::kClz:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kPopulationCount:
+      return pu::IsIntegralType(type);
+    case HloOpcode::kAbs:
+    case HloOpcode::kSign:
+      return pu::IsSignedIntegralType(type) || pu::IsFloatingPointType(type) ||
+             pu::IsComplexType(type);
+    case HloOpcode::kPower:
+    case HloOpcode::kDivide:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kIota:
+      return type != PRED;
+    case HloOpcode::kNegate:
+      return type != PRED && type != F8E8M0FNU;
+    case HloOpcode::kRng:
+      return !pu::IsComplexType(type);
+    case HloOpcode::kComplex:
+      return type == F32 || type == F64;
+    case HloOpcode::kDot:
+      return type != PRED;
+    case HloOpcode::kScaledDot:
+      return type == F8E4M3FN || type == F4E2M1FN || type == F8E5M2 ||
+             type == BF16 || type == F8E8M0FNU || type == S8;
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kStochasticConvert:
+      return pu::IsFloatingPointType(type);
+    default:
+      // Returning true by default ensures that newly added ops are not
+      // skipped.
+      return true;
+  }
+}
 
 std::vector<xla::PrimitiveType> AllXlaDataTypes() {
   std::vector<xla::PrimitiveType> xla_data_types;

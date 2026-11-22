@@ -1,0 +1,33 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize | FileCheck %s
+// RUN: gpu_test_correctness %s
+
+fusion {
+  %p0 = f32[16,48] parameter(0)
+  %p1 = f32[16,80] parameter(1)
+  %c = f32[16,128] concatenate(%p0, %p1), dimensions={1}
+  %cvt = bf16[16,128] convert(%c)
+  ROOT %t = (f32[16,128], bf16[16,128]) tuple(%c, %cvt)
+}
+
+ENTRY main {
+  %p0 = f32[16,48] parameter(0)
+  %p1 = f32[16,80] parameter(1)
+  ROOT %fusion = (f32[16,128], bf16[16,128]) fusion(%p0, %p1), kind=kInput,
+      calls=fusion
+}
+
+// Both roots share one hero: c is its own hero, cvt's hero is also c, via a
+// convert epilogue with a mixed f32/bf16 result.
+
+// CHECK-LABEL: func.func @main(
+// CHECK:         xla.loop
+// CHECK:           %[[P0:.+]] = xla.pure_call @fusion_p0
+// CHECK:           %[[E0:.+]], %[[E1:.+]] = xla.pure_call @fusion__epilogue__c_cvt(%{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %[[P0]])
+// CHECK:           tensor.insert %[[E0]]{{.*}} : tensor<16x128xf32>
+// CHECK:           tensor.insert %[[E1]]{{.*}} : tensor<16x128xbf16>
+// CHECK:         xla.loop
+// CHECK:           %[[P1:.+]] = xla.pure_call @fusion_p1
+// CHECK:           %[[E2:.+]], %[[E3:.+]] = xla.pure_call @fusion__epilogue__c_cvt(%{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %[[P1]])
+// CHECK:           tensor.insert %[[E2]]{{.*}} : tensor<16x128xf32>
+// CHECK:           tensor.insert %[[E3]]{{.*}} : tensor<16x128xbf16>
+// CHECK-NOT:     xla.loop

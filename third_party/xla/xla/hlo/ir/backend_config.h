@@ -75,11 +75,12 @@ class BackendConfigWrapper {
   BackendConfigWrapper() = default;
   explicit BackendConfigWrapper(std::string raw_string);
   explicit BackendConfigWrapper(const tsl::protobuf::Message& proto)
-      : proto_(CloneBackendConfigProto(&proto)) {}
+      : proto_(CloneBackendConfigProto(&proto)), empty_(proto_ == nullptr) {}
   BackendConfigWrapper(const BackendConfigWrapper& other) {
     absl::MutexLock other_lock{other.mutex_};
     proto_ = CloneBackendConfigProto(other.proto_.get());
     raw_string_ = other.raw_string_;
+    empty_ = proto_ == nullptr && raw_string_.empty();
   }
 
   BackendConfigWrapper& operator=(BackendConfigWrapper&& other);
@@ -153,10 +154,7 @@ class BackendConfigWrapper {
     return status;
   }
 
-  bool empty() const {
-    absl::MutexLock lock{mutex_};
-    return proto_ == nullptr && raw_string_.empty();
-  }
+  bool empty() const { return empty_; }
 
  private:
   const std::string& GetRawStringWithoutMutex() const
@@ -172,6 +170,11 @@ class BackendConfigWrapper {
   mutable std::unique_ptr<tsl::protobuf::Message> proto_
       ABSL_GUARDED_BY(mutex_);
   mutable std::string raw_string_ ABSL_GUARDED_BY(mutex_);
+  // Cached emptiness state. Because none of the lazy-caching or mutation
+  // methods (GetRawString, GetProto, ApplyFnOnProto) can transition a wrapper
+  // between empty and non-empty, this only changes during construction and
+  // move-assignment and can be read without locking `mutex_`.
+  bool empty_ = true;
 };
 
 class HloInstruction;

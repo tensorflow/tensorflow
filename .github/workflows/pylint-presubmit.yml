@@ -29,22 +29,28 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      with:
+        persist-credentials: false
     - name: Get file changes
       id: get_file_changes
       uses: trilom/file-changes-action@a6ca26c14274c33b15e6499323aac178af06ad4b # v1.2.4
       with:
         output: ' '
     - name: Report list of changed files
+      env:
+        CHANGED_FILES: ${{ steps.get_file_changes.outputs.files }}
       run: |
-        echo Changed files: ${{ steps.get_file_changes.outputs.files }}
-    - name: Set up Python 3.9
+        echo Changed files: ${CHANGED_FILES}
+    - name: Set up Python 3.10
       uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
       with:
-        python-version: "3.9"
+        python-version: "3.10"
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install pylint==2.13.9 "numpy<2.0.0" wheel
     - name: Run PyLint on changed files
+      env:
+        CHANGED_FILES: ${{ steps.get_file_changes.outputs.files }}
       run: |
-        echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
+        echo "${CHANGED_FILES}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc

@@ -110,29 +110,35 @@ TEST(FloatArray, TestFloatArrayCopy) {
 }
 
 TEST(Types, TestTypeNames) {
-  auto type_name = [](TfLiteType t) {
-    return std::string(TfLiteTypeGetName(t));
-  };
-  EXPECT_EQ(type_name(kTfLiteNoType), "NOTYPE");
-  EXPECT_EQ(type_name(kTfLiteFloat64), "FLOAT64");
-  EXPECT_EQ(type_name(kTfLiteFloat32), "FLOAT32");
-  EXPECT_EQ(type_name(kTfLiteFloat16), "FLOAT16");
-  EXPECT_EQ(type_name(kTfLiteBFloat16), "BFLOAT16");
-  EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
-  EXPECT_EQ(type_name(kTfLiteUInt16), "UINT16");
-  EXPECT_EQ(type_name(kTfLiteInt32), "INT32");
-  EXPECT_EQ(type_name(kTfLiteUInt32), "UINT32");
-  EXPECT_EQ(type_name(kTfLiteUInt8), "UINT8");
-  EXPECT_EQ(type_name(kTfLiteUInt64), "UINT64");
-  EXPECT_EQ(type_name(kTfLiteInt8), "INT8");
-  EXPECT_EQ(type_name(kTfLiteInt64), "INT64");
-  EXPECT_EQ(type_name(kTfLiteBool), "BOOL");
-  EXPECT_EQ(type_name(kTfLiteComplex64), "COMPLEX64");
-  EXPECT_EQ(type_name(kTfLiteComplex128), "COMPLEX128");
-  EXPECT_EQ(type_name(kTfLiteString), "STRING");
-  EXPECT_EQ(type_name(kTfLiteResource), "RESOURCE");
-  EXPECT_EQ(type_name(kTfLiteVariant), "VARIANT");
-  EXPECT_EQ(type_name(kTfLiteInt4), "INT4");
+  EXPECT_STREQ(GetName(kTfLiteNoType), "NOTYPE");
+  EXPECT_STREQ(GetName(kTfLiteFloat64), "FLOAT64");
+  EXPECT_STREQ(GetName(kTfLiteFloat32), "FLOAT32");
+  EXPECT_STREQ(GetName(kTfLiteFloat16), "FLOAT16");
+  EXPECT_STREQ(GetName(kTfLiteBFloat16), "BFLOAT16");
+  EXPECT_STREQ(GetName(kTfLiteInt16), "INT16");
+  EXPECT_STREQ(GetName(kTfLiteUInt16), "UINT16");
+  EXPECT_STREQ(GetName(kTfLiteInt32), "INT32");
+  EXPECT_STREQ(GetName(kTfLiteUInt32), "UINT32");
+  EXPECT_STREQ(GetName(kTfLiteUInt8), "UINT8");
+  EXPECT_STREQ(GetName(kTfLiteUInt64), "UINT64");
+  EXPECT_STREQ(GetName(kTfLiteInt8), "INT8");
+  EXPECT_STREQ(GetName(kTfLiteInt64), "INT64");
+  EXPECT_STREQ(GetName(kTfLiteBool), "BOOL");
+  EXPECT_STREQ(GetName(kTfLiteComplex64), "COMPLEX64");
+  EXPECT_STREQ(GetName(kTfLiteComplex128), "COMPLEX128");
+  EXPECT_STREQ(GetName(kTfLiteString), "STRING");
+  EXPECT_STREQ(GetName(kTfLiteResource), "RESOURCE");
+  EXPECT_STREQ(GetName(kTfLiteVariant), "VARIANT");
+  EXPECT_STREQ(GetName(kTfLiteInt4), "INT4");
+}
+
+TEST(Types, TestQuantizationTypeNames) {
+  EXPECT_STREQ(GetName(kTfLiteNoQuantization), "None");
+  EXPECT_STREQ(GetName(kTfLiteAffineQuantization), "Affine");
+  EXPECT_STREQ(GetName(kTfLiteBlockwiseQuantization), "Blockwise");
+  EXPECT_STREQ(GetName(kTfLiteMultiAxisQuantization), "MultiAxis");
+  EXPECT_STREQ(GetName(kTfLiteBlockwiseQuantizationV2), "BlockwiseV2");
+  EXPECT_STREQ(GetName(static_cast<TfLiteQuantizationType>(-1)), "Unknown");
 }
 
 TEST(Quantization, TestQuantizationFree) {

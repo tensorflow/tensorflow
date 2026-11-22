@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -693,13 +692,64 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
 
   EXPECT_OK(CreateXTileIrAndFileCheck(*module->GetComputationWithName("ag_dot"),
                                       block_level_parameters, R"(
-    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<128x128xf32>, %arg1: memref<128x128xf32>, %arg2: memref<512x128xf32>, %arg3: index
+    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<128x128xf32>, %arg1: memref<128x128xf32>, %arg2: memref<512x128xf32>, %arg3: memref<2xi64>, %arg4: memref<2xi64>, %arg5: memref<2xi64>, %arg6: index {xla.range = [0 : index, 1 : index]}, %arg7: index {{.*}}) attributes {has_rank, has_signal_buffer, num_scratch_buffers = 2 : i32}
     CHECK-NOT: xtile.select_buffer
     CHECK: %[[LHS_TILE:.*]] = xtile.extract %arg0
     CHECK: %[[AG1:.*]] = "stablehlo.all_gather"(%[[LHS_TILE]])
     CHECK: %[[AG2:.*]] = "stablehlo.all_gather"(%[[AG1]])
     CHECK: %[[RHS_TILE:.*]] = xtile.extract %arg1
     CHECK: stablehlo.dot_general %[[AG2]], %[[RHS_TILE]]
+    )"));
+}
+
+TEST_F(XTileDialectTest, TwoShotAllGatherEmitsSelectBufferOnRootInsert) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule two_shot_all_gather
+
+    %ag_fusion {
+      %p0 = f32[32,16]{1,0} parameter(0)
+      ROOT %ag = f32[128,16]{1,0} all-gather(%p0),
+        replica_groups={{0,1,2,3}}, dimensions={0},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+    }
+
+    ENTRY %entry {
+      %p0 = f32[32,16]{1,0} parameter(0)
+      ROOT %fusion = f32[128,16]{1,0} fusion(%p0),
+        kind=kCustom, calls=%ag_fusion,
+        backend_config={
+          "fusion_backend_config": {
+            "kind": "__triton_collective",
+            "block_level_fusion_config": {
+              "num_warps": "4",
+              "output_tiles": [{"sizes": ["16", "16"]}],
+              "num_ctas": 1,
+              "num_stages": 1,
+              "is_tma_allowed": false,
+              "is_warp_specialization_allowed": false
+            }
+          }
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{16, 16}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("ag_fusion"), block_level_parameters, R"(
+    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<32x16xf32>, %arg1: memref<4xi64>, %arg2: memref<4xi64>, %arg3: memref<4xi64>, %[[RANK:.*]]: index {xla.range = [0 : index, 3 : index]}, %arg5: index {{.*}}) attributes {has_rank, has_signal_buffer, num_scratch_buffers = 1 : i32}
+    CHECK-NOT: xtile.select_buffer %arg0
+    CHECK: %[[LOCAL_TILE:.*]] = xtile.extract %arg0[{{.*}}] [16, 16] [1, 1] : memref<32x16xf32> -> tensor<16x16xf32>
+    CHECK: %[[AG:.*]] = "stablehlo.all_gather"(%[[LOCAL_TILE]]) {{.*}}xtile.collective_strategy = #xtile.collective_strategy<two_shot>
+    CHECK: %[[PEER_BUF:.*]] = xtile.select_buffer %arg1[{{.*}}] : memref<4xi64> -> memref<128x16xf32>
+    CHECK: %[[SHARD_SIZE:.*]] = arith.constant 32 : index
+    CHECK: %[[RANK_OFFSET:.*]] = arith.muli %[[RANK]], %[[SHARD_SIZE]] : index
+    CHECK: %[[OUT_OFFSET:.*]] = arith.addi {{.*}}, %[[RANK_OFFSET]] : index
+    CHECK: xtile.insert %[[AG]] into %[[PEER_BUF]][%[[OUT_OFFSET]], {{.*}}] [16, 16] [1, 1] : tensor<16x16xf32> -> memref<128x16xf32>
     )"));
 }
 
@@ -924,6 +974,39 @@ ENTRY e {
     CHECK: %[[EPILOGUE:.*]] = stablehlo.add %{{.*}}, %[[SCAN_OUT]]
     CHECK: xtile.insert %[[EPILOGUE]] into %arg1
     CHECK: scf.yield %[[NEW_CARRY]]
+  )"));
+}
+
+TEST_F(XTileDialectTest, PredParametersAndOutputsStayI1InXTile) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+pred_fusion {
+  p0 = pred[16] parameter(0)
+  p1 = pred[16] parameter(1)
+  ROOT out = pred[16] and(p0, p1)
+}
+
+ENTRY e {
+  p0 = pred[16] parameter(0)
+  p1 = pred[16] parameter(1)
+  ROOT fusion = pred[16] fusion(p0, p1), kind=kCustom,
+    calls=pred_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{4}};
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("pred_fusion"), block_level_parameters,
+      R"(
+    CHECK: xtile.entry_func @xtile_dialect_fn(%[[P0:[^:]+]]: memref<16xi1>, %[[P1:[^:]+]]: memref<16xi1>, %[[OUT:[^:]+]]: memref<16xi1>, %{{[^:]+}}: index
+    CHECK-NOT: i8
+    CHECK: %[[T0:.*]] = xtile.extract %[[P0]][%{{.*}}] [4] [1] : memref<16xi1> -> tensor<4xi1>
+    CHECK: %[[T1:.*]] = xtile.extract %[[P1]][%{{.*}}] [4] [1] : memref<16xi1> -> tensor<4xi1>
+    CHECK: %[[AND:.*]] = stablehlo.and %[[T0]], %[[T1]] : tensor<4xi1>
+    CHECK: xtile.insert %[[AND]] into %[[OUT]][%{{.*}}] [4] [1] : tensor<4xi1> -> memref<16xi1>
   )"));
 }
 

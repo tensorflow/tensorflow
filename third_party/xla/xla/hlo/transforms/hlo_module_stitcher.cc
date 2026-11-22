@@ -177,6 +177,13 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
               inst->shape(), HloOpcode::kCopy, call));
         }
 
+        for (HloInstruction* pred : inst->control_predecessors()) {
+          ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(call));
+        }
+        for (HloInstruction* succ : inst->control_successors()) {
+          ABSL_RETURN_IF_ERROR(replacement->AddControlDependencyTo(succ));
+        }
+        ABSL_RETURN_IF_ERROR(inst->DropAllControlDeps());
         ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replacement));
         ABSL_RETURN_IF_ERROR(comp->RemoveInstruction(inst));
         changed = true;

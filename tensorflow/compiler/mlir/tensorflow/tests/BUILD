@@ -30,6 +30,7 @@ glob_lit_tests(
         "decompose_resource_ops.mlir": "medium",
         "layout_optimization_move_transposes_end.mlir": "medium",
         "layout_optimization_to_nhwc.mlir": "medium",
+        "tf-reduce-identity.mlir": "medium",
     },
     tags_override = {
         "optimize.mlir": ["no_rocm"],

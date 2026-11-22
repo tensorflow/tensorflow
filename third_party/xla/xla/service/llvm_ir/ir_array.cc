@@ -15,11 +15,8 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/ir_array.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -36,7 +33,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -48,14 +44,6 @@ limitations under the License.
 
 namespace xla {
 namespace llvm_ir {
-
-IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
-                      llvm::Value* linear, const Shape& shape,
-                      llvm::Type* index_type)
-    : Index(multidim, shape, index_type) {
-  CHECK_NE(linear, nullptr);
-  linear_ = linear;
-}
 
 void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::Value* linear, const Shape& shape,
@@ -87,35 +75,6 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
   }
 }
 
-void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
-                                 llvm::Value* linear, const Shape& shape,
-                                 absl::Span<llvm::Value*> dynamic_dims,
-                                 llvm::IRBuilderBase* b) const {
-  CHECK_EQ(shape.dimensions().size(), dynamic_dims.size());
-  CHECK_EQ(multidim_.size(), shape.dimensions().size());
-  llvm::Value* divisor = GetConstantWithIndexType(1);
-  const Layout& layout = shape.layout();
-  for (int64_t i = 0; i < layout.minor_to_major().size(); ++i) {
-    int64_t dimension = layout.minor_to_major(i);
-
-    // If i is not the last dimension, compute
-    //   (linear_index / divisor) % current_dimension.
-    // If i is the last dimension, we can skip the mod, because we assume that
-    // linear is in bounds.
-    auto* quot = b->CreateUDiv(linear, divisor, "quot");
-    if (i < layout.minor_to_major().size() - 1) {
-      llvm::Value* casted_dynamic_dim =
-          b->CreateIntCast(dynamic_dims[dimension], quot->getType(),
-                           /*isSigned=*/true);
-      (*multidim)[dimension] =
-          b->CreateURem(quot, casted_dynamic_dim, "dim_value");
-      divisor = b->CreateMul(divisor, casted_dynamic_dim, "divisor");
-    } else {
-      (*multidim)[dimension] = quot;
-    }
-  }
-}
-
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
                       llvm::IRBuilderBase* b)
     : multidim_(shape.dimensions().size()),
@@ -129,53 +88,6 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
       << " should have a layout.";
   Delinearize(&multidim_, linear, shape, b);
 }
-
-IrArray::Index::Index(llvm::Value* linear,
-                      absl::Span<llvm::Value* const> multidim,
-                      const Shape& shape, llvm::IRBuilderBase* b)
-    : multidim_(shape.dimensions().size()),
-      linear_(linear),
-      layout_(shape.layout()),
-      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
-  CHECK_NE(linear, nullptr);
-  index_type_ = linear->getType();
-  CHECK_EQ(multidim.size(), shape.dimensions().size());
-  for (auto dim : multidim) {
-    if (dim) {
-      CHECK_EQ(dim->getType(), index_type_);
-    }
-  }
-  CHECK(LayoutUtil::HasLayout(shape))
-      << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
-      << " should have a layout.";
-  Delinearize(&multidim_, linear, shape, b);
-  for (int i = 0; i < multidim.size(); ++i) {
-    if (multidim[i] != nullptr) {
-      multidim_[i] = multidim[i];
-    }
-  }
-}
-
-IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
-                      absl::Span<llvm::Value*> dynamic_dims,
-                      llvm::IRBuilderBase* b)
-    : multidim_(shape.dimensions().size()),
-      linear_(linear),
-      layout_(shape.layout()),
-      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
-  CHECK_NE(linear, nullptr);
-  index_type_ = linear->getType();
-  CHECK(LayoutUtil::HasLayout(shape))
-      << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
-      << " should have a layout.";
-  Delinearize(&multidim_, linear, shape, dynamic_dims, b);
-}
-
-IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
-                      absl::Span<int64_t const> dimensions,
-                      llvm::Type* index_type)
-    : Index(multidim, ShapeUtil::MakeShape(/*arbitrary*/ PRED, dimensions),
-            index_type) {}
 
 IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
                       const Shape& shape, llvm::Type* index_type)
@@ -224,235 +136,6 @@ bool IrArray::Index::LinearValidOnShape(const Shape& a) const {
          ShapeUtil::ReshapeIsBitcast(a, b);
 }
 
-IrArray::Index IrArray::Index::SourceIndexOfReshape(
-    const Shape& output_shape, const Shape& input_shape,
-    llvm::IRBuilderBase* builder) const {
-  CHECK_EQ(multidim_.size(), output_shape.dimensions().size());
-  std::vector<llvm::Value*> source_multidim_index(
-      input_shape.dimensions().size(), llvm::UndefValue::get(index_type_));
-
-  if (std::optional<ShapeUtil::ShapeEqualityDescriptor> trivial_reshape =
-          ShapeUtil::InsertedOrDeleted1SizedDimensions(input_shape,
-                                                       output_shape)) {
-    // This is a two-way merge of 'deleted_dims_indices' with indexing into
-    // 'source_multidim_index', and a two-way merge of 'inserted_dims_indices'
-    // with indexing into 'multidim_'. When we find a dimension in
-    // 'source_multidim_index' which does not belong to 'deleted_dims_indices',
-    // we retrieve the corresponding value from 'multidim_' (skipping any
-    // indices that appear in 'inserted_dims_indices').
-    for (int64_t i = 0, j = 0, k = 0, l = 0; i < source_multidim_index.size();
-         ++i) {
-      if (j == trivial_reshape->deleted_dimensions.size() ||
-          trivial_reshape->deleted_dimensions[j] > i) {
-        // This is a dimension that was preserved. Take the matching value from
-        // multidim_.
-        while (l < trivial_reshape->inserted_dimensions.size() &&
-               trivial_reshape->inserted_dimensions[l] == k) {
-          // Skip 1-sized dimensions.
-          ++k;
-          ++l;
-        }
-        source_multidim_index[i] = multidim_[k];
-        ++k;
-      } else {
-        // This is a 1-sized dimension that only appears in the operand.
-        source_multidim_index[i] = GetConstantWithIndexType(0);
-        ++j;
-      }
-    }
-  } else {
-    const auto common_factors =
-        CommonFactors(input_shape.dimensions(), output_shape.dimensions());
-    // We compute the source indices in each common factor from only the target
-    // indices in the same common factor.
-    for (ssize_t k = common_factors.size() - 2; k >= 0; --k) {
-      absl::Span<int64_t const> dimensions = output_shape.dimensions().subspan(
-          common_factors[k].second,
-          common_factors[k + 1].second - common_factors[k].second);
-      llvm::Value* logical_linear_index =
-          Index(absl::Span<llvm::Value* const>(multidim_).subspan(
-                    common_factors[k].second,
-                    common_factors[k + 1].second - common_factors[k].second),
-                dimensions, index_type_)
-              .Linearize(dimensions, builder);
-      // Delinearizes logical_linear_index for the source array in row-major
-      // collapsed order. The first rank-1 indices are the remainder of the
-      // linear index by each dimension size.
-      for (int64_t i = common_factors[k + 1].first - 1;
-           i >= common_factors[k].first; --i) {
-        llvm::Value* divisor =
-            GetConstantWithIndexType(input_shape.dimensions(i));
-        if (input_shape.dimensions(i) == 1) {
-          source_multidim_index[i] = GetConstantWithIndexType(0);
-        } else if (i == common_factors[k].first) {
-          source_multidim_index[i] = logical_linear_index;
-        } else {
-          source_multidim_index[i] =
-              builder->CreateURem(logical_linear_index, divisor);
-        }
-        logical_linear_index =
-            builder->CreateUDiv(logical_linear_index, divisor);
-      }
-    }
-  }
-
-  if (linear() != nullptr && LayoutUtil::HasLayout(input_shape) &&
-      LayoutUtil::HasLayout(output_shape) &&
-      ShapeUtil::ReshapeIsBitcast(input_shape, output_shape)) {
-    return Index(source_multidim_index, linear(), input_shape, index_type_);
-  }
-  return Index(source_multidim_index, input_shape, index_type_);
-}
-
-IrArray::Index IrArray::Index::SourceIndexOfSlice(
-    const Shape& operand_shape, absl::Span<const int64_t> starts,
-    absl::Span<const int64_t> strides, llvm::IRBuilderBase* builder) const {
-  std::vector<llvm::Value*> source_multi_index(multidim_.size());
-  for (int i = 0; i < multidim_.size(); ++i) {
-    int64_t stride = strides[i];
-    if (stride != 1) {
-      source_multi_index[i] = builder->CreateAdd(
-          builder->CreateMul(multidim_[i], GetConstantWithIndexType(stride)),
-          GetConstantWithIndexType(starts[i]));
-    } else {
-      source_multi_index[i] =
-          builder->CreateAdd(multidim_[i], GetConstantWithIndexType(starts[i]));
-    }
-  }
-  return Index(source_multi_index, operand_shape, index_type_);
-}
-
-IrArray::Index IrArray::Index::SourceIndexOfTranspose(
-    const Shape& shape, const Shape& operand_shape,
-    absl::Span<const int64_t> dimension_mapping) const {
-  auto operand_multidim_index =
-      PermuteInverse<std::vector<llvm::Value*>>(multidim(), dimension_mapping);
-
-  if (linear() != nullptr && LayoutUtil::HasLayout(operand_shape) &&
-      LayoutUtil::HasLayout(shape) &&
-      ShapeUtil::TransposeIsBitcast(operand_shape, shape, dimension_mapping)) {
-    return Index(operand_multidim_index, linear(), operand_shape, index_type_);
-  }
-
-  return Index(operand_multidim_index, operand_shape, index_type_);
-}
-
-IrArray::Index IrArray::Index::SourceIndexOfBitcast(
-    const Shape& shape, const Shape& operand_shape,
-    llvm::IRBuilderBase* builder) const {
-  CHECK(LayoutUtil::HasLayout(shape) && LayoutUtil::HasLayout(operand_shape));
-
-  const ShapeUtil::BitcastDecomposition decomposition =
-      ShapeUtil::DecomposeBitcast(operand_shape, shape);
-  CHECK(decomposition.has_value());
-
-  // In case the bitcast is just a reshape, we can use SourceIndexOfReshape()
-  // instead. This will reuse linear() if possible, so we don't have to build a
-  // new 'linear_index'.
-  if (std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
-          *decomposition)) {
-    return SourceIndexOfReshape(shape, operand_shape, builder);
-  }
-
-  if (std::holds_alternative<ShapeUtil::BitcastDecompositionTranspose>(
-          *decomposition)) {
-    const auto& decomposition_transpose =
-        std::get<ShapeUtil::BitcastDecompositionTranspose>(*decomposition);
-    return SourceIndexOfTranspose(shape, operand_shape,
-                                  decomposition_transpose.transpose_dims);
-  }
-
-  CHECK(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
-      *decomposition));
-  const auto& decomposition_trt =
-      std::get<ShapeUtil::BitcastDecompositionTrt>(*decomposition);
-
-  Index index = *this;
-  if (!decomposition_trt.IsTranspose2Identity()) {
-    index = index.SourceIndexOfTranspose(shape, decomposition_trt.reshape_shape,
-                                         decomposition_trt.transpose2_dims);
-  }
-  index =
-      index.SourceIndexOfReshape(decomposition_trt.reshape_shape,
-                                 decomposition_trt.transpose1_shape, builder);
-  if (!decomposition_trt.IsTranspose1Identity()) {
-    index = index.SourceIndexOfTranspose(decomposition_trt.transpose1_shape,
-                                         operand_shape,
-                                         decomposition_trt.transpose1_dims);
-  }
-  return index;
-}
-
-IrArray::Index IrArray::Index::SourceIndexOfBitcast(
-    const Shape& operand_shape, llvm::IRBuilderBase* builder) const {
-  auto shape = ShapeUtil::MakeShape(F32, dims_);
-  *shape.mutable_layout() = layout_;
-  return SourceIndexOfBitcast(shape, operand_shape, builder);
-}
-
-IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
-    const Shape& shape, const Shape& operand_shape,
-    absl::Span<const int64_t> dimension_mapping,
-    llvm::IRBuilderBase* builder) const {
-  int64_t rank = operand_shape.dimensions().size();
-  std::vector<llvm::Value*> source_index(rank);
-  for (int64_t i = 0; i < rank; ++i) {
-    source_index[i] = multidim_[dimension_mapping[i]];
-  }
-  if (linear_ == nullptr || !LayoutUtil::HasLayout(operand_shape) ||
-      !LayoutUtil::HasLayout(shape) || rank == 1) {
-    return Index(source_index, operand_shape, index_type_);
-  }
-  // High-level idea: we can reuse the linear index if the broadcasted
-  // dimensions are contiguous, and this part of the operation is a bitcast.
-  // The other dimensions can be masked out with a div and a mod operation.
-  std::vector<int64_t> logical_to_physical =
-      LayoutUtil::MakeLogicalToPhysical(shape.layout());
-  int64_t output_rank = shape.dimensions().size();
-  // The minimum physical dimension that is broadcasted.
-  int64_t min_broadcasted_dimension = output_rank;
-  // The maximum physical dimension that is broadcasted.
-  int64_t max_broadcasted_dimension = -1;
-  for (int64_t i = 0; i < rank; ++i) {
-    int64_t physical_dim = logical_to_physical[dimension_mapping[i]];
-    min_broadcasted_dimension =
-        std::min(min_broadcasted_dimension, physical_dim);
-    max_broadcasted_dimension =
-        std::max(max_broadcasted_dimension, physical_dim);
-  }
-  bool contiguous_broadcast_dimensions =
-      max_broadcasted_dimension - min_broadcasted_dimension == rank - 1;
-  if (!contiguous_broadcast_dimensions) {
-    return Index(source_index, operand_shape, index_type_);
-  }
-  // Check if the mapped dimensions are a bitcast.
-  std::vector<int64_t> operand_logical_to_physical =
-      LayoutUtil::MakeLogicalToPhysical(operand_shape.layout());
-  for (int64_t i = 0; i < rank; ++i) {
-    if (operand_logical_to_physical[i] !=
-        logical_to_physical[dimension_mapping[i]] - min_broadcasted_dimension) {
-      return Index(source_index, operand_shape, index_type_);
-    }
-  }
-  llvm::Value* linear = linear_;
-  int64_t divisor = 1;
-  for (int64_t i = max_broadcasted_dimension + 1; i < output_rank; ++i) {
-    divisor *= shape.dimensions(LayoutUtil::Major(shape.layout(), i));
-  }
-  if (divisor > 1) {
-    linear = builder->CreateUDiv(linear, GetConstantWithIndexType(divisor));
-  }
-  if (min_broadcasted_dimension > 0) {
-    int64_t mod = 1;
-    for (int64_t i = min_broadcasted_dimension; i <= max_broadcasted_dimension;
-         ++i) {
-      mod *= shape.dimensions(LayoutUtil::Major(shape.layout(), i));
-    }
-    linear = builder->CreateURem(linear, GetConstantWithIndexType(mod));
-  }
-  return Index(source_index, linear, operand_shape, index_type_);
-}
-
 llvm::Value* IrArray::Index::Linearize(absl::Span<const int64_t> dimensions,
                                        llvm::IRBuilderBase* builder) const {
   // Each dimension is multiplied by the product of the sizes of all
@@ -469,29 +152,6 @@ llvm::Value* IrArray::Index::Linearize(absl::Span<const int64_t> dimensions,
     logical_linear_index = builder->CreateAdd(logical_linear_index, addend, "",
                                               /*HasNUW=*/true, /*HasNSW=*/true);
     multiplier *= dimensions[dimension];
-  }
-  return logical_linear_index;
-}
-
-llvm::Value* IrArray::Index::Linearize(
-    const std::vector<llvm::Value*>& dynamic_dims,
-    llvm::IRBuilderBase* builder) const {
-  // Each dimension is multiplied by the product of the sizes of all
-  // earlier dimensions and added to the accumulator logical_linear_index.
-  CHECK_EQ(size(), dynamic_dims.size());
-  llvm::Value* logical_linear_index = GetConstantWithIndexType(0);
-  llvm::Value* multiplier = GetConstantWithIndexType(1);
-  for (ssize_t i = 0; i < size(); ++i) {
-    int64_t dimension = layout_.minor_to_major(i);
-    llvm::Value* addend = builder->CreateMul((*this)[dimension], multiplier, "",
-                                             /*HasNUW=*/true, /*HasNSW=*/true);
-    addend = builder->CreateZExtOrTrunc(addend, index_type_);
-    logical_linear_index = builder->CreateAdd(logical_linear_index, addend, "",
-                                              /*HasNUW=*/true, /*HasNSW=*/true);
-    if (i < size() - 1) {
-      multiplier = builder->CreateMul(multiplier, dynamic_dims[dimension],
-                                      /*Name=*/"multiplier");
-    }
   }
   return logical_linear_index;
 }
@@ -607,8 +267,6 @@ void IrArray::AnnotateLoadStoreInstructionWithMetadata(
     llvm::Instruction* instruction) const {
   CHECK(llvm::isa<llvm::LoadInst>(instruction) ||
         llvm::isa<llvm::StoreInst>(instruction));
-  CHECK(!llvm::isa<llvm::StoreInst>(instruction) || !is_invariant_)
-      << "Trying to create a store to an invariant IRArray.";
 
   for (const auto& kind_md_pair : metadata_) {
     instruction->setMetadata(kind_md_pair.first, kind_md_pair.second);
@@ -663,16 +321,6 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
   }
   llvm::StoreInst* store = b->CreateStore(value, element_address);
   AnnotateLoadStoreInstructionWithMetadata(store);
-}
-
-IrArray IrArray::CastToShape(const Shape& new_shape,
-                             llvm::IRBuilderBase* b) const {
-  if (shape_ == new_shape) return *this;
-
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, b->getContext());
-  IrArray new_irarray(base_ptr_, new_ir_type, new_shape);
-  new_irarray.metadata_ = metadata_;
-  return new_irarray;
 }
 
 bool IrArray::Index::ShapeIsCompatible(const Shape& a, const Shape& b) {

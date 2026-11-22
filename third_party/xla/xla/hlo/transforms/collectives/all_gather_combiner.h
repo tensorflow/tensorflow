@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/hlo_domain_map.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -49,23 +48,21 @@ class AllGatherCombiner : public HloModulePass {
   // be possible to combine the instructions.
   // The field of the key corresponds to the following:
   // 1. all_gather_dimension
-  // 2. domain_metadata_id
-  // 3. channel_id
-  // 4. use_global_device_ids
-  // 5. data_type
-  // 6. replica_groups
-  // 7. extra arguments in string format.
-  using GroupKey =
-      std::tuple<std::optional<int64_t>, int64_t, bool, bool, PrimitiveType,
-                 std::vector<std::vector<int64_t>>, std::string>;
+  // 2. channel_id
+  // 3. use_global_device_ids
+  // 4. data_type
+  // 5. replica_groups
+  // 6. extra arguments in string format.
+  using GroupKey = std::tuple<std::optional<int64_t>, bool, bool, PrimitiveType,
+                              std::vector<std::vector<int64_t>>, std::string>;
 
   static std::string& GetGroupKeyExtraArgs(GroupKey& key);
 
   // Returns a key that will be equal for instructions that might be combined,
   // or different if not.
   static std::optional<AllGatherCombiner::GroupKey> CombineKey(
-      const HloInstruction* instruction, const HloDomainMap& domain_map,
-      bool combine_by_dim, bool combine_different_dtypes = true);
+      const HloInstruction* instruction, bool combine_by_dim,
+      bool combine_different_dtypes = true);
 
   using PostCombineFn = std::function<absl::Status(
       absl::Span<HloInstruction* const>, HloInstruction*)>;
@@ -79,14 +76,14 @@ class AllGatherCombiner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       absl::FunctionRef<std::optional<AllGatherCombiner::GroupKey>(
-          const HloInstruction*, const HloDomainMap&, bool, bool)>
+          const HloInstruction*, bool, bool)>
           combine_key);
 
   absl::StatusOr<bool> RunWithKeyCombiner(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       absl::FunctionRef<std::optional<AllGatherCombiner::GroupKey>(
-          const HloInstruction*, const HloDomainMap&, bool, bool)>
+          const HloInstruction*, bool, bool)>
           combine_key,
       PostCombineFn post_combine);
 

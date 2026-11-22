@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
@@ -38,6 +39,8 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
+using ::testing::IsEmpty;
 
 class HloDfsReachabilityTest : public HloHardwareIndependentTestBase {};
 
@@ -200,6 +203,67 @@ TEST_F(HloDfsReachabilityTest, ControlDependencyToZeroOperandInstruction) {
   EXPECT_FALSE(reachability->IsReachable(tok0, neg));
   EXPECT_FALSE(reachability->IsReachable(tok0, p0));
 }
+
+class FindConnectedTest
+    : public HloDfsReachabilityTest,
+      public testing::WithParamInterface<absl::string_view> {};
+
+// The batch query must agree with the pairwise one for every pair, whatever
+// the order of the candidates and whether or not they repeat.
+TEST_P(FindConnectedTest, MatchesIsConnected) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(GetParam()));
+  HloComputation* computation = module->entry_computation();
+  auto reachability = HloDfsReachability::Build(computation);
+  std::vector<HloInstruction*> all = computation->MakeInstructionPostOrder();
+  std::vector<HloInstruction*> candidates = all;
+  candidates.insert(candidates.end(), all.rbegin(), all.rend());
+
+  for (HloInstruction* from : all) {
+    EXPECT_THAT(reachability->FindConnected(from, {}), IsEmpty());
+    auto connected = reachability->FindConnected(from, candidates);
+    for (HloInstruction* to : all) {
+      const bool expected = reachability->IsConnected(from, to);
+      EXPECT_EQ(connected.contains(to), expected)
+          << from->name() << " vs " << to->name();
+      EXPECT_EQ(reachability->FindConnected(from, {to}).contains(to), expected)
+          << from->name() << " vs only " << to->name();
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Graphs, FindConnectedTest,
+    testing::Values(
+        // `a` feeds `b` through `mid` and has a control edge to `d`. `c` is
+        // unrelated to `a`.
+        R"(
+  HloModule m
+
+  ENTRY main {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    a = f32[] negate(p0)
+    mid = f32[] exponential(a)
+    b = f32[] abs(mid)
+    c = f32[] negate(p1)
+    d = f32[] abs(p1), control-predecessors={a}
+    ROOT t = (f32[], f32[], f32[]) tuple(b, c, d)
+  })",
+        // A forward chain `x*` whose values are read again by a backward chain
+        // `b*`, like saved activations in a training graph.
+        R"(
+  HloModule m
+
+  ENTRY main {
+    p0 = f32[] parameter(0)
+    x1 = f32[] negate(p0)
+    x2 = f32[] negate(x1)
+    x3 = f32[] negate(x2)
+    b3 = f32[] abs(x3)
+    b2 = f32[] add(b3, x2)
+    b1 = f32[] add(b2, x1)
+    ROOT t = (f32[], f32[]) tuple(b1, x3)
+  })"));
 
 class HloDfsReachabilityBenchmark {
  public:

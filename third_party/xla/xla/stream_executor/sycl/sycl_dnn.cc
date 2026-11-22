@@ -66,13 +66,26 @@ class OnednnConvRunner : public dnn::ConvRunner {
 
   absl::Status operator()(Stream* stream,
                           dnn::ProfileResult* output_profile_result,
-                          DeviceAddressBase scratch_memory,
+                          [[maybe_unused]] DeviceAddressBase scratch_memory,
                           DeviceAddressBase input_data,
                           DeviceAddressBase filter_data,
                           DeviceAddressBase output_data) const override {
-    // Implemented as part of a follow-up PR.
-    return absl::UnimplementedError(
-        "OnednnConvRunner operator() is not implemented for SYCL");
+    // TODO(intel-tf): Create the oneDNN primitives once in the runner and
+    // report the scratchpad size via GetWorkspaceSize() to avoid per-call
+    // primitive creation, USM allocation, and host callback.
+    ABSL_ASSIGN_OR_RETURN(
+        auto onednn_conv_primitive,
+        CreateOneDnnConvPrimitive(
+            onednn_conv_primitive_desc_, stream,
+            OnednnConvBufferPointers{const_cast<void*>(input_data.opaque()),
+                                     const_cast<void*>(filter_data.opaque()),
+                                     const_cast<void*>(output_data.opaque())}));
+    // Execute the oneDNN convolution primitive.
+    ABSL_RETURN_IF_ERROR(DoOneDnnConv(onednn_conv_primitive));
+    // Keep the oneDNN convolution primitive alive until the host callback is
+    // executed.
+    return stream->DoHostCallback(
+        [primitive = std::move(onednn_conv_primitive)] {});
   }
 
  private:
@@ -96,15 +109,30 @@ class OnednnFusedConvRunner : public dnn::FusedConvRunner {
 
   absl::Status operator()(Stream* stream,
                           dnn::ProfileResult* output_profile_result,
-                          DeviceAddressBase scratch_memory,
+                          [[maybe_unused]] DeviceAddressBase scratch_memory,
                           DeviceAddressBase input_data,
                           DeviceAddressBase filter_data,
                           DeviceAddressBase side_input_data,
                           DeviceAddressBase bias_data,
                           DeviceAddressBase output_data) const override {
-    // Implemented as part of a follow-up PR.
-    return absl::UnimplementedError(
-        "OnednnFusedConvRunner operator() is not implemented for SYCL");
+    // TODO(intel-tf): Create the oneDNN primitives once in the runner and
+    // report the scratchpad size via GetWorkspaceSize() to avoid per-call
+    // primitive creation, USM allocation, and host callback.
+    ABSL_ASSIGN_OR_RETURN(auto onednn_conv_primitive,
+                     CreateOneDnnConvPrimitive(
+                         onednn_conv_primitive_desc_, stream,
+                         OnednnConvBufferPointers{
+                             const_cast<void*>(input_data.opaque()),
+                             const_cast<void*>(filter_data.opaque()),
+                             const_cast<void*>(output_data.opaque()),
+                             const_cast<void*>(bias_data.opaque()),
+                             const_cast<void*>(side_input_data.opaque())}));
+    // Execute the oneDNN convolution primitive.
+    ABSL_RETURN_IF_ERROR(DoOneDnnConv(onednn_conv_primitive));
+    // Keep the oneDNN convolution primitive alive until the host callback is
+    // executed.
+    return stream->DoHostCallback(
+        [primitive = std::move(onednn_conv_primitive)] {});
   }
 
  private:

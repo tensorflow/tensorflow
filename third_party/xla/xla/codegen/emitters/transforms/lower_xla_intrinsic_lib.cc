@@ -370,10 +370,11 @@ class LowerXlaIntrinsicLibPass
     absl::string_view cpu_features = cpu_features_.getValue();
     patterns.add<LowerIntrinsicPattern<ci::Exp, mm::ExpOp>,
                  LowerIntrinsicPattern<ci::Expm1, mm::ExpM1Op>,
+                 LowerIntrinsicPattern<ci::YnnLog, mm::LogOp>,
                  LowerIntrinsicPattern<ci::Log1p, mm::Log1pOp>,
                  LowerIntrinsicPattern<ci::Rsqrt, mm::RsqrtOp>,
                  LowerIntrinsicPattern<ci::Tanh, mm::TanhOp>,
-                 LowerIntrinsicPattern<ci::EigenAtan, mm::AtanOp>,
+                 LowerIntrinsicPattern<ci::Atan, mm::AtanOp>,
                  LowerIntrinsicPattern<ci::Sin, mm::SinOp>,
                  LowerIntrinsicPattern<ci::Cos, mm::CosOp>,
                  LowerIntrinsicPattern<ci::FpTrunc, ma::TruncFOp>,

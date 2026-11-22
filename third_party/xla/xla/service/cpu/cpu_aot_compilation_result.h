@@ -98,6 +98,8 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const RelocationModel relocation_model_;
 };
 
+void StripPayloadFromLiteralProto(HloProto& proto);
+
 // This class represents the result of a CPU AOT compilation.
 class CpuAotCompilationResult : public CompiledModule {
  public:
@@ -198,6 +200,9 @@ class CpuAotCompilationResult : public CompiledModule {
       : proto_(std::move(proto)),
         module_(std::move(module)),
         function_library_(std::move(function_library)) {}
+
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutableImpl(
+      bool embed_ir_in_executable) &&;
 
   CompilationResultProto proto_;
   std::shared_ptr<HloModule> module_;

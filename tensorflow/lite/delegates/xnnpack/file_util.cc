@@ -26,19 +26,6 @@ limitations under the License.
 #define XNN_LSEEK lseek
 #endif  // defined(_WIN32)
 
-// We currently use the memfd_create system call to create in-memory files which
-// is only supported on Linux and Android.
-#if defined(__linux__) || defined(__ANDROID__)
-#ifndef TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
-// Some systems have syscall.h but don't define the SYS_memfd_create macro. We
-// detect those by actually doing the include and checking for its definition.
-#include <sys/syscall.h>
-#ifdef SYS_memfd_create
-#define TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED 1
-#endif  // SYS_memfd_create
-#endif  // TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
-#endif  // defined(__linux__) || defined(__ANDROID__)
-
 #include <sys/stat.h>
 
 #include <cerrno>
@@ -46,11 +33,6 @@ limitations under the License.
 #include <cstring>
 
 #include "tensorflow/lite/delegates/xnnpack/macros.h"
-
-#if !TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
-#include "tensorflow/lite/logger.h"
-#include "tensorflow/lite/minimal_logging.h"
-#endif
 
 namespace tflite {
 namespace xnnpack {
@@ -137,30 +119,6 @@ bool FileDescriptorView::Write(const void* src, size_t count) const {
 
 bool FileDescriptorView::Truncate(size_t size) const {
   return ftruncate(fd_, size) == 0;
-}
-
-bool InMemoryFileDescriptorAvailable() {
-#if TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
-  // Test if the syscall memfd_create is available.
-  const int test_fd = syscall(SYS_memfd_create, "test fd", 0);
-  if (test_fd != -1) {
-    close(test_fd);
-    return true;
-  }
-#endif
-  return false;
-}
-
-FileDescriptor CreateInMemoryFileDescriptor(const char* path) {
-#ifdef TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
-  return FileDescriptor(syscall(
-      SYS_memfd_create, path ? path : "XNNPack in-memory weight cache", 0));
-#else
-  TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                  "XNNPack weight cache: in-memory cache is not enabled for "
-                  "this build.");
-  return FileDescriptor(-1);
-#endif
 }
 
 bool IsFileEmpty(const char* path, const FileDescriptor& fd) {

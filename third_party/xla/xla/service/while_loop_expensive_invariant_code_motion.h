@@ -16,52 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_LOOP_EXPENSIVE_INVARIANT_CODE_MOTION_H_
 #define XLA_SERVICE_WHILE_LOOP_EXPENSIVE_INVARIANT_CODE_MOTION_H_
 
-#include <functional>
-#include <utility>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/util.h"
-
-namespace xla {
-
-// HLO pass that rewrites while loops to hoist expensive and non-size-inflating
-// groups of loop invariant instructions in the while body into the computation
-// that contains the while instruction.
-// Users can specify worth_hoisting_individually, and only the groups
-// instructions with a root that returns true with it will be hoisted out.
-class WhileLoopExpensiveInvariantCodeMotion : public HloModulePass {
- public:
-  using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
-  explicit WhileLoopExpensiveInvariantCodeMotion(
-      HloPredicate worth_hoisting_individually,
-      ShapeSizeFunction shape_size_function = ShapeUtil::ByteSizeOfElements)
-      : shape_size_function_(std::move(shape_size_function)),
-        worth_hoisting_individually_(std::move(worth_hoisting_individually)) {}
-  ~WhileLoopExpensiveInvariantCodeMotion() override = default;
-
-  absl::string_view name() const override {
-    return "while-loop-expensive-invariant-code-motion";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  absl::StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
-      HloInstruction* while_instr);
-
-  ShapeSizeFunction shape_size_function_;
-  HloPredicate worth_hoisting_individually_;
-};
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/while_loop_expensive_invariant_code_motion.h"
+#include "xla/hlo/transforms/while_loop_expensive_invariant_code_motion.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_WHILE_LOOP_EXPENSIVE_INVARIANT_CODE_MOTION_H_

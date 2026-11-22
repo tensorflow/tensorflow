@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/profile_guided_latency_estimator.h"
+#include "xla/hlo/transforms/hlo_scheduling/profile_guided_latency_estimator.h"
 
 namespace xla::gpu {
 

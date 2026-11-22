@@ -1680,23 +1680,51 @@ def resize_images_v2(images,
   >>> tf.image.resize(image[0], [3,5]).shape.as_list()
   [3, 5, 1]
 
-  When `antialias` is true, the sampling filter will anti-alias the input image
-  as well as interpolate.  When downsampling an image with [anti-aliasing](
-  https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
-  kernel is scaled in order to properly anti-alias the input image signal.
-  `antialias` has no effect when upsampling an image:
+  When shrinking an image (downsampling), fine details or high-contrast patterns
+  can create jagged or distorted artifacts (called aliasing). Compare the first
+  example above (`antialias=False` by default) with `antialias=True`, which
+  smooths the image by blending neighboring pixels together:
 
-  >>> a = tf.image.resize(image, [5,10])
-  >>> b = tf.image.resize(image, [5,10], antialias=True)
+  >>> tf.image.resize(image, [3, 5], antialias=True)[0, ..., 0].numpy()
+  array([[0.5714286, 0.4285714, 0.       , 0.       , 0.       ],
+         [0.       , 0.2222222, 0.5555556, 0.2222222, 0.       ],
+         [0.       , 0.       , 0.       , 0.4285714, 0.5714285]],
+        dtype=float32)
+
+  How it works:
+  * When shrinking, the filter stretches out to cover more neighboring
+        pixels. The more you shrink the image, the wider the area it blends.
+  * For `bilinear`, it uses a smooth triangular blending filter. For `bicubic`,
+        it uses a Keys cubic filter.
+  * For `nearest`, `antialias` has no effect, since no filtering is applied.
+  * For `area`, `antialias` is ignored because area resampling already averages
+        over the whole output footprint, so it always anti-aliases.
+  * For `lanczos3`, `lanczos5`, `gaussian` and `mitchellcubic`, `antialias`
+        behaves the same way it does for `bilinear` and `bicubic`.
+  * When enlarging an image (upsampling), `antialias` has no effect because no
+        pixels are skipped:
+
+  >>> a = tf.image.resize(image, [5, 10])
+  >>> b = tf.image.resize(image, [5, 10], antialias=True)
   >>> tf.reduce_max(abs(a - b)).numpy()
   0.0
+
+  Note on OpenCV and Pillow:
+  Pillow scales its filter support by the reduction factor when downscaling, so
+  `antialias=True` brings TensorFlow close to Pillow rather than away from it.
+  OpenCV's `INTER_LINEAR` does not prefilter when shrinking, so results there
+  will differ; `INTER_AREA` is OpenCV's anti-aliased downsampling filter and is
+  the fairer comparison. Small differences remain in every case because the
+  kernels are not identical.
 
   The `method` argument expects an item from the `image.ResizeMethod` enum, or
   the string equivalent. The options are:
 
   *   <b>`bilinear`</b>: [Bilinear interpolation.](
     https://en.wikipedia.org/wiki/Bilinear_interpolation) If `antialias` is
-    true, becomes a hat/tent filter function with radius 1 when downsampling.
+    true, becomes a hat/tent filter function with radius 1, passed to
+    `ScaleAndTranslate` as the `'triangle'` kernel, whose support widens by the
+    downsampling factor.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
     https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
     High-quality practical filter but may have some ringing, especially on
@@ -1706,7 +1734,8 @@ def resize_images_v2(images,
     Very-high-quality filter but may have stronger ringing.
   *   <b>`bicubic`</b>: [Cubic interpolant](
     https://en.wikipedia.org/wiki/Bicubic_interpolation) of Keys. Equivalent to
-    Catmull-Rom kernel. Reasonably good quality and faster than Lanczos3Kernel,
+    Catmull-Rom kernel. If `antialias` is true, uses a smooth Keys cubic filter
+    when shrinking. Reasonably good quality and faster than Lanczos3Kernel,
     particularly when upsampling.
   *   <b>`gaussian`</b>: [Gaussian kernel](
     https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3,
@@ -1762,8 +1791,14 @@ def resize_images_v2(images,
       then `images` will be resized to a size that fits in `size` while
       preserving the aspect ratio of the original image. Scales up the image if
       `size` is bigger than the current size of the `image`. Defaults to False.
-    antialias: Whether to use an anti-aliasing filter when downsampling an
-      image.
+    antialias: bool. Whether to use an anti-aliasing filter when shrinking an
+      image. When True, the resampling filter is widened when shrinking so
+      neighboring pixels are blended to prevent jagged patterns. Honored by
+      `bilinear`, `bicubic`, `lanczos3`, `lanczos5`, `gaussian`, and
+      `mitchellcubic`; ignored by `nearest` (no filtering) and by `area` (which
+      always anti-aliases). Results differ from OpenCV's `INTER_LINEAR`, which
+      does not prefilter when shrinking; Pillow also scales its filter support
+      when shrinking. Defaults to False.
     name: A name for this operation (optional).
 
   Raises:
@@ -1856,39 +1891,44 @@ def _resize_image_with_pad_common(image, target_height, target_width,
 
     image = control_flow_ops.with_dependencies(assert_ops, image)
 
-    def max_(x, y):
-      if _is_tensor(x) or _is_tensor(y):
-        return math_ops.maximum(x, y)
-      else:
-        return max(x, y)
-
     _, height, width, _ = _ImageDimensions(image, rank=4)
 
-    # convert values to float, to ease divisions
-    f_height = math_ops.cast(height, dtype=dtypes.float32)
-    f_width = math_ops.cast(width, dtype=dtypes.float32)
-    f_target_height = math_ops.cast(target_height, dtype=dtypes.float32)
-    f_target_width = math_ops.cast(target_width, dtype=dtypes.float32)
+    # The image is scaled by min(target_width / width, target_height / height)
+    # so that it fits within the target. Compute the resized size and the
+    # padding in exact integer arithmetic: in float32 the scaled size can land
+    # just below a whole number, and the floor below would then drop a row or
+    # column of the image and pad it with zeros instead.
+    i_height = math_ops.cast(height, dtype=dtypes.int64)
+    i_width = math_ops.cast(width, dtype=dtypes.int64)
+    i_target_height = math_ops.cast(target_height, dtype=dtypes.int64)
+    i_target_width = math_ops.cast(target_width, dtype=dtypes.int64)
 
-    # Find the ratio by which the image must be adjusted
-    # to fit within the target
-    ratio = max_(f_width / f_target_width, f_height / f_target_height)
-    resized_height_float = f_height / ratio
-    resized_width_float = f_width / ratio
-    resized_height = math_ops.cast(
-        math_ops.floor(resized_height_float), dtype=dtypes.int32)
-    resized_width = math_ops.cast(
-        math_ops.floor(resized_width_float), dtype=dtypes.int32)
+    scaled_height = i_height * i_target_width
+    scaled_width = i_width * i_target_height
 
-    padding_height = (f_target_height - resized_height_float) / 2
-    padding_width = (f_target_width - resized_width_float) / 2
-    f_padding_height = math_ops.floor(padding_height)
-    f_padding_width = math_ops.floor(padding_width)
-    p_height = max_(0, math_ops.cast(f_padding_height, dtype=dtypes.int32))
-    p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
+    resized_height = math_ops.minimum(i_target_height, scaled_height // i_width)
+    resized_width = math_ops.minimum(i_target_width, scaled_width // i_height)
+
+    # floor((target - scaled size) / 2), where the scaled size need not be a
+    # whole number.
+    zero = constant_op.constant(0, dtype=dtypes.int64)
+    p_height = math_ops.maximum(
+        zero, (scaled_width - scaled_height) // (2 * i_width)
+    )
+    p_width = math_ops.maximum(
+        zero, (scaled_height - scaled_width) // (2 * i_height)
+    )
+    p_height = math_ops.cast(p_height, dtype=dtypes.int32)
+    p_width = math_ops.cast(p_width, dtype=dtypes.int32)
 
     # Resize first, then pad to meet requested dimensions
-    resized = resize_fn(image, [resized_height, resized_width])
+    resized = resize_fn(
+        image,
+        [
+            math_ops.cast(resized_height, dtype=dtypes.int32),
+            math_ops.cast(resized_width, dtype=dtypes.int32),
+        ],
+    )
 
     padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
                                  target_width)
@@ -1968,7 +2008,8 @@ def resize_image_with_pad_v2(image,
     target_height: Target height.
     target_width: Target width.
     method: Method to use for resizing image. See `image.resize()`
-    antialias: Whether to use anti-aliasing when resizing. See 'image.resize()'.
+    antialias: bool. Whether to use an anti-aliasing filter when shrinking an
+      image. Passed directly to `tf.image.resize`. Defaults to False.
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
@@ -2581,12 +2622,34 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
     else:
       if image.dtype.is_integer:
         # Converting to float: first cast, then scale. No saturation possible.
+        if image.dtype.max > float(dtype.max):
+          # Large integers overflow half (uint16 max casts to inf), so scale in
+          # float32 and only cast the result, which is in [-1, 1], to `dtype`.
+          scaled = math_ops.multiply(
+              math_ops.cast(image, dtypes.float32), 1.0 / image.dtype.max
+          )
+          return math_ops.cast(scaled, dtype, name=name)
         cast = math_ops.cast(image, dtype)
         scale = 1. / image.dtype.max
         return math_ops.multiply(cast, scale, name=name)
       else:
         # Converting from float: first scale, then cast
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
+        if (
+            float(image.dtype.max) < scale
+            or float(image.dtype.as_numpy_dtype(scale)) >= dtype.max + 1
+        ):
+          # The scale rounds up to dtype.max + 1 or more in the image's type
+          # (e.g. 256 in bfloat16 for uint8, 2**31 in float32 for int32), so
+          # 1.0 would overflow the cast. Scale half and bfloat16 in float32
+          # instead, and keep the scale below dtype.max + 1.
+          if image.dtype.size < 4:
+            image = math_ops.cast(image, dtypes.float32)
+          np_dtype = image.dtype.as_numpy_dtype
+          scale = min(
+              np_dtype(scale),
+              np.nextafter(np_dtype(dtype.max + 1), np_dtype(0)),
+          )
         scaled = math_ops.multiply(image, scale)
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
@@ -2819,12 +2882,12 @@ def adjust_hue(image, delta, name=None):
   >>> image = tf.constant(image)
   >>> tf.image.adjust_hue(image, 0.2)
   <tf.Tensor: shape=(3, 2, 3), dtype=int32, numpy=
-  array([[[ 2,  1,  3],
-        [ 5,  4,  6]],
-       [[ 8,  7,  9],
-        [11, 10, 12]],
-       [[14, 13, 15],
-        [17, 16, 18]]], dtype=int32)>
+  array([[[ 2,  0,  2],
+        [ 5,  3,  5]],
+       [[ 8,  6,  8],
+        [11,  9, 11]],
+       [[14, 12, 14],
+        [17, 15, 17]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     if context.executing_eagerly():

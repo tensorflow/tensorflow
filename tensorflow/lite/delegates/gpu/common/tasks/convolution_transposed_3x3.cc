@@ -138,7 +138,6 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   launch_remap[work_group_launch_order.y] = 1;
   launch_remap[work_group_launch_order.z] = 2;
   auto GetGlobalID = [&](int id) {
-    std::string result;
     const std::string sid = std::to_string(id);
     if (work_group_launch_order[id] == id) {
       return "GLOBAL_ID_" + sid;

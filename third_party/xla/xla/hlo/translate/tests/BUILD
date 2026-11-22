@@ -27,6 +27,7 @@ lit_test_suite(
         [
             # go/keep-sorted start
             "chlo.mlir",
+            "dot_general_import.hlo",
             "emit_mhlo.hlo",
             "emit_proto.mlir",
             "import_async_collectives.hlo",
@@ -37,6 +38,7 @@ lit_test_suite(
             "stablehlo.mlir",
             "stablehlo_async.mlir",
             "stablehlo_invalid.mlir",
+            "stablehlo_location_roundtrip.mlir",
             "stablehlo_prepare_for_export.mlir",
             "stablehlo_unary_elementwise.mlir",
             "stablehlo_while.mlir",

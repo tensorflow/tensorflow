@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -130,10 +131,10 @@ TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
   return CreateTensor(buf, dtype, dims, num_dims, len);
 }
 
-TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
-                        void* data, size_t len,
-                        void (*deallocator)(void* data, size_t len, void* arg),
-                        void* deallocator_arg) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI TF_Tensor* TF_NewTensor(
+    TF_DataType dtype, const int64_t* dims, int num_dims, void* data,
+    size_t len, void (*deallocator)(void* data, size_t len, void* arg),
+    void* deallocator_arg) {
   TF_ManagedBuffer* buf = nullptr;
   if (dtype != TF_STRING && dtype != TF_RESOURCE &&
       tensorflow::DataTypeCanUseMemcpy(

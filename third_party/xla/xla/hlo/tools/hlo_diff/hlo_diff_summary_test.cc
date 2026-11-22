@@ -104,6 +104,8 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
       OverwriteMapInstructions(GetNodeByName(*graph_l, "add.2"),
                                GetNodeByName(*graph_r, "add.1"), mappings,
                                /*position_unchanged=*/true));
+  // The fusion parameters are matched by name, but their users add.1 and add.2
+  // are cross-matched, so the parameters are reported as moved.
   std::unique_ptr<const DiffResult> diff_result =
       ConstructDiffResult(*graph_l, *graph_r, mappings);
   std::unique_ptr<const DiffSummary> diff_summary =
@@ -143,8 +145,8 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                                           "fused_computation.1")),
                          /*max_matched_instruction_count=*/2,
                          /*split_allegiance_instruction=*/1,
-                         /*diff_fingerprint=*/10015532745698973110U,
-                         /*all_unchanged=*/true)),
+                         /*diff_fingerprint=*/17561012271655791326U,
+                         /*all_unchanged=*/false)),
           Pair(Pointee(Property(&HloComputation::name, "fused_computation.2")),
                FieldsAre(/*side=*/DiffSide::kLeft,
                          /*main_matched_computation=*/
@@ -152,8 +154,8 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                                           "fused_computation.2")),
                          /*max_matched_instruction_count=*/2,
                          /*split_allegiance_instruction=*/1,
-                         /*diff_fingerprint=*/10015532745698973110U,
-                         /*all_unchanged=*/true))));
+                         /*diff_fingerprint=*/17561012271655791326U,
+                         /*all_unchanged=*/false))));
   EXPECT_THAT(
       right_computation_summary,
       UnorderedElementsAre(
@@ -172,8 +174,8 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                                           "fused_computation.1")),
                          /*max_matched_instruction_count=*/2,
                          /*split_allegiance_instruction=*/1,
-                         /*diff_fingerprint=*/10015532745698973110U,
-                         /*all_unchanged=*/true)),
+                         /*diff_fingerprint=*/17561012271655791326U,
+                         /*all_unchanged=*/false)),
           Pair(Pointee(Property(&HloComputation::name, "fused_computation.2")),
                FieldsAre(/*side=*/DiffSide::kRight,
                          /*main_matched_computation=*/
@@ -181,8 +183,8 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                                           "fused_computation.2")),
                          /*max_matched_instruction_count=*/2,
                          /*split_allegiance_instruction=*/1,
-                         /*diff_fingerprint=*/10015532745698973110U,
-                         /*all_unchanged=*/true))));
+                         /*diff_fingerprint=*/17561012271655791326U,
+                         /*all_unchanged=*/false))));
 }
 
 TEST_F(HloDiffTest, InstructionDiffWorks) {

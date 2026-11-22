@@ -93,9 +93,9 @@ func.func @tpu_device(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<te
 // CHECK-LABEL: func @tfrt_set_resource
 // CHECK-SAME: ([[in_ch:%.*]]: !tfrt.chain,
 func.func @tfrt_set_resource(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) {
-  // CHECK: [[ch0:%.*]] = tfrt_fallback_async.set_resource [[in_ch]], {{.*}} {device = "/device:CPU:0", index = 0 : i64}
+  // CHECK: [[ch0:%.*]] = tfrt_fallback_async.set_resource [[in_ch]], {{.*}} <device = "/device:CPU:0", index = 0>
   // CHECK: [[ch1:%.*]], [[result:%.*]] = tfrt_fallback_async.executeop.seq([[ch0]]) key({{.*}}) cost({{.*}}) device("/device:CPU:0") "tf.ReadVariableOp"
-  // CHECK: [[ch2:%.*]] = tfrt_fallback_async.set_resource [[ch1]], [[result]] {device = "/device:CPU:0", index = 1 : i64}
+  // CHECK: [[ch2:%.*]] = tfrt_fallback_async.set_resource [[ch1]], [[result]] <device = "/device:CPU:0", index = 1>
 
   "tf._TfrtSetResource"(%arg0) {device = "/device:CPU:0", index = 0} : (tensor<3x1xf32>) -> ()
   %0 = "tf.ReadVariableOp"(%arg1) {device = "/device:CPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
@@ -106,7 +106,7 @@ func.func @tfrt_set_resource(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.reso
 // CHECK-LABEL: func @tfrt_get_resource
 func.func @tfrt_get_resource() -> tensor<3x3xf32> {
   // CHECK: [[ready_ch:%.*]] = tfrt.new.chain
-  // CHECK: [[ch3:%.*]], [[results:%.*]]:2 = tfrt_fallback_async.get_resource [[ready_ch]] {device = "/device:CPU:0", indices = [0, 1]}
+  // CHECK: [[ch3:%.*]], [[results:%.*]]:2 = tfrt_fallback_async.get_resource [[ready_ch]] <device = "/device:CPU:0", indices = [0, 1]>
   // CHECK: tfrt_fallback_async.executeop key({{.*}}) cost({{.*}}) device("/device:CPU:0") "tf.MatMul"([[results]]#0, [[results]]#1)
   %a, %b = "tf._TfrtGetResource"() {device = "/device:CPU:0", indices = [0, 1], shared_name = ["", ""], container = ["", ""]} : () -> (tensor<3x1xf32>, tensor<1x3xf32>)
   %1 = "tf.MatMul"(%a, %b) {T = f32, device = "/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>

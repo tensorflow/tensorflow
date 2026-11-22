@@ -69,8 +69,7 @@ class CreateShardedScaledDotFunctor final
         b->AddInstruction(HloInstruction::CreateCustomCall(
             sharded_scaled_dot_shape, {l, r, l_scale, r_scale},
             "__op$block_scaled_dot", ""));
-    if (block_scaled_dot_->frontend_attributes().map().contains(
-            sdy::kHasUnreducedAxes)) {
+    if (block_scaled_dot_->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
       sharded_dot->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
     }
     return sharded_dot;

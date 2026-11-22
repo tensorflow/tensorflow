@@ -115,7 +115,6 @@ std::string GenerateConvolutionConstantCode(const GpuInfo& gpu_info,
   op->AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   const int out_z = DivideRoundUp(weights_shape.o, 4);
-  const std::string kOutZ = std::to_string(out_z);
   const int src_depth = DivideRoundUp(weights_shape.i, 4);
 
   const std::string postfixes[] = {".x", ".xy", ".xyz", ""};
@@ -154,7 +153,6 @@ std::string GenerateConvolutionConstantCode(const GpuInfo& gpu_info,
     const std::string s_type = absl::StrCat("FLT", s_count);
     const std::string s_postfix = postfixes[src_ch_count - 1];
     for (int ky = 0; ky < weights_shape.h; ++ky) {
-      std::string s_y = absl::StrCat("(start_y + ", ky, " * args.dilation_y)");
       c += "  {\n";
       c += "    int y_c = start_y + " + std::to_string(ky) +
            " * args.dilation_y;\n";

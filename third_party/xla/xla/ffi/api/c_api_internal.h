@@ -156,6 +156,12 @@ typedef XLA_FFI_Error* XLA_FFI_INTERNAL_GpuComputeCapability_Get(
 typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get(
     XLA_FFI_InvokeContext* ctx, void** cpu_target_machine_options);
 
+// Returns a pointer to `xla::gpu::CommandBufferRequests` which allows FFI
+// handlers to request command buffer execution requirements (e.g. warmup) at
+// run time. Available only for FFI handlers executing at prepare stage.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CommandBufferRequests_Get(
+    XLA_FFI_InvokeContext* ctx, void** command_buffer_requests);
+
 //===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
@@ -194,6 +200,8 @@ struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_GpuComputeCapability_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
       XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
+      XLA_FFI_INTERNAL_CommandBufferRequests_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD

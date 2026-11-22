@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -220,12 +221,21 @@ absl::StatusOr<CommandBufferThunkCounts> CountThunksInDump(
   ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), dump_files[0], &dump));
 
-  // Each thunk line in the dump has the form "<indent><index>: <kind> ...".
-  // Thunks nested inside a top-level kCommandBuffer thunk are indented under
-  // it; non-thunk lines (such as WhileThunk's "condition:" and "body:" headers)
-  // do not start with "<digits>: " and are ignored.
+  // Each thunk line in the dump has the form "<indent><index>: <kind> ...",
+  // where the indentation grows with the nesting depth. Thunks nested inside a
+  // kCommandBuffer thunk are indented under it; non-thunk lines (such as
+  // WhileThunk's "condition:" and "body:" headers) do not start with
+  // "<digits>: " and are ignored.
+  //
+  // A kCommandBuffer thunk is not necessarily top-level: when control flow
+  // cannot be captured (e.g. on ROCm, where HIP graphs have no conditional
+  // nodes and the WHILE command is disabled), the loop body is still converted
+  // into a command buffer nested inside the WhileThunk. Track the indentation
+  // of the innermost enclosing kCommandBuffer so those thunks are counted as
+  // being inside a command buffer too.
   CommandBufferThunkCounts counts;
-  bool in_command_buffer = false;
+  constexpr size_t kNoCommandBuffer = std::numeric_limits<size_t>::max();
+  size_t command_buffer_indent = kNoCommandBuffer;
   for (absl::string_view line : absl::StrSplit(dump, '\n')) {
     absl::string_view thunk = absl::StripLeadingAsciiWhitespace(line);
     size_t pos = thunk.find(": ");
@@ -234,14 +244,22 @@ absl::StatusOr<CommandBufferThunkCounts> CountThunksInDump(
                         [](char c) { return absl::ascii_isdigit(c); })) {
       continue;
     }
-    const bool is_top_level = thunk.size() == line.size();
+    const size_t indent = line.size() - thunk.size();
     thunk.remove_prefix(pos + 2);
-    if (is_top_level) {
-      in_command_buffer = absl::StartsWith(thunk, "kCommandBuffer");
+    // A thunk at or above the indentation of the open command buffer is a
+    // sibling (or an ancestor's sibling), so the command buffer has ended.
+    if (command_buffer_indent != kNoCommandBuffer &&
+        indent <= command_buffer_indent) {
+      command_buffer_indent = kNoCommandBuffer;
+    }
+    if (command_buffer_indent == kNoCommandBuffer &&
+        absl::StartsWith(thunk, "kCommandBuffer")) {
+      command_buffer_indent = indent;
     }
     if (absl::StartsWith(thunk, thunk_kind_prefix)) {
-      ++(in_command_buffer ? counts.in_command_buffer
-                           : counts.outside_command_buffer);
+      ++(command_buffer_indent != kNoCommandBuffer
+             ? counts.in_command_buffer
+             : counts.outside_command_buffer);
     }
   }
   return counts;

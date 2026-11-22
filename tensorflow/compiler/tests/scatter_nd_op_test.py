@@ -223,17 +223,13 @@ class ScatterNdTensorScalarUpdateTest(xla_test.XLATestCase):
   def _runScatter(self, op):
     indices_np = np.array([[4], [3], [1], [7]], dtype=np.int32)
     updates_np = np.array(9, dtype=np.float32)
-    with self.session() as sess, self.device_scope():
+    with self.session() as sess, self.test_scope():
       indices = array_ops.placeholder(indices_np.dtype, shape=indices_np.shape)
       updates = array_ops.placeholder(updates_np.dtype, shape=updates_np.shape)
       t = array_ops.ones([8], dtype=np.float32)
 
       out = op(t, indices, updates)
-      # Rank-0 updates are rejected to match the eager kernels (#128455).
-      with self.assertRaisesWithPredicateMatch(
-          errors.InvalidArgumentError, "Updates shape must have rank"
-      ):
-        sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+      return sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
 
   def _runScatterScalarIndices(self, op):
     indices_np = np.array(4, dtype=np.int32)
@@ -251,25 +247,40 @@ class ScatterNdTensorScalarUpdateTest(xla_test.XLATestCase):
       ):
         sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
 
-  def testUpdate(self):
-    self._runScatter(array_ops.tensor_scatter_update)
-    self._runScatterScalarIndices(array_ops.tensor_scatter_update)
-
   def testAdd(self):
-    self._runScatter(array_ops.tensor_scatter_add)
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_add),
+        np.array([1, 10, 1, 10, 10, 1, 1, 10], dtype=np.float32),
+    )
     self._runScatterScalarIndices(array_ops.tensor_scatter_add)
 
+  def testUpdate(self):
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_update),
+        np.array([1, 9, 1, 9, 9, 1, 1, 9], dtype=np.float32),
+    )
+    self._runScatterScalarIndices(array_ops.tensor_scatter_update)
+
   def testSub(self):
-    self._runScatter(array_ops.tensor_scatter_sub)
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_sub),
+        np.array([1, -8, 1, -8, -8, 1, 1, -8], dtype=np.float32),
+    )
     self._runScatterScalarIndices(array_ops.tensor_scatter_sub)
 
-  def testMax(self):
-    self._runScatter(array_ops.tensor_scatter_max)
-    self._runScatterScalarIndices(array_ops.tensor_scatter_max)
-
   def testMin(self):
-    self._runScatter(array_ops.tensor_scatter_min)
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_min),
+        np.array([1, 1, 1, 1, 1, 1, 1, 1], dtype=np.float32),
+    )
     self._runScatterScalarIndices(array_ops.tensor_scatter_min)
+
+  def testMax(self):
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_max),
+        np.array([1, 9, 1, 9, 9, 1, 1, 9], dtype=np.float32),
+    )
+    self._runScatterScalarIndices(array_ops.tensor_scatter_max)
 
   def testScatterNd(self):
     indices_np = np.array([[4], [3], [1], [7]], dtype=np.int32)
@@ -296,6 +307,73 @@ class ScatterNdTensorScalarUpdateTest(xla_test.XLATestCase):
           errors.InvalidArgumentError, "Indices shape must have rank"
       ):
         sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+
+  def test1DIndices(self):
+    indices_np = np.array([1, 2], dtype=np.int32)
+    updates_np = np.array(7, dtype=np.float32)
+    with self.session() as sess, self.test_scope():
+      indices = array_ops.placeholder(indices_np.dtype, shape=indices_np.shape)
+      updates = array_ops.placeholder(updates_np.dtype, shape=updates_np.shape)
+      t = array_ops.zeros([3, 4], dtype=np.float32)
+      out = array_ops.tensor_scatter_update(t, indices, updates)
+      res = sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+      self.assertAllEqual(
+          res,
+          np.array(
+              [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 0, 0]], dtype=np.float32
+          ),
+      )
+
+  def testEmptyIndices(self):
+    indices_np = np.zeros([0, 1], dtype=np.int32)
+    updates_np = np.array(9, dtype=np.float32)
+    for op in (
+        array_ops.tensor_scatter_update,
+        array_ops.tensor_scatter_add,
+        array_ops.tensor_scatter_sub,
+        array_ops.tensor_scatter_min,
+        array_ops.tensor_scatter_max,
+    ):
+      with self.subTest(op=op.__name__):
+        with self.session() as sess, self.test_scope():
+          indices = array_ops.placeholder(
+              indices_np.dtype, shape=indices_np.shape
+          )
+          updates = array_ops.placeholder(
+              updates_np.dtype, shape=updates_np.shape
+          )
+          t = array_ops.ones([8], dtype=np.float32)
+          out = op(t, indices, updates)
+          res = sess.run(
+              out, feed_dict={indices: indices_np, updates: updates_np}
+          )
+          self.assertAllEqual(res, np.ones([8], dtype=np.float32))
+
+  def testInvalidIndexDepth(self):
+    # indices.shape[-1] == 2 > t.shape.rank == 1
+    indices_np = np.array([[0, 0], [1, 1]], dtype=np.int32)
+    updates_np = np.array(9, dtype=np.float32)
+    for op in (
+        array_ops.tensor_scatter_update,
+        array_ops.tensor_scatter_add,
+        array_ops.tensor_scatter_sub,
+        array_ops.tensor_scatter_min,
+        array_ops.tensor_scatter_max,
+    ):
+      with self.subTest(op=op.__name__):
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, r"Must have updates\.shape"
+        ):
+          with self.session() as sess, self.test_scope():
+            indices = array_ops.placeholder(
+                indices_np.dtype, shape=indices_np.shape
+            )
+            updates = array_ops.placeholder(
+                updates_np.dtype, shape=updates_np.shape
+            )
+            t = array_ops.ones([4], dtype=np.float32)
+            out = op(t, indices, updates)
+            sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
 
 
 if __name__ == "__main__":

@@ -17,27 +17,19 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/service/gpu/launch_dimensions.proto";
+
 option java_outer_classname = "KernelReuseCache";
 option java_multiple_files = true;
 
 message CompilationCacheEntryProto {
-  message LaunchDimensionsProto {
-    uint64 num_blocks = 1;
-    uint64 num_threads_per_block = 2;
-  }
-
-  message ClusterDimProto {
-    uint64 x = 1;
-    uint64 y = 2;
-    uint64 z = 3;
-  }
-
   string fingerprint = 1;
   LaunchDimensionsProto launch_dimensions = 2;
-  optional ClusterDimProto cluster_dim = 3;
   int64 shmem_bytes = 4;
   bytes binary = 5;
-  reserved 6;
+
+  reserved 3, 6;
+  reserved "cluster_dim";
 }
 
 message CompilationCacheProto {

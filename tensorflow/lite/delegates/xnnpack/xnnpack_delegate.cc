@@ -51,7 +51,9 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
+#include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
+#include "tensorflow/lite/delegates/xnnpack/qsa_delegate_kernel.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 #include "tensorflow/lite/experimental/resource/resource_variable.h"
@@ -135,7 +137,10 @@ bool CheckFp16Scale(TfLiteContext* context, const TfLiteTensor& tensor, int t,
   DequantizeFloat16(reinterpret_cast<uint16_t*>(scale.data.data),
                     dequantized_scale.data(), num_scales);
   for (int i = 0; i < num_scales; i++) {
-    if (!std::isnormal(dequantized_scale[i]) || dequantized_scale[i] <= 0.0f) {
+    // Allow 0.0 for all-zero/near-zero blocks; non-zero FP16 subnormals are
+    // normal in FP32, while negative/Inf/NaN remain rejected.
+    const float s = dequantized_scale[i];
+    if (s < 0.0f || (s != 0.0f && !std::isnormal(s))) {
       TF_LITE_KERNEL_LOG(context,
                          "unsupported scale value (%f) in channel %d for "
                          "%s tensor %d in XNNPACK delegate",
@@ -854,6 +859,10 @@ class Delegate {
 
   xnn_workspace_t workspace() const { return workspace_.get(); }
 
+  MMapWeightCacheProvider& weight_cache_provider() {
+    return *weight_cache_provider_;
+  }
+
   const ResourceInfo* FindResourceInfo(int local_id) const {
     auto it = local_id_to_resources_.find(local_id);
     return it != local_id_to_resources_.end() ? &it->second : nullptr;
@@ -1046,6 +1055,12 @@ class Subgraph {
                                          delegate.threadpool());
     if (moe_kernel != nullptr) {
       return new Subgraph(delegate, std::move(moe_kernel));
+    }
+
+    std::unique_ptr<QsaDelegateKernel> qsa_kernel =
+        QsaDelegateKernel::Create(context, params, delegate.threadpool());
+    if (qsa_kernel != nullptr) {
+      return new Subgraph(delegate, std::move(qsa_kernel));
     }
 
     // Convert subgraph inputs and outputs to hash sets for faster lookup.
@@ -1491,13 +1506,16 @@ class Subgraph {
     }
     flags |= delegate.runtime_flags();
 
-    if (delegate.weight_cache_provider_->IsActive() &&
-        delegate.weight_cache_provider_->CanStartBuildStep()) {
-      if (!delegate.weight_cache_provider_->StartBuildStep()) {
-        TF_LITE_KERNEL_LOG(
-            context, "XNNPack delegate failed to start cache build step.");
-        return nullptr;
-      }
+    // Run a build step per partition so packed weights are committed and mapped
+    // incrementally. Skip if an outer caller already owns the active build
+    // step.
+    MMapWeightCacheProvider& weight_cache = *delegate.weight_cache_provider_;
+    const bool manage_build_step =
+        weight_cache.CanStartBuildStep() && !weight_cache.IsBuilding();
+    if (manage_build_step && !weight_cache.StartBuildStep()) {
+      TF_LITE_KERNEL_LOG(context,
+                         "XNNPack delegate failed to start cache build step.");
+      return nullptr;
     }
     {
       std::lock_guard<std::mutex> lock(*delegate.workspace_mutex_);
@@ -1505,17 +1523,17 @@ class Subgraph {
           subgraph.get(), delegate.weights_cache(), delegate.workspace(),
           delegate.threadpool(), flags, &runtime_ptr);
     }
-    if (delegate.weight_cache_provider_->IsActive() &&
-        delegate.weight_cache_provider_->CanStartBuildStep()) {
-      if (!delegate.weight_cache_provider_->StopBuildStep()) {
-        if (runtime_ptr != nullptr) {
-          std::lock_guard<std::mutex> lock(*delegate.workspace_mutex_);
-          xnn_delete_runtime(runtime_ptr);
-        }
-        TF_LITE_KERNEL_LOG(context,
-                           "XNNPack delegate failed to stop cache build step.");
-        return nullptr;
+    // Keep the staging buffer allocated across partitions to avoid repeated
+    // reallocation and page faults; DelegatePrepare releases it on exit.
+    if (manage_build_step &&
+        !weight_cache.StopBuildStep(/*release_staging_buffer=*/false)) {
+      if (runtime_ptr != nullptr) {
+        std::lock_guard lock(*delegate.workspace_mutex_);
+        xnn_delete_runtime(runtime_ptr);
       }
+      TF_LITE_KERNEL_LOG(context,
+                         "XNNPack delegate failed to stop cache build step.");
+      return nullptr;
     }
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
@@ -1531,6 +1549,9 @@ class Subgraph {
                        bool enable_subgraph_reshaping) {
     if (moe_kernel_ != nullptr) {
       return moe_kernel_->Prepare(context);
+    }
+    if (qsa_kernel_ != nullptr) {
+      return qsa_kernel_->Prepare(context);
     }
 
     std::lock_guard<std::mutex> lock(*workspace_mutex_);
@@ -1615,6 +1636,9 @@ class Subgraph {
   TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping) {
     if (moe_kernel_ != nullptr) {
       return moe_kernel_->Invoke(context);
+    }
+    if (qsa_kernel_ != nullptr) {
+      return qsa_kernel_->Invoke(context);
     }
 
     std::lock_guard<std::mutex> lock(*workspace_mutex_);
@@ -3294,15 +3318,6 @@ class Subgraph {
                                    node_index, node, context->tensors,
                                    input_output_tensors);
       case kTfLiteBuiltinFullyConnected: {
-        // FullyConnected with sparse weight has version 8, which cannot be
-        // delegated to XNNPack.
-        if (registration->version == 8) {
-          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                   "Unsupported version %d of FullyConnected.",
-                                   registration->version);
-          return kTfLiteError;
-        }
-
         const TfLiteFullyConnectedParams* fc_params =
             static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
 
@@ -4982,6 +4997,17 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorShape(logging_context, filter_tensor, 2, filter_tensor_id,
                          BuiltinOperator_FULLY_CONNECTED, node_index));
+    // XNNPACK has no fully connected operator for sparse weights. The node's
+    // version is no proxy for them: all nodes of an operator share one
+    // version, so a sparse node can carry a version above 8 and a dense node
+    // version 8.
+    if (filter_tensor.sparsity != nullptr) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported sparse filter tensor %d in FULLY_CONNECTED node #%d",
+          filter_tensor_id, node_index);
+      return kTfLiteError;
+    }
     // Dynamic filter is supported, but only for FP32.
     if (!(delegate.support_dynamic_fully_connected_operator() &&
           filter_tensor.type == kTfLiteFloat32)) {
@@ -7224,6 +7250,12 @@ class Subgraph {
         enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
         workspace_mutex_(delegate.workspace_mutex_) {}
 
+  Subgraph(Delegate& delegate, std::unique_ptr<QsaDelegateKernel> qsa_kernel)
+      : runtime_(nullptr, &xnn_delete_runtime),
+        qsa_kernel_(std::move(qsa_kernel)),
+        enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
+        workspace_mutex_(delegate.workspace_mutex_) {}
+
   // Keep track of expanded scales for shared tensors to manage their lifetime.
   // Must be declared before runtime_ so it outlives runtime_ during
   // destruction.
@@ -7236,6 +7268,9 @@ class Subgraph {
   // prototype path for moe, where dynamic routing cannot be
   // expressed as a pure XNNPACK subgraph today.
   std::unique_ptr<MoeExpertsDelegateKernel> moe_kernel_;
+  // Optional single-node executor for the QSA sparse-attention StableHLO
+  // composites, which need top-k and dynamic gathers.
+  std::unique_ptr<QsaDelegateKernel> qsa_kernel_;
   // Mapping from TFLite Tensor IDs for input/output tensors in the delegated
   // subgraph to their data locations.
   std::unordered_map<int, void*> externals_;
@@ -7282,7 +7317,8 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
   ClearTempScales();
 
   TfLiteIntArray* execution_plan = nullptr;
-  if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk) {
+  if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk ||
+      execution_plan == nullptr) {
     TF_LITE_KERNEL_LOG(context, "Unable to get graph execution plan.");
     return nullptr;
   }
@@ -7312,12 +7348,10 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
 
   TfLiteIntArray* nodes_to_delegate =
       TfLiteIntArrayCreate(execution_plan->size);
-  nodes_to_delegate->size = 0;
-  TfLiteIntArray* moe_nodes_to_delegate = nullptr;
-  if (moe_ops_to_delegate != nullptr) {
-    moe_nodes_to_delegate = TfLiteIntArrayCreate(execution_plan->size);
-    moe_nodes_to_delegate->size = 0;
-  }
+  TfLiteIntArray* moe_nodes_to_delegate =
+      moe_ops_to_delegate != nullptr
+          ? TfLiteIntArrayCreate(execution_plan->size)
+          : nullptr;
   auto cleanup_and_return_null = [&]() -> TfLiteIntArray* {
     TfLiteIntArrayFree(nodes_to_delegate);
     TfLiteIntArrayFree(moe_nodes_to_delegate);
@@ -7326,6 +7360,14 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
     }
     return nullptr;
   };
+  if (nodes_to_delegate == nullptr ||
+      (moe_ops_to_delegate != nullptr && moe_nodes_to_delegate == nullptr)) {
+    return cleanup_and_return_null();
+  }
+  nodes_to_delegate->size = 0;
+  if (moe_nodes_to_delegate != nullptr) {
+    moe_nodes_to_delegate->size = 0;
+  }
   for (int i = 0; i < execution_plan->size; ++i) {
     const int node_index = execution_plan->data[i];
 
@@ -7347,6 +7389,26 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
                                                 node_index) == kTfLiteOk) {
         moe_nodes_to_delegate->data[moe_nodes_to_delegate->size++] = node_index;
       }
+      continue;
+    }
+
+    // QSA composites are delegated as singleton partitions, like MoE.
+    if (moe_nodes_to_delegate != nullptr && registration != nullptr &&
+        node != nullptr && QsaDelegateKernel::IsQsaNode(registration, node) &&
+        QsaDelegateKernel::IsSupported(context, node, registration,
+                                       node_index) == kTfLiteOk) {
+      // The QSA kernel reads its inputs from TFLite tensors, so producers of
+      // quasi-static inputs must still run.
+      if (node->inputs != nullptr) {
+        for (int j = 0; j < node->inputs->size; j++) {
+          const auto it =
+              quasi_static_tensors_producers.find(node->inputs->data[j]);
+          if (it != quasi_static_tensors_producers.end()) {
+            static_unpack_nodes_.erase(it->second);
+          }
+        }
+      }
+      moe_nodes_to_delegate->data[moe_nodes_to_delegate->size++] = node_index;
       continue;
     }
 
@@ -7747,11 +7809,20 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
   // default TensorFlow Lite kernels. Thus, if any of the ops in the model are
   // not supported by the delegate, they will cause a failure in
   // ::tflite::Interpreter::ModifyGraphWithDelegate, to be caught in the unit
-  // tests.
-  nodes_to_delegate->size = execution_plan->size;
-  std::copy(&execution_plan->data[0],
-            &execution_plan->data[execution_plan->size],
-            &nodes_to_delegate->data[0]);
+  // tests. Nodes handled by the singleton custom kernels (MoE, QSA) are
+  // excluded, since they are delegated separately as singleton partitions.
+  nodes_to_delegate->size = 0;
+  for (int i = 0; i < execution_plan->size; ++i) {
+    const int node_index = execution_plan->data[i];
+    if (moe_nodes_to_delegate != nullptr && moe_nodes_to_delegate->size > 0 &&
+        std::binary_search(
+            &moe_nodes_to_delegate->data[0],
+            &moe_nodes_to_delegate->data[moe_nodes_to_delegate->size],
+            node_index)) {
+      continue;
+    }
+    nodes_to_delegate->data[nodes_to_delegate->size++] = node_index;
+  }
 #endif
   if (moe_ops_to_delegate != nullptr) {
     *moe_ops_to_delegate = moe_nodes_to_delegate;
@@ -7802,23 +7873,30 @@ const TfLiteRegistration kSubgraphRegistration = {
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  auto& xnnpack_delegate =
+      *static_cast<::tflite::xnnpack::Delegate*>(delegate->data_);
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> moe_ops_to_replace(
       nullptr, TfLiteIntArrayFree);
   TfLiteIntArray* moe_ops_to_replace_raw = nullptr;
-  TfLiteIntArray* ops_to_replace =
-      static_cast<::tflite::xnnpack::Delegate*>(delegate->data_)
-          ->PrepareOpsToDelegate(context, &moe_ops_to_replace_raw);
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> ops_to_replace(
+      xnnpack_delegate.PrepareOpsToDelegate(context, &moe_ops_to_replace_raw),
+      TfLiteIntArrayFree);
   moe_ops_to_replace.reset(moe_ops_to_replace_raw);
   if (ops_to_replace == nullptr) {
     return kTfLiteError;
   }
 
+  // Release the staging buffer retained across partition build steps in
+  // Subgraph::Create (no-op if an outer caller owns the build step).
+  ScopeGuard release_staging_buffer([&xnnpack_delegate] {
+    xnnpack_delegate.weight_cache_provider().ReleaseStagingBuffer();
+  });
+
   TfLiteStatus status = kTfLiteOk;
   if (ops_to_replace->size != 0) {
     status = context->ReplaceNodeSubsetsWithDelegateKernels(
-        context, kSubgraphRegistration, ops_to_replace, delegate);
+        context, kSubgraphRegistration, ops_to_replace.get(), delegate);
   }
-  TfLiteIntArrayFree(ops_to_replace);
   if (status != kTfLiteOk) {
     return status;
   }
@@ -7897,7 +7975,8 @@ void TfLiteXNNPackDelegateWeightsCacheDelete(
 }
 
 bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider() {
-  return tflite::xnnpack::InMemoryFileDescriptorAvailable();
+  // In-memory caches only rely on heap allocations.
+  return true;
 }
 
 const char* TfLiteXNNPackDelegateInMemoryFilePath() {

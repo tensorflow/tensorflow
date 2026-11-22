@@ -314,6 +314,26 @@ TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
               GmockMatch(m::Pad(m::Constant(), m::Constant())));
 }
 
+// The evaluator cannot evaluate an elementwise operation whose operands have
+// different element types, so such an operation must be left unfolded.
+TEST_F(HloConstantFoldingTest, DoesNotFoldMixedPrecisionElementwise) {
+  const char* const kModule = R"(
+  HloModule m
+
+  ENTRY r {
+    a = f16[4] constant({1, 2, 3, 4})
+    b = f32[4] constant({1, 2, 3, 4})
+    ROOT add = f32[4] add(a, b)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloConstantFolding const_folder;
+  ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Constant(), m::Constant())));
+}
+
 TEST_F(HloConstantFoldingTest, DoesNotFoldPadBroadcast) {
   const char* const kConstantFoldPadBroadcast = R"(
   HloModule ConstantFoldLargePad

@@ -18,7 +18,9 @@ import itertools
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
@@ -137,6 +139,122 @@ class CSRSparseMatrixTest(test.TestCase):
       a_sm_t_dense = self.evaluate(a_sm_t_dense)
       self.assertAllClose(expected, a_sm_t_dense)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseMatrixAddComplex(self):
+    # Complex SparseMatrixAdd GPU kernels are registered only for CUDA.
+    if not self._gpu_available or test.is_built_with_rocm():
+      return
+    indices = np.array([[0, 0], [1, 1]], dtype=np.int64)
+    for dtype in (np.complex64, np.complex128):
+      a_dense = np.array([[1 + 1j, 0], [0, 3 - 2j]], dtype=dtype)
+      b_dense = np.array([[2 - 1j, 0], [0, 4 + 5j]], dtype=dtype)
+      alpha = dtype(2 + 1j)
+      beta = dtype(3 - 1j)
+      a = sparse_csr_matrix_ops.dense_to_csr_sparse_matrix(
+          dense_input=a_dense, indices=indices
+      )
+      b = sparse_csr_matrix_ops.dense_to_csr_sparse_matrix(
+          dense_input=b_dense, indices=indices
+      )
+      c = sparse_csr_matrix_ops.sparse_matrix_add(
+          a=a, b=b, alpha=alpha, beta=beta
+      )
+      result = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
+          sparse_input=c, type=dtypes.as_dtype(dtype)
+      )
+      self.assertAllClose(
+          alpha * a_dense + beta * b_dense,
+          self.evaluate(result),
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseTensorConversionInvalidInputShapes(self):
+    values = constant_op.constant(0.554979503, shape=[5], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), "must be rank 1"
+    ):
+      indices = constant_op.constant(0, shape=[5, 2], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(53, shape=[], dtype=dtypes.int64)
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape
+      )
+      self.evaluate(csr)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), "must be rank 2"
+    ):
+      indices = constant_op.constant(0, shape=[5], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(53, shape=[1], dtype=dtypes.int64)
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape
+      )
+      self.evaluate(csr)
+
+    int32max = 2**31 - 1
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "dense_shape dimensions must be < Int32Max",
+    ):
+      indices = constant_op.constant(0, shape=[5, 3], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(
+          [int32max, 1, 1], shape=[3], dtype=dtypes.int64
+      )
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape
+      )
+      self.evaluate(csr)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"row_pointers size .* must be <= Int32Max",
+    ):
+      indices = constant_op.constant(0, shape=[5, 3], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(
+          [(int32max // 2), 10, 1], shape=[3], dtype=dtypes.int64
+      )
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape
+      )
+      self.evaluate(csr)
+
+    # Negative and too large dense_shape dimensions, using empty SparseTensors.
+    for dense_shape, error_regex in [
+        # (num_rows + 1) * batch_size would wrap around int64 to 8.
+        ([4, 0x4000000000000001, 10], "dimensions must be < Int32Max"),
+        # batch_size == 0 makes the row pointers size 0 for any num_rows.
+        ([0, int32max, 10], "dimensions must be < Int32Max"),
+        ([2**63 - 1, 10], "dimensions must be < Int32Max"),
+        ([2, int32max], "dimensions must be < Int32Max"),
+        ([-1, 2, 10], "negative dimension"),
+        ([0, -1, 10], "negative dimension"),
+        ([2, -1], "negative dimension"),
+    ]:
+      with self.subTest(dense_shape=dense_shape):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), error_regex
+        ):
+          rank = len(dense_shape)
+          csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+              indices=constant_op.constant(
+                  0, shape=[0, rank], dtype=dtypes.int64
+              ),
+              values=constant_op.constant(0.0, shape=[0], dtype=dtypes.float32),
+              dense_shape=constant_op.constant(dense_shape, dtype=dtypes.int64),
+          )
+          self.evaluate(csr)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Index rank .* and shape rank .* do not match",
+    ):
+      self.evaluate(
+          sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+              indices=[[0, 0, 0], [0, 0, 1]],
+              values=[10.0, 20.0],
+              dense_shape=[33, 73],
+          )
+      )
+
 
 class SparseMatrixMatmulTest(test.TestCase):
 
@@ -150,7 +268,7 @@ class SparseMatrixMatmulTest(test.TestCase):
     sparsify = lambda m: m * (m > 0)
     dense_shape_a = [5, 13, 7] if transpose_a or adjoint_a else [5, 7, 13]
     dense_shape_b = [5, 15, 13] if transpose_b or adjoint_b else [5, 13, 15]
-    dtypes_to_test = [np.float32, np.complex64]
+    dtypes_to_test = [np.float32, np.complex64, np.complex128]
     for dtype in dtypes_to_test:
       a_mats = sparsify((np.random.randn(*dense_shape_a) +
                          1.j * np.random.randn(*dense_shape_a))).astype(dtype)
@@ -191,7 +309,7 @@ class SparseMatrixMatmulTest(test.TestCase):
     sparsify = lambda m: m * (m > 0)
     dense_shape_a = [5, 13, 7] if transpose_a or adjoint_a else [5, 7, 13]
     dense_shape_b = [5, 15, 13] if transpose_b or adjoint_b else [5, 13, 15]
-    dtypes_to_test = [np.float32, np.complex64]
+    dtypes_to_test = [np.float32, np.complex64, np.complex128]
     for dtype in dtypes_to_test:
       a_mats = sparsify((np.random.randn(*dense_shape_a) +
                          1.j * np.random.randn(*dense_shape_a))).astype(dtype)
@@ -229,7 +347,7 @@ class SparseMatrixMatmulTest(test.TestCase):
     sparsify = lambda m: m * (m > 0)
     dense_shape_a = [5, 13, 7] if transpose_a or adjoint_a else [5, 7, 13]
     dense_shape_b = [5, 15, 13] if transpose_b or adjoint_b else [5, 13, 15]
-    dtypes_to_test = [np.float32, np.complex64]
+    dtypes_to_test = [np.float32, np.complex64, np.complex128]
     for dtype in dtypes_to_test:
       a_mats = (np.random.randn(*dense_shape_a) +
                 1.j * np.random.randn(*dense_shape_a)).astype(dtype)

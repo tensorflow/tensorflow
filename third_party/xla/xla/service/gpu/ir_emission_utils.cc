@@ -54,15 +54,19 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/target_util.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/regexp.h"
@@ -70,19 +74,31 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kRaggedDot) {
-    switch (instr.shape().element_type()) {
-      // Only float 16 and bf 16 are supported by HipBlasLt GroupGemm
-      case F16:
-      case BF16:
-        return (((instr.operand(0)->shape().element_type() == F16) ||
-                 (instr.operand(0)->shape().element_type() == BF16)) &&
-                ((instr.operand(1)->shape().element_type() == F16) ||
-                 (instr.operand(1)->shape().element_type() == BF16)));
-      default:
-        return false;
-    }
+bool IsGpublasLtSupportedGroupedMatMul(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kRaggedDot) {
+    return false;
+  }
+
+  // Only hipBLASLt implements grouped GEMM.
+  const se::RocmComputeCapability* rocm_cc =
+      gpu_compute_capability.rocm_compute_capability();
+  if (rocm_cc == nullptr) {
+    return false;
+  }
+
+  PrimitiveType element_type = instr.shape().element_type();
+  if (instr.operand(0)->shape().element_type() != element_type ||
+      instr.operand(1)->shape().element_type() != element_type) {
+    return false;
+  }
+
+  if (rocm_cc->gfx9_mi300()) {  // gfx942
+    return element_type == F16 || element_type == BF16;
+  }
+  if (rocm_cc->gfx9_mi350()) {  // gfx950
+    return element_type == F16;
   }
   return false;
 }
@@ -101,6 +117,11 @@ bool IsTritonSupportedRaggedDot(
     return false;
   }
 
+  if (gpu_compute_capability.IsCuda() &&
+      !gpu_compute_capability.cuda_compute_capability()->IsAtLeastAmpere()) {
+    return false;
+  }
+
   const auto* ragged_dot = Cast<HloRaggedDotInstruction>(&instr);
   const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
 
@@ -110,38 +131,235 @@ bool IsTritonSupportedRaggedDot(
     return false;
   }
 
-  // The xtile emitter's PrimitiveTypeToMlirType conversion supports the
-  // following element types for ragged-dot operands and output.
-  // Complex types (C64, C128) fall to the default branch and return
-  // UnimplementedError.  Nanoo FP8 types (F8E4M3FNUZ, F8E5M2FNUZ) are
-  // ROCm-only (NaNo format not supported on NVIDIA GPUs).
-  // Triton uses power-of-two block sizes (16..256) internally; problem
-  // dimensions need not be powers of two — masking handles boundary tiles.
-  const bool is_rocm = gpu_compute_capability.IsRocm();
+  const DotDimensionNumbers& dot_dims = ragged_dims.dot_dimension_numbers();
+  if (dot_dims.lhs_contracting_dimensions_size() != 1 ||
+      dot_dims.rhs_contracting_dimensions_size() != 1) {
+    return false;
+  }
+
+  // The emitter indexes the batch dimensions as a leading flat prefix.
+  auto is_leading_prefix = [](const auto& dims) {
+    for (int i = 0; i < dims.size(); ++i) {
+      if (dims[i] != i) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (!is_leading_prefix(dot_dims.lhs_batch_dimensions()) ||
+      !is_leading_prefix(dot_dims.rhs_batch_dimensions())) {
+    return false;
+  }
+
+  // Exactly one non-contracting dimension per side: M on the lhs and N on the
+  // rhs.  The emitter builds a single [M, N] output tile.
+  const int64_t num_batch_dims = dot_dims.lhs_batch_dimensions_size();
+  const int64_t lhs_rank = instr.operand(0)->shape().dimensions().size();
+  const int64_t rhs_rank = instr.operand(1)->shape().dimensions().size();
+  if (lhs_rank - num_batch_dims - 1 != 1 ||
+      rhs_rank - dot_dims.rhs_batch_dimensions_size() - 1 -
+              ragged_dims.rhs_group_dimensions_size() !=
+          1) {
+    return false;
+  }
+
+  const int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+  const int64_t group_sizes_rank =
+      instr.operand(2)->shape().dimensions().size();
+  if (IsRaggedDotWgrad(ragged_dims)) {
+    // The kRaggedContracting emitter reconstructs the group offsets with a
+    // prefix sum that cannot index a batch prefix yet.
+    if (num_batch_dims != 0 || group_sizes_rank != 1) {
+      return false;
+    }
+  } else if (absl::c_linear_search(dot_dims.lhs_batch_dimensions(),
+                                   lhs_ragged_dim)) {
+    // kRaggedBatch: the groups partition the leading batch dimension, so
+    // group_sizes is a flat [G].
+    if (lhs_ragged_dim != 0 || group_sizes_rank != 1) {
+      return false;
+    }
+  } else if (group_sizes_rank != num_batch_dims + 1) {
+    // kRaggedNonContracting: group_sizes holds one [G] row per batch element.
+    return false;
+  }
+
+  // Element types the xtile emitter's PrimitiveTypeToMlirType conversion
+  // accepts; anything else, complex types included, returns
+  // UnimplementedError there.
+  const se::CudaComputeCapability* cuda_cc =
+      gpu_compute_capability.cuda_compute_capability();
+  const se::RocmComputeCapability* rocm_cc =
+      gpu_compute_capability.rocm_compute_capability();
   auto is_supported_element_type = [&](PrimitiveType type) -> bool {
     switch (type) {
       case F16:
       case BF16:
       case F32:
+        return true;
       case F64:
+        return cuda_cc != nullptr;
       case F8E5M2:
       case F8E4M3FN:
-        return true;
+        if (cuda_cc != nullptr) {
+          return cuda_cc->IsAtLeastHopper();
+        }
+        return rocm_cc != nullptr && rocm_cc->has_ocp_fp8_support();
       case F8E4M3FNUZ:
       case F8E5M2FNUZ:
-        return is_rocm;
+        return rocm_cc != nullptr && rocm_cc->has_nanoo_fp8_support();
       default:
         return false;
     }
   };
 
-  return is_supported_element_type(instr.operand(0)->shape().element_type()) &&
-         is_supported_element_type(instr.operand(1)->shape().element_type()) &&
-         is_supported_element_type(instr.shape().element_type());
+  const PrimitiveType lhs_type = instr.operand(0)->shape().element_type();
+  const PrimitiveType rhs_type = instr.operand(1)->shape().element_type();
+  if (!is_supported_element_type(lhs_type) ||
+      !is_supported_element_type(rhs_type) ||
+      !is_supported_element_type(instr.shape().element_type())) {
+    return false;
+  }
+
+  // Triton lowers the dot with a single operand type, so the two operands must
+  // agree apart from the mixed-FP8 pairs.
+  auto types_are = [&](PrimitiveType first, PrimitiveType second) {
+    return (lhs_type == first && rhs_type == second) ||
+           (lhs_type == second && rhs_type == first);
+  };
+  if (lhs_type != rhs_type && !types_are(F8E5M2, F8E4M3FN) &&
+      !(rocm_cc != nullptr && types_are(F8E5M2FNUZ, F8E4M3FNUZ))) {
+    return false;
+  }
+
+  // An F64 dot accumulates in F64 and cannot cast the result down.
+  if (lhs_type == F64 && instr.shape().element_type() != F64) {
+    return false;
+  }
+
+  // group_sizes is an index operand: the emitter index-casts it with sign
+  // extension (ExtractGroupSizeScalar).
+  // Mirrors the index-operand rule of IsTritonSupportedDynamicSlice.
+  switch (instr.operand(2)->shape().element_type()) {
+    case S8:
+    case S16:
+    case S32:
+    case S64:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool SupportsCudnnRaggedDotWgrad(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version) {
+  const se::CudaComputeCapability* cuda_cc =
+      gpu_compute_capability.cuda_compute_capability();
+  // RaggedDotRewriter is the only pass that expands ragged-dot into a dense
+  // dot, and downstream cuDNN fusion passes have no fallback if plan creation
+  // fails. cuDNN moe_grouped_matmul_bwd uses a TMA-based cuBLASLt grouped GEMM
+  // kernel. That kernel requires CUDA SM90 through SM119, cuDNN 9.24 or newer,
+  // and cuBLASLt 13.5 from CUDA Toolkit 13.3 or newer.
+  //
+  // The major < kBlackwell_12 check excludes consumer-grade Blackwell GPUs with
+  // SM120 and SM121.
+  // Datacenter Blackwell and Rubin GPUs use major version 10 and satisfy
+  // major < kBlackwell_12.
+  return cuda_cc != nullptr &&
+         cuda_cc->major >= se::CudaComputeCapability::kHopper &&
+         cuda_cc->major < se::CudaComputeCapability::kBlackwell_12 &&
+         cudnn_version >= kMinCudnnVersionForRaggedDotWgradFusion &&
+         toolkit_version >= kMinCudaToolkitVersionForRaggedDotWgradFusion;
+}
+
+bool IsCudnnSupportedRaggedDot(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version,
+    const HloInstruction& ragged_dot) {
+  const se::CudaComputeCapability* cuda_cc =
+      gpu_compute_capability.cuda_compute_capability();
+  if (cuda_cc == nullptr || !cuda_cc->IsAtLeastAmpere() ||
+      cudnn_version < kMinCudnnVersionForRaggedDotFusion) {
+    return false;
+  }
+  const RaggedDotDimensionNumbers& ragged_dims =
+      Cast<HloRaggedDotInstruction>(&ragged_dot)
+          ->ragged_dot_dimension_numbers();
+  const DotDimensionNumbers& dot_dims = ragged_dims.dot_dimension_numbers();
+  // RaggedDotFusionRewriter / RaggedDotDimensionAdapter only support unbatched
+  // dots with exactly one contracting dimension per operand, a 2D lhs and 1D
+  // group sizes.  The rhs rank depends on the ragged mode (checked below).
+  const PrimitiveType element_type = ragged_dot.shape().element_type();
+  if (!dot_dims.lhs_batch_dimensions().empty() ||
+      !dot_dims.rhs_batch_dimensions().empty() ||
+      dot_dims.lhs_contracting_dimensions().size() != 1 ||
+      dot_dims.rhs_contracting_dimensions().size() != 1 ||
+      ragged_dot.operand_count() != 3 ||
+      ragged_dot.operand(0)->shape().dimensions().size() != 2 ||
+      ragged_dot.operand(2)->shape().dimensions().size() != 1 ||
+      ragged_dot.operand(0)->shape().element_type() != element_type ||
+      ragged_dot.operand(1)->shape().element_type() != element_type ||
+      ragged_dims.lhs_ragged_dimensions().size() != 1 ||
+      (element_type != F16 && element_type != BF16)) {
+    return false;
+  }
+  const int64_t rhs_rank = ragged_dot.operand(1)->shape().dimensions().size();
+  // The wgrad flavor needs a newer cuDNN than the forward one, and a 2D rhs.
+  if (IsRaggedDotWgrad(ragged_dims)) {
+    return rhs_rank == 2 &&
+           SupportsCudnnRaggedDotWgrad(gpu_compute_capability, cudnn_version,
+                                       toolkit_version);
+  }
+  // Only the ragged-non-contracting flavor is supported: 3D rhs (group
+  // dimension plus the two matrix dimensions).  Ragged-batch is already
+  // excluded by the empty-batch-dimensions check above.
+  return rhs_rank == 3;
+}
+
+absl::InlinedVector<RaggedDotBackend, 3> SelectRaggedDotBackends(
+    const HloInstruction& ragged_dot,
+    const se::GpuComputeCapability& gpu_compute_capability,
+    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version,
+    const DebugOptions& debug_options) {
+  absl::InlinedVector<RaggedDotBackend, 3> backends;
+  if (debug_options.xla_gpu_experimental_use_ragged_dot_fusion() &&
+      !debug_options.xla_gpu_experimental_disable_binary_libraries() &&
+      IsCudnnSupportedRaggedDot(gpu_compute_capability, cudnn_version,
+                                toolkit_version, ragged_dot)) {
+    backends.push_back(RaggedDotBackend::kCuDnn);
+  }
+  if (debug_options.xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
+      // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
+      debug_options.xla_gpu_enable_cublaslt() &&
+      IsGpublasLtSupportedGroupedMatMul(gpu_compute_capability, ragged_dot)) {
+    backends.push_back(RaggedDotBackend::kGpuBlasLt);
+  }
+  if (debug_options.xla_gpu_experimental_triton_ragged_dot() &&
+      IsTritonSupportedRaggedDot(gpu_compute_capability, ragged_dot)) {
+    backends.push_back(RaggedDotBackend::kTriton);
+  }
+  return backends;
+}
+
+bool IsRaggedDotTritonFusion(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kFusion ||
+      instr.fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    return false;
+  }
+  absl::StatusOr<GpuBackendConfig> gpu_config =
+      instr.backend_config<GpuBackendConfig>();
+  if (!gpu_config.ok() ||
+      gpu_config->fusion_backend_config().kind() != kTritonFusionKind) {
+    return false;
+  }
+  return absl::c_any_of(instr.fused_instructions_computation()->instructions(),
+                        HloPredicateIsOp<HloOpcode::kRaggedDot>);
 }
 
 absl::StatusOr<bool> IsCublasSupportedMatMul(
-    const HloInstruction& dot, bool allow_matrix_vector_multiplication) {
+    const HloInstruction& dot, bool allow_matrix_vector_multiplication,
+    bool is_normalized) {
   if (dot.opcode() != HloOpcode::kDot) {
     return false;
   }
@@ -151,23 +369,26 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
   for (int operand : {0, 1}) {
     ABSL_ASSIGN_OR_RETURN(DotOperandDims dims,
                      DotOperandDims::FromDotOperand(&dot, operand));
-    // cuBLAS only supports single contracting dimension.
-    if (dims.Rank(DotOperandDims::kContracting) != 1) {
+    if (dims.Rank(DotOperandDims::kContracting) == 0) {
       return false;
     }
-    // cuBLAS doesn't support a physically minor batch dimension.
-    if (absl::c_linear_search(dims.Indices(DotOperandDims::kBatch),
-                              LayoutUtil::Minor(dims.shape().layout(), 0))) {
-      return false;
+    if (is_normalized) {
+      // cuBLAS only supports single contracting dimension.
+      if (dims.Rank(DotOperandDims::kContracting) > 1) {
+        return false;
+      }
+      // cuBLAS doesn't support a physically minor batch dimension.
+      if (absl::c_linear_search(dims.Indices(DotOperandDims::kBatch),
+                                LayoutUtil::Minor(dims.shape().layout(), 0))) {
+        return false;
+      }
+      // cuBLAS supports up to one non-contracting dimension.
+      if (dims.Rank(DotOperandDims::kNonContracting) > 1) {
+        return false;
+      }
     }
-    // cuBLAS supports up to one non-contracting dimension.
-    const auto& nc_dims = dims.Sizes(DotOperandDims::kNonContracting);
-    if (nc_dims.size() > 1) {
-      return false;
-    }
-    if (nc_dims.size() == 1) {
-      num_matrix_operands += (nc_dims[0] != 1);
-    }
+    num_matrix_operands +=
+        (dims.TotalSize(DotOperandDims::kNonContracting) != 1);
   }
 
   if (num_matrix_operands == 0 ||
@@ -272,20 +493,29 @@ bool IsContiguousSlice(const HloInstruction& instr) {
   return false;
 }
 
-llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {
-  // On Intel GPUs, intrinsics may return a non-i32 integer type, so we first
-  // emit the intrinsic call to get the correct type for the compare
-  // instruction.
-  llvm::Value* tid =
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b);
-  llvm::Value* is_thread0 =
-      b->CreateICmpEQ(llvm::ConstantInt::get(tid->getType(), 0), tid);
-
-  llvm::Value* bid =
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b);
-  llvm::Value* is_block0 =
-      b->CreateICmpEQ(llvm::ConstantInt::get(bid->getType(), 0), bid);
-  return b->CreateAnd(is_thread0, is_block0);
+bool EmitsNoThunks(const HloInstruction& hlo) {
+  switch (hlo.opcode()) {
+    // The module is already scheduled, so instructions that only order other
+    // instructions are no-ops.
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kAfterAll:
+    // Their semantics are encoded by buffer assignment.
+    case HloOpcode::kBitcast:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
+    // Constants are emitted as globals that are initialized when the
+    // executable is loaded.
+    case HloOpcode::kConstant:
+      return true;
+    case HloOpcode::kCustomCall:
+      return hlo.custom_call_target() == kNopCustomCallTarget ||
+             hlo.custom_call_target() == kPinCustomCallTarget ||
+             hlo.custom_call_target() == kUnpinCustomCallTarget ||
+             hlo.custom_call_target() == kCreateBufferCustomCallTarget;
+    default:
+      return false;
+  }
 }
 
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
@@ -500,59 +730,6 @@ void VerifyModule(const llvm::Module& module) {
   llvm::raw_string_ostream error_stream(error_str);
   bool broken = llvm::verifyModule(module, &error_stream);
   CHECK(!broken) << error_str;
-}
-
-llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilderBase* b) {
-  // Find the unnested hlo instruction for which the kernel is generated for.
-  const HloInstruction* unnested_hlo = hlo;
-  const HloComputation* computation = hlo->parent();
-  if (computation->IsFusionComputation()) {
-    unnested_hlo = computation->FusionInstruction();
-  }
-
-  auto shape_in_range = [&](const Shape& s) {
-    bool in_range = true;
-    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
-                                      const ShapeIndex& /*index*/) {
-      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
-        in_range = false;
-      }
-    });
-
-    return in_range;
-  };
-
-  llvm::Type* i64_ty = b->getInt64Ty();
-  // Check launch dimension
-  if (!IsInt32(launch_size)) {
-    return i64_ty;
-  }
-
-  // Check the size of result tensors
-  if (!shape_in_range(unnested_hlo->shape())) {
-    return i64_ty;
-  }
-
-  auto hlo_shape_in_range = [&](const HloInstruction* operand) -> bool {
-    return shape_in_range(operand->shape());
-  };
-
-  // Check the size of input tensors
-  if (!absl::c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
-    return i64_ty;
-  }
-
-  // Check the size of the internal result tensors
-  if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    if (!absl::c_all_of(
-            unnested_hlo->fused_instructions_computation()->instructions(),
-            hlo_shape_in_range)) {
-      return i64_ty;
-    }
-  }
-
-  return b->getInt32Ty();
 }
 
 absl::StatusOr<std::string> GetProtoFingerprint(

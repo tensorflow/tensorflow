@@ -27,18 +27,18 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/service/gpu/alias_info.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -185,6 +185,32 @@ ENTRY main {
       module->entry_computation()->root_instruction();
   EXPECT_FALSE(IsTritonSupportedInstruction(
       *complex, device_info_.gpu_compute_capability()));
+  EXPECT_THAT(fusion_rewriter_.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(SoftmaxRewriterTritonTest, DoesNotFuseDiamondWithParameterOnlyReducer) {
+  // Regression test for #50830: the `(a, b) -> b` combiner of a "take last"
+  // reduction has no neutral value, so padded lanes would be returned instead
+  // of the last element. The diamond must not be fused.
+  const std::string hlo_string = R"(
+HloModule take_last_reducer
+pick {
+  arg_0 = f32[] parameter(0)
+  ROOT arg_1 = f32[] parameter(1)
+}
+ENTRY main {
+  param_0 = f32[128,256]{1,0} parameter(0)
+  constant_0 = f32[] constant(0)
+  reduce = f32[128]{0} reduce(param_0, constant_0), dimensions={1}, to_apply=pick
+  broadcast = f32[128,256]{1,0} broadcast(reduce), dimensions={0}
+  ROOT multiply = f32[128,256]{1,0} multiply(param_0, broadcast)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* reduce =
+      module->entry_computation()->GetInstructionWithName("reduce");
+  ASSERT_NE(reduce, nullptr);
+  EXPECT_FALSE(IsTritonSupportedInstruction(
+      *reduce, device_info_.gpu_compute_capability()));
   EXPECT_THAT(fusion_rewriter_.Run(module.get()), IsOkAndHolds(false));
 }
 

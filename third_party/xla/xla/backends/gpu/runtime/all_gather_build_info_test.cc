@@ -244,21 +244,21 @@ TEST_F(BuildAllGatherInfoTest, FailsWithoutNvlink) {
 }
 
 TEST_F(BuildAllGatherInfoTest, FailsForLargeOutputs) {
-  // 4 * 1024 * 1024 F32 elements * 2 devices = 32 MB > 16 MB limit ->
+  // 8 * 1024 * 1024 F32 elements * 2 devices = 64 MB > 32 MB limit ->
   // unimplemented.
-  EXPECT_THAT(BuildInfo(F32, /*num_elements=*/4 * 1024 * 1024,
+  EXPECT_THAT(BuildInfo(F32, /*num_elements=*/8 * 1024 * 1024,
                         /*replica_groups=*/{0, 1}),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("only supported for small outputs")));
 }
 
-TEST_F(BuildAllGatherInfoTest, SucceedsFor16MBOutput) {
-  // 2 * 1024 * 1024 F32 elements * 2 devices = 16 MB == 16 MB limit -> ok.
-  EXPECT_THAT(BuildInfo(F32, /*num_elements=*/2 * 1024 * 1024,
+TEST_F(BuildAllGatherInfoTest, SucceedsFor32MBOutput) {
+  // 4 * 1024 * 1024 F32 elements * 2 devices = 32 MB == 32 MB limit -> ok.
+  EXPECT_THAT(BuildInfo(F32, /*num_elements=*/4 * 1024 * 1024,
                         /*replica_groups=*/{0, 1}),
               IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
                                  Field(&AllGatherInfo::max_output_elements,
-                                       4 * 1024 * 1024))));
+                                       8 * 1024 * 1024))));
 }
 
 TEST_F(BuildAllGatherInfoTest, VariadicChecksSizePerOperandAndUsesMaxElements) {
@@ -363,7 +363,7 @@ TEST_F(BuildAllGatherInfoTest,
       CreateAllGatherKernelSpec(instr, LaunchDimensions(4, 128),
                                 SymmetricMemoryType::kXlaRendezvous));
   EXPECT_FALSE(spec.codegen_config.copy_input_to_scratch);
-  ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 6);
+  ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 5);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[0].type,
             KernelArgType::kInputBuffer);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[0].index, 0);
@@ -371,15 +371,17 @@ TEST_F(BuildAllGatherInfoTest,
             KernelArgType::kOutputBuffer);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[1].index, 0);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[2].type,
-            KernelArgType::kRuntimeRank);
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[2].index, 1);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[3].type,
-            KernelArgType::kInvocationCount);
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[3].index, 0);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[4].type,
-            KernelArgType::kScratchBuffer);
-  EXPECT_EQ(spec.codegen_config.argument_descriptors[4].index, 0);
-  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].type,
-            KernelArgType::kScratchBuffer);
-  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].index, 1);
+            KernelArgType::kRuntimeRank);
+  EXPECT_EQ(spec.codegen_config.sync_count_increment, 1u);
+  ASSERT_EQ(spec.scratch_buffers.size(), 2);
+  EXPECT_TRUE(spec.scratch_buffers[1].should_double_buffer);
+  EXPECT_EQ(spec.scratch_buffers[1].size_bytes, 1024 * sizeof(float));
 }
 
 }  // namespace

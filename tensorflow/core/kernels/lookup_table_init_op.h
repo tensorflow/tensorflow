@@ -18,17 +18,4 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
 
-namespace tensorflow {
-namespace lookup {
-
-// Helper function to initialize an InitializableLookupTable from a text file.
-absl::Status InitializeTableFromTextFile(const std::string& filename,
-                                         int64_t vocab_size, char delimiter,
-                                         int32_t key_index, int32_t value_index,
-                                         Env* env,
-                                         InitializableLookupTable* table);
-
-}  // namespace lookup
-}  // namespace tensorflow
-
 #endif  // TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_INIT_OP_H_

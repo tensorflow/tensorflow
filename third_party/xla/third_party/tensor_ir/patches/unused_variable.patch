@@ -1,8 +1,8 @@
 diff --git a/include/tensor_ir/Analysis/Tiling/Evaluate.h b/include/tensor_ir/Analysis/Tiling/Evaluate.h
 --- a/include/tensor_ir/Analysis/Tiling/Evaluate.h
 +++ b/include/tensor_ir/Analysis/Tiling/Evaluate.h
-@@ -173,6 +173,8 @@
-  */
+@@ -161,6 +161,8 @@
+ /// Layout tree iterator (base class).
  class LayoutIterator {
  public:
 +  virtual ~LayoutIterator() = default;
@@ -41,3 +41,16 @@ diff --git a/lib/Dialect/Canonicalization.cpp b/lib/Dialect/Canonicalization.cpp
      assert(!overflow && "slice composition was not checked");
      strides.push_back(stride);
    }
+diff --git a/lib/Options/CompilerInvocation.cpp b/lib/Options/CompilerInvocation.cpp
+--- a/lib/Options/CompilerInvocation.cpp
++++ b/lib/Options/CompilerInvocation.cpp
+@@ -64,7 +64,8 @@
+ }
+ 
+ Status CompilerInvocation::validate() const {
+-  TIR_ASSIGN_OR_RETURN(auto remarks, resolveRemarkFilters(optimizationRemarks));
++  TIR_ASSIGN_OR_RETURN([[maybe_unused]] auto remarks,
++                       resolveRemarkFilters(optimizationRemarks));
+   FailureOr<SmTarget> target = getKernelSmTarget();
+   if (failed(target)) {
+     return Status::InvalidArgument("Invalid target SM '" +

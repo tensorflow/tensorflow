@@ -25,6 +25,13 @@ limitations under the License.
 namespace xla {
 
 // Sink kCopy operations as far down the graph as possible.
+//
+// A kCopy of an element of the initial state of a while loop is moved into the
+// body of the loop if the body passes the element on unchanged, the element is
+// only read by slices, in the body and after the loop, and the slices of all
+// iterations and the slices after the loop are in total not larger than twice
+// the element. The loop then carries the element in the layout it has before
+// the copy, and only the slices are copied.
 class MoveCopyToUsers : public HloModulePass {
  public:
   absl::string_view name() const override { return "move_copy_to_users"; }

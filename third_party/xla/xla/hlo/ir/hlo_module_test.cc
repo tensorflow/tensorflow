@@ -29,6 +29,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -53,6 +58,7 @@ limitations under the License.
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -2557,6 +2563,145 @@ TEST(HloModuleTest, BackendConfigProtoRoundTrip) {
   EXPECT_EQ(roundtrip_proto.backend_config(), proto.backend_config());
   EXPECT_EQ(roundtrip_proto.computations(0).backend_config(),
             proto.computations(0).backend_config());
+}
+
+absl::StatusOr<HloModuleProto> ParseHloToProto(absl::string_view hlo) {
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   ParseAndReturnUnverifiedModule(hlo));
+  return module->ToProto();
+}
+
+TEST(HloModuleTest, UpdateFromProtoPropagatesLayouts) {
+  constexpr absl::string_view kDefaultHlo = R"hlo(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,3] parameter(0)
+      ROOT neg = f32[2,3] negate(p0)
+    })hlo";
+  constexpr absl::string_view kMinorToMajor01Hlo = R"hlo(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,3]{0,1} parameter(0)
+      ROOT neg = f32[2,3]{0,1} negate(p0)
+    })hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kDefaultHlo));
+  ASSERT_OK_AND_ASSIGN(HloModuleProto non_default_proto,
+                       ParseHloToProto(kMinorToMajor01Hlo));
+  ASSERT_OK_AND_ASSIGN(HloModuleProto default_proto,
+                       ParseHloToProto(kDefaultHlo));
+
+  ShapeLayout non_default_layout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3}, {0, 1}));
+  ShapeLayout default_layout(ShapeUtil::MakeShape(F32, {2, 3}));
+
+  ASSERT_OK(module->UpdateFromProto(non_default_proto));
+  EXPECT_EQ(module->entry_computation_layout().parameter_layout(0),
+            non_default_layout);
+  EXPECT_EQ(module->entry_computation_layout().result_layout(),
+            non_default_layout);
+
+  ASSERT_OK(module->UpdateFromProto(default_proto));
+  EXPECT_EQ(module->entry_computation_layout().parameter_layout(0),
+            default_layout);
+  EXPECT_EQ(module->entry_computation_layout().result_layout(), default_layout);
+}
+
+TEST(HloModuleTest, UpdateFromProtoRejectsIncompatibleInterface) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"hlo(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,3]{0,1} parameter(0)
+      ROOT neg = f32[2,3]{0,1} negate(p0)
+    })hlo"));
+  ShapeLayout expected_layout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3}, {0, 1}));
+
+  ASSERT_OK_AND_ASSIGN(HloModuleProto wrong_shape, ParseHloToProto(R"hlo(
+    HloModule m
+    ENTRY main {
+      p0 = f32[3,4] parameter(0)
+      ROOT neg = f32[3,4] negate(p0)
+    })hlo"));
+  EXPECT_THAT(module->UpdateFromProto(wrong_shape),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  ::testing::HasSubstr("different shape for parameter 0")));
+  EXPECT_EQ(module->entry_computation_layout().parameter_layout(0),
+            expected_layout);
+
+  ASSERT_OK_AND_ASSIGN(HloModuleProto wrong_arity, ParseHloToProto(R"hlo(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,3] parameter(0)
+      p1 = f32[2,3] parameter(1)
+      ROOT add = f32[2,3] add(p0, p1)
+    })hlo"));
+  EXPECT_THAT(module->UpdateFromProto(wrong_arity),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     ::testing::HasSubstr("parameter_count")));
+  EXPECT_EQ(module->entry_computation_layout().parameter_layout(0),
+            expected_layout);
+}
+
+TEST(HloModuleTest, UpdateFromProtoPreservesAliasAndDonorConfigs) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"hlo(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,3] parameter(0)
+      ROOT neg = f32[2,3] negate(p0)
+    })hlo"));
+  HloInputOutputAliasConfig alias_config(
+      module->entry_computation()->root_instruction()->shape());
+  ASSERT_OK(alias_config.SetUpAlias({}, 0, {}));
+  module->set_input_output_alias_config(alias_config);
+  HloBufferDonorConfig donor_config;
+  ASSERT_OK(donor_config.AddBufferDonor(0, {}));
+  module->set_buffer_donor_config(donor_config);
+
+  ASSERT_OK(module->UpdateFromProto(module->ToProto()));
+  EXPECT_TRUE(module->input_output_alias_config().ParameterHasAlias(0, {}));
+  EXPECT_TRUE(module->buffer_donor_config().ParameterIsBufferDonor(0, {}));
+}
+
+TEST(HloModuleTest, UpdateFromProtoPreservesAndClearsSchedule) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"hlo(
+    HloModule m, is_scheduled=true
+    unused {
+      u0 = f32[] parameter(0)
+      ROOT u_neg = f32[] negate(u0)
+    }
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      add = f32[] add(p0, p0)
+      neg = f32[] negate(p0)
+      ROOT tuple = (f32[], f32[]) tuple(add, neg)
+    })hlo"));
+  ASSERT_TRUE(module->has_schedule());
+
+  ASSERT_OK(module->UpdateFromProto(module->ToProto()));
+  ASSERT_TRUE(module->has_schedule());
+  EXPECT_OK(module->schedule().Verify());
+  EXPECT_EQ(module->computation_count(), 1);
+  EXPECT_THAT(
+      module->schedule().sequence(module->entry_computation()).instructions(),
+      ElementsAre(Property(&HloInstruction::name, "p0"),
+                  Property(&HloInstruction::name, "add"),
+                  Property(&HloInstruction::name, "neg"),
+                  Property(&HloInstruction::name, "tuple")));
+
+  ASSERT_OK_AND_ASSIGN(HloModuleProto unscheduled_proto, ParseHloToProto(R"hlo(
+    HloModule m
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      ROOT tuple = (f32[], f32[]) tuple(p0, p0)
+    })hlo"));
+  ASSERT_OK(module->UpdateFromProto(unscheduled_proto));
+  EXPECT_FALSE(module->has_schedule());
 }
 
 }  // namespace

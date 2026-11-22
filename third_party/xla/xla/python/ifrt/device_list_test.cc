@@ -25,6 +25,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -41,7 +44,10 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAreArray;
+using ::testing::Not;
 
 class DeviceListTest
     : public testing::TestWithParam<test_util::DeviceTestParam> {
@@ -199,6 +205,58 @@ TEST_P(DeviceListSerDesTest, ToFromProto) {
   TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
                           DeviceList::FromProto(client(), proto));
   EXPECT_EQ(*device_list_copy, *device_list);
+}
+
+TEST_P(DeviceListTest, AddressableDeviceListRefOutlivesParentDeviceList) {
+  DeviceListRef device_list = GetDevices({0, 1});
+  DeviceListRef addressable_ref(
+      tsl::FormRef(device_list->AddressableDeviceList()));
+  device_list.reset();
+
+  EXPECT_TRUE(addressable_ref->IsFullyAddressable());
+  EXPECT_GE(addressable_ref->size(), 1);
+}
+
+TEST(DeviceListFingerprintTest, DistinguishesMultiDigitDeviceIdBoundaries) {
+  test_util::DeviceTestFixture fixture_a(test_util::DeviceTestParam{
+      /*num_devices=*/2,
+      /*num_addressable_devices=*/2,
+      /*device_ids=*/{DeviceId(1), DeviceId(23)},
+  });
+  test_util::DeviceTestFixture fixture_b(test_util::DeviceTestParam{
+      /*num_devices=*/2,
+      /*num_addressable_devices=*/2,
+      /*device_ids=*/{DeviceId(12), DeviceId(3)},
+  });
+
+  DeviceListRef list_a = fixture_a.GetDevices({0, 1});
+  DeviceListRef list_b = fixture_b.GetDevices({0, 1});
+
+  EXPECT_NE(list_a->fingerprint(), list_b->fingerprint());
+}
+
+TEST(DeviceListFromProtoTest, UnknownDeviceIdFails) {
+  test_util::DeviceTestFixture fixture(test_util::DeviceTestParam{
+      /*num_devices=*/2,
+      /*num_addressable_devices=*/2,
+  });
+  DeviceListProto proto;
+  proto.set_version_number(0);
+  proto.add_device_ids(9999);
+
+  EXPECT_THAT(DeviceList::FromProto(fixture.client(), proto), Not(IsOk()));
+}
+
+TEST(DeviceListFromProtoTest, UnsupportedVersionFails) {
+  test_util::DeviceTestFixture fixture(test_util::DeviceTestParam{
+      /*num_devices=*/2,
+      /*num_addressable_devices=*/2,
+  });
+  DeviceListProto proto;
+  proto.set_version_number(99);
+
+  EXPECT_THAT(DeviceList::FromProto(fixture.client(), proto),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 INSTANTIATE_TEST_SUITE_P(

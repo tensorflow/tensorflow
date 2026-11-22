@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -95,6 +96,76 @@ using mlir::func::ReturnOp;
 namespace mt = ::mlir::tensor;
 namespace mv = ::mlir::vector;
 
+// Transposes an N x N sub-word tile (4x4x8b or 8x8x4b) loaded from shared
+// memory in 32-bit integer registers via a log2(N)-stage butterfly network,
+// avoiding scalarization through sub-byte vector inserts and shuffles.
+Value TransposeSubwordTileInRegisters(ImplicitLocOpBuilder& b, Value shmem,
+                                      ValueRange shmem_indices,
+                                      int64_t vector_size, Type elem_type,
+                                      VectorType vector_type,
+                                      VectorType vector_tile_type) {
+  SmallVector<Value> shmem_indices_vec(shmem_indices.begin(),
+                                       shmem_indices.end());
+  int64_t elem_bits = elem_type.getIntOrFloatBitWidth();
+  Type i32_type = b.getI32Type();
+  VectorType v1_i32_type = VectorType::get({1}, i32_type);
+  SmallVector<Value, 8> words(vector_size);
+  for (int64_t i = 0; i < vector_size; ++i) {
+    Value loaded_vector = mv::TransferReadOp::create(
+        b, vector_type, shmem, shmem_indices_vec, /*padding=*/std::nullopt,
+        llvm::ArrayRef<bool>{true});
+    Value v1_i32 = mv::BitCastOp::create(b, v1_i32_type, loaded_vector);
+    words[i] = mv::ExtractOp::create(b, v1_i32, SmallVector<int64_t>{0});
+    shmem_indices_vec.front() =
+        mlir::arith::AddIOp::create(b, shmem_indices_vec.front(),
+                                    mlir::arith::ConstantIndexOp::create(b, 1));
+  }
+
+  for (int64_t stride = 1; stride < vector_size; stride *= 2) {
+    uint32_t shift = static_cast<uint32_t>(stride * elem_bits);
+    uint32_t mask = (~uint32_t{0}) / ((uint32_t{1} << shift) + uint32_t{1});
+    Value shift_cst = mlir::arith::ConstantIntOp::create(
+        b, i32_type, static_cast<int64_t>(shift));
+    Value mask_cst = mlir::arith::ConstantIntOp::create(
+        b, i32_type, static_cast<int64_t>(static_cast<int32_t>(mask)));
+    Value inv_mask_cst = mlir::arith::ConstantIntOp::create(
+        b, i32_type, static_cast<int64_t>(static_cast<int32_t>(~mask)));
+    SmallVector<Value, 8> next(vector_size);
+    for (int64_t base = 0; base < vector_size; base += 2 * stride) {
+      for (int64_t k = 0; k < stride; ++k) {
+        Value word_lo = words[base + k];
+        Value word_hi = words[base + k + stride];
+        Value lo = mlir::arith::OrIOp::create(
+            b, mlir::arith::AndIOp::create(b, word_lo, mask_cst),
+            mlir::arith::ShLIOp::create(
+                b, mlir::arith::AndIOp::create(b, word_hi, mask_cst),
+                shift_cst));
+        Value hi = mlir::arith::OrIOp::create(
+            b,
+            mlir::arith::AndIOp::create(
+                b, mlir::arith::ShRUIOp::create(b, word_lo, shift_cst),
+                mask_cst),
+            mlir::arith::AndIOp::create(b, word_hi, inv_mask_cst));
+        next[base + k] = lo;
+        next[base + k + stride] = hi;
+      }
+    }
+    words = std::move(next);
+  }
+
+  SmallVector<Value> vector_tile(vector_size * vector_size);
+  for (int64_t j = 0; j < vector_size; ++j) {
+    Value v1_i32 =
+        mv::FromElementsOp::create(b, v1_i32_type, mlir::ValueRange{words[j]});
+    Value col_vector = mv::BitCastOp::create(b, vector_type, v1_i32);
+    for (int64_t i = 0; i < vector_size; ++i) {
+      vector_tile[j * vector_size + i] =
+          mv::ExtractOp::create(b, col_vector, SmallVector<int64_t>{i});
+    }
+  }
+  return mv::FromElementsOp::create(b, vector_tile_type, vector_tile);
+}
+
 constexpr int64_t kGpuGridDims = 6;
 constexpr int kTileSize = 32;
 // Default values (CUDA and other backends).
@@ -105,19 +176,33 @@ constexpr int kMaxVectorizedBytes = 4;
 constexpr int kNumRowsRocm = 8;
 constexpr int64_t kNumThreadsPerBlockRocm = kNumRowsRocm * kTileSize;  // 256
 constexpr int kMaxVectorizedBytesRocm = 16;
+// Sub-byte and 8-bit packed transposes on non-ROCm GPUs use 256 threads/block
+// to improve SM occupancy when shared-memory tiles are large.
+constexpr int64_t kPackedTransposeNumThreadsPerBlock = 8 * kTileSize;  // 256
+
+// Returns the thread block size for `PackedTranspose`: 256 threads on ROCm and
+// for <=8-bit element types on other GPUs, and 128 threads for wider types.
+int64_t GetPackedTransposeNumThreadsPerBlock(
+    const HloFusionAnalysis& analysis, const PackedTransposeDescription& spec) {
+  if (analysis.device_info().gpu_compute_capability().IsRocm()) {
+    return kNumThreadsPerBlockRocm;
+  }
+  return GetBitwidth(spec.elem_type()) <= 8 ? kPackedTransposeNumThreadsPerBlock
+                                            : kNumThreadsPerBlock;
+}
 
 // Reads the 2D vector tile <vector_size x vector_size> from the shared memory
 // at the given indices.
 Value ReadVectorTileFromShmem(
     ImplicitLocOpBuilder& b, Value shmem, ValueRange shmem_indices,
-    Value vector_tile_init, const stream_executor::DeviceDescription& device) {
-  int64_t vector_size =
-      mlir::cast<VectorType>(vector_tile_init.getType()).getDimSize(0);
-  Value vector_tile = vector_tile_init;
+    int64_t vector_size, const stream_executor::DeviceDescription& device) {
   SmallVector<Value> shmem_indices_vec(shmem_indices.begin(),
                                        shmem_indices.end());
   auto elem_type =
       mlir::cast<mlir::RankedTensorType>(shmem.getType()).getElementType();
+  auto vector_tile_type =
+      mlir::VectorType::get({vector_size, vector_size}, elem_type);
+  SmallVector<Value> vector_tile(vector_size * vector_size);
 
   // Disable vectorization for the data types that result in sub-byte vector
   // loads and stores in the optimized LLVM IR.
@@ -137,18 +222,25 @@ Value ReadVectorTileFromShmem(
         // Extract scalar element
         Value elem = mt::ExtractOp::create(b, shmem, elem_indices);
         // Insert into vector tile
-        vector_tile = mv::InsertOp::create(b, elem, vector_tile,
-                                           SmallVector<int64_t>{j, i});
+        vector_tile[j * vector_size + i] = elem;
       }
       // Advance to next row
       shmem_indices_vec.front() = mlir::arith::AddIOp::create(
           b, shmem_indices_vec.front(),
           mlir::arith::ConstantIndexOp::create(b, 1));
     }
-    return vector_tile;
+    return mv::FromElementsOp::create(b, vector_tile_type, vector_tile);
   }
 
-  auto vector_type = mlir::VectorType::get({vector_size}, elem_type);
+  VectorType vector_type = VectorType::get({vector_size}, elem_type);
+  if (vector_size >= 4 && elem_type.isIntOrFloat() &&
+      absl::has_single_bit(static_cast<uint64_t>(vector_size)) &&
+      vector_size * elem_type.getIntOrFloatBitWidth() == 32) {
+    return TransposeSubwordTileInRegisters(b, shmem, shmem_indices, vector_size,
+                                           elem_type, vector_type,
+                                           vector_tile_type);
+  }
+
   for (int64_t i = 0; i < vector_size; ++i) {
     Value loaded_vector = mv::TransferReadOp::create(
         b, vector_type, shmem, shmem_indices_vec, /*padding=*/std::nullopt,
@@ -156,14 +248,13 @@ Value ReadVectorTileFromShmem(
     for (int64_t j = 0; j < vector_size; ++j) {
       Value elem =
           mv::ExtractOp::create(b, loaded_vector, SmallVector<int64_t>{j});
-      vector_tile = mv::InsertOp::create(b, elem, vector_tile,
-                                         SmallVector<int64_t>{j, i});
+      vector_tile[j * vector_size + i] = elem;
     }
     shmem_indices_vec.front() =
         mlir::arith::AddIOp::create(b, shmem_indices_vec.front(),
                                     mlir::arith::ConstantIndexOp::create(b, 1));
   }
-  return vector_tile;
+  return mv::FromElementsOp::create(b, vector_tile_type, vector_tile);
 }
 
 // Offsets each VECTOR_SIZE x VECTOR_SIZE tile in the shared memory by
@@ -176,12 +267,9 @@ SymbolicExpr Swizzle(SymbolicExpr shmem_row, SymbolicExpr shmem_col,
 
 }  // namespace
 
-TransposeFusionBase::TransposeFusionBase(const HloFusionAnalysis& analysis)
-    : analysis_(analysis),
-      num_threads_per_block_(
-          analysis.device_info().gpu_compute_capability().IsRocm()
-              ? kNumThreadsPerBlockRocm
-              : kNumThreadsPerBlock) {}
+TransposeFusionBase::TransposeFusionBase(const HloFusionAnalysis& analysis,
+                                         int64_t num_threads_per_block)
+    : analysis_(analysis), num_threads_per_block_(num_threads_per_block) {}
 
 absl::Status TransposeFusionBase::EmitEntryFunction(
     const emitters::PartitionedComputations& computations,
@@ -219,7 +307,10 @@ std::vector<emitters::EpilogueSpecification> TransposeFusionBase::GetEpilogues(
 }
 
 TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
-    : TransposeFusionBase(analysis),
+    : TransposeFusionBase(
+          analysis, analysis.device_info().gpu_compute_capability().IsRocm()
+                        ? kNumThreadsPerBlockRocm
+                        : kNumThreadsPerBlock),
       transpose_(analysis.tiled_transpose()),
       permutation_(transpose_.permutation),
       input_shape_(
@@ -593,7 +684,8 @@ std::vector<int64_t> GetBlockCounts(absl::Span<const int64_t> shape,
 PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
                                  const PackedTransposeDescription& spec,
                                  absl::Span<const int64_t> output_block_tile)
-    : TransposeFusionBase(analysis),
+    : TransposeFusionBase(analysis,
+                          GetPackedTransposeNumThreadsPerBlock(analysis, spec)),
       spec_(spec),
       output_tile_(output_block_tile.begin(), output_block_tile.end()),
       input_tile_(Permute(output_tile_, spec_.canonical_inv_permutation)),
@@ -803,15 +895,6 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
   return result;
 }
 
-Value GetZeroVector(ImplicitLocOpBuilder& b, PrimitiveType elem_type,
-                    llvm::ArrayRef<int64_t> shape) {
-  auto mlir_elem_type = emitters::PrimitiveTypeToMlirType(elem_type, b);
-  auto accumulator_type = mlir::VectorType::get(shape, mlir_elem_type);
-  return mlir::arith::ConstantOp::create(
-      b, accumulator_type,
-      emitters::GetZeroDenseElementsAttr(accumulator_type));
-}
-
 void PackedTranspose::EmitReadFromShMemMlir(
     mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
     const HloFusionInstruction& fusion,
@@ -828,14 +911,6 @@ void PackedTranspose::EmitReadFromShMemMlir(
   auto c0 = mlir::arith::ConstantIndexOp::create(builder, 0);
   SmallVector<Value> grid_and_vector_ids{thread_and_block_ids};
   grid_and_vector_ids.append({c0, c0});
-  absl::flat_hash_map<PrimitiveType, Value> elem_type_to_vector_tile;
-  for (const HloInstruction* transpose : shmem_transposes_) {
-    PrimitiveType elem_type = transpose->shape().element_type();
-    if (!elem_type_to_vector_tile.contains(elem_type)) {
-      elem_type_to_vector_tile[elem_type] =
-          GetZeroVector(builder, elem_type, {vector_size_, vector_size_});
-    }
-  }
   absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>
       transpose_values;
   // The outer loop reads <vector_size x vector_size> tiles.
@@ -851,10 +926,8 @@ void PackedTranspose::EmitReadFromShMemMlir(
              llvm::zip(shmem_transposes_, written.shmem_tensors)) {
           ValueRange shmem_indices = map_results;
           Value vector_tile =
-              elem_type_to_vector_tile[transpose->shape().element_type()];
-          vector_tile =
               ReadVectorTileFromShmem(nested_b, shmem, shmem_indices,
-                                      vector_tile, analysis_.device_info());
+                                      vector_size_, analysis_.device_info());
           transpose_values[transpose] = {vector_tile};
         }
         // The inner loop writes columns of the <vector_size x vector_size>

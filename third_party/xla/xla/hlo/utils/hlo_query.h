@@ -229,6 +229,14 @@ bool IsChangeTilingCopyFusion(const HloInstruction* instr);
 // lower those forms must filter them out themselves.
 bool IsStandardAssociativeScan(const HloInstruction* instruction);
 
+// Returns whether the instruction is a convolution with block scaling on its
+// lhs or rhs.
+bool IsScaledConvolution(const HloInstruction& instruction);
+
+// Returns whether the instruction is a convolution with structured sparsity on
+// its lhs or rhs.
+bool IsSparseConvolution(const HloInstruction& instruction);
+
 }  // namespace hlo_query
 }  // namespace xla
 

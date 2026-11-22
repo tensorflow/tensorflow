@@ -55,12 +55,12 @@ limitations under the License.
 namespace xla {
 namespace {
 std::optional<std::string> GetRendezvous(const HloInstruction& instruction) {
-  auto attr_iter = instruction.frontend_attributes().map().find(
-      kXlaHostTransferRendezvousNameAttr);
-  if (attr_iter == instruction.frontend_attributes().map().end()) {
+  std::optional<std::string> attr =
+      instruction.get_frontend_attribute(kXlaHostTransferRendezvousNameAttr);
+  if (!attr.has_value()) {
     return std::nullopt;
   }
-  std::string rendezvous = attr_iter->second;
+  std::string rendezvous = *std::move(attr);
   std::string to_remove =
       instruction.opcode() == HloOpcode::kSend ? "args_dtoh_" : "retvals_htod_";
   size_t pos = rendezvous.find(to_remove);
@@ -2123,16 +2123,6 @@ absl::Status HloValueSemanticsPropagation::HandleOutfeed(
   ShapeTree<const HloValueSemantics*> outfeed_semantics_tree(outfeed->shape(),
                                                              semantics);
   analysis_->SetHloValueSemantics(outfeed, outfeed_semantics_tree);
-  return absl::OkStatus();
-}
-
-absl::Status HloValueSemanticsPropagation::HandleDomain(
-    HloInstruction* domain) {
-  RETURN_IF_ALREADY_PROPAGATED(domain);
-  HloInstruction* domain_operand = domain->mutable_operand(0);
-  const ShapeTree<const HloValueSemantics*>& operand_semantics =
-      analysis_->GetInstructionSemantics(domain_operand);
-  analysis_->DeepCopyHloValueSemantics(domain, operand_semantics);
   return absl::OkStatus();
 }
 

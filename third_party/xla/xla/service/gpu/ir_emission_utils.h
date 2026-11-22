@@ -39,6 +39,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -64,23 +66,41 @@ inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 // dimension.
 inline constexpr int64_t kMaxBitsInMostMinorDimension = 8 * 8;
 
-// Returns true if the given dot is supported by cuBLAS.
+// Returns true if the given dot is supported by cuBLAS. If `is_normalized` is
+// false, checks whether the dot will be supported after DotDimensionNormalizer
+// and GpuLayoutAssignment run.
 absl::StatusOr<bool> IsCublasSupportedMatMul(
-    const HloInstruction& dot, bool allow_matrix_vector_multiplication);
+    const HloInstruction& dot, bool allow_matrix_vector_multiplication,
+    bool is_normalized = true);
 
-// Returns true if the given instruction is supported by gpuBLASLt
-// GroupedMatMul.
-bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr);
+// Returns true if the given ragged-dot is supported by gpuBLASLt
+// GroupedMatMul.  Only hipBLASLt implements grouped GEMM, and the supported
+// element types depend on the target: F16 and BF16 on gfx942, F16 only on
+// gfx950.
+bool IsGpublasLtSupportedGroupedMatMul(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const HloInstruction& instr);
 
 // Returns true if the ragged-dot instruction can be lowered by the Triton
 // XTile backend.  Criteria:
+//   - Ampere or later on NVIDIA targets.
 //   - Exactly one LHS ragged dimension.
-//   - Element types supported by the xtile emitter: F16, BF16, F32, F64,
-//     F8E5M2, F8E4M3FN; nanoo FP8 types (F8E4M3FNUZ, F8E5M2FNUZ) on ROCm only.
-//     Complex types (C64, C128) are not supported.
+//   - Exactly one contracting dimension on each of the LHS and the RHS.
+//   - Element types supported by the xtile emitter: F16, BF16, F32 and F64
+//     everywhere; the OCP FP8 types (F8E5M2, F8E4M3FN) on Hopper or later and
+//     on ROCm targets with OCP FP8 support; the nanoo FP8 types (F8E4M3FNUZ,
+//     F8E5M2FNUZ) on ROCm targets with nanoo FP8 support only.  Complex types
+//     (C64, C128) are not supported.
 bool IsTritonSupportedRaggedDot(
     const se::GpuComputeCapability& gpu_compute_capability,
     const HloInstruction& instr);
+
+// Returns true for the ragged-dot fusions that GemmRewriter emits for the
+// Triton XTile backend: a kCustom fusion carrying the generic Triton fusion
+// kind whose computation contains a kRaggedDot.  Such fusions have a fixed
+// structure that the emitter relies on, so passes that treat generic Triton
+// fusions as malleable must skip them.
+bool IsRaggedDotTritonFusion(const HloInstruction& instr);
 
 // Returns true if `dnums` describes the weight-gradient (wgrad) flavor of
 // ragged-dot, i.e. the LHS ragged dimension is also one of the contracting
@@ -88,6 +108,48 @@ bool IsTritonSupportedRaggedDot(
 // non-contracting dimension. Wgrad ragged-dots lower to cuDNN's
 // moe_grouped_matmul_bwd rather than the forward moe_grouped_matmul path.
 bool IsRaggedDotWgrad(const RaggedDotDimensionNumbers& dnums);
+
+inline const se::dnn::VersionInfo kMinCudnnVersionForRaggedDotFusion(9, 22);
+
+// The ragged-dot wgrad path for kRaggedContracting lowers to cuDNN
+// moe_grouped_matmul_bwd, which requires cuDNN 9.24 or newer, cuBLASLt 13.5 or
+// newer from CUDA Toolkit 13.3, and compute capability SM90 through SM119.
+inline const se::dnn::VersionInfo kMinCudnnVersionForRaggedDotWgradFusion(9,
+                                                                          24);
+inline constexpr se::SemanticVersion
+    kMinCudaToolkitVersionForRaggedDotWgradFusion{13, 3, 0};
+
+bool SupportsCudnnRaggedDotWgrad(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version);
+
+// Returns true if the ragged-dot can be lowered through the cuDNN fusion path,
+// i.e. if RaggedDotFusionRewriter will rewrite it.
+bool IsCudnnSupportedRaggedDot(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version,
+    const HloInstruction& ragged_dot);
+
+// A backend that can lower a ragged-dot.
+enum class RaggedDotBackend {
+  // Rewritten by RaggedDotFusionRewriter, later in the fusion pipeline.
+  kCuDnn,
+  // Rewritten by GemmRewriter into a gpuBLASLt grouped-matmul custom call.
+  kGpuBlasLt,
+  // Rewritten by GemmRewriter into a Triton XTile fusion.
+  kTriton,
+};
+
+// Returns the backends that can lower `ragged_dot`, most preferred first; an
+// empty result means RaggedDotRewriter expands it into a regular dot.  kCuDnn
+// is only statically eligible here: callers probe cuDNN for an execution plan
+// and drop the leading kCuDnn when there is none.  RaggedDotRewriter and
+// GemmRewriter must agree on the head of the list, so both call this.
+absl::InlinedVector<RaggedDotBackend, 3> SelectRaggedDotBackends(
+    const HloInstruction& ragged_dot,
+    const se::GpuComputeCapability& gpu_compute_capability,
+    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version,
+    const DebugOptions& debug_options);
 
 constexpr int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
@@ -132,6 +194,16 @@ inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 // FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTensorIrFusionKind = "__tensorir";
 
+// Horizontal fusions that are emitted as a single thread-block-specialized
+// kernel have FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kThreadBlockSpecializedFusionKind =
+    "__thread_block_specialized";
+
+// Multi-phase wrapper fusions emitted as a single thread-block-cluster kernel
+// have FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kPhasedBlockClusterFusionKind =
+    "__phased_block_cluster";
+
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 
@@ -170,9 +242,13 @@ bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo);
 // operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);
 
-// Emits code that determines whether the current thread is thread 0 within
-// block 0 of the kernel.
-llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b);
+// Returns true if no thunks are emitted for `hlo`, i.e. it does no work on any
+// device stream when the executable runs: its semantics are encoded by buffer
+// assignment, by the schedule, or by data that is set up when the executable
+// is loaded. This is stricter than the latency hiding scheduler's notion of a
+// no-op, which also covers instructions whose work is negligible (e.g.
+// partition-id, a memset of 4 bytes).
+bool EmitsNoThunks(const HloInstruction& hlo);
 
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
@@ -296,17 +372,6 @@ absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
 
 // Verify the given module, and crash if it failed.
 void VerifyModule(const llvm::Module& module);
-
-// Returns the llvm type for the indices used in the kernel that contains the
-// hlo instruction. Such indices include the index for the parallel loop and
-// the indices for the tensors accessed by the kernel. The return type is i32
-// iff the following conditions are met:
-//  . The launch_size of the kernel is within the range of i32.
-//  . The sizes of all the tensors accessed within the kernel are within the
-//    range of i32.
-// Otherwise, the return type is i64.
-llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilderBase* b);
 
 // Returns a deterministic encoded string representation of the proto message.
 absl::StatusOr<std::string> GetProtoFingerprint(

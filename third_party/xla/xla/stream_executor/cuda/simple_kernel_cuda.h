@@ -52,6 +52,18 @@ absl::Status ChevronLaunchWrite42Kernel(
     Stream* stream, stream_executor::DeviceAddress<int32_t> out,
     int num_elements);
 
+// Returns the host function pointer for a simple CUDA kernel compiled with
+// `register_with_cudart = False`, which writes 42 to each element of the given
+// device buffer.
+Write42KernelFn GetWrite42NoCudartKernel();
+
+// Attempts to launch the `register_with_cudart = False` kernel using the
+// chevron syntax (<<<...>>>). Expected to fail because the kernel is not
+// registered with libcudart.
+absl::Status ChevronLaunchWrite42NoCudartKernel(
+    Stream* stream, stream_executor::DeviceAddress<int32_t> out,
+    int num_elements);
+
 }  // namespace stream_executor::cuda
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_SIMPLE_KERNEL_CUDA_H_

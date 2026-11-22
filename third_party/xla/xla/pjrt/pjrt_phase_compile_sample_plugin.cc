@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
@@ -492,10 +493,12 @@ PJRT_Error* PJRT_CpuDeviceTopology_Create(
 const PJRT_Api* GetSamplePhaseCompilePjrtApi() {
   static PJRT_PhaseCompile_Extension phase_compile_extension =
       pjrt::phase_compile_sample_plugin::CreateSamplePhaseCompileExtension();
+  static PJRT_Layouts_Extension layouts_extension =
+      pjrt::CreateLayoutsExtension(&phase_compile_extension.base);
 
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       PJRT_Client_Create, nullptr, PJRT_CpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp, &phase_compile_extension.base,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &layouts_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

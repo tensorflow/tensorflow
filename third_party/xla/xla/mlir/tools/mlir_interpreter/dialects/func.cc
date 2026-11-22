@@ -16,6 +16,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "absl/base/attributes.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -58,8 +59,9 @@ template <int n, typename... Args>
 using Arg = std::tuple_element_t<n, std::tuple<Args...>>;
 
 template <typename Ret, typename... Args>
-bool TryCall(void* sym, func::FuncOp callee,
-             MutableArrayRef<InterpreterValue> args, InterpreterValue& ret) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI bool TryCall(
+    void* sym, func::FuncOp callee, MutableArrayRef<InterpreterValue> args,
+    InterpreterValue& ret) {
   if (args.size() != callee.getNumArguments() || callee.getNumResults() != 1) {
     return false;
   }

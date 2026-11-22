@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -92,6 +93,70 @@ TEST(PjRtCApiTopologyDescriptionTpuTest, SubsliceTopology) {
       topology->Subslice(chips_per_host_bounds, host_bounds));
   EXPECT_THAT(subslice_topology->is_subslice_topology(), true);
   EXPECT_THAT(subslice_topology->DeviceDescriptions().size(), 8);
+}
+
+// Collects all default-type logical device IDs for chips in the inclusive
+// coordinate box `[min_coords, max_coords]`.
+absl::StatusOr<std::vector<int>> DevicesInChipBox(
+    const PjRtTopologyDescription& topology,
+    const PjRtDeviceDimensions& min_coords,
+    const PjRtDeviceDimensions& max_coords) {
+  ABSL_ASSIGN_OR_RETURN(const int devices_per_chip,
+                   topology.LogicalDeviceCountOfDefaultTypePerChip());
+  std::vector<int> device_ids;
+  for (int x = min_coords[0]; x <= max_coords[0]; ++x) {
+    for (int y = min_coords[1]; y <= max_coords[1]; ++y) {
+      for (int z = min_coords[2]; z <= max_coords[2]; ++z) {
+        for (int core = 0; core < devices_per_chip; ++core) {
+          ABSL_ASSIGN_OR_RETURN(
+              const GlobalDeviceId device_id,
+              topology.LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
+                  PjRtDeviceDimensions{x, y, z}, core));
+          device_ids.push_back(device_id.value());
+        }
+      }
+    }
+  }
+  return device_ids;
+}
+
+TEST(PjRtCApiTopologyDescriptionTpuTest, ComputeSubsliceForDevices) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtTopologyDescription> topology,
+                       GetTpuTopology());
+
+  // Single-host 2x2x1 subslice at non-zero origin (2, 2, 0).
+  ASSERT_OK_AND_ASSIGN(std::vector<int> single_host_devices,
+                       DevicesInChipBox(*topology, /*min_coords=*/{2, 2, 0},
+                                        /*max_coords=*/{3, 3, 0}));
+  ASSERT_OK_AND_ASSIGN(
+      const PjRtSubsliceBounds bounds,
+      topology->ComputeSubsliceForDevices(single_host_devices));
+  PjRtSubsliceBounds expected_bounds;
+  expected_bounds.origin = PjRtDeviceDimensions{2, 2, 0};
+  expected_bounds.chips_per_host_bounds = PjRtDeviceDimensions{2, 2, 1};
+  expected_bounds.host_bounds = PjRtDeviceDimensions{1, 1, 1};
+  EXPECT_EQ(bounds, expected_bounds);
+  EXPECT_EQ(bounds.ChipBounds(), (PjRtDeviceDimensions{2, 2, 1}));
+
+  // Non-contiguous box is rejected across the C API.
+  std::vector<int> non_contiguous = single_host_devices;
+  non_contiguous.pop_back();
+  EXPECT_THAT(topology->ComputeSubsliceForDevices(non_contiguous),
+              ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Unaligned host-straddling box (1, 0, 0) to (2, 1, 0) is rejected.
+  ASSERT_OK_AND_ASSIGN(std::vector<int> straddling_devices,
+                       DevicesInChipBox(*topology, /*min_coords=*/{1, 0, 0},
+                                        /*max_coords=*/{2, 1, 0}));
+  EXPECT_THAT(topology->ComputeSubsliceForDevices(straddling_devices),
+              ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Topology that is already a subslice is rejected.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtTopologyDescription> subslice_topology,
+      topology->Subslice(PjRtDeviceDimensions{2, 2, 1}));
+  EXPECT_THAT(subslice_topology->ComputeSubsliceForDevices({0, 1}),
+              ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(PjRtCApiTopologyDescriptionTpuTest, ProcessCount) {

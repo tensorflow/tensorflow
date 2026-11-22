@@ -16,12 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_H_
 #define TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_H_
 
+#include <cstdint>
+#include <limits>
+#include <type_traits>
 #include <vector>
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -41,6 +46,15 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
+
+inline absl::Status ValidateGpuInputSize(const Tensor& tensor_in) {
+  if (tensor_in.NumElements() > std::numeric_limits<int32_t>::max()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "MaxPool on GPU supports at most ", std::numeric_limits<int32_t>::max(),
+        " input elements, got ", tensor_in.NumElements()));
+  }
+  return absl::OkStatus();
+}
 
 // A helper class to manage sizes and shapes for pooling operations.
 struct PoolParameters {
@@ -400,6 +414,10 @@ class MaxPoolingV2Op : public OpKernel {
     OP_REQUIRES(context, ksize[0] == 1 && stride[0] == 1,
                 absl::UnimplementedError(
                     "Pooling is not yet supported on the batch dimension."));
+    if constexpr (std::is_same_v<Device, GPUDevice> &&
+                  std::is_same_v<T, qint8>) {
+      OP_REQUIRES_OK(context, ValidateGpuInputSize(tensor_in));
+    }
 
     PoolParameters params{
         context,

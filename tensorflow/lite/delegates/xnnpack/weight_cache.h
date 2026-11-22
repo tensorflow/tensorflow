@@ -45,6 +45,9 @@ namespace xnnpack {
 // This is useful when disk space is not available or when having to manage the
 // cache file freshness is too complicated and still provides the deduplication
 // mechanism for constant buffers that are reused across graph signatures.
+//
+// In-memory caches don't use build steps: packed buffers are stored as they are
+// inserted and their addresses never change.
 inline constexpr char kInMemoryCachePath[] = ":memory";
 
 // This structure is written at the start of every cache file.
@@ -55,10 +58,17 @@ inline constexpr char kInMemoryCachePath[] = ":memory";
 // When creating a new cache file, `version` should be set to `kVersion`.
 //
 // When reading a cache file, the cache should be rejected if `version`
-// doesn't match `kVersion`.
+// doesn't match `kVersion` or if the magic value doesn't match `kMagicValue`.
+//
+// Note: We could have a single field to identify the file instead of two. The
+// split makes it easier to differentiate the fixed and variable portion of the
+// header identifier.
 struct XNNPackCacheHeader {
-  enum : uint64_t { kInvalidHeader = 0, kVersion = 4 };
+  enum : uint64_t { kInvalidHeader = 0, kVersion = 5 };
+  // The magic value is stored as bytes "XNNPACK\0" on a little endian machine.
+  static constexpr uint64_t kMagicValue = 0x004B4341504E4E58;
   uint64_t version;
+  uint64_t magic_value;
   uint64_t buffer_list_offset;
   uint64_t buffer_list_size;
   uint8_t stale;
@@ -170,8 +180,16 @@ class WeightCacheBuilder {
                         int fingerprint_id);
 
   // Writes the flatbuffer to disk.
+  //
+  // Frees the temporary staging buffer when `release_staging_buffer` is true.
+  // When false, the caller must call `ReleaseStagingBuffer()` (including on
+  // error paths).
   [[nodiscard /*Writing the weight cache can fail.*/]]
-  bool StopBuildStep();
+  bool StopBuildStep(bool release_staging_buffer = true);
+
+  // Releases the temporary staging buffer if no build step is currently active.
+  // Not thread-safe; callers must synchronize externally.
+  void ReleaseStagingBuffer();
 
   // Get the offset in the cache file of the data written during the last step.
   //
@@ -218,6 +236,9 @@ class WeightCacheBuilder {
   // cache. To ensure a smooth reloading, we need to ensure that the file header
   // is correct. This flag lets us know if that has happened.
   bool first_write_done_ = false;
+  // True when `schema_` and `build_segment_start_` already reflect the current
+  // buffer list on disk (e.g., after an empty build step that wrote nothing).
+  bool buffer_list_loaded_ = false;
   // File descriptor view.
   FileDescriptorView fd_;
   std::string file_path_;
@@ -229,6 +250,8 @@ class WeightCacheBuilder {
 //
 // It substitutes itself to the file by storing packed data in buffers
 // allocated on the fly that aren't persisted to the cache file.
+//
+// It also stores all the buffers of in-memory caches (`kInMemoryCachePath`).
 class CacheMissHandler {
  public:
   // Reserves space in the data buffer for the required size in bytes and
@@ -320,6 +343,11 @@ class MMapWeightCacheProvider {
   bool LoadOrStartBuild(const char* file_path,
                         FileDescriptor fd = FileDescriptor());
 
+  // Starts building a cache file. If `fd` is provided, use that instead of
+  // opening the file at the given path.
+  //
+  // Any previous cache is forgotten, see `Release()`. Buffer identifier
+  // mappings are kept.
   [[nodiscard /*Starting to build a cache file may fail.*/]]
   bool StartBuild(const char* file_path, FileDescriptor fd = FileDescriptor());
 
@@ -329,6 +357,9 @@ class MMapWeightCacheProvider {
   void StopBuild() { builder_.Reset(); }
 
   // Sets the weight file path and loads it.
+  //
+  // Any previous cache is forgotten, see `Release()`. Buffer identifier
+  // mappings are kept.
   [[nodiscard /*Loading a cache file may fail.*/]]
   bool Load(const std::string& path, FileDescriptor fd = FileDescriptor());
 
@@ -348,18 +379,32 @@ class MMapWeightCacheProvider {
 
   // Checks if the cache is currently being built or if it was loaded from a
   // file.
+  //
+  // In-memory caches return false: they don't need build steps.
   [[nodiscard]]
   bool CanStartBuildStep() const {
     return builder_.IsStarted();
   };
 
   // Prepares to add new data to the cache.
+  //
+  // This is a no-op for in-memory caches.
   [[nodiscard /*Updating cache data may fail.*/]]
   bool StartBuildStep();
 
   // Prepares to use data that was added to the cache during a build step.
+  //
+  // Frees the builder's temporary staging buffer when `release_staging_buffer`
+  // is true. When false, the caller must call `ReleaseStagingBuffer()`
+  // (including on error paths).
+  //
+  // This is a no-op for in-memory caches.
   [[nodiscard /*Updating cache data may fail.*/]]
-  bool StopBuildStep();
+  bool StopBuildStep(bool release_staging_buffer = true);
+
+  // Releases the builder's temporary staging buffer if no build step is
+  // currently active. Not thread-safe; callers must synchronize externally.
+  void ReleaseStagingBuffer() { builder_.ReleaseStagingBuffer(); }
 
   // Creates the tensor map.
   [[nodiscard]]
@@ -406,7 +451,9 @@ class MMapWeightCacheProvider {
   // WARNING: This does not check the validity of the passed offset.
   void* OffsetToAddr(size_t offset);
 
-  // Releases the weight cache's memory.
+  // Releases the weight cache's memory and closes its file.
+  //
+  // The provider can then be used to start a new cache.
   void Release();
 
   // Returns true if the underlying builder is ready to add weights to the
@@ -416,10 +463,11 @@ class MMapWeightCacheProvider {
     return builder_.IsBuilding();
   };
 
-  // Returns true if a file is mapped or a file path is set.
+  // Returns true if a file is mapped, a file path is set or an in-memory cache
+  // was started.
   [[nodiscard]]
   bool IsActive() const {
-    return !mmap_handles_.empty() || builder_.IsStarted();
+    return !mmap_handles_.empty() || builder_.IsStarted() || in_memory_;
   };
 
   // Returns the cache provider expected by XNNPack.
@@ -469,6 +517,13 @@ class MMapWeightCacheProvider {
   [[nodiscard /*Loading cache data may fail.*/]]
   bool LoadLastBuildStep();
 
+  // Forgets the current cache (packed buffers, mappings and file descriptor)
+  // after flagging its file as stale if needed.
+  //
+  // The buffer identifier mappings and the file path are kept: they can be set
+  // before starting a build or loading a cache.
+  void ResetCache();
+
   // Cache provider implementation for XNNPack.
   xnn_weights_cache_provider cache_provider_{
       /*context=*/this,
@@ -498,7 +553,7 @@ class MMapWeightCacheProvider {
   std::vector<MMapHandle> mmap_handles_;
 
   // The offset to the first buffer data in the MMap allocation.
-  size_t mmap_buffer_base_offset_;
+  size_t mmap_buffer_base_offset_ = 0;
 
   // Holds a file descriptor to the cache file.
   FileDescriptor file_descriptor_;
@@ -506,12 +561,16 @@ class MMapWeightCacheProvider {
   // Used to build the cache.
   WeightCacheBuilder builder_;
 
-  // Handles cache misses when not building the cache file.
+  // Handles cache misses when not building the cache file and stores all the
+  // buffers of in-memory caches.
   CacheMissHandler cache_miss_handler_;
 
   // Stores the loaded buffer addresses corresponding to the given offset in the
   // cache file.
   std::map<size_t, void*> offset_to_addr_;
+
+  // True when using an in-memory cache (`kInMemoryCachePath`).
+  bool in_memory_ = false;
 };
 
 }  // namespace xnnpack

@@ -31,10 +31,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/kernel_thunk_utils.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/zeroed_outputs.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -80,11 +82,9 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
       device_states_(devices_per_host) {}
 
 std::string KernelThunk::ToString(int indent) const {
-  return absl::StrFormat(
-      "kernel=%s, profile_annotation=%s, launch dimensions=%s, cluster_dim=%s",
-      kernel_name_, thunk_info().profile_annotation,
-      launch_dimensions_.ToString(),
-      cluster_dim_.has_value() ? cluster_dim_->ToString() : "nullopt");
+  return KernelThunkToString(kernel_name_, thunk_info().profile_annotation,
+                             launch_dimensions_, cluster_dim_, shmem_bytes_,
+                             use_pdl_);
 }
 
 absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
@@ -268,11 +268,28 @@ absl::StatusOr<const se::CommandBuffer::Command*> KernelThunk::Record(
   auto& [kernel, kernel_args] = kernel_with_args;
   auto packed_args = se::PackKernelArgs(kernel_args, shmem_bytes_);
 
+  std::vector<se::DeviceAddressBase> zeroed_outputs;
+  zeroed_outputs.reserve(zeroed_output_buffer_indices_.size());
+  for (int64_t index : zeroed_output_buffer_indices_) {
+    zeroed_outputs.push_back(
+        execute_params.buffer_allocations->GetDeviceAddress(
+            args_[index].slice));
+  }
+  ABSL_ASSIGN_OR_RETURN(ZeroedOutputs zeroed,
+                   RecordZeroedOutputs(this, record_params, record_action,
+                                       command_buffer, zeroed_outputs));
+
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
-    return command_buffer->CreateLaunch(
-        launch_dimensions_.thread_counts_per_block(),
-        launch_dimensions_.block_counts(), cluster_dim_, *kernel, *packed_args,
-        create->dependencies, priority());
+    ABSL_ASSIGN_OR_RETURN(
+        const se::CommandBuffer::Command* command,
+        command_buffer->CreateLaunch(
+            launch_dimensions_.thread_counts_per_block(),
+            launch_dimensions_.block_counts(), cluster_dim_, *kernel,
+            *packed_args, zeroed.dependencies(create->dependencies),
+            priority()));
+    ABSL_RETURN_IF_ERROR(AttachZeroedOutputs(this, record_params, command_buffer,
+                                        command, std::move(zeroed)));
+    return command;
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
     ABSL_RETURN_IF_ERROR(command_buffer->UpdateLaunch(

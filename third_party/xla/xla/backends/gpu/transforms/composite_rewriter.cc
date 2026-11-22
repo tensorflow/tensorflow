@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/composite_rewriter.h"
 
+#include <optional>
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -34,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/decision.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -108,12 +112,13 @@ Decision IsScaledDotComposite(const HloInstruction* instruction) {
   if (!call->has_frontend_attributes()) {
     return Decision::Forbid("No frontend attributes");
   }
-  const auto& frontend_attrs = call->frontend_attributes().map();
-  auto it = frontend_attrs.find("composite.name");
-  if (it == frontend_attrs.end() || it->second != "xla.scaled_dot") {
+  std::optional<std::string> composite_name =
+      call->get_frontend_attribute("composite.name");
+  if (!composite_name.has_value() || *composite_name != "xla.scaled_dot") {
     return Decision::Forbid(
-        it != frontend_attrs.end()
-            ? absl::StrCat("composite.name is not xla.scaled_dot: ", it->second)
+        composite_name.has_value()
+            ? absl::StrCat("composite.name is not xla.scaled_dot: ",
+                           *composite_name)
             : "composite.name attribute is missing");
   }
   return Decision::Allow();
@@ -146,10 +151,16 @@ absl::Status RewriteScaledDot(
           call->shape(), call->mutable_operand(0), call->mutable_operand(1),
           call->mutable_operand(2), call->mutable_operand(3),
           dot_dimension_numbers, precision));
+  scaled_dot->set_metadata(call->metadata());
   ABSL_RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
   ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(call));
   return absl::OkStatus();
 }
+
+const HloPassFactory* const kCompositeRewriterRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<CompositeRewriter>>(
+        "composite-rewriter");
+
 }  // namespace
 
 absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
@@ -161,14 +172,14 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
       continue;
     }
     auto* call = Cast<HloCallInstruction>(instruction);
-    const auto& frontend_attrs = call->frontend_attributes().map();
-    auto it = frontend_attrs.find("composite.attributes");
-    if (it == frontend_attrs.end()) {
+    std::optional<std::string> composite_attributes =
+        call->get_frontend_attribute("composite.attributes");
+    if (!composite_attributes.has_value()) {
       return absl::InvalidArgumentError(
           "composite.attributes is not set for xla.scaled_dot");
     }
     ABSL_ASSIGN_OR_RETURN(DotDimensionNumbers dot_dimension_numbers,
-                     ParseDimensionNumbers(it->second));
+                     ParseDimensionNumbers(*composite_attributes));
 
     if (Decision d = HasSupportedDimensionNumbers(dot_dimension_numbers); !d) {
       LOG(ERROR) << d.Explain();

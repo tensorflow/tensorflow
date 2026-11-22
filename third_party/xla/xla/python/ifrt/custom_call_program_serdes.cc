@@ -155,6 +155,16 @@ class CustomCallCompileOptionsSerDes
       CustomCallCompileOptionsProto proto;
       proto.set_version_number(SerDesVersionNumber(4).value());
       if (compile_options.outputs_bundle_slice_sizes.has_value()) {
+        if (compile_options.outputs_bundle_slice_sizes->empty()) {
+          if (version.version_number() < SerDesVersionNumber(7)) {
+            return absl::FailedPreconditionError(
+                absl::StrCat("Unsupported ", version.version_number(),
+                             " for CustomCallCompileOptions serialization with "
+                             "empty outputs_bundle_slice_sizes"));
+          }
+          proto.set_version_number(SerDesVersionNumber(7).value());
+        }
+        proto.set_has_outputs_bundle_slice_sizes(true);
         proto.mutable_outputs_bundle_slice_sizes()->Add(
             compile_options.outputs_bundle_slice_sizes->begin(),
             compile_options.outputs_bundle_slice_sizes->end());
@@ -184,7 +194,7 @@ class CustomCallCompileOptionsSerDes
           "Failed to parse serialized CustomCallCompileOptionsProto");
     }
     const SerDesVersionNumber version_number(proto.version_number());
-    if (version_number > SerDesVersionNumber(4)) {
+    if (version_number > SerDesVersionNumber(7)) {
       return absl::FailedPreconditionError(
           absl::StrCat("Unsupported ", version_number,
                        " for CustomCallCompileOptions deserialization"));
@@ -192,7 +202,8 @@ class CustomCallCompileOptionsSerDes
 
     auto compile_options = std::make_unique<CustomCallCompileOptions>();
     if (version_number >= SerDesVersionNumber(4)) {
-      if (!proto.outputs_bundle_slice_sizes().empty()) {
+      if (proto.has_outputs_bundle_slice_sizes() ||
+          !proto.outputs_bundle_slice_sizes().empty()) {
         compile_options->outputs_bundle_slice_sizes.emplace(
             proto.outputs_bundle_slice_sizes().begin(),
             proto.outputs_bundle_slice_sizes().end());

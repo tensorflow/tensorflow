@@ -134,13 +134,13 @@ struct ProfilerSessionWrapper {
   std::string session_id;
 };
 
-static std::string GetFdoProfile(const std::string& xspace,
-                                 bool as_textproto = false) {
+static std::string GetFdoProfile(const std::string& xspace, bool as_textproto,
+                                 bool require_fingerprints) {
   tensorflow::profiler::XSpace xspace_proto;
   xspace_proto.ParseFromString(xspace);
   tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
   xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
-      {xspace_proto}, &fdo_profile));
+      {xspace_proto}, &fdo_profile, require_fingerprints));
   if (as_textproto) {
     std::string textproto;
     if (tsl::protobuf::TextFormat::PrintToString(fdo_profile, &textproto)) {
@@ -293,6 +293,16 @@ NB_MODULE(_profiler, m) {
              new (options)
                  tensorflow::ProfileOptions(DefaultPythonProfileOptions());
            })
+      .def("__copy__",
+           [](const tensorflow::ProfileOptions& options) {
+             return tensorflow::ProfileOptions(options);
+           })
+      .def(
+          "__deepcopy__",
+          [](const tensorflow::ProfileOptions& options, nb::handle memo) {
+            return tensorflow::ProfileOptions(options);
+          },
+          nb::arg("memo"))
       .def_prop_rw("include_dataset_ops",
                    &tensorflow::ProfileOptions::include_dataset_ops,
                    &tensorflow::ProfileOptions::set_include_dataset_ops)
@@ -441,16 +451,16 @@ NB_MODULE(_profiler, m) {
       },
       nb::arg("tensorboard_dir"));
 
-  m.def("get_fdo_profile", [](nb::bytes xspace, bool as_textproto = false) {
-    std::string out =
-        GetFdoProfile(std::string(xspace.c_str(), xspace.size()), as_textproto);
-    return nb::bytes(out.data(), out.size());
-  });
-
-  m.def("get_fdo_profile", [](nb::bytes xspace) {
-    std::string out = GetFdoProfile(std::string(xspace.c_str(), xspace.size()));
-    return nb::bytes(out.data(), out.size());
-  });
+  m.def(
+      "get_fdo_profile",
+      [](nb::bytes xspace, bool as_textproto, bool require_fingerprints) {
+        std::string out =
+            GetFdoProfile(std::string(xspace.c_str(), xspace.size()),
+                          as_textproto, require_fingerprints);
+        return nb::bytes(out.data(), out.size());
+      },
+      nb::arg("xspace"), nb::arg("as_textproto") = false,
+      nb::arg("require_fingerprints") = false);
 
   m.def("set_metadata", &xla::profiler::SetProfilerMetadata, nb::arg("key"),
         nb::arg("value"));

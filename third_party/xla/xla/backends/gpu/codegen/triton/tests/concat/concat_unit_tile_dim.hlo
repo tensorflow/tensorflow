@@ -1,0 +1,51 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+// Verifies that with a unit tile size along the concat dimension (`[32, 1]`,
+// `pid in [0, 15]`), the first branch's identity offset map `(pid) -> (pid)`
+// with narrowed domain `pid in [0, 7]` is preserved as an `xla.apply_indexing`
+// carrying `{xla.range = [0 : index, 7 : index]}` (rather than folding to bare
+// `%pid`), allowing downstream lowering to prove the `memref<32x8xf32>` load is
+// in-bounds and elide its mask.
+fusion {
+  p0 = f32[32,8] parameter(0)
+  p1 = f32[32,8] parameter(1)
+  ROOT concatenate = f32[32,16] concatenate(p0, p1), dimensions={1}
+}
+// CHECK-DAG: #[[$LHS_MAP:.+]] = #xla.indexing_map<"(pid) -> (pid), domain: pid in [0, 7]">
+// CHECK-DAG: #[[$RHS_MAP:.+]] = #xla.indexing_map<"(pid) -> (pid - 8), domain: pid in [8, 15]">
+
+// CHECK:       xtile.entry_func
+// CHECK-SAME:  %[[ARG0:[A-Za-z0-9]+]]: memref<32x8xf32>,
+// CHECK-SAME:  %[[ARG1:[A-Za-z0-9]+]]: memref<32x8xf32>,
+// CHECK-SAME:  %[[ARG2:[A-Za-z0-9]+]]: memref<32x16xf32>,
+// CHECK-SAME:  %[[PID:[A-Za-z0-9]+]]: index {xla.range = [0 : index, 15 : index]}
+
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C8:.*]] = arith.constant 8 : index
+
+// CHECK:       %[[CMPI:.*]] = arith.cmpi slt, %[[PID]], %[[C8]] : index
+// CHECK:       %[[IF:.*]] = scf.if %[[CMPI]] -> (tensor<32x1xf32>) {
+// CHECK:         %[[LHS_COL:.*]] = xla.apply_indexing #[[$LHS_MAP]](%[[PID]]) {xla.range = [0 : index, 7 : index]}
+// CHECK:         %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[LHS_COL]]] [32, 1] [1, 1] : memref<32x8xf32> -> tensor<32x1xf32>
+// CHECK:         scf.yield %[[EXTRACT_0]] : tensor<32x1xf32>
+// CHECK:       } else {
+// CHECK:         %[[RHS_COL:.*]] = xla.apply_indexing #[[$RHS_MAP]](%[[PID]])
+// CHECK:         %[[EXTRACT_1:.*]] = xtile.extract %[[ARG1]][%[[C0]], %[[RHS_COL]]] [32, 1] [1, 1] : memref<32x8xf32> -> tensor<32x1xf32>
+// CHECK:         scf.yield %[[EXTRACT_1]] : tensor<32x1xf32>
+// CHECK:       }
+// CHECK:       xtile.insert %[[IF]] into %[[ARG2]][%[[C0]], %[[PID]]] [32, 1] [1, 1] : tensor<32x1xf32> -> memref<32x16xf32>
+
+ENTRY main {
+  p0 = f32[32,8] parameter(0)
+  p1 = f32[32,8] parameter(1)
+  ROOT fusion = f32[32,16] fusion(p0, p1), kind=kCustom,
+    calls=fusion, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32","1"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

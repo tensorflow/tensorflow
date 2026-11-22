@@ -478,6 +478,51 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
         "Hlo instruction is not a Broadcast insruction.");
   }
   auto bcast = Cast<HloBroadcastInstruction>(broadcast_instr);
+
+  // When a matmul output is reshaped to a higher rank, the broadcast may map
+  // the addend onto the trailing dims of the reshaped shape that together
+  // form the matmul's last (N) dimension. Such an addend is an N-axis bias
+  // and can be bitcast to [1, ..., 1, N]. For example,
+  //      dot = f32[50432,768] dot(...)
+  //      bitcast = f32[256,197,12,64] bitcast(dot)
+  //      arg = f32[12,64]{1,0} parameter(0)
+  //      broad = f32[256,197,12,64] broadcast(arg), dimensions={2,3}
+  // gives the new addend shape f32[1,768].
+  if (IsOneDnnMatmulInstr(contraction)) {
+    auto contraction_dims = contraction->shape().dimensions();
+    auto bcast_dims = bcast->shape().dimensions();
+    auto addend_dims = addend->shape().dimensions();
+    auto kept_dims = bcast->dimensions();
+    int64_t contraction_rank = contraction_dims.size();
+    int64_t bcast_rank = bcast_dims.size();
+    int64_t addend_rank = addend_dims.size();
+    if (contraction_rank >= 2 && bcast_rank > contraction_rank &&
+        addend_rank >= 1) {
+      // The addend must cover exactly the trailing dims, in order.
+      bool maps_to_trailing_dims = true;
+      for (int64_t i = 0; i < addend_rank; ++i) {
+        if (kept_dims[i] != bcast_rank - addend_rank + i) {
+          maps_to_trailing_dims = false;
+          break;
+        }
+      }
+      int64_t matmul_last_dim = contraction_dims.back();
+      if (maps_to_trailing_dims &&
+          ShapeUtil::ElementsIn(addend->shape()) == matmul_last_dim) {
+        std::vector<int64_t> new_dims(contraction_rank, 1);
+        new_dims.back() = matmul_last_dim;
+        Shape trailing_shape = ShapeUtil::MakeShapeWithDenseLayout(
+            addend->shape().element_type(), new_dims,
+            contraction->shape().layout().minor_to_major());
+        // Only reinterpret when the reshape is a genuine bitcast under the
+        // addend's own layout; otherwise fall through to the generic path.
+        if (ShapeUtil::ReshapeIsBitcast(addend->shape(), trailing_shape)) {
+          return trailing_shape;
+        }
+      }
+    }
+  }
+
   Shape new_shape = bcast->shape();
   // Broadcast instruction has "dimensions" parameter along which its input's
   // dimensions should not change. For example,

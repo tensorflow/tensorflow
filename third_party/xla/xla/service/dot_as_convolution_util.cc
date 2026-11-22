@@ -153,6 +153,12 @@ CreateShardedConvForDotGeneralConvolution(
         conv_dnums.input_spatial_dimensions(dim.spatial_dim)));
     wd->set_stride(std::max<int64_t>(1, wd->size() - 1));
     wd->set_base_dilation(wd->size());
+    // Clear padding, window dilation, and window reversal from alternative
+    // SpatialIsBatch forms when rewriting to the unpadded stride form.
+    wd->set_padding_low(0);
+    wd->set_padding_high(0);
+    wd->set_window_dilation(1);
+    wd->set_window_reversal(false);
   }
   for (const auto& dim : dot_dnums.contracting_dims) {
     if (dim.spatial_dim < 0) {

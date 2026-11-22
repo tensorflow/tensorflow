@@ -642,7 +642,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
     bool use_cudnn =
-        std::is_same<Device, GPUDevice>::value &&
+        std::is_same_v<Device, GPUDevice> &&
         (in_depth == 1 ||
          (use_cudnn_grouped_conv_ && UseCudnnWith16BitFloat(context, dtype_) &&
           ShouldCudnnGroupedConvolutionBeUsed(filter_rows, filter_cols,
@@ -1097,13 +1097,13 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     cudnn_use_autotune_ = CudnnUseAutotune();
 
-    if (std::is_same<T, bfloat16>::value) {
+    if (std::is_same_v<T, bfloat16>) {
       dtype_ = DT_BFLOAT16;
-    } else if (std::is_same<T, Eigen::half>::value) {
+    } else if (std::is_same_v<T, Eigen::half>) {
       dtype_ = DT_HALF;
-    } else if (std::is_same<T, float>::value) {
+    } else if (std::is_same_v<T, float>) {
       dtype_ = DT_FLOAT;
-    } else if (std::is_same<T, double>::value) {
+    } else if (std::is_same_v<T, double>) {
       dtype_ = DT_DOUBLE;
     } else {
       LOG(ERROR) << "Only bfloat16, half, float, and double are supported.";
@@ -1170,7 +1170,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     determinism_required = OpDeterminismRequired();
 #endif  // CUDNN_VERSION >= 7603
     bool use_cudnn =
-        std::is_same<Device, GPUDevice>::value &&
+        std::is_same_v<Device, GPUDevice> &&
         (in_depth == 1 || determinism_required ||
          (use_cudnn_grouped_conv_ && UseCudnnWith16BitFloat(context, dtype_) &&
           ShouldCudnnGroupedConvolutionBeUsed(filter_rows, filter_cols,
@@ -1215,10 +1215,10 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     // For GPU inputs with type half (or bfloat16), we cast inputs to float and
     // outputs back to half (or bfloat16), as half (or bfloat16) implementation
     // is slow and does not use full precision accumulation in some cases.
-    constexpr bool cast_to_float = (std::is_same<T, Eigen::half>::value ||
-                                    std::is_same<T, Eigen::bfloat16>::value) &&
-                                   std::is_same<Device, GPUDevice>::value;
-    using U = typename std::conditional<cast_to_float, float, T>::type;
+    constexpr bool cast_to_float = (std::is_same_v<T, Eigen::half> ||
+                                    std::is_same_v<T, Eigen::bfloat16>) &&
+                                   std::is_same_v<Device, GPUDevice>;
+    using U = std::conditional_t<cast_to_float, float, T>;
     Tensor casted_out_backprop = out_backprop;
     Tensor casted_input = input;
     Tensor casted_filter_backprop = *filter_backprop;

@@ -1,11 +1,11 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -305,7 +305,6 @@ cc_library(
         "//xla/hlo/testlib:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -365,6 +364,7 @@ cc_library(
         ":stream",
         ":stream_executor_h",
         "//xla/service:device_assignment",
+        "//xla/stream_executor/gpu:locality_domain_memory",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -414,6 +414,7 @@ cc_library(
     srcs = ["device_address_vmm_allocator_factory_stub.cc"],
     tags = ["manual"],
     deps = [
+        ":device_address_allocator",
         ":device_address_vmm_allocator",
         ":platform",
         ":stream",
@@ -433,6 +434,7 @@ cc_library(
         "manual",
     ],
     deps = [
+        ":device_address_allocator",
         ":device_address_vmm_allocator",
         ":platform",
         ":stream",
@@ -453,6 +455,7 @@ cc_library(
         "rocm-only",
     ],
     deps = [
+        ":device_address_allocator",
         ":device_address_vmm_allocator",
         ":platform",
         ":stream",
@@ -468,12 +471,12 @@ cc_library(
     name = "device_address_vmm_allocator_factory",
     deps = [
         ":device_address_vmm_allocator",
-    ] + if_cuda_or_rocm_is_configured(
+    ] + if_cuda_or_rocm(
         [],
         [":device_address_vmm_allocator_factory_stub"],
-    ) + if_rocm_is_configured(
+    ) + if_rocm(
         [":device_address_vmm_allocator_factory_rocm"],
-    ) + if_cuda_is_configured(
+    ) + if_cuda(
         [":device_address_vmm_allocator_factory_cuda"],
     ),
 )
@@ -716,7 +719,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:platform_port",
     ],
 )
@@ -1027,7 +1029,6 @@ cc_library(
     srcs = ["semantic_version.cc"],
     hdrs = ["semantic_version.h"],
     deps = [
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -1346,6 +1347,7 @@ xla_cc_test(
         "//xla/stream_executor/host:host_platform",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",

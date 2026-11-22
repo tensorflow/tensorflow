@@ -154,9 +154,6 @@ struct GemmImplUsingGemmlowp<LhsScalar, RhsScalar, AccumScalar, DstScalar,
 
     using ColVectorMap =
         gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>;
-    ColVectorMap bias_vector(params.bias, lhs_params.rows);
-    gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
-    bias_addition_stage.bias_vector = bias_vector;
     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponentPC<
         gemmlowp::VectorShape::Col>
         scale_stage;
@@ -171,12 +168,25 @@ struct GemmImplUsingGemmlowp<LhsScalar, RhsScalar, AccumScalar, DstScalar,
     clamp_stage.min = params.clamp_min;
     clamp_stage.max = params.clamp_max;
     SaturatingCastStageType saturating_cast_stage;
-    auto output_pipeline = std::make_tuple(bias_addition_stage, scale_stage,
-                                           clamp_stage, saturating_cast_stage);
     using BitDepthParams = typename GemmlowpBitDepthParams<SrcScalar>::Type;
-    gemmlowp::GemmWithOutputPipeline<SrcScalar, DstScalar, BitDepthParams>(
-        context->gemmlowp_context(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
-        -lhs_params.zero_point, -rhs_params.zero_point, output_pipeline);
+    if (params.bias) {
+      ColVectorMap bias_vector(params.bias, lhs_params.rows);
+      gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
+      bias_addition_stage.bias_vector = bias_vector;
+      auto output_pipeline = std::make_tuple(
+          bias_addition_stage, scale_stage, clamp_stage, saturating_cast_stage);
+      gemmlowp::GemmWithOutputPipeline<SrcScalar, DstScalar, BitDepthParams>(
+          context->gemmlowp_context(), gemmlowp_lhs, gemmlowp_rhs,
+          &gemmlowp_dst, -lhs_params.zero_point, -rhs_params.zero_point,
+          output_pipeline);
+    } else {
+      auto output_pipeline =
+          std::make_tuple(scale_stage, clamp_stage, saturating_cast_stage);
+      gemmlowp::GemmWithOutputPipeline<SrcScalar, DstScalar, BitDepthParams>(
+          context->gemmlowp_context(), gemmlowp_lhs, gemmlowp_rhs,
+          &gemmlowp_dst, -lhs_params.zero_point, -rhs_params.zero_point,
+          output_pipeline);
+    }
 #else
     GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar, DstScalar,
                      QuantizationFlavor::kIntegerWithPerRowMultiplier>::

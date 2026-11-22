@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_RANDOM_OPS_UTIL_H_
 
 #include <functional>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -52,6 +53,40 @@ xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype);
 
 // Combines two signed 32-bit seeds into a single unsigned 64 bit seed.
 xla::XlaOp GetU64FromS32Seeds(xla::XlaOp seed0, xla::XlaOp seed1);
+
+// Replicates the Philox seed-mixing step from the eager/graph implementation
+// in tensorflow/core/kernels/stateless_random_ops.cc (GenerateKey()).
+//
+// The eager path widens the two user seeds to 64 bits (sign-extending S32
+// seeds), places them into a 128-bit counter, runs one Philox-4x32-10 round
+// with the fixed key constants {0x3ec8f720, 0x02461e29} to mix them, then uses
+// the four mixed words as the real key (words 0-1) and counter (words 2-3).
+//
+// Returns {key, counter_high} as U64 scalars: the Philox key, and the high 64
+// bits of the Philox counter, whose low 64 bits are 0.
+std::pair<xla::XlaOp, xla::XlaOp> MixSeedsForEagerCompatibility(
+    xla::XlaBuilder* builder, xla::XlaOp seed0, xla::XlaOp seed1);
+
+// Returns `shape` values uniformly distributed in [0, 1), built from the bits
+// of `bit_generator` the way the TF kernels build them from Philox bits (see
+// xla/tsl/lib/random/random_distributions.h): a half, bfloat16 or float value
+// takes the low mantissa bits of one 32-bit word, and a double value takes 52
+// bits from two consecutive words. Given the key and counter of a TF kernel
+// and a Philox bit generator, the values are the ones that kernel returns.
+xla::RngOutput EagerCompatibleUniformDistribution(
+    xla::XlaOp key, xla::XlaOp counter, xla::BitGeneratorTy bit_generator,
+    const xla::Shape& shape);
+
+// Returns `shape` values with a standard normal distribution, built from the
+// bits of `bit_generator` with the Box-Muller transform the way the TF kernels
+// do: each pair of consecutive values comes from two consecutive 32-bit words,
+// or four for double, and half and bfloat16 values are computed in float.
+// Given the key and counter of a TF kernel and a Philox bit generator, the
+// values match that kernel's up to rounding in the `2 * pi * v` angle
+// multiply and in `sin`, `cos` and `log`.
+xla::RngOutput EagerCompatibleNormalDistribution(
+    xla::XlaOp key, xla::XlaOp counter, xla::BitGeneratorTy bit_generator,
+    const xla::Shape& shape);
 
 absl::StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx);
 

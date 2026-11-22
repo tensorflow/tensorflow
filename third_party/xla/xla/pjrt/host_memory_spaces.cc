@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 
 UnpinnedHostMemorySpace::UnpinnedHostMemorySpace(int id, PjRtDevice* device)
-    : id_(id), device_(device) {
+    : id_(id), device_(device), capi_delegator_(this, device, kKindId) {
   DCHECK(device_ != nullptr && device_->client() != nullptr);
   auto* client = device_->client();
   debug_string_ = absl::StrFormat(
@@ -40,7 +40,7 @@ const int UnpinnedHostMemorySpace::kKindId = []() {
 }();
 
 PinnedHostMemorySpace::PinnedHostMemorySpace(int id, PjRtDevice* device)
-    : id_(id), device_(device) {
+    : id_(id), device_(device), capi_delegator_(this, device, kKindId) {
   DCHECK(device_ != nullptr && device_->client() != nullptr);
   auto* client = device_->client();
   debug_string_ =
@@ -55,7 +55,7 @@ const int PinnedHostMemorySpace::kKindId = []() {
 }();
 
 CpuDeviceMemorySpace::CpuDeviceMemorySpace(int id, PjRtDevice* device)
-    : id_(id), device_(device) {
+    : id_(id), device_(device), capi_delegator_(this, device, kKindId) {
   DCHECK(device_ != nullptr && device_->client() != nullptr);
   auto* client = device_->client();
   debug_string_ =

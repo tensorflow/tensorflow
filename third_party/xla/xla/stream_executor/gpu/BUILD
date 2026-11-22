@@ -27,6 +27,7 @@ load(
 )
 load(
     "//xla/tests:build_defs.bzl",
+    "NVIDIA_GPU_ANY_BACKEND",
     "xla_test",
 )
 load(
@@ -85,6 +86,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:fingerprint",
     ],
@@ -228,9 +230,16 @@ cc_library(
 )
 
 cc_library(
+    name = "dma_buf",
+    srcs = ["dma_buf.cc"],
+    hdrs = ["dma_buf.h"],
+)
+
+cc_library(
     name = "gpu_executor_header",
     hdrs = ["gpu_executor.h"],
     deps = [
+        ":dma_buf",
         ":multicast_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform",
@@ -268,10 +277,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/tsl:internal",
     ]),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@tsl//tsl/platform:status",
-    ] + if_static(
+    deps = ["@com_google_absl//absl/status"] + if_static(
         [":gpu_init_impl"],
     ),
 )
@@ -365,7 +371,7 @@ xla_test(
     deps = [
         ":asm_compiler",
         "//xla:debug_options_flags",
-        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
+        "//xla/backends/gpu/target_lowering:amdgpu_backend",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
@@ -483,7 +489,7 @@ cc_library(
 xla_test(
     name = "gpu_cudamallocasync_allocator_test",
     srcs = ["gpu_cudamallocasync_allocator_test.cc"],
-    backends = ["nvgpu_any"],
+    backends = [NVIDIA_GPU_ANY_BACKEND],
     tags = ["cuda-only"],
     deps = [
         ":gpu_cudamallocasync_allocator",
@@ -493,7 +499,9 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform",
         "//xla/tsl/framework:device_id",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -502,11 +510,46 @@ xla_test(
     ],
 )
 
+tf_proto_library(
+    name = "blas_lt_matmul_algorithm_proto",
+    srcs = ["blas_lt_matmul_algorithm.proto"],
+    deps = [
+        "//xla/stream_executor/cuda:cublas_lt_matmul_algorithm_proto",
+    ],
+)
+
+cc_library(
+    name = "blas_lt_matmul_algorithm",
+    srcs = ["blas_lt_matmul_algorithm.cc"],
+    hdrs = ["blas_lt_matmul_algorithm.h"],
+    deps = [
+        ":blas_lt_matmul_algorithm_proto_cc",
+        "//xla/stream_executor/cuda:cublas_lt_matmul_algorithm",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "blas_lt_matmul_algorithm_test",
+    srcs = ["blas_lt_matmul_algorithm_test.cc"],
+    deps = [
+        ":blas_lt_matmul_algorithm",
+        ":blas_lt_matmul_algorithm_proto_cc",
+        "//xla/stream_executor/cuda:cublas_lt_matmul_algorithm",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
 cc_library(
     name = "gpu_blas_lt",
     srcs = ["gpu_blas_lt.cc"],
     hdrs = ["gpu_blas_lt.h"],
     deps = [
+        ":blas_lt_matmul_algorithm",
         ":gpu_blas_lt_proto_cc",
         "//xla:shape_util",
         "//xla:types",
@@ -529,6 +572,7 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:tensor_float_32_hdr_lib",
     ] + if_static([
@@ -763,6 +807,7 @@ xla_test(
     srcs = ["gpu_executor_test.cc"],
     backends = ["gpu"],
     deps = [
+        ":gpu_executor_header",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
@@ -1015,7 +1060,6 @@ xla_cc_test(
         ":elf_section_extraction",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

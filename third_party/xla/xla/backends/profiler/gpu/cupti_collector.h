@@ -89,7 +89,7 @@ class CuptiTraceCollector {
   explicit CuptiTraceCollector(const CuptiTracerCollectorOptions& options)
       : options_(options),
         annotation_map_(options.max_annotation_strings, options.num_gpus) {}
-  virtual ~CuptiTraceCollector() {}
+  virtual ~CuptiTraceCollector() = default;
 
   // Producer side functions (i.e. called by CuptiTracer).
   virtual void AddEvent(CuptiTracerEvent&& event) = 0;
@@ -148,6 +148,13 @@ class CuptiTraceCollector {
   // <graph_id, graph_node_id> to annotation string during creation of the node.
   absl::flat_hash_map<std::pair<uint32_t, uint64_t>, absl::string_view>
       graph_node_annotations_ = {};
+
+  // Records the launch stream for a CUDA graph launch callback event so that
+  // activity events from the graph's internal stream(s) can be mapped back to
+  // the launch stream even when callback events themselves are not exported.
+  virtual void RecordGraphLaunchStream(uint32_t device_id,
+                                       uint32_t correlation_id,
+                                       int64_t stream_id) {}
 
  private:
   AnnotationMap annotation_map_;

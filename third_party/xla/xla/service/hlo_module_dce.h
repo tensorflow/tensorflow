@@ -16,31 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_MODULE_DCE_H_
 #define XLA_SERVICE_HLO_MODULE_DCE_H_
 
-#include "absl/status/statusor.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// HLO pass which removes dead code from computations in the module using
-// HloModule-scoped analysis (HloLivenessAnalysis).
-//
-// Sweeps through live instructions which cross computation boundaries (kWhile),
-// and removes code at dead shape indices.
-//
-class HloModuleDCE : public HloModulePass {
- public:
-  ~HloModuleDCE() override {}
-  absl::string_view name() const override { return "hlo-module-dce"; }
-
- protected:
-  // Run the pass on the given module. Returns whether the module was changed
-  // (instructions were removed).
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/simplifiers/hlo_module_dce.h"
+#include "xla/hlo/transforms/simplifiers/hlo_module_dce.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_HLO_MODULE_DCE_H_

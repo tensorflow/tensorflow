@@ -167,6 +167,21 @@ bool UseMultiOutputFusion(const HloModuleConfig& config) {
   return extra_options_map.count(kUseMultiOutputFusion) > 0;
 }
 
+absl::StatusOr<int64_t> MaxFusionOperands(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  auto it = extra_options_map.find(kMaxFusionOperands);
+  if (it == extra_options_map.end()) {
+    return 96;  // Default value.
+  }
+  int64_t max_operands;
+  if (!absl::SimpleAtoi(it->second, &max_operands)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse value for: ", kMaxFusionOperands, "."));
+  }
+  return max_operands;
+}
+
 bool EnableTiledEmitter(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();

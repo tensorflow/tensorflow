@@ -110,5 +110,6 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )

@@ -572,6 +572,24 @@ class LinearOperatorScaledIdentityTest(
         operator.inverse(),
         linalg_lib.LinearOperatorScaledIdentity)
 
+  def test_scaled_identity_inverse_complex_multiplier(self):
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=1j, is_non_singular=True
+    )
+    inverse = operator.inverse()
+    # (i * I)^-1 = -i * I is not self-adjoint, so its adjoint is i * I.
+    self.assertAllClose(
+        self.evaluate(inverse.adjoint().to_dense()),
+        self.evaluate(linalg_lib.adjoint(inverse.to_dense())),
+    )
+    self.assertIsNone(inverse.is_self_adjoint)
+
+    # A real multiplier still gives a self-adjoint inverse.
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=3.0, is_non_singular=True
+    )
+    self.assertTrue(operator.inverse().is_self_adjoint)
+
   def test_ref_type_shape_args_raises(self):
     with self.assertRaisesRegex(TypeError, "num_rows.*reference"):
       linalg_lib.LinearOperatorScaledIdentity(

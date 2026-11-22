@@ -63,10 +63,6 @@ struct HloInstructionIndexing {
 
   // Each element is a set of indexing of the corresponding operand at the same
   // position.
-  // TODO(b/417172838): rename?
-  // TODO(b/417172838): indexing_maps are often used as
-  // indexing_maps[X].begin()->map(), provide a method to access the map
-  // directly and also check that there is only one element in the set.
   std::vector<OperandIndexingSet> indexing_maps;
 };
 std::ostream& operator<<(std::ostream& out,
@@ -214,9 +210,6 @@ H AbslHashValue(H h, const OperandIndexing& indexing_map) {
   return h;
 }
 
-// TODO(b/417172838): some routines still use IndexingMapSet and
-// GroupedByOpIndexingMap. We should convert them to use OperandIndexing
-// equivalents.
 using IndexingMapSet = absl::flat_hash_set<IndexingMap>;
 IndexingMapSet ToIndexingMapSet(const OperandIndexingSet& operand_indexing_set);
 

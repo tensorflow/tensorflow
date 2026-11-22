@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -50,7 +52,6 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
@@ -250,24 +251,23 @@ bool IsGuaranteedDivisible(mlir::Value value, int64_t divisor) {
   return false;
 }
 
-bool IsGuaranteedInBounds(mlir::Value value, int64_t tile_size,
-                          int64_t original_shape) {
-  if (auto const_op = value.getDefiningOp<arith::ConstantIndexOp>()) {
-    return const_op.value() >= 0 &&
-           const_op.value() + tile_size <= original_shape;
+bool IsGuaranteedInBounds(mlir::Value offset, int64_t tile_size,
+                          int64_t tile_stride, int64_t original_shape) {
+  std::optional<Interval> range = ::xla::GetRange(offset);
+  if (tile_size <= 0 || !range.has_value() || !range->IsFeasible()) {
+    return false;
   }
-  if (auto apply_indexing = value.getDefiningOp<::xla::ApplyIndexingOp>()) {
-    IndexingMap indexing_map = apply_indexing.getIndexingMap();
-    if (indexing_map.GetNumResults() != 1) {
-      return false;
-    }
-
-    // Compute the maximum possible offset for the given indexing map.
-    Interval range = indexing_map.GetRangeEvaluator().ComputeExpressionRange(
-        indexing_map.GetSymbolicMap().GetResult(0));
-    return range.lower >= 0 && range.upper + tile_size <= original_shape;
-  }
-  return false;
+  // Relative positions of the first and last accessed element of the tile,
+  // i.e. `offset + i * tile_stride` for `i` in `[0, tile_size)`.
+  const int64_t last = (tile_size - 1) * tile_stride;
+  const int64_t min_delta = std::min<int64_t>(0, last);
+  const int64_t max_delta = std::max<int64_t>(0, last);
+  // Written as `lower >= -min_delta` and `upper < original_shape - max_delta`
+  // rather than `lower + min_delta >= 0` and `upper + max_delta <
+  // original_shape` so that unbounded ranges (e.g. `[0, INT64_MAX]`) cannot
+  // overflow.
+  return range->lower >= -min_delta &&
+         range->upper < original_shape - max_delta;
 }
 
 std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
@@ -318,13 +318,11 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
     // Expand and broadcast range to tile shape.
     range = ExpandAndBroadcastValue(builder, range, i, i64_tile_type);
 
-    // Create a mask for values that are inside bounds.
-    // We need to check the offset alignment with the tile size as well,
-    // otherwise we might load/store outside the valid range of the tile, even
-    // if the original shape is divisible by the tile size.
-    if (original_shape[dim] % sizes[dim] != 0 ||
-        !IsGuaranteedDivisible(offsets[dim], sizes[dim]) ||
-        !IsGuaranteedInBounds(offsets[dim], sizes[dim], original_shape[dim])) {
+    // Create a mask for values that are inside bounds, unless every accessed
+    // element `offset + i * stride` is provably within `[0, original_shape)`,
+    // in which case the mask would be all-true.
+    if (!IsGuaranteedInBounds(offsets[dim], sizes[dim], strides[dim],
+                              original_shape[dim])) {
       mlir::Value upper_bound =
           arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
       upper_bound =
@@ -358,7 +356,8 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
 
   mlir::Value reduced_mask;
   for (unsigned dim : reduced_dims) {
-    if (!IsGuaranteedInBounds(offsets[dim], sizes[dim], original_shape[dim])) {
+    if (!IsGuaranteedInBounds(offsets[dim], sizes[dim], strides[dim],
+                              original_shape[dim])) {
       mlir::Value upper_bound =
           arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
       mlir::Value mask_right = arith::CmpIOp::create(

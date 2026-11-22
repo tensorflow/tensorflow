@@ -12,9 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -26,12 +30,19 @@ limitations under the License.
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithDialect.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
@@ -44,20 +55,29 @@ limitations under the License.
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Region.h"
 #include "mlir/IR/TypeRange.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -66,14 +86,16 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/util.h"
-#include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -107,55 +129,148 @@ namespace scf = ::mlir::scf;
 namespace ml = ::mlir::LLVM;
 namespace vector = ::mlir::vector;
 
-Value GetDestinationBuffer(Value dest) {
-  while (dest.getDefiningOp()) {
-    int result_number = mlir::cast<OpResult>(dest).getResultNumber();
-    if (auto insert = dest.getDefiningOp<mlir::tensor::InsertOp>()) {
-      dest = insert.getDest();
-    } else if (auto scf_if = dest.getDefiningOp<scf::IfOp>()) {
+constexpr int kGPUSharedMemoryAddrSpace = 3;
+
+Value GetPtr(Value value) {
+  if (!mlir::isa<mlir::RankedTensorType>(value.getType())) {
+    return nullptr;
+  }
+  if (auto cast = value.getDefiningOp<UnrealizedConversionCastOp>()) {
+    if (cast.getNumOperands() == 1 && cast.getNumResults() == 1 &&
+        mlir::isa<ml::LLVMPointerType>(cast.getOperand(0).getType())) {
+      return cast.getOperand(0);
+    }
+  }
+  return nullptr;
+}
+
+// Unwraps a single step of an SSA operation that updates or threads an
+// existing tensor buffer in place, returning the underlying tensor operand or a
+// null `Value` if `def` is not a pass-through buffer operation.
+//
+// Shared by `TraceDestinationBuffer` (destination-passing pointer resolution
+// for stores/atomics) and `GetBaseBufferAlignment` (base-pointer alignment
+// provenance for reads and writes). Control-flow merges (`scf.if`) and terminal
+// allocations (`xla_gpu.allocate_shared`, `llvm.mlir.addressof`) are handled
+// separately by each caller because writes require identical destination
+// buffers across branches whereas reads may select between distinct buffers
+// with different alignments.
+Value UnwrapPassThroughBufferOp(Operation* def, unsigned result_number) {
+  if (auto insert = mlir::dyn_cast<mlir::tensor::InsertOp>(def)) {
+    return insert.getDest();
+  }
+  if (auto copy_slice = mlir::dyn_cast<CopySliceOp>(def)) {
+    return copy_slice.getDest();
+  }
+  if (auto set_dim = mlir::dyn_cast<SetDynamicDimSizeOp>(def)) {
+    return set_dim.getTensor();
+  }
+  if (auto atomic_store = mlir::dyn_cast<AtomicStoreOp>(def)) {
+    return atomic_store.getDest();
+  }
+  if (auto atomic_rmw = mlir::dyn_cast<AtomicRMWOp>(def)) {
+    return atomic_rmw.getInput();
+  }
+  if (auto transfer_write = mlir::dyn_cast<vector::TransferWriteOp>(def)) {
+    return transfer_write.getBase();
+  }
+  if (auto sync_threads = mlir::dyn_cast<gpu::SyncThreadsOp>(def)) {
+    return sync_threads.getOperand(result_number);
+  }
+  if (auto scf_for = mlir::dyn_cast<scf::ForOp>(def)) {
+    return scf_for.getInitArgs()[result_number];
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+Value TraceDestinationBuffer(Value dest, bool emit_error) {
+  llvm::SmallPtrSet<Value, 8> visited;
+  while (dest) {
+    if (!visited.insert(dest).second) {
+      return nullptr;
+    }
+    if (auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(dest)) {
+      if (auto scf_for = mlir::dyn_cast_or_null<scf::ForOp>(
+              block_arg.getOwner()->getParentOp())) {
+        if (block_arg.getArgNumber() >= scf_for.getNumInductionVars()) {
+          unsigned idx =
+              block_arg.getArgNumber() - scf_for.getNumInductionVars();
+          dest = scf_for.getInitArgs()[idx];
+          continue;
+        }
+      }
+      break;
+    }
+    Operation* def = dest.getDefiningOp();
+    if (!def) {
+      break;
+    }
+    unsigned result_number = mlir::cast<OpResult>(dest).getResultNumber();
+    if (Value unwrapped = UnwrapPassThroughBufferOp(def, result_number)) {
+      dest = unwrapped;
+    } else if (auto scf_if = mlir::dyn_cast<scf::IfOp>(def)) {
       // Pick one of the branches, they're required to yield the same buffers.
       dest = scf_if.getThenRegion().front().getTerminator()->getOperand(
           result_number);
-    } else if (auto scf_for = dest.getDefiningOp<scf::ForOp>()) {
-      dest = scf_for.getInitArgs()[result_number];
-    } else if (auto sync_threads = dest.getDefiningOp<gpu::SyncThreadsOp>()) {
-      dest = sync_threads.getOperand(result_number);
-    } else if (dest.getDefiningOp<UnrealizedConversionCastOp>() ||
-               dest.getDefiningOp<gpu::AllocateSharedOp>()) {
+    } else if (auto scf_switch = mlir::dyn_cast<scf::IndexSwitchOp>(def)) {
+      dest = scf_switch.getDefaultBlock().getTerminator()->getOperand(
+          result_number);
+    } else if (auto cast = mlir::dyn_cast<UnrealizedConversionCastOp>(def)) {
+      if (cast.getNumOperands() == 1 &&
+          mlir::isa<mlir::RankedTensorType>(cast.getOperand(0).getType())) {
+        dest = cast.getOperand(0);
+      } else {
+        break;
+      }
+    } else if (mlir::isa<gpu::AllocateSharedOp>(def)) {
       break;
-    } else if (auto transfer_write =
-                   dest.getDefiningOp<vector::TransferWriteOp>()) {
-      dest = transfer_write.getBase();
     } else {
-      dest.getDefiningOp()->emitOpError("unsupported dest type");
+      if (emit_error) {
+        def->emitOpError("unsupported dest type");
+      }
       return nullptr;
     }
   }
   return dest;
 }
 
-std::optional<int> GetAlignmentFromArg(Value addr, ValueRange indices) {
-  CHECK_LE(indices.size(), 1) << "Only 0D and 1D tensors are supported";
+namespace {
 
-  // If the offset isn't empty or {0}, we don't return any alignment because
-  // computing it isn't trivial and it's unclear that we need to deal with that
-  // case in practice.
-  auto effective_offset_is_zero = [](ValueRange offsets) -> bool {
-    if (offsets.empty()) return true;
-    return mlir::matchPattern(offsets[0].getDefiningOp(), mlir::m_Zero());
-  };
-  if (!effective_offset_is_zero(indices)) return std::nullopt;
+Value GetDestinationBuffer(Value dest) {
+  return TraceDestinationBuffer(dest, /*emit_error=*/true);
+}
 
-  // Try to get the alignment from the function signature.
-  auto base = mlir::dyn_cast<mlir::BlockArgument>(addr);
-  if (!base) return std::nullopt;
-  auto func =
-      mlir::dyn_cast<mlir::func::FuncOp>(base.getOwner()->getParentOp());
-  if (!func) return std::nullopt;
-  auto align_attr =
-      func.getArgAttr(base.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
-  if (!align_attr) return std::nullopt;
-  return mlir::cast<mlir::IntegerAttr>(align_attr).getValue().getSExtValue();
+bool IsSharedMemoryBuffer(Value dest) {
+  Value root = TraceDestinationBuffer(dest);
+  if (!root) {
+    return false;
+  }
+  if (root.getDefiningOp<gpu::AllocateSharedOp>() != nullptr) {
+    return true;
+  }
+  Value ptr = GetPtr(root);
+  llvm::SmallPtrSet<Value, 8> visited_ptrs;
+  while (ptr) {
+    if (!visited_ptrs.insert(ptr).second) {
+      break;
+    }
+    auto ptr_ty = mlir::dyn_cast<ml::LLVMPointerType>(ptr.getType());
+    if (ptr_ty && ptr_ty.getAddressSpace() == kGPUSharedMemoryAddrSpace) {
+      return true;
+    }
+    if (auto cast = ptr.getDefiningOp<ml::AddrSpaceCastOp>()) {
+      ptr = cast.getArg();
+      continue;
+    }
+    if (auto gep = ptr.getDefiningOp<ml::GEPOp>()) {
+      ptr = gep.getBase();
+      continue;
+    }
+    break;
+  }
+  return false;
 }
 
 template <typename Op>
@@ -210,6 +325,13 @@ class RewriteFunctionSignatures : public OpRewritePattern<mlir::func::FuncOp> {
             rewriter, op.getLoc(), operand, op.getArgument(index));
         op.getArgument(index).replaceAllUsesExcept(cast.getResult(0), cast);
         operand = ml::LLVMPointerType::get(op.getContext());
+        // The kernel does not write the buffer, but other kernels may write it
+        // between launches, so its loads are not !invariant.load. Backends
+        // derive what they need (e.g. ld.global.nc) from readonly + noalias.
+        if (op.getArgAttr(index, kXlaInvariantAttr)) {
+          op.setArgAttr(index, ml::LLVMDialect::getReadonlyAttrName(),
+                        rewriter.getUnitAttr());
+        }
       }
     }
 
@@ -225,19 +347,6 @@ class RewriteFunctionSignatures : public OpRewritePattern<mlir::func::FuncOp> {
  private:
   const DeviceSpec& device_spec_;
 };
-
-Value GetPtr(Value value) {
-  if (!mlir::isa<mlir::RankedTensorType>(value.getType())) {
-    return nullptr;
-  }
-  if (auto cast = value.getDefiningOp<UnrealizedConversionCastOp>()) {
-    if (cast.getNumOperands() == 1 && cast.getNumResults() == 1 &&
-        mlir::isa<ml::LLVMPointerType>(cast.getOperand(0).getType())) {
-      return cast.getOperand(0);
-    }
-  }
-  return nullptr;
-}
 
 struct RewriteFor : public OpRewritePattern<scf::ForOp> {
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
@@ -306,7 +415,9 @@ struct RewriteFor : public OpRewritePattern<scf::ForOp> {
     rewriter.setInsertionPoint(new_terminator);
     for (auto [index, yielded_value] :
          llvm::enumerate(new_terminator.getResults())) {
-      if (inits_to_remove.test(index)) continue;
+      if (inits_to_remove.test(index)) {
+        continue;
+      }
       new_yielded_values.push_back(yielded_value);
     }
     rewriter.replaceOpWithNewOp<scf::YieldOp>(new_terminator,
@@ -337,6 +448,370 @@ std::optional<int> GetSubByteBitWidth(Type element_type) {
     }
   }
   return std::nullopt;
+}
+
+constexpr int kBitsPerByte = 8;
+constexpr int kMaxPackedTransferBits = 128;
+constexpr int kMaxProvenanceDepth = 4096;
+constexpr int kMaxBranchDepth = 8;
+constexpr int kMaxIndexDivisorDepth = 32;
+constexpr unsigned kMaxSafePowerOfTwoShift = 62;
+constexpr uint64_t kMaxLLVMAlignment = uint64_t{1} << 30;
+constexpr uint64_t kSharedMemSubWordAlignmentBytes = 4;
+
+// Extracts the `llvm.align` byte alignment when `block_arg` is an entry-block
+// parameter of a `func.func`. Non-entry CFG block arguments are rejected
+// because their values arrive along arbitrary control-flow edges rather than
+// directly from the function signature.
+std::optional<uint64_t> GetFuncEntryArgAlignment(
+    mlir::BlockArgument block_arg) {
+  auto func = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
+      block_arg.getOwner()->getParentOp());
+  if (!func || !block_arg.getOwner()->isEntryBlock()) {
+    return std::nullopt;
+  }
+  auto align_attr = func.getArgAttrOfType<mlir::IntegerAttr>(
+      block_arg.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
+  if (!align_attr) {
+    return std::nullopt;
+  }
+  int64_t align = align_attr.getValue().getSExtValue();
+  if (align <= 0) {
+    return std::nullopt;
+  }
+  return static_cast<uint64_t>(align);
+}
+
+// Returns the base byte alignment guaranteed for an `xla_gpu.allocate_shared`
+// buffer before it is lowered to `llvm.mlir.global`. Elements narrower than 32
+// bits are word-aligned (4 bytes) by `RewriteAllocateShared` so sub-word atomic
+// CAS `ptrmask` operations remain within the allocation; wider types use their
+// target DataLayout ABI alignment.
+std::optional<uint64_t> GetSharedMemoryAlignment(Type element_type,
+                                                 Operation* op) {
+  if (element_type.isIntOrFloat() &&
+      element_type.getIntOrFloatBitWidth() < 32) {
+    return kSharedMemSubWordAlignmentBytes;
+  }
+  mlir::LLVMTypeConverter converter(op->getContext());
+  Type llvm_elem_type = converter.convertType(element_type);
+  if (!llvm_elem_type) {
+    return std::nullopt;
+  }
+  return mlir::DataLayout::closest(op).getTypeABIAlignment(llvm_elem_type);
+}
+
+// Resolves the byte alignment of an `llvm.mlir.addressof` symbol reference.
+// Because `RewriteAllocateShared` and `RewriteNonScalarConstants` run in the
+// same greedy pattern rewrite as vector transfer lowering, shared-memory and
+// constant tensors may already be lowered to `llvm.mlir.global` symbols when
+// `GetBaseBufferAlignment` inspects them. Looking up the `GlobalOp` directly
+// preserves explicit `alignment` attributes (e.g., 4, 8, or 16 bytes) and falls
+// back to the global type's ABI alignment when no explicit attribute is set.
+std::optional<uint64_t> GetGlobalAlignment(ml::AddressOfOp addr_of,
+                                           Operation* op) {
+  auto module = addr_of->getParentOfType<mlir::ModuleOp>();
+  auto global = module
+                    ? module.lookupSymbol<ml::GlobalOp>(addr_of.getGlobalName())
+                    : ml::GlobalOp{};
+  if (!global) {
+    return std::nullopt;
+  }
+  if (std::optional<uint64_t> align = global.getAlignment();
+      align && *align > 0) {
+    return *align;
+  }
+  return mlir::DataLayout::closest(op).getTypeABIAlignment(
+      global.getGlobalType());
+}
+
+// Traces a tensor SSA value back through in-place updates, casts, loops, and
+// branches to its underlying allocation or kernel argument to determine its
+// guaranteed base-pointer byte alignment. Returns `std::nullopt` if provenance
+// reaches an unknown source or exceeds traversal bounds.
+std::optional<uint64_t> GetBaseBufferAlignment(Value base, Operation* op,
+                                               int branch_depth = 0) {
+  for (int depth = 0; base && depth < kMaxProvenanceDepth; ++depth) {
+    if (auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(base)) {
+      if (std::optional<uint64_t> align = GetFuncEntryArgAlignment(block_arg)) {
+        return align;
+      }
+      // Tensor `iter_args` of `scf.for` carry in-place updates to the same
+      // underlying buffer initialized before the loop.
+      if (auto scf_for = mlir::dyn_cast_or_null<scf::ForOp>(
+              block_arg.getOwner()->getParentOp())) {
+        unsigned arg_num = block_arg.getArgNumber();
+        unsigned num_ivs = scf_for.getNumInductionVars();
+        if (arg_num >= num_ivs) {
+          base = scf_for.getInitArgs()[arg_num - num_ivs];
+          continue;
+        }
+      }
+      return std::nullopt;
+    }
+
+    Operation* def = base.getDefiningOp();
+    if (!def) {
+      return std::nullopt;
+    }
+    unsigned result_number = mlir::cast<OpResult>(base).getResultNumber();
+    if (Value unwrapped = UnwrapPassThroughBufferOp(def, result_number)) {
+      base = unwrapped;
+    } else if (auto scf_if = mlir::dyn_cast<scf::IfOp>(def)) {
+      // Reads may select between distinct buffers across `scf.if` branches; the
+      // merged pointer is aligned to `gcd(then_align, else_align)`.
+      if (branch_depth >= kMaxBranchDepth || scf_if.getThenRegion().empty() ||
+          scf_if.getElseRegion().empty()) {
+        return std::nullopt;
+      }
+      Value then_val =
+          scf_if.getThenRegion().front().getTerminator()->getOperand(
+              result_number);
+      Value else_val =
+          scf_if.getElseRegion().front().getTerminator()->getOperand(
+              result_number);
+      if (then_val == else_val) {
+        base = then_val;
+        continue;
+      }
+      std::optional<uint64_t> then_align =
+          GetBaseBufferAlignment(then_val, op, branch_depth + 1);
+      std::optional<uint64_t> else_align =
+          GetBaseBufferAlignment(else_val, op, branch_depth + 1);
+      return (then_align && else_align)
+                 ? std::optional<uint64_t>(std::gcd(*then_align, *else_align))
+                 : std::nullopt;
+    } else if (auto alloc = mlir::dyn_cast<gpu::AllocateSharedOp>(def)) {
+      return GetSharedMemoryAlignment(
+          alloc.getResult().getType().getElementType(), op);
+    } else if (auto addr_of = mlir::dyn_cast<ml::AddressOfOp>(def)) {
+      return GetGlobalAlignment(addr_of, op);
+    } else if (auto addr_cast = mlir::dyn_cast<ml::AddrSpaceCastOp>(def)) {
+      base = addr_cast.getArg();
+    } else if (auto cast = mlir::dyn_cast<UnrealizedConversionCastOp>(def)) {
+      if (cast.getNumOperands() != 1) {
+        return std::nullopt;
+      }
+      base = cast.getOperand(0);
+    } else {
+      return std::nullopt;
+    }
+  }
+  return std::nullopt;
+}
+
+// Returns `|value|` as `uint64_t` without signed overflow on `INT64_MIN`.
+uint64_t UnsignedAbs(int64_t value) {
+  return value < 0 ? (uint64_t{0} - static_cast<uint64_t>(value))
+                   : static_cast<uint64_t>(value);
+}
+
+// Returns the largest power-of-two factor dividing a non-zero `value`.
+uint64_t LargestPowerOfTwoDivisor(uint64_t value) {
+  DCHECK_GT(value, 0);
+  return uint64_t{1} << absl::countr_zero(value);
+}
+
+// Multiplies two known divisors `lhs` and `rhs`, where `0` represents a value
+// known to be identically zero (divisible by every integer). If `lhs * rhs`
+// overflows `uint64_t`, falls back to the largest power-of-two divisor of the
+// exact product (`2^min(62, ctz(lhs) + ctz(rhs))`), which remains a sound
+// divisor while preserving power-of-two byte alignment.
+uint64_t MultiplyDivisors(uint64_t lhs, uint64_t rhs) {
+  if (lhs == 0 || rhs == 0) {
+    return 0;
+  }
+  if (lhs > std::numeric_limits<uint64_t>::max() / rhs) {
+    unsigned trailing_zeros =
+        std::min<unsigned>(kMaxSafePowerOfTwoShift,
+                           absl::countr_zero(lhs) + absl::countr_zero(rhs));
+    return uint64_t{1} << trailing_zeros;
+  }
+  return lhs * rhs;
+}
+
+// Propagates known integer divisors through a `SymbolicExpr` AST given known
+// divisors of its input variables (`var_divisors`).
+//
+// Convention: `0` means the expression is identically zero (`std::gcd(a, 0) ==
+// a`), and `1` means no non-trivial divisor is guaranteed.
+uint64_t GetExprKnownDivisor(SymbolicExpr expr,
+                             absl::Span<const uint64_t> var_divisors) {
+  if (!expr) {
+    return 1;
+  }
+  switch (expr.GetType()) {
+    case SymbolicExprType::kConstant:
+      return UnsignedAbs(expr.GetValue());
+    case SymbolicExprType::kVariable: {
+      int64_t variable_id = expr.GetValue();
+      if (variable_id < 0 ||
+          static_cast<size_t>(variable_id) >= var_divisors.size()) {
+        return 1;
+      }
+      return var_divisors[variable_id];
+    }
+    case SymbolicExprType::kAdd:
+    case SymbolicExprType::kMin:
+    case SymbolicExprType::kMax:
+      return std::gcd(GetExprKnownDivisor(expr.GetLHS(), var_divisors),
+                      GetExprKnownDivisor(expr.GetRHS(), var_divisors));
+    case SymbolicExprType::kMod: {
+      // `a mod b = a - q * b` for some integer `q`, so any common divisor of
+      // `a` and `b` also divides the remainder.
+      uint64_t lhs = GetExprKnownDivisor(expr.GetLHS(), var_divisors);
+      if (lhs == 0) {
+        return 0;
+      }
+      uint64_t rhs = GetExprKnownDivisor(expr.GetRHS(), var_divisors);
+      return rhs == 0 ? 1 : std::gcd(lhs, rhs);
+    }
+    case SymbolicExprType::kMul:
+      return MultiplyDivisors(GetExprKnownDivisor(expr.GetLHS(), var_divisors),
+                              GetExprKnownDivisor(expr.GetRHS(), var_divisors));
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv: {
+      // When `lhs` is a multiple of `lhs_div` and a positive constant `c`
+      // divides `lhs_div` evenly, `lhs = k * (lhs_div / c) * c` has zero
+      // remainder upon division by `c`, so `lhs_div / c` divides both
+      // `floordiv(lhs, c)` and `ceildiv(lhs, c)`. Otherwise (e.g., `4 floordiv
+      // 8 == 0` vs `12 floordiv 8 == 1`), no divisor `> 1` is guaranteed.
+      if (expr.GetRHS().GetType() == SymbolicExprType::kConstant &&
+          expr.GetRHS().GetValue() > 0) {
+        uint64_t divisor = static_cast<uint64_t>(expr.GetRHS().GetValue());
+        uint64_t lhs = GetExprKnownDivisor(expr.GetLHS(), var_divisors);
+        if (lhs == 0) {
+          return 0;
+        }
+        if (lhs % divisor == 0) {
+          return lhs / divisor;
+        }
+      }
+      return 1;
+    }
+  }
+  return 1;
+}
+
+// Computes a guaranteed non-negative divisor of a 1D index SSA value (`0` if
+// identically zero, `1` if unknown) across `arith` ops, `scf.for` induction
+// variables, and `xla.apply_indexing` affine maps.
+uint64_t GetIndexKnownDivisor(Value index_value, int depth = 0) {
+  if (!index_value || depth > kMaxIndexDivisorDepth) {
+    return 1;
+  }
+  llvm::APInt const_val;
+  if (mlir::matchPattern(index_value, mlir::m_ConstantInt(&const_val))) {
+    if (const_val.isZero()) {
+      return 0;
+    }
+    llvm::APInt abs_val = const_val.isNegative() ? -const_val : const_val;
+    if (abs_val.getActiveBits() <= 64) {
+      return abs_val.getZExtValue();
+    }
+    return uint64_t{1} << std::min<unsigned>(kMaxSafePowerOfTwoShift,
+                                             const_val.countr_zero());
+  }
+  if (auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(index_value)) {
+    // An `scf.for` induction variable takes values `lb + k * step` (`k >= 0`),
+    // so `gcd(divisor(lb), divisor(step))` divides every iteration's index.
+    if (auto scf_for = mlir::dyn_cast_or_null<scf::ForOp>(
+            block_arg.getOwner()->getParentOp());
+        scf_for && block_arg == scf_for.getInductionVar()) {
+      return std::gcd(GetIndexKnownDivisor(scf_for.getLowerBound(), depth + 1),
+                      GetIndexKnownDivisor(scf_for.getStep(), depth + 1));
+    }
+    return 1;
+  }
+  Operation* def = index_value.getDefiningOp();
+  if (!def) {
+    return 1;
+  }
+  if (auto apply = mlir::dyn_cast<ApplyIndexingOp>(def)) {
+    unsigned result_index = mlir::cast<OpResult>(index_value).getResultNumber();
+    SmallVector<uint64_t, 8> var_divisors;
+    var_divisors.reserve(apply.getNumOperands());
+    for (Value operand : apply.getOperands()) {
+      var_divisors.push_back(GetIndexKnownDivisor(operand, depth + 1));
+    }
+    return GetExprKnownDivisor(apply.getSymbolicMap().GetResult(result_index),
+                               var_divisors);
+  }
+  if (auto add = mlir::dyn_cast<arith::AddIOp>(def)) {
+    return std::gcd(GetIndexKnownDivisor(add.getLhs(), depth + 1),
+                    GetIndexKnownDivisor(add.getRhs(), depth + 1));
+  }
+  if (auto mul = mlir::dyn_cast<arith::MulIOp>(def)) {
+    return MultiplyDivisors(GetIndexKnownDivisor(mul.getLhs(), depth + 1),
+                            GetIndexKnownDivisor(mul.getRhs(), depth + 1));
+  }
+  if (auto shl = mlir::dyn_cast<arith::ShLIOp>(def)) {
+    llvm::APInt shift;
+    if (mlir::matchPattern(shl.getRhs(), mlir::m_ConstantInt(&shift)) &&
+        shift.ult(63)) {
+      return MultiplyDivisors(GetIndexKnownDivisor(shl.getLhs(), depth + 1),
+                              uint64_t{1} << shift.getZExtValue());
+    }
+  }
+  return 1;
+}
+
+// Returns the in-memory storage size in bits of a single tensor element: the
+// exact packed bit-width (`2` or `4`) for sub-byte element types, or the target
+// DataLayout allocation size in bits for byte-addressable types.
+std::optional<uint64_t> GetElementStorageBitWidth(Type element_type,
+                                                  Operation* op) {
+  if (std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type)) {
+    return static_cast<uint64_t>(*sub_byte_width);
+  }
+  mlir::LLVMTypeConverter converter(op->getContext());
+  Type llvm_elem_type = converter.convertType(element_type);
+  if (!llvm_elem_type) {
+    return std::nullopt;
+  }
+  llvm::TypeSize alloc_size =
+      mlir::DataLayout::closest(op).getTypeAllocSize(llvm_elem_type);
+  if (alloc_size.isScalable()) {
+    return std::nullopt;
+  }
+  return alloc_size.getFixedValue() * kBitsPerByte;
+}
+
+// Infers the guaranteed power-of-two byte alignment for a 0D/1D vector transfer
+// from its base buffer alignment and starting element index offset, or returns
+// `std::nullopt` when the base buffer alignment is unknown.
+//
+// Alignment is computed in bits (`gcd(base_byte_align * 8, elem_div *
+// elem_bits)`) before converting back to bytes so packed sub-byte types (e.g.,
+// `i4` at an index divisible by `8` -> `32`-bit / `4`-byte offset) and
+// multi-byte types (e.g., `i64` at index `2` -> `16`-byte offset) are handled
+// uniformly.
+std::optional<uint64_t> GetTransferAlignment(Value base, ValueRange indices,
+                                             Type element_type, Operation* op) {
+  CHECK_LE(indices.size(), 1) << "Only 0D and 1D tensors are supported";
+  std::optional<uint64_t> base_align = GetBaseBufferAlignment(base, op);
+  if (!base_align || *base_align == 0) {
+    return std::nullopt;
+  }
+  uint64_t base_byte_align = std::min<uint64_t>(
+      LargestPowerOfTwoDivisor(*base_align), kMaxLLVMAlignment);
+  uint64_t elem_div = indices.empty() ? 0 : GetIndexKnownDivisor(indices[0]);
+  if (elem_div == 0) {
+    return base_byte_align;
+  }
+
+  std::optional<uint64_t> elem_bits =
+      GetElementStorageBitWidth(element_type, op);
+  if (!elem_bits || *elem_bits == 0) {
+    return std::nullopt;
+  }
+
+  uint64_t bit_offset_div = MultiplyDivisors(elem_div, *elem_bits);
+  uint64_t bit_align = std::gcd(base_byte_align * kBitsPerByte, bit_offset_div);
+  if (bit_align < kBitsPerByte) {
+    return uint64_t{1};
+  }
+  return LargestPowerOfTwoDivisor(bit_align / kBitsPerByte);
 }
 
 // Get the number of bits used to index into a sub-byte type.
@@ -378,7 +853,7 @@ ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
     num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
   }
   auto ptr = ml::LLVMPointerType::get(b.getContext());
-  auto tensor_ptr =
+  Value tensor_ptr =
       UnrealizedConversionCastOp::create(b, ptr, tensor).getResult(0);
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
@@ -394,6 +869,28 @@ ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
 ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
                     ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
   return CreateGep(tensor, GetLinearIndex(indices, b), b);
+}
+
+// Returns a tensor of the type of `tensor` backed by the buffer that `tensor`
+// forwards, which the caller must have traced successfully. An address computed
+// from `tensor` itself would keep forwarding ops such as scf.index_switch
+// results alive.
+TypedValue<mlir::RankedTensorType> ResolveAddressTensor(
+    TypedValue<mlir::RankedTensorType> tensor, mlir::ImplicitLocOpBuilder& b) {
+  Value buffer = TraceDestinationBuffer(tensor);
+  CHECK(buffer) << "Untraceable destinations must be rejected before lowering";
+  if (buffer.getType() == tensor.getType()) {
+    return mlir::cast<TypedValue<mlir::RankedTensorType>>(buffer);
+  }
+  // The type of `tensor` defines the byte stride of the address.
+  return mlir::cast<TypedValue<mlir::RankedTensorType>>(
+      UnrealizedConversionCastOp::create(b, tensor.getType(), buffer)
+          .getResult(0));
+}
+
+ml::GEPOp CreateAtomicGep(TypedValue<mlir::RankedTensorType> tensor,
+                          ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
+  return CreateGep(ResolveAddressTensor(tensor, b), indices, b);
 }
 
 struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
@@ -438,6 +935,71 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
   }
 };
 
+// Builds an `inbounds` GEP to the starting address of a 0D/1D vector transfer.
+// For packed sub-byte element types (e.g., `i4` packed 2 per byte), converts
+// the element index into a byte index by shifting right by
+// `SubByteIndexingBits(bit_width)`; vectorized sub-byte transfers always start
+// at a byte-aligned element offset.
+ml::GEPOp CreateTransferGep(TypedValue<mlir::RankedTensorType> tensor,
+                            ValueRange indices, Type element_type,
+                            mlir::ImplicitLocOpBuilder& b) {
+  Value linear_index = GetLinearIndex(indices, b);
+  if (std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type)) {
+    linear_index = arith::ShRUIOp::create(
+        b, linear_index,
+        arith::ConstantIntOp::create(b, linear_index.getType(),
+                                     SubByteIndexingBits(*sub_byte_width)));
+  }
+  return CreateGep(tensor, linear_index, b);
+}
+
+// Returns a scalar integer type (`i8`, `i16`, `i32`, `i64`, or `i128`) matching
+// the total bit-width of `vector_type` when `vector_type` is a fixed-length
+// vector of packed sub-byte elements whose total width is a byte-sized power of
+// two up to 128 bits; otherwise returns a null `IntegerType`.
+//
+// Sub-byte tensor elements (`i2`, `i4`, `f4E2M1FN`) are tightly packed in
+// little-endian bit order within each byte, matching LLVM's bitcast layout
+// between `<N x iM>` and `i(N*M)`. Emitting `llvm.load` / `llvm.store` directly
+// on sub-byte LLVM vector types such as `<8 x i4>` causes LLVM's SelectionDAG
+// legalizer to split or scalarize the access into narrow byte loads/stores and
+// bit shifts even when wide alignment is proven. Loading/storing through a
+// single `i(N*M)` integer and bitcasting in registers allows backends (e.g.,
+// NVPTX/AMDGPU) to emit a single wide load/store instruction (`ld.global.b32`,
+// `st.shared.b32`, etc.).
+mlir::IntegerType GetPackedSubByteIntegerType(mlir::VectorType vector_type,
+                                              mlir::Builder& b) {
+  if (vector_type.isScalable()) {
+    return nullptr;
+  }
+  std::optional<int> sub_byte_width =
+      GetSubByteBitWidth(vector_type.getElementType());
+  if (!sub_byte_width) {
+    return nullptr;
+  }
+  int64_t total_bits = vector_type.getNumElements() * (*sub_byte_width);
+  if (total_bits < kBitsPerByte || total_bits > kMaxPackedTransferBits ||
+      !absl::has_single_bit(static_cast<uint64_t>(total_bits))) {
+    return nullptr;
+  }
+  return b.getIntegerType(total_bits);
+}
+
+// Resolves the byte alignment to attach to a lowered vector transfer `load` or
+// `store`, using provenance/index alignment inference when available and
+// falling back to the target DataLayout's preferred element alignment.
+uint64_t ResolveTransferAlignment(Value base, ValueRange indices,
+                                  Type element_type, Operation* op) {
+  if (std::optional<uint64_t> alignment =
+          GetTransferAlignment(base, indices, element_type, op)) {
+    return *alignment;
+  }
+  // TODO(willfroom): We should really just use getTypeABIAlignment here,
+  // but this requires passing through the full data layout for the target
+  // machine.
+  return mlir::DataLayout::closest(op).getTypePreferredAlignment(element_type);
+}
+
 struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -448,46 +1010,25 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
 
     auto source =
         mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(op.getBase());
-    mlir::Type source_element_type = source.getType().getElementType();
-
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    auto linear_index = GetLinearIndex(op.getIndices(), b);
-
     mlir::VectorType vector_type = op.getVectorType();
-    if (vector_type.getElementType().isInteger(1)) {
-      vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
-    }
-    mlir::Type gep_element_type = vector_type.getElementType();
-    std::optional<int> sub_byte_width = GetSubByteBitWidth(gep_element_type);
-    if (sub_byte_width) {
-      linear_index = arith::ShRUIOp::create(
-          b, linear_index,
-          arith::ConstantIntOp::create(b, linear_index.getType(),
-                                       SubByteIndexingBits(*sub_byte_width)));
-    }
-    auto gep = CreateGep(source, linear_index, b);
+    mlir::Type element_type = vector_type.getElementType();
+    ml::GEPOp gep = CreateTransferGep(source, op.getIndices(), element_type, b);
 
     mlir::LLVMTypeConverter converter(b.getContext());
-    auto llvm_vector_type = converter.convertType(vector_type);
-    auto load = ml::LoadOp::create(b, llvm_vector_type, gep);
-    if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
-      load.setAlignment(*alignment);
-    } else {
-      auto data_layout = mlir::DataLayout::closest(op);
-      // TODO(willfroom): We should really just use getTypeABIAlignment here,
-      // but this requires passing through the full data layout for the target
-      // machine.
-      load.setAlignment(
-          data_layout.getTypePreferredAlignment(gep_element_type));
-    }
-    auto loaded = load.getResult();
+    Type llvm_vector_type = converter.convertType(vector_type);
+    mlir::IntegerType packed_int_type =
+        GetPackedSubByteIntegerType(vector_type, b);
+    Type load_type = packed_int_type ? Type{packed_int_type} : llvm_vector_type;
 
-    if (source_element_type.isInteger(1)) {
-      Value zero = mlir::arith::ConstantOp::create(
-          b, mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
-      loaded = arith::CmpIOp::create(b, arith::CmpIPredicate::ne, loaded, zero);
-    }
+    auto load = ml::LoadOp::create(b, load_type, gep);
+    load.setAlignment(ResolveTransferAlignment(op.getBase(), op.getIndices(),
+                                               element_type, op));
 
+    Value loaded = load.getResult();
+    if (packed_int_type) {
+      loaded = ml::BitcastOp::create(b, llvm_vector_type, loaded);
+    }
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
                                                             loaded);
     return success();
@@ -575,7 +1116,12 @@ class RewriteTensorInsert : public OpRewritePattern<mlir::tensor::InsertOp> {
 
         // We need AtomicRMWOp because it can happen that different threads try
         // to access the same memory location.
-        auto atomic_rmw = AtomicRMWOp::create(b, tensor_dest_i8, linear_index);
+        SmallVector<Value, 1> rmw_indices;
+        if (tensor_dest.getType().getRank() > 0) {
+          rmw_indices.push_back(
+              arith::IndexCastUIOp::create(b, b.getIndexType(), linear_index));
+        }
+        auto atomic_rmw = AtomicRMWOp::create(b, tensor_dest_i8, rmw_indices);
         mlir::ImplicitLocOpBuilder body_builder(atomic_rmw.getLoc(),
                                                 atomic_rmw.getBodyBuilder());
         Value current_value = atomic_rmw.getCurrentValue();
@@ -583,7 +1129,7 @@ class RewriteTensorInsert : public OpRewritePattern<mlir::tensor::InsertOp> {
             body_builder, current_value, inverse_mask);
         Value new_value = mlir::arith::OrIOp::create(
             body_builder, masked_out_current_value, shifted_value);
-        scf::YieldOp::create(body_builder, new_value);
+        xla::YieldOp::create(body_builder, new_value);
         Value casted_result =
             UnrealizedConversionCastOp::create(b, tensor_dest.getType(),
                                                atomic_rmw.getResult())
@@ -630,42 +1176,153 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
-    auto linear_index = GetLinearIndex(op.getIndices(), b);
-
-    mlir::Value vector_value = op.getVector();
-    mlir::Type vector_element_type = op.getVectorType().getElementType();
-    if (vector_element_type.isInteger(1)) {
-      vector_value = arith::ExtUIOp::create(
-          b, op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
-          vector_value);
-    }
-    std::optional<int> sub_byte_width = GetSubByteBitWidth(vector_element_type);
-    if (sub_byte_width) {
-      linear_index = arith::ShRUIOp::create(
-          b, linear_index,
-          arith::ConstantIntOp::create(b, linear_index.getType(),
-                                       SubByteIndexingBits(*sub_byte_width)));
-    }
-    auto gep = CreateGep(tensor_dest, linear_index, b);
+    mlir::VectorType vector_type = op.getVectorType();
+    mlir::Type element_type = vector_type.getElementType();
+    ml::GEPOp gep =
+        CreateTransferGep(tensor_dest, op.getIndices(), element_type, b);
 
     mlir::LLVMTypeConverter converter(getContext());
-    auto llvm_type = converter.convertType(vector_value.getType());
-    vector_value =
-        UnrealizedConversionCastOp::create(b, llvm_type, vector_value)
+    Type llvm_vector_type = converter.convertType(vector_type);
+    Value store_value =
+        UnrealizedConversionCastOp::create(b, llvm_vector_type, op.getVector())
             .getResult(0);
-    auto store = ml::StoreOp::create(b, vector_value, gep);
-    if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
-      store.setAlignment(*alignment);
-    } else {
-      auto data_layout = mlir::DataLayout::closest(op);
-      // TODO(willfroom): We should really just use getTypeABIAlignment here,
-      // but this requires passing through the full data layout for the target
-      // machine.
-      store.setAlignment(
-          data_layout.getTypePreferredAlignment(vector_element_type));
+    if (mlir::IntegerType packed_int_type =
+            GetPackedSubByteIntegerType(vector_type, b)) {
+      store_value = ml::BitcastOp::create(b, packed_int_type, store_value);
     }
 
+    auto store = ml::StoreOp::create(b, store_value, gep);
+    store.setAlignment(
+        ResolveTransferAlignment(dest, op.getIndices(), element_type, op));
+
     rewriter.replaceOp(op, mlir::ValueRange{op.getBase()});
+    return success();
+  }
+};
+
+Value UnwrapTensorCasts(Value value) {
+  while (value) {
+    value = GetDestinationBuffer(value);
+    if (!value) {
+      return nullptr;
+    }
+    auto cast = value.getDefiningOp<UnrealizedConversionCastOp>();
+    if (!cast || cast.getNumOperands() != 1 ||
+        !mlir::isa<mlir::RankedTensorType>(cast.getOperand(0).getType())) {
+      break;
+    }
+    value = cast.getOperand(0);
+  }
+  return value;
+}
+
+int64_t GetCopySliceAlignment(Value base, ValueRange indices,
+                              int64_t element_size_bytes,
+                              int64_t element_abi_alignment) {
+  Value unwrapped = UnwrapTensorCasts(base);
+  if (!unwrapped) {
+    return element_abi_alignment;
+  }
+  auto arg = mlir::dyn_cast<mlir::BlockArgument>(unwrapped);
+  if (!arg) {
+    return element_abi_alignment;
+  }
+  auto func = mlir::dyn_cast<mlir::func::FuncOp>(arg.getOwner()->getParentOp());
+  if (!func) {
+    return element_abi_alignment;
+  }
+  auto align_attr = func.getArgAttrOfType<mlir::IntegerAttr>(
+      arg.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
+  if (!align_attr) {
+    return element_abi_alignment;
+  }
+  int64_t base_align = align_attr.getInt();
+  if (base_align <= 1 || !llvm::isPowerOf2_64(base_align)) {
+    return element_abi_alignment;
+  }
+  if (indices.empty()) {
+    return base_align;
+  }
+  if (indices.size() == 1) {
+    llvm::APInt const_idx;
+    if (mlir::matchPattern(indices[0], mlir::m_ConstantInt(&const_idx)) &&
+        const_idx.isNonNegative() && const_idx.getActiveBits() <= 60) {
+      uint64_t offset_bytes =
+          const_idx.getZExtValue() * static_cast<uint64_t>(element_size_bytes);
+      return static_cast<int64_t>(
+          llvm::MinAlign(static_cast<uint64_t>(base_align), offset_bytes));
+    }
+  }
+  return static_cast<int64_t>(
+      llvm::MinAlign(static_cast<uint64_t>(base_align),
+                     static_cast<uint64_t>(element_size_bytes)));
+}
+
+struct RewriteCopySlice : mlir::OpRewritePattern<CopySliceOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      CopySliceOp op, mlir::PatternRewriter& rewriter) const override {
+    Value src = GetDestinationBuffer(op.getSrc());
+    Value dest = GetDestinationBuffer(op.getDest());
+    if (!src || !dest) {
+      return failure();
+    }
+
+    auto tensor_src = mlir::cast<TypedValue<mlir::RankedTensorType>>(src);
+    auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
+    Type element_type = tensor_dest.getType().getElementType();
+    if (GetSubByteBitWidth(element_type)) {
+      return op->emitOpError("sub-byte copy_slice is not supported");
+    }
+
+    int64_t num_elements = op.getNumElements();
+    if (num_elements > 0) {
+      mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+      Value src_linear_index = GetLinearIndex(op.getSrcIndices(), b);
+      Value dst_linear_index = GetLinearIndex(op.getDestIndices(), b);
+      auto src_gep = CreateGep(tensor_src, src_linear_index, b);
+      auto dst_gep = CreateGep(tensor_dest, dst_linear_index, b);
+
+      mlir::DataLayout data_layout = mlir::DataLayout::closest(op);
+      mlir::LLVMTypeConverter converter(getContext());
+      Type llvm_element_type = converter.convertType(element_type);
+      int64_t element_size_bytes = static_cast<int64_t>(
+          data_layout.getTypeSize(llvm_element_type).getFixedValue());
+      int64_t element_abi_alignment = static_cast<int64_t>(
+          data_layout.getTypeABIAlignment(llvm_element_type));
+      int64_t src_align =
+          GetCopySliceAlignment(op.getSrc(), op.getSrcIndices(),
+                                element_size_bytes, element_abi_alignment);
+      int64_t dst_align =
+          GetCopySliceAlignment(op.getDest(), op.getDestIndices(),
+                                element_size_bytes, element_abi_alignment);
+
+      auto make_align_dict = [&](int64_t align) {
+        if (align <= 1) {
+          return b.getDictionaryAttr({});
+        }
+        return b.getDictionaryAttr(b.getNamedAttr(
+            ml::LLVMDialect::getAlignAttrName(), b.getI64IntegerAttr(align)));
+      };
+      mlir::ArrayAttr arg_attrs =
+          (dst_align > 1 || src_align > 1)
+              ? b.getArrayAttr({make_align_dict(dst_align),
+                                make_align_dict(src_align),
+                                b.getDictionaryAttr({})})
+              : nullptr;
+
+      Value byte_count = ml::ConstantOp::create(
+          b, b.getI64Type(), num_elements * element_size_bytes);
+      ml::MemcpyOp::create(b, dst_gep, src_gep, byte_count,
+                           /*isVolatile=*/false, /*tbaa_struct=*/nullptr,
+                           /*access_groups=*/nullptr, /*alias_scopes=*/nullptr,
+                           /*noalias_scopes=*/nullptr, /*tbaa=*/nullptr,
+                           arg_attrs, /*res_attrs=*/nullptr);
+    }
+
+    op.replaceAllUsesWith(op.getDest());
+    op.erase();
     return success();
   }
 };
@@ -736,8 +1393,7 @@ ml::GlobalOp CreateGlobalOp(mlir::Attribute value,
       auto unpacked_data =
           mlir::cast<mlir::DenseElementsAttr>(value).getRawData();
       std::vector<char> packed_data(num_elements);
-      absl::Span<char> packed_data_span =
-          absl::MakeSpan(packed_data.data(), packed_data.size());
+      absl::Span<char> packed_data_span = absl::MakeSpan(packed_data);
       PackIntN(4, unpacked_data, packed_data_span);
       value = mlir::DenseElementsAttr::getFromRawBuffer(
           mlir::RankedTensorType::get({num_elements}, llvm_element_type),
@@ -765,7 +1421,6 @@ struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
       mlir::PatternRewriter& rewriter) const override {
     auto module = op->getParentOfType<mlir::ModuleOp>();
     auto shaped_ty = mlir::cast<mlir::ShapedType>(op.getResult().getType());
-    constexpr int kGPUSharedMemoryAddrSpace = 3;
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     auto global =
@@ -877,41 +1532,406 @@ struct RemoveUnusedIndexSwitchResults : OpRewritePattern<scf::IndexSwitchOp> {
   }
 };
 
-bool IsAtomicIntegral(Type element_type) {
-  if (!element_type.isInteger()) {
+llvm::StringRef GetAtomicSyncScope(const DeviceSpec& device_spec) {
+  if (device_spec.IsAmdGpu()) {
+    return llvm::StringRef("agent-one-as");
+  }
+  return llvm::StringRef();
+}
+
+void SetAmdAtomicRMWAttrs(mlir::OpBuilder& b, ml::AtomicRMWOp rmw_op,
+                          const DeviceSpec& device_spec) {
+  if (!device_spec.IsAmdGpu()) {
+    return;
+  }
+  mlir::UnitAttr unit_attr = b.getUnitAttr();
+  rmw_op->setDiscardableAttr(
+      mlir::ROCDL::ROCDLDialect::NoRemoteMemoryAttrHelper::getNameStr(),
+      unit_attr);
+  rmw_op->setDiscardableAttr(
+      mlir::ROCDL::ROCDLDialect::NoFineGrainedMemoryAttrHelper::getNameStr(),
+      unit_attr);
+}
+
+bool IsAtomicIntegral(Type element_type, const DeviceSpec& device_spec) {
+  if (!element_type.isSignlessInteger()) {
     return false;
   }
   unsigned element_bitwidth = element_type.getIntOrFloatBitWidth();
+  if (device_spec.IsCpu()) {
+    return element_bitwidth == 8 || element_bitwidth == 16 ||
+           element_bitwidth == 32 || element_bitwidth == 64;
+  }
   return element_bitwidth == 32 || element_bitwidth == 64;
 }
 
-Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, mlir::Operation* op,
-                    Value value, Type ty) {
-  if (value.getType().isIntOrFloat() && ty.isIntOrFloat()) {
+Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
+  Type src_ty = value.getType();
+  if (src_ty == ty) {
+    return value;
+  }
+  if (src_ty.isIntOrFloat() && ty.isIntOrFloat()) {
     return arith::BitcastOp::create(b, ty, value);
   }
+  if (auto src_complex = mlir::dyn_cast<mlir::ComplexType>(src_ty)) {
+    Value re = mlir::complex::ReOp::create(b, value);
+    Value im = mlir::complex::ImOp::create(b, value);
+    auto vec_ty = mlir::VectorType::get({2}, src_complex.getElementType());
+    value = vector::FromElementsOp::create(b, vec_ty, ValueRange{re, im});
+    src_ty = vec_ty;
+  }
+  if (auto dst_complex = mlir::dyn_cast<mlir::ComplexType>(ty)) {
+    auto vec_ty = mlir::VectorType::get({2}, dst_complex.getElementType());
+    Value vec = CreateBitcast(b, value, vec_ty);
+    Value re = vector::ExtractOp::create(b, vec, 0);
+    Value im = vector::ExtractOp::create(b, vec, 1);
+    return mlir::complex::CreateOp::create(b, dst_complex, re, im);
+  }
+  if (auto src_vec = mlir::dyn_cast<mlir::VectorType>(src_ty)) {
+    if (!ml::isCompatibleType(src_vec)) {
+      Type int_elem =
+          b.getIntegerType(src_vec.getElementType().getIntOrFloatBitWidth());
+      src_vec = mlir::VectorType::get(src_vec.getShape(), int_elem);
+      value = arith::BitcastOp::create(b, src_vec, value);
+    }
+  } else if (!ml::isCompatibleType(src_ty)) {
+    value = arith::BitcastOp::create(
+        b, b.getIntegerType(src_ty.getIntOrFloatBitWidth()), value);
+  }
+  if (value.getType() == ty) {
+    return value;
+  }
+  if (auto dst_vec = mlir::dyn_cast<mlir::VectorType>(ty)) {
+    if (!ml::isCompatibleType(dst_vec)) {
+      Type int_elem =
+          b.getIntegerType(dst_vec.getElementType().getIntOrFloatBitWidth());
+      auto compat_vec = mlir::VectorType::get(dst_vec.getShape(), int_elem);
+      Value compat_val = ml::BitcastOp::create(b, compat_vec, value);
+      return arith::BitcastOp::create(b, dst_vec, compat_val);
+    }
+  } else if (!ml::isCompatibleType(ty)) {
+    Value int_val = ml::BitcastOp::create(
+        b, b.getIntegerType(ty.getIntOrFloatBitWidth()), value);
+    return arith::BitcastOp::create(b, ty, int_val);
+  }
+  return ml::BitcastOp::create(b, ty, value);
+}
 
-  mlir::LLVMTypeConverter converter(b.getContext());
-  // If either type is a complex, we need to go through an alloca, since no
-  // direct bitcast from a struct to an int is possible.
-  Type llvm_input_ty = converter.convertType(value.getType());
-  Type llvm_result_ty = converter.convertType(ty);
-  Type ptr_ty = ml::LLVMPointerType::get(b.getContext());
-  auto func = op->getParentOfType<mlir::func::FuncOp>();
-  // AMDGPU backend needs allocas to be out of loops.
-  // Move them to the entry block to be on the safe side.
-  auto entry_builder = mlir::ImplicitLocOpBuilder::atBlockBegin(
-      b.getLoc(), &func.getBody().front(), b.getListener());
+int64_t GetAtomicTypeBitWidth(Type ty) {
+  if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(ty)) {
+    return static_cast<int64_t>(
+               complex_ty.getElementType().getIntOrFloatBitWidth()) *
+           2;
+  }
+  if (auto vec_ty = mlir::dyn_cast<mlir::VectorType>(ty)) {
+    return vec_ty.getNumElements() *
+           static_cast<int64_t>(
+               vec_ty.getElementType().getIntOrFloatBitWidth());
+  }
+  if (ty.isIntOrFloat()) {
+    return ty.getIntOrFloatBitWidth();
+  }
+  return 0;
+}
 
-  Value llvm_value =
-      UnrealizedConversionCastOp::create(b, llvm_input_ty, value).getResult(0);
-  Value alloca =
-      ml::AllocaOp::create(entry_builder, ptr_ty, llvm_input_ty,
-                           ml::ConstantOp::create(b, b.getI32Type(), 1));
-  ml::StoreOp::create(b, llvm_value, alloca);
-  auto result = ml::LoadOp::create(b, llvm_result_ty, alloca).getResult();
-  return UnrealizedConversionCastOp::create(b, ty, result).getResult(0);
+// Returns the byte alignment proven for the address of element `indices` of
+// `dest`, or 1 when none can be proven. Atomics address the traced destination
+// buffer (see `ResolveAddressTensor`), so its alignment is the one that counts.
+int64_t GetGuaranteedByteAlignment(TypedValue<mlir::RankedTensorType> dest,
+                                   ValueRange indices, Operation* op) {
+  Value buffer = TraceDestinationBuffer(dest);
+  if (!buffer) {
+    return 1;
+  }
+  return static_cast<int64_t>(
+      GetTransferAlignment(buffer, indices, dest.getType().getElementType(), op)
+          .value_or(1));
+}
+
+struct AtomicWordAccess {
+  Type result_ty;
+  int64_t result_size;
+  bool small_type;
+  Type atomic_ty;
+  Value addr;
+  Value shift;
+  Value mask;
 };
+
+// Prepares the aligned atomic word address, bit shift, and preservation mask
+// used when lowering narrow or complex types via atomicCAS.
+//
+// On GPUs, atomicCAS operates on 32 bit and 64 bit words, so elements narrower
+// than 32 bits mask their pointer down to a 4 byte boundary via `ptrmask`
+// (tensor buffers are 4 byte aligned and padded to a multiple of 4 bytes).
+// On CPUs, 8 bit and 16 bit atomicCAS operations are supported natively and
+// buffers are not guaranteed to have a size of 4N, so only types narrower than
+// a byte widen to i8 without rounding the byte address down.
+AtomicWordAccess PrepareAtomicWordAccess(
+    mlir::Operation* op, TypedValue<mlir::RankedTensorType> tensor,
+    ValueRange indices, Type result_ty, const DeviceSpec& device_spec,
+    mlir::PatternRewriter& rewriter) {
+  Location loc = op->getLoc();
+  int64_t result_size = GetAtomicTypeBitWidth(result_ty);
+
+  int64_t min_atomic_size = device_spec.IsCpu() ? 8 : 32;
+  bool small_type = result_size < min_atomic_size;
+  Type atomic_ty = mlir::IntegerType::get(
+      op->getContext(),
+      static_cast<unsigned>(small_type ? min_atomic_size : result_size));
+
+  mlir::ImplicitLocOpBuilder b(loc, rewriter);
+  Value linear_index = GetLinearIndex(indices, b);
+  Value sub_byte_shift;
+  std::optional<int> sub_byte_bit_width = GetSubByteBitWidth(result_ty);
+  if (sub_byte_bit_width) {
+    std::tie(linear_index, sub_byte_shift) =
+        GetSubByteIndex(linear_index, *sub_byte_bit_width, b);
+  }
+  Value addr = CreateGep(ResolveAddressTensor(tensor, b), linear_index, b);
+  Value shift;
+  Value mask;
+  if (small_type) {
+    if (min_atomic_size > 8) {
+      Type addr_int_ty = rewriter.getI64Type();
+      Value addr_int = ml::PtrToIntOp::create(rewriter, loc, addr_int_ty, addr);
+      Value addr_offset = ml::AndOp::create(
+          rewriter, loc, addr_int,
+          ml::ConstantOp::create(rewriter, loc, addr_int_ty, 3));
+      // ptrmask instead of a negative GEP: LLVM would reassociate the GEP into
+      // [base + imm], and ptxas for sm_6x drops the low bits of that immediate
+      // on shared atomics, producing a misaligned CAS.
+      addr = ml::PtrMaskOp::create(
+          rewriter, loc, addr,
+          ml::ConstantOp::create(rewriter, loc, addr_int_ty, -4));
+
+      Value offset = ml::TruncOp::create(rewriter, loc, atomic_ty, addr_offset);
+      shift = ml::MulOp::create(
+          rewriter, loc, offset,
+          ml::ConstantOp::create(rewriter, loc, offset.getType(), 8));
+      if (sub_byte_bit_width) {
+        sub_byte_shift =
+            ml::ZExtOp::create(rewriter, loc, shift.getType(), sub_byte_shift);
+        shift = ml::AddOp::create(rewriter, loc, shift, sub_byte_shift);
+      }
+    } else {
+      shift = sub_byte_bit_width
+                  ? sub_byte_shift
+                  : ml::ConstantOp::create(rewriter, loc, atomic_ty, 0);
+    }
+
+    // Unpacked types narrower than a byte (such as i1 or 6 bit floats) occupy a
+    // full byte per element in memory, so clear all 8 bits of that byte.
+    int64_t storage_bit_size =
+        (!sub_byte_bit_width && result_size < 8) ? 8 : result_size;
+    Value bits_long = ml::ConstantOp::create(rewriter, loc, atomic_ty, -1);
+    Value bits_short = ml::ConstantOp::create(
+        rewriter, loc, atomic_ty,
+        llvm::APInt::getLowBitsSet(atomic_ty.getIntOrFloatBitWidth(),
+                                   static_cast<unsigned>(storage_bit_size)));
+    mask =
+        ml::XOrOp::create(rewriter, loc, bits_long,
+                          ml::ShlOp::create(rewriter, loc, bits_short, shift));
+  }
+  return AtomicWordAccess{result_ty, result_size, small_type, atomic_ty,
+                          addr,      shift,       mask};
+}
+
+bool CanLowerScalarOrComplexAsAtomicCAS(Operation* op,
+                                        TypedValue<mlir::RankedTensorType> dest,
+                                        ValueRange indices, Type result_ty,
+                                        const DeviceSpec& device_spec) {
+  if (mlir::isa<mlir::VectorType>(result_ty)) {
+    return false;
+  }
+  int64_t result_size = GetAtomicTypeBitWidth(result_ty);
+  if (result_size <= 0 ||
+      (result_size != 6 && !llvm::isPowerOf2_64(result_size))) {
+    return false;
+  }
+  if (result_size <= 64) {
+    // A complex element only has the ABI alignment of its component type, but
+    // the atomic word that holds it must be aligned to the size of the word.
+    return !mlir::isa<mlir::ComplexType>(result_ty) ||
+           GetGuaranteedByteAlignment(dest, indices, op) >= result_size / 8;
+  }
+  if (result_size == 128) {
+    // CPU targets without a native 128 bit CAS call
+    // __atomic_compare_exchange_16, which the XLA:CPU JIT does not provide,
+    // and DeviceSpec carries no CPU features to tell such targets apart.
+    return device_spec.IsNvidiaGpu() &&
+           device_spec.gpu().cuda_compute_capability().IsAtLeastHopper() &&
+           GetGuaranteedByteAlignment(dest, indices, op) >= 16;
+  }
+  return false;
+}
+
+class RewriteAtomicStore : public OpRewritePattern<AtomicStoreOp> {
+ public:
+  RewriteAtomicStore(mlir::MLIRContext* context, const DeviceSpec& device_spec)
+      : OpRewritePattern<AtomicStoreOp>(context), device_spec_(device_spec) {}
+
+  LogicalResult matchAndRewrite(
+      AtomicStoreOp op, mlir::PatternRewriter& rewriter) const override {
+    if (op.getIndices().size() > 1 || op.getDest() == op.getResult()) {
+      return rewriter.notifyMatchFailure(
+          op, "only acyclic 0D and 1D tensors are supported");
+    }
+    if (!TraceDestinationBuffer(op.getDest())) {
+      return rewriter.notifyMatchFailure(op,
+                                         "cannot trace the destination buffer");
+    }
+    Location loc = op.getLoc();
+    Value value = op.getValue();
+    Type element_type = value.getType();
+    llvm::StringRef sync_scope = GetAtomicSyncScope(device_spec_);
+    // AMDGPU SIMemoryLegalizer only applies agent scope L1 cache bypass when
+    // ordering is at least monotonic.
+    ml::AtomicOrdering direct_ordering = device_spec_.IsAmdGpu()
+                                             ? ml::AtomicOrdering::monotonic
+                                             : ml::AtomicOrdering::unordered;
+
+    if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(element_type)) {
+      // The 64 bit store needs 8 byte alignment, but complex<f32> only has the
+      // 4 byte ABI alignment of f32.
+      if (complex_ty.getElementType().isF32() &&
+          GetGuaranteedByteAlignment(op.getDest(), op.getIndices(), op) >= 8) {
+        mlir::ImplicitLocOpBuilder b(loc, rewriter);
+        Value addr = CreateAtomicGep(op.getDest(), op.getIndices(), b);
+        Value store_value = CreateBitcast(b, value, b.getI64Type());
+        ml::StoreOp::create(rewriter, loc, store_value, addr,
+                            /*alignment=*/8,
+                            /*isVolatile=*/false, /*isNonTemporal=*/false,
+                            /*isInvariantGroup=*/false, direct_ordering,
+                            sync_scope);
+        rewriter.replaceOp(op, op.getDest());
+        return success();
+      }
+    } else if (device_spec_.IsCpu()) {
+      if (element_type.isIntOrFloat()) {
+        unsigned bit_width = element_type.getIntOrFloatBitWidth();
+        if (bit_width == 8 || bit_width == 16 || bit_width == 32 ||
+            bit_width == 64) {
+          mlir::ImplicitLocOpBuilder b(loc, rewriter);
+          Value addr = CreateAtomicGep(op.getDest(), op.getIndices(), b);
+          Value store_value = value;
+          bool is_llvm_atomic_type =
+              element_type.isSignlessInteger(bit_width) ||
+              element_type.isF16() || element_type.isBF16() ||
+              element_type.isF32() || element_type.isF64();
+          if (!is_llvm_atomic_type) {
+            store_value = arith::BitcastOp::create(
+                b, b.getIntegerType(bit_width), store_value);
+          }
+          ml::StoreOp::create(rewriter, loc, store_value, addr,
+                              /*alignment=*/bit_width / 8,
+                              /*isVolatile=*/false, /*isNonTemporal=*/false,
+                              /*isInvariantGroup=*/false, direct_ordering,
+                              sync_scope);
+          rewriter.replaceOp(op, op.getDest());
+          return success();
+        }
+      }
+    } else if (element_type.isF32() || element_type.isF64() ||
+               IsAtomicIntegral(element_type, device_spec_)) {
+      mlir::ImplicitLocOpBuilder b(loc, rewriter);
+      Value addr = CreateAtomicGep(op.getDest(), op.getIndices(), b);
+      Value store_value = value;
+      // LLVM's SPIRV backend only declares Int64Atomics on OpAtomicStore for
+      // 64 bit integer operands, not 64 bit floats.
+      if (device_spec_.IsIntelGpu() && element_type.isF64()) {
+        store_value = arith::BitcastOp::create(b, b.getI64Type(), store_value);
+      }
+      ml::StoreOp::create(
+          rewriter, loc, store_value, addr,
+          /*alignment=*/element_type.getIntOrFloatBitWidth() / 8,
+          /*isVolatile=*/false, /*isNonTemporal=*/false,
+          /*isInvariantGroup=*/false, direct_ordering, sync_scope);
+      rewriter.replaceOp(op, op.getDest());
+      return success();
+    }
+
+    if (!CanLowerScalarOrComplexAsAtomicCAS(op, op.getDest(), op.getIndices(),
+                                            element_type, device_spec_)) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported atomic word size for target atomicCAS");
+    }
+    AtomicWordAccess access =
+        PrepareAtomicWordAccess(op, op.getDest(), op.getIndices(), element_type,
+                                device_spec_, rewriter);
+    mlir::ImplicitLocOpBuilder b(loc, rewriter);
+    Value shifted_value;
+    Value direct_new_value;
+    if (access.small_type) {
+      Value cast_value = ml::ZExtOp::create(
+          b, access.atomic_ty,
+          CreateBitcast(b, value,
+                        rewriter.getIntegerType(
+                            static_cast<unsigned>(access.result_size))));
+      shifted_value = ml::ShlOp::create(b, cast_value, access.shift);
+    } else {
+      direct_new_value = CreateBitcast(b, value, access.atomic_ty);
+    }
+
+    Value initial =
+        ml::LoadOp::create(rewriter, loc, access.atomic_ty, access.addr);
+    scf::WhileOp::create(
+        rewriter, loc, TypeRange{access.atomic_ty}, ValueRange{initial},
+        [&](mlir::OpBuilder& builder, Location loop_loc, ValueRange values) {
+          mlir::ImplicitLocOpBuilder loop_b(loop_loc, builder);
+          Value old_value = values[0];
+          Value new_value =
+              access.small_type
+                  ? ml::OrOp::create(
+                        loop_b,
+                        ml::AndOp::create(loop_b, old_value, access.mask),
+                        shifted_value)
+                        .getResult()
+                  : direct_new_value;
+          Value cmpxchg = ml::AtomicCmpXchgOp::create(
+              loop_b, loop_loc, access.addr, old_value, new_value,
+              /*success_ordering=*/ml::AtomicOrdering::monotonic,
+              /*failure_ordering=*/ml::AtomicOrdering::monotonic, sync_scope);
+          Value next = ml::ExtractValueOp::create(loop_b, cmpxchg, 0);
+          Value ok = ml::ExtractValueOp::create(loop_b, cmpxchg, 1);
+          Value low_bit = ml::ConstantOp::create(
+              loop_b, loop_b.getOneAttr(loop_b.getI1Type()));
+          Value not_ok = ml::XOrOp::create(loop_b, ok, low_bit);
+          scf::ConditionOp::create(loop_b, not_ok, ValueRange{next});
+        },
+        [](mlir::OpBuilder& builder, Location loop_loc, ValueRange values) {
+          scf::YieldOp::create(builder, loop_loc, values);
+        });
+    rewriter.replaceOp(op, op.getDest());
+    return success();
+  }
+
+ private:
+  const DeviceSpec& device_spec_;
+};
+
+bool CanLowerVectorAsAtomicCAS(AtomicRMWOp op, mlir::VectorType vector_type,
+                               const DeviceSpec& device_spec) {
+  if (vector_type.getRank() != 1 || vector_type.isScalable()) {
+    return false;
+  }
+  Type elem_ty = vector_type.getElementType();
+  if (!elem_ty.isIntOrFloat() || GetSubByteBitWidth(elem_ty).has_value()) {
+    return false;
+  }
+  int64_t elem_bits = elem_ty.getIntOrFloatBitWidth();
+  if (elem_bits < 8 || elem_bits % 8 != 0) {
+    return false;
+  }
+  int64_t total_bits = vector_type.getNumElements() * elem_bits;
+  bool valid_word_size = total_bits == 32 || total_bits == 64 ||
+                         (device_spec.IsCpu() && total_bits == 16);
+  if (!valid_word_size) {
+    return false;
+  }
+  return GetGuaranteedByteAlignment(op.getInput(), op.getIndices(), op) >=
+         (total_bits / 8);
+}
 
 class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
  public:
@@ -920,103 +1940,287 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
 
   LogicalResult matchAndRewrite(
       AtomicRMWOp op, mlir::PatternRewriter& rewriter) const override {
+    if (op.getIndices().size() > 1 || op.getInput() == op.getResult()) {
+      return rewriter.notifyMatchFailure(
+          op, "only acyclic 0D and 1D tensors are supported");
+    }
+    if (!TraceDestinationBuffer(op.getInput())) {
+      return rewriter.notifyMatchFailure(op,
+                                         "cannot trace the destination buffer");
+    }
     auto modifier_parameters = GetAtomicModifierParameters(op);
-    if (modifier_parameters.has_value()) {
-      if (mlir::isa<mlir::VectorType>(modifier_parameters->first.getType()) &&
-          (!device_spec_.IsNvidiaGpu() ||
-           !device_spec_.gpu().cuda_compute_capability().IsAtLeastHopper())) {
-        return rewriter.notifyMatchFailure(
-            op,
-            "atomic vectorization currently only supported on Hopper or later");
+    if (modifier_parameters.has_value() &&
+        succeeded(
+            rewriteAsDirectAtomicRMW(op, *modifier_parameters, rewriter))) {
+      rewriter.replaceOp(op, op.getInput());
+      return success();
+    }
+    if (auto vector_type =
+            mlir::dyn_cast<mlir::VectorType>(op.getCurrentValue().getType())) {
+      if (succeeded(scalarizeVectorAtomicRMW(op, vector_type, rewriter))) {
+        return success();
       }
+      if (!CanLowerVectorAsAtomicCAS(op, vector_type, device_spec_)) {
+        return rewriter.notifyMatchFailure(
+            op, "cannot lower cross lane vector atomic_rmw via atomicCAS");
+      }
+    } else if (!CanLowerScalarOrComplexAsAtomicCAS(
+                   op, op.getInput(), op.getIndices(),
+                   op.getCurrentValue().getType(), device_spec_)) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported atomic word size for target atomicCAS");
     }
-
-    if (!modifier_parameters.has_value() ||
-        failed(rewriteAsDirectAtomicRMW(op, modifier_parameters, rewriter))) {
-      rewriteAsAtomicCAS(op, rewriter);
-    }
+    rewriteAsAtomicCAS(op, rewriter);
     rewriter.replaceOp(op, op.getInput());
     return success();
   }
 
  private:
-  llvm::StringRef determinateScope() const {
-    if (device_spec_.IsAmdGpu()) {
-      return llvm::StringRef("agent-one-as");
-    }
-    return llvm::StringRef();
-  }
-
-  // Certain computations, such as floating-point addition and integer
-  // maximization, can be simply implemented using an LLVM atomic instruction.
-  // If "computation" is one of this kind, emits code to do that and returns
-  // true; otherwise, returns false.
-  LogicalResult rewriteAsDirectAtomicRMW(
-      AtomicRMWOp op,
-      std::optional<std::pair<mlir::Value, ml::AtomicBinOp>>
-          modifier_parameters,
+  LogicalResult scalarizeVectorAtomicRMW(
+      AtomicRMWOp op, mlir::VectorType vector_type,
       mlir::PatternRewriter& rewriter) const {
-    if (device_spec_.IsCpu()) {
-      return failure();  // Unimplemented.
+    if (vector_type.getRank() != 1 || vector_type.isScalable() ||
+        op.getIndices().size() != 1) {
+      return failure();
     }
-
-    Value modifier_arg = modifier_parameters->first;
-    Type element_type = modifier_arg.getType();
-    ml::AtomicBinOp atomic_bin_op = modifier_parameters->second;
+    int64_t num_elements = vector_type.getNumElements();
+    mlir::Block* body = op.getBody();
+    Value yielded = body->getTerminator()->getOperand(0);
+    bool is_trivially_removable_body =
+        llvm::all_of(body->without_terminator(), [](mlir::Operation& body_op) {
+          return mlir::wouldOpBeTriviallyDead(&body_op);
+        });
+    bool is_invariant_overwrite =
+        is_trivially_removable_body && op.isDefinedOutsideOfLoop(yielded);
+    if (!is_invariant_overwrite) {
+      auto is_matching_vec_or_scalar = [&](Type t) {
+        if (auto vt = mlir::dyn_cast<mlir::VectorType>(t)) {
+          return vt.getRank() == 1 && !vt.isScalable() &&
+                 vt.getNumElements() == num_elements;
+        }
+        return true;
+      };
+      bool is_elementwise_body = llvm::all_of(
+          body->without_terminator(), [&](mlir::Operation& body_op) {
+            if (body_op.use_empty()) {
+              return mlir::wouldOpBeTriviallyDead(&body_op);
+            }
+            bool allowed_elementwise_op =
+                (mlir::isa<vector::FMAOp>(body_op) &&
+                 ml::isCompatibleType(mlir::getElementTypeOrSelf(
+                     body_op.getResult(0).getType()))) ||
+                (mlir::OpTrait::hasElementwiseMappableTraits(&body_op) &&
+                 body_op.getDialect() != nullptr &&
+                 (mlir::isa<arith::ArithDialect>(body_op.getDialect()) ||
+                  body_op.getDialect()->getNamespace() == "math"));
+            if (!allowed_elementwise_op || body_op.getNumRegions() != 0 ||
+                body_op.getNumResults() != 1) {
+              return false;
+            }
+            auto res_vec = mlir::dyn_cast<mlir::VectorType>(
+                body_op.getResult(0).getType());
+            if (!res_vec || !is_matching_vec_or_scalar(res_vec)) {
+              return false;
+            }
+            return llvm::all_of(body_op.getOperandTypes(),
+                                is_matching_vec_or_scalar);
+          });
+      if (!is_elementwise_body) {
+        return failure();
+      }
+    }
 
     Location loc = op.getLoc();
-    auto sync_scope = determinateScope();
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    Value addr = CreateGep(op.getInput(), op.getIndices(), b);
+    Value current_tensor = op.getInput();
+    SmallVector<Value, 4> indices(op.getIndices().begin(),
+                                  op.getIndices().end());
+    Value base_minor_index = indices.back();
+    for (int64_t i = 0; i < num_elements; ++i) {
+      if (i > 0) {
+        indices.back() = arith::AddIOp::create(
+            b, base_minor_index, arith::ConstantIndexOp::create(b, i));
+      }
+      auto extract_lane = [&](Value vec) -> Value {
+        mlir::DenseElementsAttr dense_attr;
+        if (mlir::matchPattern(vec, mlir::m_Constant(&dense_attr))) {
+          return arith::ConstantOp::create(
+              b, dense_attr.getValues<mlir::TypedAttr>()[i]);
+        }
+        return vector::ExtractOp::create(b, vec, i);
+      };
+      if (is_invariant_overwrite) {
+        Value elem = extract_lane(yielded);
+        current_tensor =
+            AtomicStoreOp::create(b, elem, current_tensor, indices).getResult();
+        continue;
+      }
 
-    switch (atomic_bin_op) {
-      case ml::AtomicBinOp::xchg: {
-        ml::StoreOp::create(
-            rewriter, loc, modifier_arg, addr,
-            /*alignment=*/element_type.getIntOrFloatBitWidth() / 8,
-            /*volatile*/ false, /*isNonTemporal=*/false,
-            /*isInvariantGroup=*/false, ml::AtomicOrdering::unordered);
-        return success();
-      }
-      case ml::AtomicBinOp::add:
-      case ml::AtomicBinOp::max:
-      case ml::AtomicBinOp::min:
-      case ml::AtomicBinOp::umax:
-      case ml::AtomicBinOp::umin: {
-        ml::AtomicRMWOp::create(rewriter, loc, atomic_bin_op, addr,
-                                modifier_arg, ml::AtomicOrdering::monotonic,
-                                sync_scope);
-        return success();
-      }
-      case ml::AtomicBinOp::fadd: {
-        // TODO(b/336367154): Introduce an atomic_rmw op with the binOp attr.
-        if (device_spec_.IsAmdGpu()) {
-          return emitAMDAtomicFAdd(loc, modifier_arg, addr,
-                                   device_spec_.gpu().rocm_compute_capability(),
-                                   rewriter);
+      mlir::IRMapping lane_map;
+      for (mlir::Operation& body_op : body->without_terminator()) {
+        if (body_op.use_empty()) {
+          continue;
         }
-        if (device_spec_.IsIntelGpu()) {
-          return emitSPIRVAtomicFAdd(loc, modifier_arg, addr, rewriter);
+        for (Value operand : body_op.getOperands()) {
+          if (op.isDefinedOutsideOfLoop(operand) &&
+              mlir::isa<mlir::VectorType>(operand.getType()) &&
+              !lane_map.contains(operand)) {
+            lane_map.map(operand, extract_lane(operand));
+          }
         }
-        return emitNVidiaAtomicFAdd(
-            loc, modifier_arg, addr,
-            device_spec_.gpu().cuda_compute_capability(), rewriter, op);
       }
-      case ml::AtomicBinOp::fmax: {
-        return rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr,
-                                             sync_scope, rewriter);
+
+      auto scalar_rmw = AtomicRMWOp::create(b, current_tensor, indices);
+      lane_map.map(op.getCurrentValue(), scalar_rmw.getCurrentValue());
+      mlir::OpBuilder body_b(scalar_rmw.getBody(), scalar_rmw.getBody()->end(),
+                             rewriter.getListener());
+      for (mlir::Operation& body_op : body->without_terminator()) {
+        if (body_op.use_empty()) {
+          continue;
+        }
+        SmallVector<Value, 3> mapped_operands;
+        mapped_operands.reserve(body_op.getNumOperands());
+        for (Value operand : body_op.getOperands()) {
+          mapped_operands.push_back(lane_map.lookupOrDefault(operand));
+        }
+        if (mlir::isa<vector::FMAOp>(body_op)) {
+          auto fma =
+              ml::FMAOp::create(body_b, body_op.getLoc(), mapped_operands[0],
+                                mapped_operands[1], mapped_operands[2]);
+          lane_map.map(body_op.getResult(0), fma.getResult());
+          continue;
+        }
+        Type scalar_res_ty =
+            mlir::getElementTypeOrSelf(body_op.getResult(0).getType());
+        mlir::Operation* cloned = mlir::Operation::create(
+            body_op.getLoc(), body_op.getName(), {scalar_res_ty},
+            mapped_operands, body_op.getDiscardableAttrDictionary(),
+            body_op.getPropertiesStorage(), /*successors=*/{},
+            /*numRegions=*/0);
+        body_b.insert(cloned);
+        lane_map.map(body_op.getResult(0), cloned->getResult(0));
       }
-      default:
-        return failure();
+      xla::YieldOp::create(body_b, loc, lane_map.lookupOrDefault(yielded));
+      current_tensor = scalar_rmw.getResult();
     }
+    rewriter.replaceOp(op, current_tensor);
     return success();
   }
 
+  // Certain computations, such as float addition and integer maximization, can
+  // be implemented directly with an LLVM atomic instruction. Emits that
+  // instruction and returns success when supported, or returns failure
+  // otherwise.
+  LogicalResult rewriteAsDirectAtomicRMW(
+      AtomicRMWOp op, const AtomicModifierParameters& modifier_parameters,
+      mlir::PatternRewriter& rewriter) const {
+    Type element_type = op.getCurrentValue().getType();
+    Location loc = op.getLoc();
+    llvm::StringRef sync_scope = GetAtomicSyncScope(device_spec_);
+    mlir::ImplicitLocOpBuilder b(loc, rewriter);
+
+    auto materialize_addr_and_modifier = [&]() -> std::pair<Value, Value> {
+      Value addr = CreateAtomicGep(op.getInput(), op.getIndices(), b);
+      Value modifier_arg = MaterializeAtomicModifier(
+          rewriter, loc, modifier_parameters.modifier);
+      return {addr, modifier_arg};
+    };
+
+    switch (modifier_parameters.kind) {
+      case AtomicRMWKind::kAdd:
+      case AtomicRMWKind::kSub:
+      case AtomicRMWKind::kMaxS:
+      case AtomicRMWKind::kMinS:
+      case AtomicRMWKind::kMaxU:
+      case AtomicRMWKind::kMinU:
+      case AtomicRMWKind::kAnd:
+      case AtomicRMWKind::kOr:
+      case AtomicRMWKind::kXor: {
+        if (!IsAtomicIntegral(element_type, device_spec_)) {
+          return failure();
+        }
+        auto [addr, modifier_arg] = materialize_addr_and_modifier();
+        ml::AtomicBinOp atomic_bin_op;
+        switch (modifier_parameters.kind) {
+          case AtomicRMWKind::kAdd:
+            atomic_bin_op = ml::AtomicBinOp::add;
+            break;
+          case AtomicRMWKind::kSub:
+            atomic_bin_op = ml::AtomicBinOp::sub;
+            break;
+          case AtomicRMWKind::kMaxS:
+            atomic_bin_op = ml::AtomicBinOp::max;
+            break;
+          case AtomicRMWKind::kMinS:
+            atomic_bin_op = ml::AtomicBinOp::min;
+            break;
+          case AtomicRMWKind::kMaxU:
+            atomic_bin_op = ml::AtomicBinOp::umax;
+            break;
+          case AtomicRMWKind::kMinU:
+            atomic_bin_op = ml::AtomicBinOp::umin;
+            break;
+          case AtomicRMWKind::kAnd:
+            atomic_bin_op = ml::AtomicBinOp::_and;
+            break;
+          case AtomicRMWKind::kOr:
+            atomic_bin_op = ml::AtomicBinOp::_or;
+            break;
+          case AtomicRMWKind::kXor:
+            atomic_bin_op = ml::AtomicBinOp::_xor;
+            break;
+          default:
+            llvm_unreachable("unexpected integer atomic kind");
+        }
+        auto rmw_op = ml::AtomicRMWOp::create(
+            rewriter, loc, atomic_bin_op, addr, modifier_arg,
+            ml::AtomicOrdering::monotonic, sync_scope);
+        SetAmdAtomicRMWAttrs(rewriter, rmw_op, device_spec_);
+        return success();
+      }
+      case AtomicRMWKind::kFAdd:
+      case AtomicRMWKind::kFSub: {
+        if (device_spec_.IsCpu()) {
+          return failure();
+        }
+        bool negated = (modifier_parameters.kind == AtomicRMWKind::kFSub);
+        if (device_spec_.IsAmdGpu()) {
+          return emitAMDAtomicFAdd(
+              loc, op, modifier_parameters.modifier, element_type,
+              device_spec_.gpu().rocm_compute_capability(), rewriter, negated);
+        }
+        if (device_spec_.IsIntelGpu()) {
+          return emitSPIRVAtomicFAdd(loc, op, modifier_parameters.modifier,
+                                     element_type, rewriter, negated);
+        }
+        return emitNVidiaAtomicFAdd(
+            loc, op, modifier_parameters.modifier, element_type,
+            device_spec_.gpu().cuda_compute_capability(), rewriter, negated);
+      }
+      case AtomicRMWKind::kFMax: {
+        if (device_spec_.IsCpu() || !element_type.isF32()) {
+          return failure();
+        }
+        auto [addr, modifier_arg] = materialize_addr_and_modifier();
+        rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr, sync_scope,
+                                      rewriter);
+        return success();
+      }
+      case AtomicRMWKind::kFMin:
+        return failure();
+    }
+    llvm_unreachable("unhandled AtomicRMWKind");
+  }
+
   LogicalResult emitNVidiaAtomicFAdd(
-      Location loc, Value modifier_arg, Value addr,
+      Location loc, AtomicRMWOp op, mlir::OpFoldResult modifier,
+      Type element_type,
       const se::CudaComputeCapability& cuda_compute_capability, OpBuilder& b,
-      AtomicRMWOp& op) const {
-    Type element_type = modifier_arg.getType();
+      bool negated) const {
+    if (auto vector_type = mlir::dyn_cast<mlir::VectorType>(element_type)) {
+      return emitNvidiaVectorizedAtomicFAdd(
+          loc, op, modifier, vector_type, cuda_compute_capability, b, negated);
+    }
     // "atom.add.f64 requires sm_60 or higher."
     // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
     bool is_supported_f16_atomic =
@@ -1028,13 +2232,15 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     bool is_supported_f64_atomic =
         element_type.isF64() &&
         cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::kPascal);
-    if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
-      return emitNvidiaVectorizedAtomicFAdd(
-          loc, modifier_arg, addr, vector_type, cuda_compute_capability, b);
-    }
     if (!element_type.isF32() && !is_supported_f16_atomic &&
         !is_supported_bf16_atomic && !is_supported_f64_atomic) {
       return failure();
+    }
+    mlir::ImplicitLocOpBuilder implicit_b(loc, b);
+    Value addr = CreateAtomicGep(op.getInput(), op.getIndices(), implicit_b);
+    Value modifier_arg = MaterializeAtomicModifier(b, loc, modifier);
+    if (negated) {
+      modifier_arg = arith::NegFOp::create(b, loc, modifier_arg);
     }
 
     auto rmw_op =
@@ -1045,17 +2251,24 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   }
 
   LogicalResult emitNvidiaVectorizedAtomicFAdd(
-      Location loc, Value modifier_arg, Value addr,
+      Location loc, AtomicRMWOp op, mlir::OpFoldResult modifier,
       mlir::VectorType vector_type,
-      const se::CudaComputeCapability& cuda_compute_capability,
-      OpBuilder& b) const {
-    // Hopper supports 2-element and 4-element vectors of f32.
-    if (!(vector_type && vector_type.getElementType().isF32() &&
+      const se::CudaComputeCapability& cuda_compute_capability, OpBuilder& b,
+      bool negated) const {
+    // Hopper supports 2 element and 4 element vectors of f32 in global memory.
+    if (!(vector_type.getElementType().isF32() &&
           (vector_type.getNumElements() == 2 ||
            vector_type.getNumElements() == 4) &&
           cuda_compute_capability.IsAtLeast(
-              se::CudaComputeCapability::kHopper))) {
+              se::CudaComputeCapability::kHopper)) ||
+        IsSharedMemoryBuffer(op.getInput())) {
       return failure();
+    }
+    mlir::ImplicitLocOpBuilder implicit_b(loc, b);
+    Value addr = CreateAtomicGep(op.getInput(), op.getIndices(), implicit_b);
+    Value modifier_arg = MaterializeAtomicModifier(b, loc, modifier);
+    if (negated) {
+      modifier_arg = arith::NegFOp::create(b, loc, modifier_arg);
     }
 
     // TODO(https://github.com/llvm/llvm-project/issues/122760): Switch to
@@ -1094,21 +2307,35 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   }
 
   LogicalResult emitAMDAtomicFAdd(
-      Location loc, Value modifier_arg, Value addr,
-      const se::RocmComputeCapability& rocm_compute_capability,
-      OpBuilder& b) const {
-    Type element_type = modifier_arg.getType();
-    if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
-      // TODO(rocm) Don't vectorize atomics if we cannot satisfy 4-byte
-      // alignment
-      if (!(vector_type.getNumElements() == 2 &&
-            (vector_type.getElementType().isF16() ||
-             vector_type.getElementType().isBF16()))) {
+      Location loc, AtomicRMWOp op, mlir::OpFoldResult modifier,
+      Type element_type,
+      const se::RocmComputeCapability& rocm_compute_capability, OpBuilder& b,
+      bool negated) const {
+    if (auto vector_type = mlir::dyn_cast<mlir::VectorType>(element_type)) {
+      bool supported_v2f16 =
+          vector_type.getElementType().isF16() &&
+          rocm_compute_capability.has_packed_fp16_atomics_support();
+      bool supported_v2bf16 =
+          vector_type.getElementType().isBF16() &&
+          rocm_compute_capability.has_packed_bf16_atomics_support();
+      if (vector_type.getNumElements() != 2 ||
+          (!supported_v2f16 && !supported_v2bf16) ||
+          IsSharedMemoryBuffer(op.getInput()) ||
+          GetGuaranteedByteAlignment(op.getInput(), op.getIndices(), op) < 4) {
         return failure();
       }
     } else if (!element_type.isF32() && !element_type.isF16() &&
                !element_type.isBF16() && !element_type.isF64()) {
       return failure();
+    } else if ((element_type.isF16() || element_type.isBF16()) &&
+               IsSharedMemoryBuffer(op.getInput())) {
+      return failure();
+    }
+    mlir::ImplicitLocOpBuilder implicit_b(loc, b);
+    Value addr = CreateAtomicGep(op.getInput(), op.getIndices(), implicit_b);
+    Value modifier_arg = MaterializeAtomicModifier(b, loc, modifier);
+    if (negated) {
+      modifier_arg = arith::NegFOp::create(b, loc, modifier_arg);
     }
 
     if ((element_type.isF16() &&
@@ -1143,35 +2370,34 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
 
       modifier_arg =
           ml::BitcastOp::create(b, loc, packed_type, modifier_masked);
-      element_type = packed_type;
     }
 
-    auto op = ml::AtomicRMWOp::create(
+    auto rmw_op = ml::AtomicRMWOp::create(
         b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-        ml::AtomicOrdering::monotonic, "agent-one-as");
-    op.setIgnoreDenormalMode(true);
-
-    auto unitAttr = b.getUnitAttr();
-    op->setDiscardableAttr(
-        mlir::ROCDL::ROCDLDialect::NoRemoteMemoryAttrHelper::getNameStr(),
-        unitAttr);
-    op->setDiscardableAttr(
-        mlir::ROCDL::ROCDLDialect::NoFineGrainedMemoryAttrHelper::getNameStr(),
-        unitAttr);
+        ml::AtomicOrdering::monotonic, GetAtomicSyncScope(device_spec_));
+    rmw_op.setIgnoreDenormalMode(true);
+    SetAmdAtomicRMWAttrs(b, rmw_op, device_spec_);
 
     return success();
   }
 
-  LogicalResult emitSPIRVAtomicFAdd(Location loc, Value modifier_arg,
-                                    Value addr, OpBuilder& b) const {
-    Type element_type = modifier_arg.getType();
-    if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
+  LogicalResult emitSPIRVAtomicFAdd(Location loc, AtomicRMWOp op,
+                                    mlir::OpFoldResult modifier,
+                                    Type element_type, OpBuilder& b,
+                                    bool negated) const {
+    if (mlir::isa<mlir::VectorType>(element_type)) {
       return failure();
     }
     // TODO(intel-tf): Expand support to 16 bit floating precisions on supported
     // platforms.
     if (!element_type.isF32() && !element_type.isF64()) {
       return failure();
+    }
+    mlir::ImplicitLocOpBuilder implicit_b(loc, b);
+    Value addr = CreateAtomicGep(op.getInput(), op.getIndices(), implicit_b);
+    Value modifier_arg = MaterializeAtomicModifier(b, loc, modifier);
+    if (negated) {
+      modifier_arg = arith::NegFOp::create(b, loc, modifier_arg);
     }
 
     auto rmw_op =
@@ -1181,14 +2407,11 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     return success();
   }
 
-  LogicalResult rewriteAtomicFMaxAsIntAtomics(Location loc, Value modifier_arg,
-                                              Value addr,
-                                              llvm::StringRef sync_scope,
-                                              OpBuilder& b) const {
+  void rewriteAtomicFMaxAsIntAtomics(Location loc, Value modifier_arg,
+                                     Value addr, llvm::StringRef sync_scope,
+                                     OpBuilder& b) const {
     Type element_type = modifier_arg.getType();
-    if (!element_type.isF32()) {
-      return failure();
-    }
+    CHECK(element_type.isF32());
     // Evaluating floating max using integer atomics has the limitation of not
     // propagating -NaNs. To handle this, we check if the update value is -NaN
     // and convert it to a positive one by dropping the sign-bit.
@@ -1239,147 +2462,52 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
         then_builder, loc, is_not_negative,
         [&](OpBuilder& nested_b, Location nested_loc) {
           // atomicMax((int *)address, __float_as_int(val))
-          ml::AtomicRMWOp::create(nested_b, loc, ml::AtomicBinOp::max, addr,
-                                  source_float_as_int,
-                                  ml::AtomicOrdering::monotonic, sync_scope);
+          auto rmw_op = ml::AtomicRMWOp::create(
+              nested_b, loc, ml::AtomicBinOp::max, addr, source_float_as_int,
+              ml::AtomicOrdering::monotonic, sync_scope);
+          SetAmdAtomicRMWAttrs(nested_b, rmw_op, device_spec_);
           scf::YieldOp::create(nested_b, nested_loc);
         },
         [&](OpBuilder& nested_b, Location nested_loc) {
-          // atomicMax((int *)address, __float_as_int(val))
-          ml::AtomicRMWOp::create(nested_b, loc, ml::AtomicBinOp::umin, addr,
-                                  source_float_as_int,
-                                  ml::AtomicOrdering::monotonic, sync_scope);
+          // atomicMin((unsigned int *)address, __float_as_uint(val))
+          auto rmw_op = ml::AtomicRMWOp::create(
+              nested_b, loc, ml::AtomicBinOp::umin, addr, source_float_as_int,
+              ml::AtomicOrdering::monotonic, sync_scope);
+          SetAmdAtomicRMWAttrs(nested_b, rmw_op, device_spec_);
           scf::YieldOp::create(nested_b, nested_loc);
         });
     scf::YieldOp::create(then_builder, loc);
-    return success();
   }
 
-  // Implements atomic binary operations using atomic compare-and-swap
-  // (atomicCAS) as follows:
-  //   1. Reads the value from the memory pointed to by output_address and
-  //     records it as old_output.
-  //   2. Uses old_output as one of the source operand to perform the binary
-  //     operation and stores the result in new_output.
-  //   3. Calls atomicCAS which implements compare-and-swap as an atomic
-  //     operation. In particular, atomicCAS reads the value from the memory
-  //     pointed to by output_address, and compares the value with old_output.
-  //     If the two values equal, new_output is written to the same memory
-  //     location and true is returned to indicate that the atomic operation
-  //     succeeds. Otherwise, the new value read from the memory is returned.
-  //     In this case, the new value is copied to old_output, and steps 2.
-  //     and 3. are repeated until atomicCAS succeeds.
-  //
-  // On Nvidia GPUs, atomicCAS can only operate on 32 bit and 64 bit integers.
-  // If the element type of the binary operation is 32 bits or 64 bits, the
-  // integer type of the same size is used for the atomicCAS operation. On the
-  // other hand, if the element type is smaller than 32 bits, int32_t is used
-  // for the atomicCAS operation. In this case, atomicCAS reads and writes 32
-  // bit values from the memory, which is larger than the memory size required
-  // by the original atomic binary operation. We mask off the last two bits of
-  // the output_address and use the result as an address to read the 32 bit
-  // values from the memory. This can avoid out of bound memory accesses if
-  // tensor buffers are 4 byte aligned and have a size of 4N, an assumption
-  // that the runtime can guarantee.
-  //
-  // On CPUs, 8-bit and 16-bit atomic compare-and-swap operations are supported
-  // natively, and runtime buffers are not guaranteed to have a size of 4N. We
-  // therefore use a minimum atomic width of 8 bits on CPU and only widen
-  // sub-byte types to i8 without rounding the byte address down.
+  // Implements atomic binary operations using atomicCAS: loads the containing
+  // word, applies the region computation to the extracted element, and retries
+  // cmpxchg until it succeeds.
   void rewriteAsAtomicCAS(AtomicRMWOp op,
                           mlir::PatternRewriter& rewriter) const {
     Location loc = op.getLoc();
-    auto input = op.getInput();
-
-    // Use 32-bit atomic type for small input types on GPU, and 8-bit minimum
-    // atomic type on CPU.
-    Type result_ty = op.getResult().getType().getElementType();
-    int result_size;
-    if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(result_ty)) {
-      result_size = complex_ty.getElementType().getIntOrFloatBitWidth() * 2;
-    } else {
-      result_size = result_ty.getIntOrFloatBitWidth();
-    }
-
-    int min_atomic_size = device_spec_.IsCpu() ? 8 : 32;
-    bool small_type = result_size < min_atomic_size;
-    Type atomic_ty = mlir::IntegerType::get(
-        op.getContext(), small_type ? min_atomic_size : result_size);
-
-    // Calculate load address for the input.
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    Value linear_index = GetLinearIndex(op.getIndices(), b);
-    Value sub_byte_shift;
-
-    std::optional<int> sub_byte_bit_width = GetSubByteBitWidth(result_ty);
-    if (sub_byte_bit_width) {
-      std::tie(linear_index, sub_byte_shift) =
-          GetSubByteIndex(linear_index, *sub_byte_bit_width, b);
-    }
-    Value addr = CreateGep(input, linear_index, b);
-    Value shift, mask;
-    if (small_type) {
-      if (min_atomic_size > 8) {
-        // Update input pointer by discarding the last two bits - i.e. align to
-        // 32-bit boundary for small input types (will not result in OOB, as the
-        // input alignment is at least 32 bits).
-        Type addr_int_ty = rewriter.getI64Type();
-        Value addr_int =
-            ml::PtrToIntOp::create(rewriter, loc, addr_int_ty, addr);
-        Value addr_offset = ml::AndOp::create(
-            rewriter, loc, addr_int,
-            ml::ConstantOp::create(rewriter, loc, addr_int_ty, 3));
-        // ptrmask instead of a negative GEP: LLVM would reassociate the GEP
-        // into [base + imm], and ptxas for sm_6x drops the low bits of that
-        // immediate on shared atomics, producing a misaligned CAS.
-        addr = ml::PtrMaskOp::create(
-            rewriter, loc, addr,
-            ml::ConstantOp::create(rewriter, loc, addr_int_ty, -4));
-
-        Value offset =
-            ml::TruncOp::create(rewriter, loc, atomic_ty, addr_offset);
-        shift = ml::MulOp::create(
-            rewriter, loc, offset,
-            ml::ConstantOp::create(rewriter, loc, offset.getType(), 8));
-        if (sub_byte_bit_width) {
-          sub_byte_shift = ml::ZExtOp::create(rewriter, loc, shift.getType(),
-                                              sub_byte_shift);
-          shift = ml::AddOp::create(rewriter, loc, shift, sub_byte_shift);
-        }
-      } else {
-        shift = sub_byte_bit_width
-                    ? sub_byte_shift
-                    : ml::ConstantOp::create(rewriter, loc, atomic_ty, 0);
-      }
-
-      // Compose the update mask.
-      Value bits_long = ml::ConstantOp::create(rewriter, loc, atomic_ty, -1);
-      Value bits_short = ml::ZExtOp::create(
-          rewriter, loc, atomic_ty,
-          ml::ConstantOp::create(rewriter, loc,
-                                 rewriter.getIntegerType(result_size), -1));
-      mask = ml::XOrOp::create(
-          rewriter, loc, bits_long,
-          ml::ShlOp::create(rewriter, loc, bits_short, shift));
-    }
+    AtomicWordAccess access = PrepareAtomicWordAccess(
+        op, op.getInput(), op.getIndices(), op.getCurrentValue().getType(),
+        device_spec_, rewriter);
+    llvm::StringRef sync_scope = GetAtomicSyncScope(device_spec_);
 
     // Load initial atomic value and create the loop.
-    Value initial = ml::LoadOp::create(rewriter, loc, atomic_ty, addr);
+    Value initial =
+        ml::LoadOp::create(rewriter, loc, access.atomic_ty, access.addr);
     scf::WhileOp::create(
-        rewriter, loc, TypeRange{atomic_ty}, ValueRange{initial},
-        [&](mlir::OpBuilder& builder, Location loc, ValueRange values) {
-          mlir::ImplicitLocOpBuilder b(loc, builder);
+        rewriter, loc, TypeRange{access.atomic_ty}, ValueRange{initial},
+        [&](mlir::OpBuilder& builder, Location loop_loc, ValueRange values) {
+          mlir::ImplicitLocOpBuilder b(loop_loc, builder);
           Value old_value = values[0];
 
           // Convert atomic value to input value.
           Value input_value;
-          if (small_type) {
-            Value short_value =
-                ml::TruncOp::create(b, b.getIntegerType(result_size),
-                                    ml::LShrOp::create(b, old_value, shift));
-            input_value = arith::BitcastOp::create(b, result_ty, short_value);
+          if (access.small_type) {
+            Value short_value = ml::TruncOp::create(
+                b, b.getIntegerType(static_cast<unsigned>(access.result_size)),
+                ml::LShrOp::create(b, old_value, access.shift));
+            input_value = CreateBitcast(b, short_value, access.result_ty);
           } else {
-            input_value = CreateBitcast(b, op, old_value, result_ty);
+            input_value = CreateBitcast(b, old_value, access.result_ty);
           }
 
           // Perform computation on the loaded input value.
@@ -1391,23 +2519,22 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
 
           // Convert resulting value to atomic value.
           Value new_value;
-          if (small_type) {
+          if (access.small_type) {
             Value cast_value = ml::ZExtOp::create(
-                b, atomic_ty,
-                arith::BitcastOp::create(
-                    b, rewriter.getIntegerType(result_size), result));
-            new_value =
-                ml::OrOp::create(b, ml::AndOp::create(b, old_value, mask),
-                                 ml::ShlOp::create(b, cast_value, shift));
+                b, access.atomic_ty,
+                CreateBitcast(b, result,
+                              rewriter.getIntegerType(
+                                  static_cast<unsigned>(access.result_size))));
+            new_value = ml::OrOp::create(
+                b, ml::AndOp::create(b, old_value, access.mask),
+                ml::ShlOp::create(b, cast_value, access.shift));
           } else {
-            new_value = CreateBitcast(b, op, result, atomic_ty);
+            new_value = CreateBitcast(b, result, access.atomic_ty);
           }
-
-          auto sync_scope = determinateScope();
 
           // Try saving the result atomically, retry if failed.
           Value cmpxchg = ml::AtomicCmpXchgOp::create(
-              b, loc, addr, old_value, new_value,
+              b, loop_loc, access.addr, old_value, new_value,
               /*success_ordering=*/ml::AtomicOrdering::monotonic,
               /*failure_ordering=*/ml::AtomicOrdering::monotonic, sync_scope);
           Value next = ml::ExtractValueOp::create(b, cmpxchg, 0);
@@ -1417,13 +2544,67 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           Value not_ok = ml::XOrOp::create(b, ok, low_bit);
           scf::ConditionOp::create(b, not_ok, ValueRange{next});
         },
-        [&](mlir::OpBuilder& b, Location loc, ValueRange values) {
-          scf::YieldOp::create(b, loc, values);
+        [](mlir::OpBuilder& b, Location loop_loc, ValueRange values) {
+          scf::YieldOp::create(b, loop_loc, values);
         });
   }
 
   const DeviceSpec& device_spec_;
 };
+
+struct DynamicDimMetadataInfo {
+  Value tensor_ptr;
+  int64_t offset_bytes;
+  std::optional<int> sub_byte_width;
+};
+
+std::optional<DynamicDimMetadataInfo> GetDynamicDimMetadataInfo(
+    mlir::ImplicitLocOpBuilder& b, mlir::Operation* op, Value tensor,
+    int64_t dim) {
+  Value base_tensor = GetDestinationBuffer(tensor);
+  if (!base_tensor) {
+    return std::nullopt;
+  }
+  auto tensor_type = mlir::cast<mlir::RankedTensorType>(tensor.getType());
+
+  Type element_type = tensor_type.getElementType();
+  int64_t num_elements = tensor_type.getNumElements();
+  std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
+  if (sub_byte_width) {
+    element_type = b.getI8Type();
+    // Elements are packed.
+    num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
+  }
+
+  // The offset of the dim size from the start of the buffer. The dynamic dim
+  // sizes are stored after the tensor data as a tail-allocated metadata of
+  // s32 type.
+  mlir::LLVMTypeConverter converter(op->getContext());
+  Type llvm_element_type = converter.convertType(element_type);
+  int64_t element_size_bytes =
+      static_cast<int64_t>(mlir::DataLayout::closest(op)
+                               .getTypeSize(llvm_element_type)
+                               .getFixedValue());
+  int64_t offset_bytes =
+      num_elements * element_size_bytes + dim * sizeof(int32_t);
+
+  auto ptr_type = ml::LLVMPointerType::get(b.getContext());
+  Value tensor_ptr =
+      UnrealizedConversionCastOp::create(b, ptr_type, base_tensor).getResult(0);
+  return DynamicDimMetadataInfo{tensor_ptr, offset_bytes, sub_byte_width};
+}
+
+Value AddByteOffsetToPointer(mlir::ImplicitLocOpBuilder& b, Value ptr,
+                             int64_t offset_bytes) {
+  if (offset_bytes == 0) {
+    return ptr;
+  }
+  auto ptr_type = ml::LLVMPointerType::get(b.getContext());
+  Value addr_int = ml::PtrToIntOp::create(b, b.getI64Type(), ptr);
+  Value addr_offset = ml::ConstantOp::create(b, b.getI64Type(), offset_bytes);
+  Value offset_addr_int = ml::AddOp::create(b, addr_int, addr_offset);
+  return ml::IntToPtrOp::create(b, ptr_type, offset_addr_int);
+}
 
 class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -1431,49 +2612,141 @@ class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
   LogicalResult matchAndRewrite(
       GetDynamicDimSizeOp op, mlir::PatternRewriter& rewriter) const override {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    auto tensor = op.getTensor();
-    auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(tensor.getType());
-
-    Type element_type = tensor_type.getElementType();
-    int64_t num_elements = tensor_type.getNumElements();
-    std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
-    if (sub_byte_width) {
-      element_type = b.getI8Type();
-      // Elements are packed.
-      num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
+    std::optional<DynamicDimMetadataInfo> info = GetDynamicDimMetadataInfo(
+        b, op, op.getTensor(), static_cast<int64_t>(op.getDim()));
+    if (!info) {
+      return failure();
     }
-
-    // The offset of the dim size from the start of the buffer. The dynamic dim
-    // sizes are stored after the tensor data as a tail-allocated metadata of
-    // s32 type.
-    int64_t dynamic_size_offset_in_bytes =
-        num_elements * element_type.getIntOrFloatBitWidth() / 8 +
-        op.getDim() * b.getI32Type().getWidth() / 8;
-
-    int64_t alignment = dynamic_size_offset_in_bytes % 4;
-    // TODO(b/463569416): Support unaligned loads.
-    if (alignment != 0) {
-      return op->emitOpError("dynamic size offset is not 4-byte aligned");
-    }
-
-    auto ptr_type = ml::LLVMPointerType::get(b.getContext());
-    Value tensor_ptr =
-        UnrealizedConversionCastOp::create(b, ptr_type, tensor).getResult(0);
-
-    Value addr_offset =
-        ml::ConstantOp::create(b, b.getI64Type(), dynamic_size_offset_in_bytes);
-
-    Value addr_int = ml::PtrToIntOp::create(b, b.getI64Type(), tensor_ptr);
-    Value metadata_addr_int = ml::AddOp::create(b, addr_int, addr_offset);
     Value metadata_addr =
-        ml::IntToPtrOp::create(b, ptr_type, metadata_addr_int);
-
-    rewriter.replaceOpWithNewOp<ml::LoadOp>(op, b.getI32Type(), metadata_addr);
-
+        AddByteOffsetToPointer(b, info->tensor_ptr, info->offset_bytes);
+    int64_t alignment = info->offset_bytes % 4 == 0 ? 4 : 1;
+    rewriter.replaceOpWithNewOp<ml::LoadOp>(op, b.getI32Type(), metadata_addr,
+                                            alignment);
     return success();
   }
 };
+
+class RewriteSetDynamicDimSize : public OpRewritePattern<SetDynamicDimSizeOp> {
+ public:
+  RewriteSetDynamicDimSize(mlir::MLIRContext* context,
+                           const DeviceSpec& device_spec)
+      : OpRewritePattern<SetDynamicDimSizeOp>(context),
+        device_spec_(device_spec) {}
+
+  LogicalResult matchAndRewrite(
+      SetDynamicDimSizeOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    int64_t dim = static_cast<int64_t>(op.getDim());
+    std::optional<DynamicDimMetadataInfo> info =
+        GetDynamicDimMetadataInfo(b, op, op.getTensor(), dim);
+    if (!info) {
+      return failure();
+    }
+
+    int64_t misalign = info->offset_bytes % 4;
+    if (!device_spec_.IsCpu() && info->sub_byte_width && dim == 0 &&
+        misalign != 0) {
+      // On GPU, sub-byte writes use 32-bit cmpxchg on the enclosing aligned
+      // word. When dim 0 starts mid-word, update the overlapping aligned word
+      // with cmpxchg so concurrent tail writes cannot clobber the low bytes of
+      // the size, then write only the remaining bytes in the next word.
+      Type i32_type = b.getI32Type();
+      int64_t aligned_offset = info->offset_bytes - misalign;
+      int low_bits = static_cast<int>(misalign * 8);
+      uint32_t low_mask_val = (uint32_t{1} << low_bits) - 1;
+
+      Value aligned_addr =
+          AddByteOffsetToPointer(b, info->tensor_ptr, aligned_offset);
+      Value low_mask = ml::ConstantOp::create(
+          b, i32_type, static_cast<int32_t>(low_mask_val));
+      Value low_shift = ml::ConstantOp::create(b, i32_type, low_bits);
+      Value shifted_size = ml::ShlOp::create(b, op.getSize(), low_shift);
+      Value initial = ml::LoadOp::create(b, i32_type, aligned_addr);
+
+      llvm::StringRef sync_scope = device_spec_.IsAmdGpu()
+                                       ? llvm::StringRef("agent-one-as")
+                                       : llvm::StringRef();
+      scf::WhileOp::create(
+          b, TypeRange{i32_type}, ValueRange{initial},
+          [&](mlir::OpBuilder& builder, Location loc, ValueRange values) {
+            mlir::ImplicitLocOpBuilder loop_b(loc, builder);
+            Value old_value = values[0];
+            Value preserved = ml::AndOp::create(loop_b, old_value, low_mask);
+            Value new_value = ml::OrOp::create(loop_b, preserved, shifted_size);
+            Value cmpxchg = ml::AtomicCmpXchgOp::create(
+                loop_b, loc, aligned_addr, old_value, new_value,
+                /*success_ordering=*/ml::AtomicOrdering::monotonic,
+                /*failure_ordering=*/ml::AtomicOrdering::monotonic, sync_scope);
+            Value next = ml::ExtractValueOp::create(loop_b, cmpxchg, 0);
+            Value ok = ml::ExtractValueOp::create(loop_b, cmpxchg, 1);
+            Value low_bit = ml::ConstantOp::create(
+                loop_b, loop_b.getOneAttr(loop_b.getI1Type()));
+            Value not_ok = ml::XOrOp::create(loop_b, ok, low_bit);
+            scf::ConditionOp::create(loop_b, not_ok, ValueRange{next});
+          },
+          [&](mlir::OpBuilder& builder, Location loc, ValueRange values) {
+            scf::YieldOp::create(builder, loc, values);
+          });
+
+      Value tail_addr =
+          AddByteOffsetToPointer(b, info->tensor_ptr, aligned_offset + 4);
+      int high_shift_bits = 32 - low_bits;
+      Value high_shifted = ml::LShrOp::create(
+          b, op.getSize(),
+          ml::ConstantOp::create(b, i32_type, high_shift_bits));
+      if (misalign == 1) {
+        Value byte_val = ml::TruncOp::create(b, b.getI8Type(), high_shifted);
+        ml::StoreOp::create(b, byte_val, tail_addr, /*alignment=*/1);
+      } else if (misalign == 2) {
+        Value i16_val = ml::TruncOp::create(b, b.getI16Type(), high_shifted);
+        ml::StoreOp::create(b, i16_val, tail_addr, /*alignment=*/2);
+      } else {
+        Value low_i16 = ml::TruncOp::create(b, b.getI16Type(), high_shifted);
+        ml::StoreOp::create(b, low_i16, tail_addr, /*alignment=*/2);
+        Value top_byte = ml::TruncOp::create(
+            b, b.getI8Type(),
+            ml::LShrOp::create(b, high_shifted,
+                               ml::ConstantOp::create(b, i32_type, 16)));
+        Value top_addr =
+            AddByteOffsetToPointer(b, info->tensor_ptr, aligned_offset + 6);
+        ml::StoreOp::create(b, top_byte, top_addr, /*alignment=*/1);
+      }
+    } else {
+      Value metadata_addr =
+          AddByteOffsetToPointer(b, info->tensor_ptr, info->offset_bytes);
+      int64_t alignment = misalign == 0 ? 4 : 1;
+      ml::StoreOp::create(b, op.getSize(), metadata_addr, alignment);
+    }
+
+    rewriter.replaceOp(op, op.getTensor());
+    return success();
+  }
+
+ private:
+  const DeviceSpec& device_spec_;
+};
+
+// Uses an explicit region/block worklist rather than `Operation::walk` to avoid
+// instantiating `llvm::early_inc_iterator_impl` (-Wshadow-field in clang-tidy).
+bool ReportUnloweredAtomics(mlir::Operation* root) {
+  SmallVector<mlir::Operation*, 16> worklist{root};
+  bool has_unlowered_atomic = false;
+  while (!worklist.empty()) {
+    mlir::Operation* op = worklist.pop_back_val();
+    if (mlir::isa<AtomicRMWOp, AtomicStoreOp>(op)) {
+      op->emitOpError("failed to lower to LLVM atomic operation");
+      has_unlowered_atomic = true;
+    }
+    for (mlir::Region& region : op->getRegions()) {
+      for (mlir::Block& block : region) {
+        for (mlir::Operation& child : block) {
+          worklist.push_back(&child);
+        }
+      }
+    }
+  }
+  return has_unlowered_atomic;
+}
 
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
  public:
@@ -1502,15 +2775,22 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet tensor_patterns(mlir_context);
 
-    tensor_patterns.add<RewriteAtomicRMW, RewriteTensorInsert>(mlir_context,
-                                                               device_spec_);
+    AtomicRMWOp::getCanonicalizationPatterns(tensor_patterns, mlir_context);
+    tensor_patterns.add<RewriteAtomicRMW, RewriteAtomicStore,
+                        RewriteSetDynamicDimSize, RewriteTensorInsert>(
+        mlir_context, device_spec_);
     tensor_patterns
-        .add<RewriteAllocateShared, RewriteGetDynamicDimSize,
+        .add<RewriteAllocateShared, RewriteCopySlice, RewriteGetDynamicDimSize,
              RewriteNonScalarConstants, RewriteSyncThreads,
              RewriteTensorExtract, RewriteTransferRead, RewriteTransferWrite>(
             mlir_context);
     if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
                                                  std::move(tensor_patterns)))) {
+      signalPassFailure();
+      return;
+    }
+
+    if (ReportUnloweredAtomics(getOperation())) {
       signalPassFailure();
       return;
     }
@@ -1528,31 +2808,6 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       signalPassFailure();
       return;
     }
-
-    getOperation()->walk([this](ml::LoadOp load) {
-      Value addr = load.getAddr();
-      while (auto gep = addr.getDefiningOp<ml::GEPOp>()) {
-        addr = gep.getBase();
-      }
-      while (auto cast = addr.getDefiningOp<UnrealizedConversionCastOp>()) {
-        addr = cast.getOperand(0);
-      }
-      if (addr.getDefiningOp<ml::AddrSpaceCastOp>() ||
-          addr.getDefiningOp<ml::AddressOfOp>() ||
-          addr.getDefiningOp<ml::AllocaOp>()) {
-        // Shared memory, global constant or temporary - no need to annotate
-        // anything.
-        return;
-      }
-      if (auto base = mlir::dyn_cast<mlir::BlockArgument>(addr)) {
-        if (auto func = mlir::dyn_cast<mlir::func::FuncOp>(
-                base.getOwner()->getParentOp())) {
-          if (func.getArgAttr(base.getArgNumber(), "xla.invariant")) {
-            load.setInvariant(true);
-          }
-        }
-      }
-    });
   }
 
  private:

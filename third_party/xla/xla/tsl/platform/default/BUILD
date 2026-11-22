@@ -251,7 +251,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    deps = ["//xla/tsl/platform:types"],
 )
 
 cc_library(
@@ -315,10 +314,7 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
-    ] + if_rocm_is_configured([
+    deps = ["@com_google_absl//absl/status"] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_rpath",
     ]),
 )

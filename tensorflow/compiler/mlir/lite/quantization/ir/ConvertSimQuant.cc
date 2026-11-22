@@ -27,10 +27,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
-#include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 
 namespace mlir::quantfork {
 
@@ -67,8 +67,7 @@ class FakeQuantRewrite : public OpRewritePattern<FakeQuantOp> {
 
   bool failableRewrite(FakeQuantOp op, PatternRewriter &rewriter) const {
     auto converter =
-        mlir::quant::ir::ExpressedToQuantizedConverter::forInputType(
-            op.getType());
+        TFL::ExpressedToQuantizedConverter::forInputType(op.getType());
     if (!converter) {
       return (op.emitError("unsupported quantized type conversion"), true);
     }
@@ -107,7 +106,7 @@ class ConstFakeQuantRewrite
 
   quant::QuantizedType convertFakeQuantAttrsToType(ConstFakeQuant fqOp,
                                                    Type expressedType) const {
-    return fakeQuantAttrsToType(
+    return TFL::fakeQuantAttrsToType(
         fqOp.getLoc(), fqOp.getNumBits(), fqOp.getMin().convertToFloat(),
         fqOp.getMax().convertToFloat(), fqOp.getNarrowRange(), expressedType,
         fqOp.getIsSigned());
@@ -134,9 +133,9 @@ class ConstFakeQuantPerAxisRewrite
     for (auto m : fqOp.getMax())
       max.push_back(cast<FloatAttr>(m).getValueAsDouble());
 
-    return fakeQuantAttrsToType(fqOp.getLoc(), fqOp.getNumBits(),
-                                fqOp.getAxis(), min, max, fqOp.getNarrowRange(),
-                                expressedType, fqOp.getIsSigned());
+    return TFL::fakeQuantAttrsToType(
+        fqOp.getLoc(), fqOp.getNumBits(), fqOp.getAxis(), min, max,
+        fqOp.getNarrowRange(), expressedType, fqOp.getIsSigned());
   }
 };
 

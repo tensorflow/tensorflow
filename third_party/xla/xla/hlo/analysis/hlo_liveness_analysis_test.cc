@@ -705,5 +705,55 @@ TEST_F(HloLivenessAnalysisTest, DisabledWhileLoopDce) {
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "while.0"), {1}));
 }
 
+TEST_F(HloLivenessAnalysisTest, WhileInsideEmbeddedMap) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule WhileInsideMap
+  while_body {
+    carry = (f32[], f32[], s32[], f32[], s32[]) parameter(0)
+    acc = f32[] get-tuple-element(carry), index=0
+    term = f32[] get-tuple-element(carry), index=1
+    k = s32[] get-tuple-element(carry), index=2
+    x = f32[] get-tuple-element(carry), index=3
+    dead = s32[] get-tuple-element(carry), index=4
+    one = s32[] constant(1)
+    next_k = s32[] add(k, one)
+    next_term = f32[] multiply(term, x)
+    next_acc = f32[] add(acc, next_term)
+    next_dead = s32[] add(dead, one)
+    ROOT root = (f32[], f32[], s32[], f32[], s32[]) tuple(
+        next_acc, next_term, next_k, x, next_dead)
+  }
+  while_cond {
+    carry = (f32[], f32[], s32[], f32[], s32[]) parameter(0)
+    term = f32[] get-tuple-element(carry), index=1
+    k = s32[] get-tuple-element(carry), index=2
+    tol = f32[] constant(0.001)
+    max_k = s32[] constant(10)
+    gt = pred[] compare(term, tol), direction=GT
+    lt = pred[] compare(k, max_k), direction=LT
+    ROOT cond = pred[] and(gt, lt)
+  }
+  mapped_fn {
+    p0 = f32[] parameter(0)
+    c1 = f32[] constant(1.0)
+    c0 = s32[] constant(0)
+    init = (f32[], f32[], s32[], f32[], s32[]) tuple(c1, c1, c0, p0, c0)
+    loop = (f32[], f32[], s32[], f32[], s32[]) while(init),
+        condition=while_cond, body=while_body
+    ROOT out0 = f32[] get-tuple-element(loop), index=0
+  }
+  ENTRY main {
+    xs = f32[5]{0} parameter(0)
+    ROOT res = f32[5]{0} map(xs), dimensions={0}, to_apply=mapped_fn
+  })"));
+  const HloLivenessAnalysis& liveness = RunLiveness(module.get());
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "loop"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "loop"), {0}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "loop"), {1}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "loop"), {2}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "loop"), {3}));
+  EXPECT_FALSE(liveness.IsLive(GetInstruction(module.get(), "loop"), {4}));
+}
+
 }  // namespace
 }  // namespace xla

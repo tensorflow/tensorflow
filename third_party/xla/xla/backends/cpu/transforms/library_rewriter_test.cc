@@ -266,12 +266,7 @@ TEST_P(CpuLibraryFullParamTest, MatMulTransposeLHS) {
                   rhs_batch_dims={0,1}, rhs_contracting_dims={2}
     })";
 
-  DotRewriteTestSpec spec = GetParam();
-  FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
-  if (spec.lib == "onednn" && IsDotEnabledOnCPU()) {
-    expected = FusionProperties{HloOpcode::kDot, 2, 3, true};
-  }
-  RunTest(hlo_template, expected);
+  RunTest(hlo_template, {HloOpcode::kDot, 2, 3, IsDotEnabledOnCPU()});
 }
 
 TEST_P(CpuLibraryFullParamTest, MatMulDimSizeUnqual) {
@@ -698,6 +693,59 @@ TEST_F(CpuLibraryTest, ReduceSquareConvert) {
   DotRewriteTestSpec spec = GetDefaultTestSpec();
   spec.fusion_mode = "reduce";
   RunTestInternal(spec, hlo_template, {HloOpcode::kReduce, 1, 5, true});
+}
+
+TEST_F(CpuLibraryTest, DoNotFuseReduceWithNonTrivialReducer) {
+  // The reducer has a side-effecting outfeed next to the add, so it is not the
+  // plain `add(p0, p1)` computation that the YNN emitter expects.
+  const absl::string_view hlo_template = R"(
+    HloModule reduce_with_outfeed_in_reducer
+
+    reducer_add_with_outfeed {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      c = f32[] constant(42)
+      token0 = token[] after-all()
+      outfeed = token[] outfeed(c, token0), outfeed_shape=f32[]
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      input = f32[10,10,10,10]{3,2,1,0} parameter(0)
+      c = f32[] constant(0)
+      ROOT output = f32[10,10]{1,0} reduce(input, c), dimensions={0,2},
+          to_apply=reducer_add_with_outfeed
+    }
+    )";
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "reduce";
+  RunTestInternal(spec, hlo_template, {HloOpcode::kReduce, 0, 0, false});
+}
+
+TEST_F(CpuLibraryTest, DoNotFuseReduceWindowWithNonTrivialReducer) {
+  // Same reducer as above; reduce-window must not be fused either.
+  const absl::string_view hlo_template = R"(
+    HloModule reduce_window_with_outfeed_in_reducer
+
+    reducer_add_with_outfeed {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      c = f32[] constant(42)
+      token0 = token[] after-all()
+      outfeed = token[] outfeed(c, token0), outfeed_shape=f32[]
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      input = f32[512,512]{1,0} parameter(0)
+      c = f32[] constant(0)
+      ROOT output = f32[256,256]{1,0} reduce-window(input, c),
+          window={size=2x2 stride=2x2}, to_apply=reducer_add_with_outfeed
+    }
+    )";
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "reduce";
+  RunTestInternal(spec, hlo_template, {HloOpcode::kReduceWindow, 0, 0, false});
 }
 
 TEST_F(CpuLibraryTest, RetryFusion) {

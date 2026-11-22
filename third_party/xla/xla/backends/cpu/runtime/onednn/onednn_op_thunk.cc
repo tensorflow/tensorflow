@@ -132,8 +132,16 @@ absl::StatusOr<std::unique_ptr<OneDnnOpThunk>> OneDnnOpThunk::Create(
     OneDnnOpConfig config) {
   // Update custom_call op_name with target
   info.op_name = absl::StrCat(info.op_name, custom_call_target);
-  return absl::WrapUnique(new OneDnnOpThunk(std::move(custom_call_target),
-                                            std::move(info), std::move(buffers),
+  return CreateFromSerialized(custom_call_target, std::move(info),
+                              std::move(buffers), std::move(config));
+}
+
+absl::StatusOr<std::unique_ptr<OneDnnOpThunk>>
+OneDnnOpThunk::CreateFromSerialized(const std::string& custom_call_target,
+                                    Info info, OpBuffers buffers,
+                                    OneDnnOpConfig config) {
+  return absl::WrapUnique(new OneDnnOpThunk(custom_call_target, std::move(info),
+                                            std::move(buffers),
                                             std::move(config)));
 }
 

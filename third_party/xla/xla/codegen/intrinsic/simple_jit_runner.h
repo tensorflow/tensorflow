@@ -30,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/log/log.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
@@ -59,6 +60,12 @@ template <typename T, size_t VectorSize>
 struct alignas(32) AlignedArrayWrapper {
   std::array<T, VectorSize> array;
 };
+
+template <typename FnPtr, typename... Args>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI decltype(auto) InvokeJitFn(FnPtr fn,
+                                                          Args&&... args) {
+  return fn(std::forward<Args>(args)...);
+}
 }  // namespace internal
 
 // A simple JIT runner for testing and benchmarking LLVM IR functions.
@@ -79,7 +86,7 @@ class JitRunner {
                      std::unique_ptr<llvm::LLVMContext> context);
 
   template <typename FnType>
-  FnType* GetScalarFn(const std::string& function_name) {
+  std::function<FnType> GetScalarFn(const std::string& function_name) {
     auto function_sym = jit_->lookup(function_name);
     if (!function_sym) {
       LOG(FATAL) << "Failed to lookup function: " << function_name << ": "
@@ -87,7 +94,9 @@ class JitRunner {
     }
 
     FnType* fn = reinterpret_cast<FnType*>(function_sym->getValue());
-    return fn;
+    return [fn](auto&&... args) -> decltype(auto) {
+      return internal::InvokeJitFn(fn, std::forward<decltype(args)>(args)...);
+    };
   }
 
   // Compiles a JITted function that operates on vectors.
@@ -130,8 +139,9 @@ class JitRunner {
           internal::AlignedArrayWrapper<ArgTypes, VectorSize>{args}...);
       std::apply(
           [&](const auto&... single_arg_wrapper) {
-            wrapper_ptr(result_array.data(), iteration_count, VectorSize,
-                        single_arg_wrapper.array.data()...);
+            internal::InvokeJitFn(wrapper_ptr, result_array.data(),
+                                  iteration_count, VectorSize,
+                                  single_arg_wrapper.array.data()...);
           },
           aligned_args_tuple);
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -38,13 +39,13 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class CommandBufferProfilingTest : public HloHardwareIndependentTestBase,
-                                   public ::testing::WithParamInterface<bool> {
-};
+class CommandBufferProfilingTest
+    : public HloHardwareIndependentTestBase,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {};
 
 TEST_P(CommandBufferProfilingTest,
        EnableCommandBuffersDuringProfilingIsRespected) {
-  bool enable_cb_during_profiling = GetParam();
+  const auto [enable_cb_during_profiling, enable_telemetry] = GetParam();
 
   constexpr absl::string_view hlo_text = R"hlo(
     HloModule test
@@ -86,6 +87,8 @@ TEST_P(CommandBufferProfilingTest,
   runtime_debug_options.set_xla_gpu_graph_min_graph_size(1);
   runtime_debug_options.set_xla_enable_command_buffers_during_profiling(
       enable_cb_during_profiling);
+  runtime_debug_options.set_xla_gpu_enable_command_buffer_telemetry(
+      enable_telemetry);
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                        std::move(*aot_results[0])
@@ -101,12 +104,18 @@ TEST_P(CommandBufferProfilingTest,
   auto* cmd_buf_thunk =
       dynamic_cast<const CommandBufferThunk*>(thunks[0].get());
   ASSERT_NE(cmd_buf_thunk, nullptr);
+  // The two runtime options are forwarded independently: telemetry must not
+  // bypass the b/290773547 fallback that runs command buffers op-by-op while
+  // profiling.
   EXPECT_EQ(cmd_buf_thunk->IsEnabledDuringProfiling(),
             enable_cb_during_profiling);
+  EXPECT_EQ(cmd_buf_thunk->IsCommandBufferTelemetryEnabled(), enable_telemetry);
 }
 
 INSTANTIATE_TEST_SUITE_P(CommandBufferProfilingTestSuite,
-                         CommandBufferProfilingTest, ::testing::Bool());
+                         CommandBufferProfilingTest,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool()));
 
 }  // namespace
 }  // namespace xla::gpu

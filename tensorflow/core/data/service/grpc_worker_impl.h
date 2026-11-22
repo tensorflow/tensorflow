@@ -55,6 +55,8 @@ class GrpcWorkerImpl : public WorkerService::Service {
 
   WorkerStateExport ExportState() const;
 
+  DataServiceWorkerImpl& impl() { return *impl_; }
+
 #define HANDLER(method)                                 \
   ::grpc::Status method(::grpc::ServerContext* context, \
                         const method##Request* request, \
@@ -66,6 +68,7 @@ class GrpcWorkerImpl : public WorkerService::Service {
 #undef HANDLER
 
  private:
+  const std::string protocol_;
   std::string worker_address_;
   // A std::shared_ptr allows clients to access local servers and directly call
   // the servers' methods to avoid RPC calls and data copy.
