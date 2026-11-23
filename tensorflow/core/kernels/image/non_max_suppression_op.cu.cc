@@ -309,7 +309,7 @@ absl::StatusOr<int> CountIf(OpKernelContext* context, const float* dev_array,
       num_elements, op, cuda_stream));
   TF_RETURN_IF_CUDA_ERROR(gpuEventRecord(copy_done, device.stream()));
   TF_RETURN_IF_CUDA_ERROR(gpuEventSynchronize(copy_done));
-  return *num_selected.flat<int32_t>().data();
+  return num_selected.flat<int32_t>()(0);
 }
 
 absl::Status DoNMS(OpKernelContext* context, const Tensor& boxes,
