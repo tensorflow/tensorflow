@@ -25,19 +25,23 @@ namespace stream_executor::gpu {
 // Closes the underlying file descriptor on destruction.
 class DmaBuf {
  public:
-  DmaBuf(int fd, uint64_t offset) : fd_(fd), offset_(offset) {}
+  DmaBuf(int fd, uint64_t offset, uint64_t size)
+      : fd_(fd), offset_(offset), size_(size) {}
   ~DmaBuf() { Close(); }
 
   DmaBuf(const DmaBuf&) = delete;
   DmaBuf& operator=(const DmaBuf&) = delete;
 
   DmaBuf(DmaBuf&& other) noexcept
-      : fd_(std::exchange(other.fd_, -1)), offset_(other.offset_) {}
+      : fd_(std::exchange(other.fd_, -1)),
+        offset_(other.offset_),
+        size_(other.size_) {}
   DmaBuf& operator=(DmaBuf&& other) noexcept {
     if (this != &other) {
       Close();
       fd_ = std::exchange(other.fd_, -1);
       offset_ = other.offset_;
+      size_ = other.size_;
     }
     return *this;
   }
@@ -49,6 +53,10 @@ class DmaBuf {
   // dma-buf.
   uint64_t offset() const { return offset_; }
 
+  // Returns the total exported size of the dma-buf in bytes, starting from
+  // byte 0 of `fd()`.
+  uint64_t size() const { return size_; }
+
  private:
   void Close();
 
@@ -57,6 +65,9 @@ class DmaBuf {
 
   // Byte offset of the requested address within the dma-buf.
   uint64_t offset_;
+
+  // Total exported size of the dma-buf in bytes.
+  uint64_t size_;
 };
 
 }  // namespace stream_executor::gpu

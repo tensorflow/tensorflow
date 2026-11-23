@@ -638,6 +638,7 @@ TEST(CudaExecutorTest, ExportDmaBuf) {
     EXPECT_THAT(absl::string_view(link_target, link_len), HasSubstr("dmabuf"));
     const off_t dmabuf_size = lseek(sub_fd, 0, SEEK_END);
     ASSERT_NE(dmabuf_size, static_cast<off_t>(-1));
+    EXPECT_EQ(sub_buf.size(), static_cast<uint64_t>(dmabuf_size));
     EXPECT_GE(static_cast<uint64_t>(dmabuf_size), sub_buf.offset() + kSubSize);
 #endif
   }

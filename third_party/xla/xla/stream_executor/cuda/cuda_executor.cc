@@ -1217,7 +1217,7 @@ absl::StatusOr<DmaBuf> CudaExecutor::ExportDmaBuf(
                      cuda::ToStatus(result).message()));
   }
   ABSL_RETURN_IF_ERROR(cuda::ToStatus(result));
-  return DmaBuf(fd, offset);
+  return DmaBuf(fd, offset, aligned_size);
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>

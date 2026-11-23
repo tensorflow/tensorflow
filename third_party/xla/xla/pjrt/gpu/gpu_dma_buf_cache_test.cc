@@ -63,7 +63,8 @@ TEST(GpuDmaBufCacheTest, CachesPerChunkAndComputesOffsets) {
       -> absl::StatusOr<stream_executor::gpu::DmaBuf> {
     ++export_count;
     exported_range = range;
-    return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/128);
+    return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/128,
+                                        /*size=*/range.size() + 128);
   };
 
   ASSERT_OK_AND_ASSIGN(GpuDmaBufCache::ExportedDmaBuf first,
@@ -100,7 +101,8 @@ TEST(GpuDmaBufCacheTest, FreeVisitorClosesCachedFdWhenNoRefsRemain) {
             [&](const stream_executor::DeviceAddressBase&)
                 -> absl::StatusOr<stream_executor::gpu::DmaBuf> {
               fd = MakeTestFd();
-              return stream_executor::gpu::DmaBuf(fd, /*offset=*/0);
+              return stream_executor::gpu::DmaBuf(fd, /*offset=*/0,
+                                                  /*size=*/0x4000);
             }));
     EXPECT_TRUE(IsFdOpen(fd));
   }
@@ -123,7 +125,8 @@ TEST(GpuDmaBufCacheTest, ActiveReferenceKeepsFdAlivePastFreeVisitor) {
           stream_executor::DeviceAddressBase(FakeAddr(0x30000), 0x1000),
           [](const stream_executor::DeviceAddressBase&)
               -> absl::StatusOr<stream_executor::gpu::DmaBuf> {
-            return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/0);
+            return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/0,
+                                                /*size=*/0x4000);
           }));
   const int fd = entry.dma_buf->fd();
   ASSERT_TRUE(IsFdOpen(fd));
@@ -144,7 +147,8 @@ TEST(GpuDmaBufCacheTest, UntrackedAndMultiChunkRangesUseUncachedFallback) {
   auto export_fn = [&](const stream_executor::DeviceAddressBase&)
       -> absl::StatusOr<stream_executor::gpu::DmaBuf> {
     ++export_count;
-    return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/64);
+    return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/64,
+                                        /*size=*/0x2000 + 64);
   };
 
   // Range straddling two adjacent chunks falls back to uncached export.
@@ -219,7 +223,8 @@ TEST(GpuDmaBufCacheTest, ExportErrorsAreNotCached) {
     if (++calls == 1) {
       return absl::UnavailableError("transient failure");
     }
-    return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/0);
+    return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/0,
+                                        /*size=*/0x4000);
   };
 
   EXPECT_THAT(cache->GetOrExport(
@@ -254,7 +259,7 @@ TEST(GpuDmaBufCacheTest, ConcurrentFirstExportDeduplicatesAndClosesExtraFd) {
       both_entered.Notify();
     }
     release_exports.WaitForNotification();
-    return stream_executor::gpu::DmaBuf(fd, /*offset=*/0);
+    return stream_executor::gpu::DmaBuf(fd, /*offset=*/0, /*size=*/0x4000);
   };
 
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "dma_buf_cache_test", 2);
@@ -306,14 +311,16 @@ TEST(GpuDmaBufCacheTest, ConcurrentFreeDuringExportFallsBackToUncached) {
       // Simulate chunk being freed while the chunk-wide export is in flight.
       chunk_fd = MakeTestFd();
       cache->free_visitor()(FakeAddr(0x70000), /*device_ordinal=*/0, 0x4000);
-      return stream_executor::gpu::DmaBuf(chunk_fd, /*offset=*/0);
+      return stream_executor::gpu::DmaBuf(chunk_fd, /*offset=*/0,
+                                          /*size=*/0x4000);
     }
     // The discarded chunk-wide fd must be closed before the fallback export
     // (checking here avoids POSIX fd-number reuse by `MakeTestFd()`).
     EXPECT_FALSE(IsFdOpen(chunk_fd));
     EXPECT_EQ(range.opaque(), FakeAddr(0x70100));
     EXPECT_EQ(range.size(), 0x1000);
-    return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/32);
+    return stream_executor::gpu::DmaBuf(MakeTestFd(), /*offset=*/32,
+                                        /*size=*/0x1000 + 32);
   };
 
   ASSERT_OK_AND_ASSIGN(GpuDmaBufCache::ExportedDmaBuf entry,
