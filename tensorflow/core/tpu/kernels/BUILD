@@ -262,11 +262,11 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:ops_testutil",
         "@com_google_absl//absl/status",
-        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:bfloat16",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:test_benchmark",
     ],
 )
 
