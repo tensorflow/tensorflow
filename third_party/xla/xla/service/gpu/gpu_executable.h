@@ -464,6 +464,7 @@ class GpuExecutable : public Executable {
   // |--------------------------------------|--------------------------|
   // | ExecuteThunks (NCCL channels, stream | runtime_debug_options_   |
   // | priority, nccl_window_symmetric,     |                          |
+  // | cache_nccl_window_in_communicator,   |                          |
   // | progress tracking, timeouts,         |                          |
   // | rendezvous timeouts)                 |                          |
   // | Buffer allocator (command buffer     | runtime_debug_options_   |

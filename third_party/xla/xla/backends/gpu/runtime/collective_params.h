@@ -77,6 +77,9 @@ struct CollectiveParams {
   bool need_barrier = false;
   bool collective_use_minimal_resource;
   bool nccl_window_symmetric = false;
+  // Whether symmetric memory windows are cached on the GPU communicator (see
+  // `xla_gpu_experimental_cache_nccl_window_in_communicator`).
+  bool cache_nccl_window_in_communicator = false;
 
  private:
   CollectiveParams(

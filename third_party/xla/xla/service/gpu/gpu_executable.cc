@@ -1010,6 +1010,8 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
                        LocalDeviceId(device_ordinal), collective_max_nchannels,
                        p2p_max_nchannels, collective_use_minimal_resource,
                        nccl_window_symmetric));
+  collective_params.cache_nccl_window_in_communicator =
+      debug_options.xla_gpu_experimental_cache_nccl_window_in_communicator();
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);

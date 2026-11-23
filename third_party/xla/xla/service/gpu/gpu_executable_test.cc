@@ -1132,9 +1132,16 @@ TEST_F(GpuExecutableTest, RuntimeMetadataSurvivesProtoRoundTrip) {
   ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto,
                        reference_executable->ToProto());
 
+  // Load with the opposite of the compile-time value, so that the check below
+  // does not depend on the flag's default.
+  const bool compile_time_cache_nccl_window_in_communicator =
+      config.debug_options()
+          .xla_gpu_experimental_cache_nccl_window_in_communicator();
   DebugOptions load_time_options = GetDebugOptionsFromFlags();
   load_time_options.set_xla_dump_to(dump_dir.path());
   load_time_options.set_xla_gpu_experimental_nccl_window_symmetric(true);
+  load_time_options.set_xla_gpu_experimental_cache_nccl_window_in_communicator(
+      !compile_time_cache_nccl_window_in_communicator);
   load_time_options.set_xla_gpu_nccl_collective_max_nchannels(3);
 
   ASSERT_OK_AND_ASSIGN(
@@ -1157,6 +1164,10 @@ TEST_F(GpuExecutableTest, RuntimeMetadataSurvivesProtoRoundTrip) {
   EXPECT_EQ(runtime_options.xla_gpu_nccl_collective_max_nchannels(), 7);
   EXPECT_EQ(runtime_options.xla_dump_to(), dump_dir.path());
   EXPECT_TRUE(runtime_options.xla_gpu_experimental_nccl_window_symmetric());
+  // A module-level flag: the compile-time value wins over the load-time one.
+  EXPECT_EQ(
+      runtime_options.xla_gpu_experimental_cache_nccl_window_in_communicator(),
+      compile_time_cache_nccl_window_in_communicator);
   EXPECT_EQ(loaded_executable->static_device_assignment()->ToString(),
             config.static_device_assignment().ToString());
 
@@ -2031,16 +2042,26 @@ TEST_F(GpuExecutableTest,
 
 class RecordCollectiveParamsThunk : public Thunk {
  public:
-  RecordCollectiveParamsThunk(ThunkInfo thunk_info,
-                              std::optional<LocalDeviceId>* local_device_id,
-                              std::optional<GlobalDeviceId>* global_device_id)
+  RecordCollectiveParamsThunk(
+      ThunkInfo thunk_info, std::optional<LocalDeviceId>* local_device_id,
+      std::optional<GlobalDeviceId>* global_device_id,
+      std::optional<bool>* cache_nccl_window_in_communicator = nullptr)
       : Thunk(Kind::kKernel, std::move(thunk_info)),
         local_device_id_(local_device_id),
-        global_device_id_(global_device_id) {}
+        global_device_id_(global_device_id),
+        cache_nccl_window_in_communicator_(cache_nccl_window_in_communicator) {}
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
-    *local_device_id_ = params.collective_params->local_device_id;
-    *global_device_id_ = params.collective_params->global_device_id;
+    if (local_device_id_ != nullptr) {
+      *local_device_id_ = params.collective_params->local_device_id;
+    }
+    if (global_device_id_ != nullptr) {
+      *global_device_id_ = params.collective_params->global_device_id;
+    }
+    if (cache_nccl_window_in_communicator_ != nullptr) {
+      *cache_nccl_window_in_communicator_ =
+          params.collective_params->cache_nccl_window_in_communicator;
+    }
     return absl::OkStatus();
   }
 
@@ -2051,7 +2072,35 @@ class RecordCollectiveParamsThunk : public Thunk {
  private:
   std::optional<LocalDeviceId>* local_device_id_;
   std::optional<GlobalDeviceId>* global_device_id_;
+  std::optional<bool>* cache_nccl_window_in_communicator_;
 };
+
+// Sets up `executor` and `stream` mocks so that a `GpuExecutable` with
+// host-only thunks can run on device 0 of `platform`.
+void SetUpMockStream(se::Platform* platform,
+                     const se::GpuComputeCapability& compute_capability,
+                     se::MockStreamExecutor& executor, se::MockStream& stream) {
+  EXPECT_CALL(executor, GetPlatform()).WillRepeatedly(Return(platform));
+  EXPECT_CALL(executor, device_ordinal()).WillRepeatedly(Return(0));
+  EXPECT_CALL(executor, SynchronizeAllActivity()).WillRepeatedly(Return(true));
+  EXPECT_CALL(executor, Activate()).WillRepeatedly([]() { return nullptr; });
+  EXPECT_CALL(stream, parent()).WillRepeatedly(Return(&executor));
+  if (const se::CudaComputeCapability* cuda_cc =
+          compute_capability.cuda_compute_capability()) {
+    EXPECT_CALL(stream, GetCudaComputeCapability())
+        .WillRepeatedly(Return(*cuda_cc));
+  }
+  if (const se::RocmComputeCapability* rocm_cc =
+          compute_capability.rocm_compute_capability()) {
+    EXPECT_CALL(stream, GetRocmComputeCapability())
+        .WillRepeatedly(Return(*rocm_cc));
+  }
+  if (const se::OneAPIComputeCapability* oneapi_cc =
+          compute_capability.oneapi_compute_capability()) {
+    EXPECT_CALL(stream, GetOneAPIComputeCapability())
+        .WillRepeatedly(Return(*oneapi_cc));
+  }
+}
 
 TEST_F(GpuExecutableTest, CollectiveParamsUsesRunOptionsDeviceOrdinal) {
   ASSERT_OK_AND_ASSIGN(
@@ -2077,29 +2126,8 @@ TEST_F(GpuExecutableTest, CollectiveParamsUsesRunOptionsDeviceOrdinal) {
 
   se::MockStreamExecutor executor;
   se::MockStream stream;
-  const se::GpuComputeCapability& compute_capability =
-      device_description().gpu_compute_capability();
-
-  EXPECT_CALL(executor, GetPlatform()).WillRepeatedly(Return(platform));
-  EXPECT_CALL(executor, device_ordinal()).WillRepeatedly(Return(0));
-  EXPECT_CALL(executor, SynchronizeAllActivity()).WillRepeatedly(Return(true));
-  EXPECT_CALL(executor, Activate()).WillRepeatedly([]() { return nullptr; });
-  EXPECT_CALL(stream, parent()).WillRepeatedly(Return(&executor));
-  if (const se::CudaComputeCapability* cuda_cc =
-          compute_capability.cuda_compute_capability()) {
-    EXPECT_CALL(stream, GetCudaComputeCapability())
-        .WillRepeatedly(Return(*cuda_cc));
-  }
-  if (const se::RocmComputeCapability* rocm_cc =
-          compute_capability.rocm_compute_capability()) {
-    EXPECT_CALL(stream, GetRocmComputeCapability())
-        .WillRepeatedly(Return(*rocm_cc));
-  }
-  if (const se::OneAPIComputeCapability* oneapi_cc =
-          compute_capability.oneapi_compute_capability()) {
-    EXPECT_CALL(stream, GetOneAPIComputeCapability())
-        .WillRepeatedly(Return(*oneapi_cc));
-  }
+  SetUpMockStream(platform, device_description().gpu_compute_capability(),
+                  executor, stream);
 
   DeviceAssignment device_assn(/*replica_count=*/1, /*computation_count=*/1);
   device_assn(0, 0) = 42;
@@ -2149,6 +2177,56 @@ TEST_F(GpuExecutableTest, CollectiveParamsUsesRunOptionsDeviceOrdinal) {
     EXPECT_THAT(recorded_global_device_id, Optional(GlobalDeviceId(7)));
   }
 }
+
+class GpuExecutableCacheNcclWindowFlagTest
+    : public GpuExecutableTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(GpuExecutableCacheNcclWindowFlagTest, PropagatesToCollectiveParams) {
+  const bool enable_cache = GetParam();
+  ASSERT_OK_AND_ASSIGN(
+      se::Platform * platform,
+      se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
+
+  std::optional<bool> recorded_cache_flag;
+  ThunkSequence thunks;
+  thunks.push_back(std::make_unique<RecordCollectiveParamsThunk>(
+      ThunkInfoWithId(1), /*local_device_id=*/nullptr,
+      /*global_device_id=*/nullptr, &recorded_cache_flag));
+
+  GpuExecutable::Params params;
+  params.module_name = "collective_params_cache_nccl_window_test";
+  params.executable = std::make_unique<ThunkExecutor>(std::move(thunks));
+  params.device_description = device_description();
+  params.enable_debug_info_manager = false;
+  params.debug_options
+      .set_xla_gpu_experimental_cache_nccl_window_in_communicator(enable_cache);
+  SetDummyBufferAssignment(params);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> exec,
+                       GpuExecutable::Create(std::move(params)));
+
+  se::MockStreamExecutor executor;
+  se::MockStream stream;
+  SetUpMockStream(platform, device_description().gpu_compute_capability(),
+                  executor, stream);
+
+  LoopbackCollectives loopback_collectives;
+  GpuExecutableRunOptions gpu_opts;
+  gpu_opts.set_collectives(&loopback_collectives);
+  FakeDeviceAddressAllocator allocator(platform);
+  ExecutableRunOptions exec_run_options;
+  exec_run_options.set_stream(&stream);
+  exec_run_options.set_allocator(&allocator);
+  exec_run_options.set_gpu_executable_run_options(&gpu_opts);
+  exec_run_options.set_run_id(RunId(1));
+  ServiceExecutableRunOptions run_opts(exec_run_options);
+  ASSERT_OK(
+      exec->ExecuteAsyncOnStream(&run_opts, std::vector<ExecutionInput>{}));
+  EXPECT_THAT(recorded_cache_flag, Optional(enable_cache));
+}
+
+INSTANTIATE_TEST_SUITE_P(CacheEnabled, GpuExecutableCacheNcclWindowFlagTest,
+                         ::testing::Bool());
 
 constexpr absl::Duration kTestTimeout = absl::Seconds(10);
 
