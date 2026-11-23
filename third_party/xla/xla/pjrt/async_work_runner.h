@@ -32,7 +32,7 @@ namespace xla {
 class AsyncWorkRunner : public tsl::Executor {
  public:
   AsyncWorkRunner() = default;
-  virtual ~AsyncWorkRunner() = default;
+  ~AsyncWorkRunner() override = default;
 
   // Executes `task` when all dependencies become ready.
   void ExecuteWhenReady(

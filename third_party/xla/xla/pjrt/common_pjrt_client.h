@@ -1021,7 +1021,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   }
 
   absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
-      const {
+      const override {
     return GetExecutable()->GetAbiVersion();
   }
 
