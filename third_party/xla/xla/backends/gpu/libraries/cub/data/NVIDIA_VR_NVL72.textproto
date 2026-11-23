@@ -1,5 +1,24 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+# proto-file: third_party/tensorflow/compiler/xla/backends/gpu/libraries/cub/scratch_space_lookup_table.proto
+# proto-message: xla.gpu.CubScratchSizeLookupTable
+
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 1
   scratch_size_recordings {
@@ -1497,6 +1516,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 1
   is_segmented: true
@@ -3979,6 +3999,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 2
   scratch_size_recordings {
@@ -6456,6 +6477,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 2
   is_segmented: true
@@ -9082,6 +9104,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 4
   scratch_size_recordings {
@@ -11563,6 +11586,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 4
   is_segmented: true
@@ -14329,6 +14353,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 8
   scratch_size_recordings {
@@ -16962,6 +16987,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 8
   is_segmented: true
@@ -19868,6 +19894,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 1
   value_type_size: 2
@@ -21474,6 +21501,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 1
   value_type_size: 2
@@ -24101,6 +24129,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 1
   value_type_size: 4
@@ -25703,6 +25732,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 1
   value_type_size: 4
@@ -28470,6 +28500,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 1
   value_type_size: 8
@@ -30176,6 +30207,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 1
   value_type_size: 8
@@ -33083,6 +33115,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 2
   value_type_size: 2
@@ -35561,6 +35594,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 2
   value_type_size: 2
@@ -38188,6 +38222,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 2
   value_type_size: 4
@@ -40670,6 +40705,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 2
   value_type_size: 4
@@ -43437,6 +43473,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 2
   value_type_size: 8
@@ -46071,6 +46108,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 2
   value_type_size: 8
@@ -48978,6 +49016,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 4
   value_type_size: 2
@@ -51460,6 +51499,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 4
   value_type_size: 2
@@ -54227,6 +54267,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 4
   value_type_size: 4
@@ -56709,6 +56750,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 4
   value_type_size: 4
@@ -59476,6 +59518,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 4
   value_type_size: 8
@@ -62110,6 +62153,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 4
   value_type_size: 8
@@ -65017,6 +65061,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 8
   value_type_size: 2
@@ -67651,6 +67696,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 8
   value_type_size: 2
@@ -70558,6 +70604,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 8
   value_type_size: 4
@@ -73192,6 +73239,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 8
   value_type_size: 4
@@ -76099,6 +76147,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 8
   value_type_size: 8
@@ -78733,6 +78782,7 @@ entries {
 }
 entries {
   cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_name: "NVIDIA VR NVL72"
   key_type_size: 8
   value_type_size: 8

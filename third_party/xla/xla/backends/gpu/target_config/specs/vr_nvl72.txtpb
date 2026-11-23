@@ -228,7 +228,7 @@ gpu_device_info {
   runtime_version: "13.4.0"
   compile_time_toolkit_version: "13.4.0"
   dnn_version: "9.25.0"
-  cub_version: "3.2.0"
+  cub_version: "3.1.2"
   device_interconnect_info {
     active_links: 36
   }
