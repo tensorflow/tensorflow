@@ -712,6 +712,26 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(1, c_nnz_value)
 
   @test_util.run_in_graph_and_eager_modes
+  def testSparseMatrixSparseMatMulRankMismatch(self):
+    # A rank-2 `a` combined with a rank-3 `b` used to make the kernel interpret
+    # `b`'s dense_shape with `a`'s rank, mapping `b` with the wrong dimensions
+    # while still reading its real column indices (heap OOB write). The inner
+    # dimension of `a` is chosen to equal `b`'s batch dimension so the existing
+    # inner-product check passes.
+    a_dense = np.array([[1.0, 0.0]]).astype(np.float32)
+    b_dense = np.zeros([2, 2, 1000]).astype(np.float32)
+    b_dense[0, 0, 999] = 1.0
+    a_sm = dense_to_csr_sparse_matrix(a_dense)
+    b_sm = dense_to_csr_sparse_matrix(b_dense)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Ranks of a and b must agree",
+    ):
+      self.evaluate(
+          sparse_csr_matrix_ops.sparse_matrix_sparse_mat_mul(
+              a=a_sm, b=b_sm, type=dtypes.float32))
+
+  @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixSparseMatMul(self):
     sparsify = lambda m: m * (m > 0)
 

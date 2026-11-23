@@ -161,6 +161,15 @@ class CSRSparseMatMulCPUOp : public OpKernel {
                    TensorShapeUtils::MakeShape(
                        input_matrix_b->dense_shape().vec<int64_t>(), &b_shape));
 
+    // Broadcasting is not supported, so both inputs must have the same rank:
+    // the rank of `a` is used to interpret `b`'s dense_shape below (and in
+    // GetSparseMatrixRef), so a mismatch maps `b` with the wrong dimensions
+    // while still reading its real column indices, corrupting memory.
+    OP_REQUIRES(ctx, a_shape.dims() == b_shape.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Ranks of a and b must agree, but got ", a_shape.dims(),
+                    " and ", b_shape.dims())));
+
     const int rank = a_shape.dims();
     const int row_dim = (rank == 2) ? 0 : 1;
     if (transpose_a_ || adjoint_a_)
@@ -375,6 +384,15 @@ class CSRSparseMatMulGPUOp : public OpKernel {
                    TensorShapeUtils::MakeShape(a_dense_shape, &a_tensor_shape));
     OP_REQUIRES_OK(ctx,
                    TensorShapeUtils::MakeShape(b_dense_shape, &b_tensor_shape));
+
+    // Broadcasting is not supported, so both inputs must have the same rank:
+    // the rank of `a` is used to interpret `b`'s dense_shape below, so a
+    // mismatch maps `b` with the wrong dimensions while still reading its real
+    // column indices, corrupting memory.
+    OP_REQUIRES(ctx, a_tensor_shape.dims() == b_tensor_shape.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Ranks of a and b must agree, but got ",
+                    a_tensor_shape.dims(), " and ", b_tensor_shape.dims())));
 
     const int rank = a_tensor_shape.dims();
     const int row_dim = (rank == 2) ? 0 : 1;
