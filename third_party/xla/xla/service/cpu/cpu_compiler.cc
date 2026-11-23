@@ -67,6 +67,7 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/backends/cpu/alias_info.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
@@ -87,7 +88,6 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/small_while_loop_hoisting_pass.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -979,7 +979,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     ABSL_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
   }
 
-  AliasInfo alias_info;
+  CpuAliasInfo alias_info;
   bool use_multi_output_fusion =
       options::UseMultiOutputFusion(module->config());
   pipeline.AddPass<CpuInstructionFusion>(
@@ -1937,7 +1937,7 @@ CpuCompiler::LoadAotCompilationResult(
 
 absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
     HloModule& hlo_module) const {
-  AliasInfo alias_info;
+  CpuAliasInfo alias_info;
   auto scheduler =
       hlo_module.config().debug_options().xla_cpu_scheduler_type() ==
               DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED
@@ -1955,7 +1955,7 @@ absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
 absl::StatusOr<std::unique_ptr<BufferAssignment>>
 CpuCompiler::CreateBufferAssignment(const HloModule& module) const {
   // Run buffer allocation on the HLO graph.
-  AliasInfo alias_info;
+  CpuAliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
   return BufferAssigner::Run(

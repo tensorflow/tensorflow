@@ -50,6 +50,7 @@ if_rocm_is_configured = _arg_0
 if_sycl_is_configured = _arg_0
 if_cuda_or_rocm_is_configured = _arg_0
 if_gpu_is_configured = _arg_0
+if_onednn = _arg_0
 if_cuda = _arg_0
 if_rocm = _arg_0
 if_sycl = _arg_0

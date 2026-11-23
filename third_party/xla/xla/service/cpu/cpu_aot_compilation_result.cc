@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/alias_info.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/backends/cpu/buffer_allocation_info_util.h"
 #include "xla/backends/cpu/constant_allocation.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/target_machine_options.h"
-#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
@@ -189,7 +189,7 @@ CpuAotCompilationResult::LoadExecutableImpl(bool embed_ir_in_executable) && {
       };
 
   // Recreate BufferAssignment from proto.
-  AliasInfo alias_info;
+  CpuAliasInfo alias_info;
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
                    BufferAssignment::FromProto(
                        proto_.buffer_assignment(), module.get(),

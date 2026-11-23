@@ -36,6 +36,19 @@ package_group(
     ],
 )
 
+cc_library(
+    name = "alias_info",
+    hdrs = ["alias_info.h"],
+    deps = [
+        ":custom_fusion_configs",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
 filegroup(
     name = "xla_cpu_runtime_hdrs",
     srcs = [

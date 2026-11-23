@@ -59,13 +59,11 @@ jobs:
         run: python3 -m unittest build_tools.lint.check_dwyu_test build_tools.lint.run_dwyu_test
       - name: "Find targets owning modified sources and run bant dwyu"
         env:
-          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # The test merge's first parent is the base actually used by checkout.
+          BASE_REF: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
         run: |
           set -euo pipefail
-          # Checkout only fetches the last 100 commits. If the PR's base commit
-          # is older than that (and therefore missing from the local git object
-          # database), fetch it from origin so `check_dwyu.py` can diff against
-          # it.
+          # A push's previous commit can be older than the checkout depth.
           if ! git cat-file -e "${BASE_REF}^{commit}" 2>/dev/null; then
             git fetch --no-tags origin "$BASE_REF"
           fi

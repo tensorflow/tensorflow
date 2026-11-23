@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 from build_tools.lint import check_dwyu
@@ -186,6 +187,21 @@ cc_library(name = "unrelated", srcs = ["unrelated.cc"])
     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
     self.assertEqual(result.stdout, "")
     self.assertIn("Checked DWYU on 1 targets.", result.stderr)
+
+  def test_conditional_onednn_dependency_has_no_false_positive(self):
+    self.write_file(
+        "xla/consumer/BUILD",
+        textwrap.dedent("""\
+            cc_library(
+                name = "consumer",
+                srcs = ["consumer.cc"],
+                deps = if_onednn(["//xla/platform:errors"]),
+            )
+            """),
+    )
+    result = self.check_targets("//xla/consumer:consumer")
+    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    self.assertEqual(result.stdout, "")
 
   def test_reports_real_missing_root_dependency(self):
     self.write_file(

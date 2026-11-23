@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -23,15 +25,86 @@ limitations under the License.
 #include "xla/backends/cpu/onednn_support.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 namespace {
+
+// Intentionally avoid IsOneDnnGraphEnabled(): it skips AArch64, where the
+// gemm:acl path reproduces this bug. The BUILD target already uses
+// if_graph_api.
+class OneDnnFusionBufferReuseTest
+    : public HloInterpreterReferenceMixin<HloTestBase>,
+      public ::testing::WithParamInterface<bool> {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions options =
+        HloInterpreterReferenceMixin::GetDebugOptionsForTest();
+    options.clear_xla_cpu_experimental_ynn_fusion_type();
+    return options;
+  }
+};
+
+TEST_P(OneDnnFusionBufferReuseTest, MatmulReluPreservesZeroOperand) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule matmul_relu $alias
+
+    fused {
+      lhs = f32[2,3]{1,0} parameter(0)
+      rhs = f32[3,2]{1,0} parameter(1)
+      zeros = f32[2,2]{1,0} parameter(2)
+      product = f32[2,2]{1,0} dot(lhs, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT result = f32[2,2]{1,0} maximum(product, zeros)
+    }
+
+    ENTRY main {
+      lhs = f32[2,3]{1,0} parameter(0)
+      rhs = f32[3,2]{1,0} parameter(1)
+      $zeros
+      ROOT result = f32[2,2]{1,0} fusion(lhs, rhs, zeros),
+        kind=kCustom, calls=fused,
+        backend_config={"fusion_config":{"kind":"__onednn_fusion"}}
+    }
+  )hlo";
+
+  // The product has both signs, so overwriting the zeros cannot hide behind
+  // an input whose matrix product is already nonnegative.
+  auto lhs = LiteralUtil::CreateR2<float>({{1, -2, 3}, {-4, 5, -6}});
+  auto rhs = LiteralUtil::CreateR2<float>({{1, -1}, {2, -2}, {3, -3}});
+  auto zeros = LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}});
+  const bool alias_zeros = GetParam();
+  std::string hlo = absl::StrReplaceAll(
+      kHlo,
+      {{"$alias",
+        alias_zeros ? ", input_output_alias={{}: (2, {}, may-alias)}" : ""},
+       {"$zeros",
+        alias_zeros ? "zeros = f32[2,2]{1,0} parameter(2)"
+                    : "zero = f32[] constant(0)\n"
+                      "zeros = f32[2,2]{1,0} broadcast(zero), dimensions={}"}});
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  std::vector<Literal*> arguments = {&lhs, &rhs};
+  if (alias_zeros) {
+    arguments.push_back(&zeros);
+  }
+  EXPECT_TRUE(
+      RunAndCompare(std::move(module), arguments, ErrorSpec{1e-4, 1e-4}));
+}
+
+INSTANTIATE_TEST_SUITE_P(ZeroOperands, OneDnnFusionBufferReuseTest,
+                         ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "AliasedParameter"
+                                             : "InternalBroadcast";
+                         });
 
 constexpr bool IsOneDnnGraphEnabled() {
 #if defined(XLA_ONEDNN_USE_GRAPH_API)
