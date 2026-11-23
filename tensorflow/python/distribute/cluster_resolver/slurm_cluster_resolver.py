@@ -233,9 +233,10 @@ class SlurmClusterResolver(ClusterResolver):
     self._jobs = jobs
     self._port_base = port_base
 
+    self._has_explicit_host_mapping = isinstance(tasks_per_node, dict)
     if tasks_per_node is None:
       self._task_configuration = self._resolve_task_configuration()
-    elif isinstance(tasks_per_node, dict):
+    elif self._has_explicit_host_mapping:
       # User can pass in an explicit configuration as a dict
       self._task_configuration = tasks_per_node
     else:
@@ -317,8 +318,12 @@ class SlurmClusterResolver(ClusterResolver):
     self._gpu_allocation = []
     self._cluster_allocation = {}
 
-    # Sort to make sure the order is the same for each run
-    for host, num_tasks in sorted(self._task_configuration.items()):
+    # Slurm node order determines task placement for block-distributed steps.
+    # Keep the historical hostname order for user-supplied mappings.
+    host_tasks = self._task_configuration.items()
+    if self._has_explicit_host_mapping:
+      host_tasks = sorted(host_tasks)
+    for host, num_tasks in host_tasks:
       for port_offset, gpu_offset in zip(
           range(num_tasks), range(0, self._gpus_per_node, self._gpus_per_task)):
 
