@@ -8,7 +8,7 @@ absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
     --hash=sha256:8c6af82722b35cf71e0f4d1d47dcaebfff286e27110a99fc359349b247dfb5d4
     # via
-    #   keras-nightly
+    #   keras
     #   tb-nightly
 astor==0.7.1 \
     --hash=sha256:95c30d87a6c2cf89aa628b87398466840f0ad8652f88eb173125a6df8533fb8d \
@@ -282,7 +282,7 @@ h5py==3.15.1 ; python_version == "3.14" \
     --hash=sha256:fd125c131889ebbef0849f4a0e29cf363b48aba42f228d08b4079913b576bb3a
     # via
     #   -r ci/official/requirements_updater/requirements.in
-    #   keras-nightly
+    #   keras
 idna==3.15 \
     --hash=sha256:048adeaf8c2d788c40fee287673ccaa74c24ffd8dcf09ffa555a2fbb59f10ac8 \
     --hash=sha256:ca962446ea538f7092a95e057da437618e886f4d349216d2b1e294abfdb65fdc
@@ -290,9 +290,9 @@ idna==3.15 \
 jax==0.4.7 \
     --hash=sha256:5e7002d74db25f97c99b979d4ba1233b1ef26e1597e5fc468ad11d1c8a9dc4f8
     # via -r ci/official/requirements_updater/requirements.in
-keras-nightly==3.12.0.dev2025100703 \
-    --hash=sha256:6b9dfb3814d707abf5555f56268f072daec13f2540da3aeeb7531a819ebb4567 \
-    --hash=sha256:e29434e49bac3360f86af6e1548d94b0a2fda4e793685bc43b49867132ab16e5
+keras==3.12.4 \
+    --hash=sha256:4b192bc123854d5b70ccd07c79a77119fe20deb79ddd02c4c73f821bd838b1b3 \
+    --hash=sha256:5570a3136a202ce1ea3956a697f3b085d2ab22e1102742cb22a3c6039c8db38e
     # via -r ci/official/requirements_updater/requirements.in
 libclang==18.1.1 \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
@@ -455,11 +455,11 @@ ml-dtypes==0.5.4 \
     # via
     #   -r ci/official/requirements_updater/requirements.in
     #   jax
-    #   keras-nightly
+    #   keras
 namex==0.1.0 \
     --hash=sha256:117f03ccd302cc48e3f5c58a296838f6b89c83455ab8683a1e85f2a430aa4306 \
     --hash=sha256:e2012a474502f1e2251267062aae3114611f07df4224b6e06334c57b0f2ce87c
-    # via keras-nightly
+    # via keras
 numpy==2.4.4 ; python_version == "3.14" \
     --hash=sha256:07077278157d02f65c43b1b26a3886bce886f95d20aabd11f87932750dfb14ed \
     --hash=sha256:08f2e31ed5e6f04b118e49821397f12767934cfdd12a1ce86a058f91e004ee50 \
@@ -537,7 +537,7 @@ numpy==2.4.4 ; python_version == "3.14" \
     #   -r ci/official/requirements_updater/requirements.in
     #   h5py
     #   jax
-    #   keras-nightly
+    #   keras
     #   ml-dtypes
     #   opt-einsum
     #   scipy
@@ -880,14 +880,14 @@ optree==0.19.0 \
     --hash=sha256:fb220bb85128c8de71aeffb9c38be817569e4bca413b38d5e0de11ba6471ef4a \
     --hash=sha256:fd425b501420b437d5e925708898fae927660fd433836ac282adb20d54561c63 \
     --hash=sha256:ff773c852122cef6dcae68b5e252a20aaf5d2986f78e278d747e226e7829d44e
-    # via keras-nightly
+    # via keras
 packaging==24.2 \
     --hash=sha256:09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759 \
     --hash=sha256:c228a6dc5e932d346bc5739379109d49e8853dd8223571c7c5b55260edc0b97f
     # via
     #   -r ci/official/requirements_updater/requirements.in
     #   auditwheel
-    #   keras-nightly
+    #   keras
     #   tb-nightly
 pillow==12.3.0 \
     --hash=sha256:00808c5e14ef63ac5161091d242999076604ff74b883423a11e5d7bbb38bf756 \
@@ -1034,7 +1034,7 @@ requests==2.33.1 \
 rich==15.0.0 \
     --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb \
     --hash=sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36
-    # via keras-nightly
+    # via keras
 scipy==1.17.1 ; python_version == "3.14" \
     --hash=sha256:010f4333c96c9bb1a4516269e33cb5917b08ef2166d5556ca2fd9f082a9e6ea0 \
     --hash=sha256:02ae3b274fde71c5e92ac4d54bc06c42d80e399fec704383dcd99b301df37458 \
