@@ -43,11 +43,9 @@ precisely.
 
 A tile/slice is hyper-rectangular subset of a tensor parameterized by offsets,
 sizes and strides. Tile propagation is a way to compute tile parameters of the
-producer/consumer of the op using the tiling parameters of the op itself. There
-is already a
-[library](https://github.com/openxla/xla/blob/main/xla/service/gpu/triton_tiling_propagation.h)
-that does it for softmax and dot. Tile propagation can be made more generic and
-robust if it is expressed via indexing maps.
+producer/consumer of the op using the tiling parameters of the op itself. XLA
+implements tile propagation on top of indexing maps in
+[tile_propagation.h](https://github.com/openxla/xla/blob/main/xla/codegen/tiling/tile_propagation.h).
 
 ## Indexing map
 
