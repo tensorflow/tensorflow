@@ -132,9 +132,7 @@ HWY_INLINE decltype(auto) GetFromPack(T&& t, Ts&&... ts) {
 template <class F, size_t... I, class... Ts>
 HWY_INLINE void ForEachIndexedImpl(F&& f, std::index_sequence<I...>,
                                    Ts&&... ts) {
-  (std::forward<F>(f)(std::integral_constant<int64_t, I>{},
-                      std::forward<Ts>(ts)),
-   ...);
+  (f(std::integral_constant<int64_t, I>{}, std::forward<Ts>(ts)), ...);
 }
 
 template <class F, class... Ts>
@@ -381,34 +379,46 @@ HWY_INLINE void WithGatheredParts(D d, const char* a, int64_t lda,
 }
 
 // Concatenates the even (0, 2, ...) or odd (1, 3, ...) 128 bit blocks of `lo`
-// (in the lower half) and `hi` (in the upper half), matching Highway's
-// `ConcatEven`/`ConcatOdd` parameter order.
+// (in the lower half) and `hi` (in the upper half) for a fixed size tag `D`
+// with a power of two block count, matching Highway's `ConcatEven`/`ConcatOdd`
+// parameter order.
 template <bool kOdd, class D>
 HWY_INLINE hn::VFromD<D> ConcatEvenOddBlocks(D d, hn::VFromD<D> hi,
                                              hn::VFromD<D> lo) {
-  if constexpr (d.MaxBytes() == 2 * kBlockBytes) {
+  constexpr size_t kBytes = d.MaxBytes();
+  static_assert(kBytes >= 2 * kBlockBytes && (kBytes & (kBytes - 1)) == 0);
+  // Require `Lanes(d) == MaxLanes(d)` so scalable tags whose runtime lane count
+  // can differ from `MaxLanes(d)` fail at compile time.
+  constexpr int kGroupPow2 =
+      std::min(d.Pow2(), (HWY_TARGET == HWY_RVV) ? HWY_MAX_POW2 : 0);
+  if constexpr (kGroupPow2 >= 0) {
+    static_assert((kBytes >> kGroupPow2) <= HWY_MIN_BYTES);
+  } else {
+    static_assert((kBytes << (-kGroupPow2)) <= HWY_MIN_BYTES);
+  }
+  if constexpr (kBytes == 2 * kBlockBytes) {
     if constexpr (kOdd) {
       return hn::ConcatUpperUpper(d, hi, lo);
     } else {
       return hn::ConcatLowerLower(d, hi, lo);
     }
   } else {
-    static_assert(d.MaxBytes() == 4 * kBlockBytes);
 #if HWY_MIN_BYTES >= 64 && HWY_ARCH_X86
-    // Emit vshufi32x4 directly: inside full kernels LLVM expands the Combine
-    // and ExtractBlock fallback into vpermt2q with live index vectors and
-    // triggers ZMM stack spills.
-    constexpr int kImm = kOdd ? 0xDD : 0x88;
-    return hn::VFromD<D>{_mm512_shuffle_i32x4(lo.raw, hi.raw, kImm)};
-#elif HWY_MIN_BYTES >= 64
-    constexpr int kBase = kOdd ? 1 : 0;
-    const hn::Half<D> d_half;
-    const auto lo_blocks = hn::Combine(d_half, hn::ExtractBlock<kBase + 2>(lo),
-                                       hn::ExtractBlock<kBase>(lo));
-    const auto hi_blocks = hn::Combine(d_half, hn::ExtractBlock<kBase + 2>(hi),
-                                       hn::ExtractBlock<kBase>(hi));
-    return hn::Combine(d, hi_blocks, lo_blocks);
+    if constexpr (kBytes == 4 * kBlockBytes) {
+      // Emit vshufi32x4 directly: LLVM expands the recursive Half fallback into
+      // extra vpermt2q, vextracti64x4, and vperm2i128 shuffles.
+      constexpr int kImm = kOdd ? 0xDD : 0x88;
+      return hn::VFromD<D>{_mm512_shuffle_i32x4(lo.raw, hi.raw, kImm)};
+    }
 #endif
+    const hn::Half<D> d_half;
+    const auto lo_lo = hn::LowerHalf(d_half, lo);
+    const auto lo_hi = hn::UpperHalf(d_half, lo);
+    const auto hi_lo = hn::LowerHalf(d_half, hi);
+    const auto hi_hi = hn::UpperHalf(d_half, hi);
+    const auto lo_blocks = ConcatEvenOddBlocks<kOdd>(d_half, lo_hi, lo_lo);
+    const auto hi_blocks = ConcatEvenOddBlocks<kOdd>(d_half, hi_hi, hi_lo);
+    return hn::Combine(d, hi_blocks, lo_blocks);
   }
 }
 
@@ -765,6 +775,125 @@ HWY_FLATTEN void TransposeMicroKernelScalar(const char* HWY_RESTRICT a,
   }
 }
 
+// Kernel selection for bs x bs blocks with 64, 32, and 16 byte rows. Each is
+// defined only for targets whose vectors are wide enough to call it. They are
+// HWY_FLATTEN so the kernels they call are inlined as if TransposeMicroKernel
+// called them directly.
+template <typename T, int bs>
+HWY_INLINE HWY_FLATTEN void TransposeRows64(const char* HWY_RESTRICT a,
+                                            int64_t lda, char* HWY_RESTRICT b,
+                                            int64_t ldb);
+template <typename T, int bs>
+HWY_INLINE HWY_FLATTEN void TransposeRows32(const char* HWY_RESTRICT a,
+                                            int64_t lda, char* HWY_RESTRICT b,
+                                            int64_t ldb);
+template <typename T, int bs>
+HWY_INLINE HWY_FLATTEN void TransposeRows16(const char* HWY_RESTRICT a,
+                                            int64_t lda, char* HWY_RESTRICT b,
+                                            int64_t ldb);
+
+#if HWY_MIN_BYTES >= 64
+constexpr bool kIsX86 = HWY_ARCH_X86 != 0;
+constexpr bool kIsZen4 = HWY_TARGET == HWY_AVX3_ZEN4;
+constexpr bool kIsSpr = HWY_TARGET == HWY_AVX3_SPR;
+
+// Returns whether 64 output rows `abs_ldb` bytes apart overflow 8 way and 12
+// way x86 L1D sets: `abs_ldb` a multiple of 1024, or of 512 outside Zen 4. A
+// 4096 byte aligned `abs_lda` aliases all 64 input rows into one L1D set, which
+// cancels the conflict except for multiples of 1024 outside Zen 4.
+HWY_INLINE bool HasX86L1dConflict512(int64_t abs_lda, int64_t abs_ldb) {
+  constexpr int64_t kSetMask = kIsZen4 ? 1023 : 511;
+  return kIsX86 && abs_ldb > 0 &&
+         ((!kIsZen4 && (abs_ldb & 1023) == 0) ||
+          ((abs_ldb & kSetMask) == 0 && (abs_lda & 4095) != 0));
+}
+
+template <typename T, int bs>
+HWY_INLINE HWY_FLATTEN void TransposeRows64(const char* HWY_RESTRICT a,
+                                            int64_t lda, char* HWY_RESTRICT b,
+                                            int64_t ldb) {
+  const int64_t abs_lda = std::abs(lda);
+  const int64_t abs_ldb = std::abs(ldb);
+  if constexpr (sizeof(T) == 1) {
+    // Emit full 64 byte output rows via ColStrips when scattering or when the
+    // output rows conflict in L1D.
+    const bool l1d_conflict = HasX86L1dConflict512(abs_lda, abs_ldb);
+    if (abs_ldb > abs_lda || l1d_conflict) {
+      TransposeColStrips<64, 16, T, bs>(a, lda, b, ldb);
+    } else {
+      TransposeMicroKernel512RowStrips<T, bs>(a, lda, b, ldb);
+    }
+  } else if constexpr (sizeof(T) == 2) {
+    TransposeColStrips<64, 32, T, bs>(a, lda, b, ldb);
+  } else if constexpr (sizeof(T) == 4 && kIsX86 && !kIsZen4) {
+    if (abs_lda <= kMaxOuterBlockSizeBytes &&
+        abs_ldb <= kMaxOuterBlockSizeBytes) {
+      TransposeColStrips<64, 32, T, bs>(a, lda, b, ldb);
+    } else {
+      TransposeMicroKernel512Square<T, bs>(a, lda, b, ldb);
+    }
+  } else {
+    TransposeMicroKernel512Square<T, bs>(a, lda, b, ldb);
+  }
+}
+#endif  // HWY_MIN_BYTES >= 64
+
+#if HWY_MIN_BYTES >= 32
+template <typename T, int bs>
+HWY_INLINE HWY_FLATTEN void TransposeRows32(const char* HWY_RESTRICT a,
+                                            int64_t lda, char* HWY_RESTRICT b,
+                                            int64_t ldb) {
+#if HWY_MIN_BYTES >= 64
+  // Zen 4 double pumps 512 bit cross block permutes, so narrow elements (and
+  // wide stride gathers on Zen 4 and SPR) run faster in 256 bit vectors across
+  // 32 EVEX YMM registers.
+  constexpr bool kAlways256 = kIsZen4 && sizeof(T) <= 2;
+  constexpr bool kGather256 = (kIsZen4 && sizeof(T) == 8) ||
+                              (kIsSpr && sizeof(T) >= 2 && sizeof(T) <= 8);
+  if (kAlways256 || (kGather256 && std::abs(lda) > std::abs(ldb))) {
+    constexpr size_t kStripBytes = sizeof(T) == 1 ? 16 : 32;
+    TransposeColStrips<32, kStripBytes, T, bs>(a, lda, b, ldb);
+  } else {
+    TransposeMicroKernel512Rect256<T, bs>(a, lda, b, ldb);
+  }
+#else
+  if constexpr (sizeof(T) == 1) {
+    TransposeMicroKernel256Strips<T, bs>(a, lda, b, ldb);
+  } else {
+    TransposeColStrips<32, 32, T, bs>(a, lda, b, ldb);
+  }
+#endif
+}
+
+template <typename T, int bs>
+HWY_INLINE HWY_FLATTEN void TransposeRows16(const char* HWY_RESTRICT a,
+                                            int64_t lda, char* HWY_RESTRICT b,
+                                            int64_t ldb) {
+  const int64_t abs_lda = std::abs(lda);
+  const int64_t abs_ldb = std::abs(ldb);
+  // The 128 bit square kernel is preferred over the 256 bit rectangular one
+  // when gathering (`abs_lda >= abs_ldb`) at a small input stride.
+  const bool prefer_square_128 =
+      abs_lda >= abs_ldb && abs_lda <= kMaxSquare128StrideBytes;
+#if HWY_MIN_BYTES >= 64
+  if constexpr (bs >= 4) {
+    if (!kIsZen4 &&
+        (HWY_TARGET != HWY_AVX3 || sizeof(T) <= 2 || prefer_square_128)) {
+      TransposeMicroKernel512Rect128<T, bs>(a, lda, b, ldb);
+    } else {
+      TransposeMicroKernel256Rect<T, bs>(a, lda, b, ldb);
+    }
+    return;
+  }
+#endif
+  if (prefer_square_128) {
+    TransposeMicroKernel128<T, bs>(a, lda, b, ldb);
+  } else {
+    TransposeMicroKernel256Rect<T, bs>(a, lda, b, ldb);
+  }
+}
+#endif  // HWY_MIN_BYTES >= 32
+
 // Transposes one bs x bs block of T, picking a microkernel based on the row
 // size, the target's vector width, and the stride magnitudes (`lda` and `ldb`
 // may be negative or zero via `TransposePlan` input striding).
@@ -774,89 +903,16 @@ HWY_FLATTEN void TransposeMicroKernel(const char* HWY_RESTRICT a, int64_t lda,
   constexpr size_t row_bytes = sizeof(T) * bs;
   if constexpr (bs % 2 != 0) {
     TransposeMicroKernelScalar<T, bs>(a, lda, b, ldb);
+  } else if constexpr (HWY_MIN_BYTES >= 64 && row_bytes == 4 * kBlockBytes) {
+    TransposeRows64<T, bs>(a, lda, b, ldb);
+  } else if constexpr (HWY_MIN_BYTES >= 32 && row_bytes == 2 * kBlockBytes) {
+    TransposeRows32<T, bs>(a, lda, b, ldb);
+  } else if constexpr (HWY_MIN_BYTES >= 32 && row_bytes == kBlockBytes) {
+    TransposeRows16<T, bs>(a, lda, b, ldb);
+  } else if constexpr (row_bytes <= kBlockBytes) {
+    TransposeMicroKernel128<T, bs>(a, lda, b, ldb);
   } else {
-#if HWY_MIN_BYTES >= 32
-    [[maybe_unused]] const int64_t abs_lda = std::abs(lda);
-    [[maybe_unused]] const int64_t abs_ldb = std::abs(ldb);
-#endif
-#if HWY_MIN_BYTES >= 64
-    constexpr bool kIsZen4 = HWY_TARGET == HWY_AVX3_ZEN4;
-    constexpr bool kIsSpr = HWY_TARGET <= HWY_AVX3_SPR;
-    if constexpr (row_bytes == 4 * kBlockBytes) {
-      if constexpr (sizeof(T) == 1) {
-        // Emit full 64 byte output rows via ColStrips when scattering or when
-        // 64 output rows overflow 8 way and 12 way L1D sets (|ldb| a multiple
-        // of 1024, or 512 on Intel), except when a 4096 byte aligned |lda|
-        // aliases all 64 input rows into one L1D set.
-        constexpr int64_t kSetMask = kIsZen4 ? 1023 : 511;
-        const bool l1d_conflict =
-            abs_ldb > 0 &&
-            ((!kIsZen4 && (abs_ldb & 1023) == 0) ||
-             ((abs_ldb & kSetMask) == 0 && (abs_lda & 4095) != 0));
-        if (abs_ldb > abs_lda || l1d_conflict) {
-          TransposeColStrips<64, 16, T, bs>(a, lda, b, ldb);
-        } else {
-          TransposeMicroKernel512RowStrips<T, bs>(a, lda, b, ldb);
-        }
-      } else if constexpr (sizeof(T) == 2) {
-        TransposeColStrips<64, 32, T, bs>(a, lda, b, ldb);
-      } else if constexpr (sizeof(T) == 4 && !kIsZen4) {
-        if (abs_lda <= kMaxOuterBlockSizeBytes &&
-            abs_ldb <= kMaxOuterBlockSizeBytes) {
-          TransposeColStrips<64, 32, T, bs>(a, lda, b, ldb);
-        } else {
-          TransposeMicroKernel512Square<T, bs>(a, lda, b, ldb);
-        }
-      } else {
-        TransposeMicroKernel512Square<T, bs>(a, lda, b, ldb);
-      }
-      return;
-    } else if constexpr (row_bytes == 2 * kBlockBytes) {
-      // Zen 4 double pumps 512 bit cross block permutes, so narrow elements
-      // (and wide stride gathers on Zen 4 and SPR) run faster in 256 bit
-      // vectors across 32 EVEX YMM registers.
-      constexpr bool kAlways256 = kIsZen4 && sizeof(T) <= 2;
-      constexpr bool kGather256 = (kIsZen4 && sizeof(T) == 8) ||
-                                  (kIsSpr && sizeof(T) >= 2 && sizeof(T) <= 8);
-      if (kAlways256 || (kGather256 && abs_lda > abs_ldb)) {
-        constexpr size_t kStripBytes = sizeof(T) == 1 ? 16 : 32;
-        TransposeColStrips<32, kStripBytes, T, bs>(a, lda, b, ldb);
-      } else {
-        TransposeMicroKernel512Rect256<T, bs>(a, lda, b, ldb);
-      }
-      return;
-    } else if constexpr (row_bytes == kBlockBytes && bs >= 4) {
-      if (!kIsZen4 &&
-          (HWY_TARGET != HWY_AVX3 || sizeof(T) <= 2 ||
-           (abs_lda >= abs_ldb && abs_lda <= kMaxSquare128StrideBytes))) {
-        TransposeMicroKernel512Rect128<T, bs>(a, lda, b, ldb);
-      } else {
-        TransposeMicroKernel256Rect<T, bs>(a, lda, b, ldb);
-      }
-      return;
-    }
-#endif
-#if HWY_MIN_BYTES >= 32
-    if constexpr (sizeof(T) == 1 && bs == 32) {
-      TransposeMicroKernel256Strips<T, bs>(a, lda, b, ldb);
-      return;
-    } else if constexpr (row_bytes == 2 * kBlockBytes) {
-      TransposeColStrips<32, 32, T, bs>(a, lda, b, ldb);
-      return;
-    } else if constexpr (row_bytes == kBlockBytes) {
-      if (abs_lda >= abs_ldb && abs_lda <= kMaxSquare128StrideBytes) {
-        TransposeMicroKernel128<T, bs>(a, lda, b, ldb);
-      } else {
-        TransposeMicroKernel256Rect<T, bs>(a, lda, b, ldb);
-      }
-      return;
-    }
-#endif
-    if constexpr (row_bytes <= kBlockBytes) {
-      TransposeMicroKernel128<T, bs>(a, lda, b, ldb);
-    } else {
-      TransposeMicroKernelScalar<T, bs>(a, lda, b, ldb);
-    }
+    TransposeMicroKernelScalar<T, bs>(a, lda, b, ldb);
   }
 }
 
