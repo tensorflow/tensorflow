@@ -192,7 +192,12 @@ absl::StatusOr<GpuTargetConfig> GpuTargetConfig::FromProto(
                    se::DeviceDescription::FromProto(proto.gpu_device_info()));
   target_config.platform_name = proto.platform_name();
   target_config.device_description_str = proto.device_description_str();
-  if (!target_config.device_description_str.empty()) {
+  // Fall back to device_description_str for legacy protos that omit
+  // gpu_device_info.name (or leave it at kUndefinedString).
+  if ((target_config.device_description.name().empty() ||
+       target_config.device_description.name() ==
+           se::DeviceDescription::kUndefinedString) &&
+      !target_config.device_description_str.empty()) {
     target_config.device_description.set_name(
         target_config.device_description_str);
   }

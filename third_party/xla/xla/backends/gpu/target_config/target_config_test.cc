@@ -121,5 +121,72 @@ TEST(TargetConfigTest, GetTargetConfigFromFile) {
   EXPECT_EQ(config.device_description.threads_per_block_limit(), 5);
 }
 
+TEST(TargetConfigTest, FromProtoPreservesExplicitDeviceName) {
+  stream_executor::GpuTargetConfigProto config_proto;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        platform_name: "CUDA"
+        gpu_device_info { name: "NVIDIA B300 SXM6 AC" }
+        device_description_str: "NVIDIA B300"
+      )pb",
+      &config_proto));
+
+  ASSERT_OK_AND_ASSIGN(GpuTargetConfig config,
+                       GpuTargetConfig::FromProto(config_proto));
+  EXPECT_EQ(config.device_description.name(), "NVIDIA B300 SXM6 AC");
+  EXPECT_EQ(config.device_description_str, "NVIDIA B300");
+
+  stream_executor::GpuTargetConfigProto round_trip = config.ToProto();
+  EXPECT_EQ(round_trip.gpu_device_info().name(), "NVIDIA B300 SXM6 AC");
+  EXPECT_EQ(round_trip.device_description_str(), "NVIDIA B300");
+}
+
+TEST(TargetConfigTest, EmbeddedB300SpecPreservesGpuDeviceInfoName) {
+  ASSERT_OK_AND_ASSIGN(stream_executor::GpuTargetConfigProto config_proto,
+                       GetGpuTargetConfig(GpuModel::B300));
+  ASSERT_FALSE(config_proto.gpu_device_info().name().empty());
+  ASSERT_NE(config_proto.gpu_device_info().name(), "<undefined>");
+
+  ASSERT_OK_AND_ASSIGN(GpuTargetConfig config,
+                       GpuTargetConfig::FromProto(config_proto));
+  EXPECT_EQ(config.device_description.name(),
+            config_proto.gpu_device_info().name());
+  EXPECT_EQ(config.device_description_str,
+            config_proto.device_description_str());
+}
+
+TEST(TargetConfigTest, FromProtoFallsBackToDeviceDescriptionStrWhenNameEmpty) {
+  stream_executor::GpuTargetConfigProto config_proto;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        platform_name: "CUDA"
+        gpu_device_info { threads_per_block_limit: 1024 }
+        device_description_str: "NVIDIA A100 80GB PCIe"
+      )pb",
+      &config_proto));
+
+  ASSERT_OK_AND_ASSIGN(GpuTargetConfig config,
+                       GpuTargetConfig::FromProto(config_proto));
+  EXPECT_EQ(config.device_description.name(), "NVIDIA A100 80GB PCIe");
+  EXPECT_EQ(config.device_description_str, "NVIDIA A100 80GB PCIe");
+}
+
+TEST(TargetConfigTest,
+     FromProtoFallsBackToDeviceDescriptionStrWhenNameUndefined) {
+  stream_executor::GpuTargetConfigProto config_proto;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        platform_name: "CUDA"
+        gpu_device_info { name: "<undefined>" }
+        device_description_str: "NVIDIA H100 80GB HBM3"
+      )pb",
+      &config_proto));
+
+  ASSERT_OK_AND_ASSIGN(GpuTargetConfig config,
+                       GpuTargetConfig::FromProto(config_proto));
+  EXPECT_EQ(config.device_description.name(), "NVIDIA H100 80GB HBM3");
+  EXPECT_EQ(config.device_description_str, "NVIDIA H100 80GB HBM3");
+}
+
 }  // namespace
 }  // namespace xla::gpu
