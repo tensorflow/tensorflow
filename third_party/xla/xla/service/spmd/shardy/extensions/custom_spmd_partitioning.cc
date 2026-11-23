@@ -911,8 +911,9 @@ void registerCustomSPMDPartitioningDialects(mlir::DialectRegistry& registry) {
 std::optional<mlir::LogicalResult> resolveCustomCallPartitioning(
     mlir::stablehlo::CustomCallOp customCall, mlir::IRRewriter& rewriter,
     mlir::SymbolTable& symbolTable, int64_t& nextChannelId) {
-  const xla::CustomCallPartitioner* partitioner =
-      xla::GetCustomCallPartitioner(customCall.getCallTargetName());
+  llvm::StringRef callTargetName = customCall.getCallTargetName();
+  const xla::CustomCallPartitioner* partitioner = xla::GetCustomCallPartitioner(
+      absl::string_view(callTargetName.data(), callTargetName.size()));
   if (!partitioner || !partitioner->SupportsMlirPartitioning()) {
     return std::nullopt;
   }

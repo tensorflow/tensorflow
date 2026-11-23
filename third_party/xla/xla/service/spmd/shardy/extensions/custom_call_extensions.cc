@@ -359,7 +359,8 @@ struct CustomCallShardingRuleOpInterface
       return createPartialReduceShardingRule(customCall);
     }
     const xla::CustomCallPartitioner* partitioner =
-        xla::GetCustomCallPartitioner(callTargetName);
+        xla::GetCustomCallPartitioner(
+            absl::string_view(callTargetName.data(), callTargetName.size()));
     if (callTargetName == kCustomSPMDPartitioningTargetName ||
         (partitioner != nullptr && partitioner->SupportsMlirPartitioning())) {
       // Return no static rule without warning: JAX attaches
