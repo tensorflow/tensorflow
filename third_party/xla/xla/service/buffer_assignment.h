@@ -28,7 +28,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -219,14 +219,6 @@ class BufferAllocation {
   // buffer assignment.
   void set_page_id(int64_t page) { page_id_ = page; }
 
-  // Access to the logical buffers assigned to this allocation, and their
-  // associated logical offsets and sizes.
-  ABSL_DEPRECATED("Use BufferAssignment::assigned_buffers instead.")
-  const absl::flat_hash_map<const HloValue*, OffsetSize>& assigned_buffers()
-      const {
-    return assigned_buffers_;
-  }
-
   // A Slice represents a contiguous portion of a memory allocation. It is used
   // to identify the memory range that a LogicalBuffer corresponds to.
   class Slice {
@@ -315,27 +307,12 @@ class BufferAllocation {
     PrimitiveType element_type_ = PrimitiveType::PRIMITIVE_TYPE_INVALID;
   };
 
-  // GetSlice returns the Slice of contiguous memory that holds the value
-  // described by the given 'buffer'.
-  // REQUIRES: 'buffer' must be assigned to this allocation.
-  ABSL_DEPRECATED("Use BufferAssignment::GetAssignedSlice instead.")
-  Slice GetSlice(const HloValue& buffer) const;
-
   std::string ToString() const;
   std::string ToShortString(bool human_readable_size = false) const;
-  std::string ValuesToString() const;
 
-  // The function returns memory usage report for the values belonging to the
-  // buffer allocation. The values are grouped by their offset in the
-  // allocation. The groups are sorted by the max size(Z-A) of the values in the
-  // group. Percentile and more_than_k are used to control the number of groups
-  // being reported.
-  ABSL_DEPRECATED("Use BufferAssignment::MemoryUsageReport instead.")
-  std::string MemoryUsageReport(const std::string& prefix,
-                                float percentile = 0.05,
-                                int64_t more_than_k = 50,
-                                bool print_shape_layout = false) const;
-
+  // Returns the proto representation of the BufferAllocation.
+  // `BufferAllocationProto.assigned` isn't populated in this method, but only
+  // when obtained via `BufferAssignment::ToProto()`.
   BufferAllocationProto ToProto() const;
   static BufferAllocation FromProto(const BufferAllocationProto&);
 
@@ -359,50 +336,6 @@ class BufferAllocation {
            // Persistent buffers live across executions.
            !is_persistent();
   }
-
-  // Add a heap trace which was used to assign slices to logical buffers in this
-  // allocation. A single BufferAllocation may include multiple heap traces
-  // in the case of the temporary block where there is a heap trace per
-  // computation.
-  void AddHeapTrace(HeapSimulatorTrace heap_trace) {
-    heap_traces_.push_back(std::move(heap_trace));
-    heap_traces_.back().set_buffer_allocation_index(index());
-  }
-
-  // Return the set of heap traces used to assign slices to logical buffers in
-  // this allocation.
-  std::vector<HeapSimulatorTrace> HeapTraces() const { return heap_traces_; }
-
-  // Returns the LogicalBuffers which are live at the point of peak memory usage
-  // for this allocation. The point of peak memory usage is the point at which
-  // the total size of all live logical buffers is maximal. If peak memory is
-  // reached at multiple points, the set of logical buffers live at the earliest
-  // maximal point is returned. The vector is stably sorted by
-  // BufferValue::Index.
-  ABSL_DEPRECATED("Use BufferAssignment::PeakMemoryLogicalBuffers instead.")
-  const std::vector<const HloValue*>& PeakMemoryLogicalBuffers() const {
-    return peak_buffers_;
-  }
-
-  // Returns the buffers placed in this allocation whose own color differs from
-  // the allocation color, i.e. buffers that reused this allocation's free space
-  // when CanUseAllocation allows cross-color reuse (e.g. GPU S(0) temps placed
-  // in an S(1) allocation).
-  //
-  // These buffers are deliberately NOT among the peak-driving buffers reported
-  // by PeakMemoryLogicalBuffers, which come from the heap trace that sized this
-  // allocation. They are carved into pre-existing holes and never grew the
-  // allocation, so they are not part of its sizing attribution (this says
-  // nothing about whether they happen to be live at the allocation's peak).
-  ABSL_DEPRECATED("Use BufferAssignment::CrossColorBuffers instead.")
-  const std::vector<const HloValue*>& CrossColorBuffers() const {
-    return cross_color_buffers_;
-  }
-
-  // Get the number of bytes lost to fragmentation. This is equal to the
-  // difference between the size of the allocation and the size of the maximal
-  // live set.
-  int64_t fragmentation_bytes() const { return fragmentation_bytes_; }
 
   bool operator==(const BufferAllocation& other) const {
     return index_ == other.index_;
@@ -431,29 +364,12 @@ class BufferAllocation {
     initial_data_ = std::move(initial_data);
   }
 
-  struct ValueLiveRange {
-    int64_t start;
-    int64_t end;
-    constexpr ValueLiveRange() : start(-1), end(-1) {}
-    constexpr ValueLiveRange(int64_t start, int64_t end)
-        : start(start), end(end) {}
-  };
-
  private:
   // Only BufferAssigner and BufferAssignment can modify BufferAllocation.
   friend class BufferAssigner;
   friend class BufferAssignment;
 
-  // Adds a LogicalBuffer to the set assigned to this buffer.
-  absl::Status AddAssignment(const HloValue& buffer, int64_t offset,
-                             int64_t size, ValueLiveRange live_range = {});
-
-  void set_index(Index index) {
-    index_ = index;
-    for (HeapSimulatorTrace& trace : heap_traces_) {
-      trace.set_buffer_allocation_index(index);
-    }
-  }
+  void set_index(Index index) { index_ = index; }
   void set_size(int64_t size) { size_ = size; }
 
   // The index of the allocation in the BufferAssignment.
@@ -505,38 +421,9 @@ class BufferAllocation {
   // initialization; empty implies zero initialization.
   std::vector<uint8_t> initial_data_;
 
-  bool has_must_not_live_out_value_ = false;
-  size_t must_not_live_out_checked_count_ = 0;
-
   // If this buffer is for an entry computation parameter, which subshape of the
   // parameter is it for?
   ShapeIndex param_shape_index_;
-
-  // Mapping from the set of buffers assigned to this allocation to their
-  // logical offsets and sizes.
-  // Deprecated: moving to BufferAssignment (b/530831203).
-  absl::flat_hash_map<const HloValue*, OffsetSize> assigned_buffers_;
-
-  // Parallel contiguous arrays of assigned HloValue* and their live range
-  // bounds for fast sequential scanning in BufferAssigner::MaybeAssignBuffer.
-  // Deprecated: moving to BufferAssignment (b/530831203).
-  std::vector<const HloValue*> assigned_values_;
-  std::vector<ValueLiveRange> assigned_live_ranges_;
-
-  int64_t fragmentation_bytes_ = 0;
-  // Deprecated: moving to BufferAssignment (b/530831203).
-  std::vector<HeapSimulatorTrace> heap_traces_;
-
-  // Set of buffers live at the point of peak memory usage for this allocation;
-  // i.e. the buffers that drove the allocation's size.
-  // Deprecated: moving to BufferAssignment (b/530831203).
-  std::vector<const HloValue*> peak_buffers_;
-
-  // Buffers placed in this allocation whose own color differs from the
-  // allocation color (placed into pre-existing holes by cross-color reuse,
-  // without growing the allocation).
-  // Deprecated: moving to BufferAssignment (b/530831203).
-  std::vector<const HloValue*> cross_color_buffers_;
 };
 
 // Add stream operators for nicer output of CHECK/RET_CHECK failures.
@@ -551,6 +438,28 @@ class BufferAssignment {
   // `HloModuleConfig::page_size_kib() > 0`. Other colors keep a single
   // combined temporary allocation and do not receive virtual page IDs.
   static constexpr LogicalBuffer::Color kPagingColor = 0;
+
+  struct ValueLiveRange {
+    int64_t start;
+    int64_t end;
+    constexpr ValueLiveRange() : start(-1), end(-1) {}
+    constexpr ValueLiveRange(int64_t start, int64_t end)
+        : start(start), end(end) {}
+  };
+
+  // Per-allocation HloValue state and heap traces, stored in
+  // `allocation_values_` indexed by `BufferAllocation::index()`.
+  struct AllocationValues {
+    absl::flat_hash_map<const HloValue*, BufferAllocation::OffsetSize>
+        assigned_buffers;
+    std::vector<const HloValue*> assigned_values;
+    std::vector<ValueLiveRange> assigned_live_ranges;
+    std::vector<HeapSimulatorTrace> heap_traces;
+    std::vector<const HloValue*> peak_buffers;
+    std::vector<const HloValue*> cross_color_buffers;
+    bool has_must_not_live_out_value = false;
+    size_t must_not_live_out_checked_count = 0;
+  };
 
   // This is a think wrapper around BufferIsolationConfig. Please see the
   // documentation for BufferIsolationConfig for details on how buffer isolation
@@ -595,16 +504,7 @@ class BufferAssignment {
   }
 
   // Moves out the allocations, consuming the BufferAssignment.
-  // Note that this also clears references from the allocations to this
-  // BufferAssignment, since they are no longer valid.
   std::vector<BufferAllocation> TakeAllocations() && {
-    for (auto& allocation : allocations_) {
-      allocation.assigned_buffers_.clear();
-      allocation.assigned_values_.clear();
-      allocation.assigned_live_ranges_.clear();
-      allocation.peak_buffers_.clear();
-      allocation.cross_color_buffers_.clear();
-    }
     return std::move(allocations_);
   }
 
@@ -637,28 +537,36 @@ class BufferAssignment {
   // associated logical offsets and sizes.
   const absl::flat_hash_map<const HloValue*, BufferAllocation::OffsetSize>&
   assigned_buffers(const BufferAllocation& allocation) const {
-    return allocation.assigned_buffers_;
+    return values(allocation).assigned_buffers;
   }
 
   // Returns the Slice of contiguous memory assigned to `value`.
   // REQUIRES: `value` must be assigned an allocation.
-  BufferAllocation::Slice GetAssignedSlice(const HloValue& value) const {
-    // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
-    return GetAssignedAllocation(value).GetSlice(value);
-  }
+  BufferAllocation::Slice GetAssignedSlice(const HloValue& value) const;
 
   // Returns the LogicalBuffers which are live at the point of peak memory usage
-  // for `allocation`.
+  // for `allocation`. The point of peak memory usage is the point at which the
+  // total size of all live logical buffers is maximal. If peak memory is
+  // reached at multiple points, the set of logical buffers live at the earliest
+  // maximal point is returned. The vector is stably sorted by BufferValue::Id.
   const std::vector<const HloValue*>& PeakMemoryLogicalBuffers(
       const BufferAllocation& allocation) const {
-    return allocation.peak_buffers_;
+    return values(allocation).peak_buffers;
   }
 
   // Returns the buffers placed in `allocation` whose own color differs from the
-  // allocation color.
+  // allocation color, i.e. buffers that reused the allocation's free space when
+  // CanUseAllocation allows cross-color reuse (e.g. GPU S(0) temps placed in an
+  // S(1) allocation).
+  //
+  // These buffers are deliberately NOT among the peak-driving buffers reported
+  // by PeakMemoryLogicalBuffers, which come from the heap trace that sized the
+  // allocation. They are carved into pre-existing holes and never grew the
+  // allocation, so they are not part of its sizing attribution (this says
+  // nothing about whether they happen to be live at the allocation's peak).
   const std::vector<const HloValue*>& CrossColorBuffers(
       const BufferAllocation& allocation) const {
-    return allocation.cross_color_buffers_;
+    return values(allocation).cross_color_buffers;
   }
 
   // Returns the allocation with the given index. CHECKs if no allocation exists
@@ -755,6 +663,7 @@ class BufferAssignment {
 
   // Is in use by many compilers to dump the buffer-assignment info.
   std::string ToString() const;
+  std::string AllocationToString(const BufferAllocation& allocation) const;
   std::string ValuesToString() const;
 
   // Returns a memory usage report with the list of buffer allocations ordered
@@ -762,15 +671,16 @@ class BufferAssignment {
   std::string MemoryUsageReport(float percentile = 0.05,
                                 int64_t more_than_k = 50,
                                 bool print_shape_layout = false) const;
+  // Returns a memory usage report for the values assigned to `allocation`. The
+  // values are grouped by their offset in the allocation. The groups are sorted
+  // by the max size(Z-A) of the values in the group. Percentile and more_than_k
+  // are used to control the number of groups being reported. Every line of the
+  // report starts with `prefix`.
   std::string MemoryUsageReport(const BufferAllocation& allocation,
-                                const std::string& prefix,
+                                absl::string_view prefix,
                                 float percentile = 0.05,
                                 int64_t more_than_k = 50,
-                                bool print_shape_layout = false) const {
-    // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
-    return allocation.MemoryUsageReport(prefix, percentile, more_than_k,
-                                        print_shape_layout);
-  }
+                                bool print_shape_layout = false) const;
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
   std::string ToVerboseString(const AliasInfo* alias_info,
@@ -834,6 +744,7 @@ class BufferAssignment {
   // cache.
   void ClearAllocations() {
     allocations_.clear();
+    allocation_values_.clear();
     temp_allocation_total_size_ = 0;
     std::fill(allocation_index_for_value_id_.begin(),
               allocation_index_for_value_id_.end(), -1);
@@ -845,6 +756,7 @@ class BufferAssignment {
   // Encapsulates the state of the buffer assignment.
   struct State {
     std::vector<BufferAllocation> allocations;
+    std::vector<AllocationValues> allocation_values;
     int64_t temp_allocation_total_size = 0;
     std::vector<BufferAllocation::Index> allocation_index_for_value_id;
     size_t num_assigned_values = 0;
@@ -855,6 +767,7 @@ class BufferAssignment {
   // Takes a snapshot of the current state.
   State GetState() const {
     return {allocations_,
+            allocation_values_,
             temp_allocation_total_size_,
             allocation_index_for_value_id_,
             num_assigned_values_,
@@ -865,6 +778,7 @@ class BufferAssignment {
   // Restores the state from a snapshot.
   void RestoreState(State state) {
     allocations_ = std::move(state.allocations);
+    allocation_values_ = std::move(state.allocation_values);
     temp_allocation_total_size_ = state.temp_allocation_total_size;
     allocation_index_for_value_id_ =
         std::move(state.allocation_index_for_value_id);
@@ -912,8 +826,7 @@ class BufferAssignment {
     return cached_size;
   }
 
-  BufferAllocation::ValueLiveRange GetValueLiveRange(
-      HloValue::Id value_id) const {
+  ValueLiveRange GetValueLiveRange(HloValue::Id value_id) const {
     if (value_id >= 0 &&
         static_cast<size_t>(value_id) < live_ranges_by_value_id_.size()) {
       return live_ranges_by_value_id_[value_id];
@@ -945,6 +858,30 @@ class BufferAssignment {
   friend class BufferAssigner;
   friend class DefaultBufferAllocationsManagerForComputationsWithoutOrdering;
   friend class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering;
+
+  const AllocationValues& values(const BufferAllocation& a) const {
+    CHECK_GE(a.index(), 0);
+    CHECK_LT(a.index(), allocation_values_.size());
+    return allocation_values_[a.index()];
+  }
+  AllocationValues& mutable_values(BufferAllocation* a) {
+    CHECK_NE(a, nullptr);
+    CHECK_GE(a->index(), 0);
+    CHECK_LT(a->index(), allocation_values_.size());
+    return allocation_values_[a->index()];
+  }
+
+  void AddHeapTrace(BufferAllocation* allocation,
+                    HeapSimulatorTrace heap_trace) {
+    AllocationValues& vals = mutable_values(allocation);
+    vals.heap_traces.push_back(std::move(heap_trace));
+    vals.heap_traces.back().set_buffer_allocation_index(allocation->index());
+  }
+
+  absl::Status AddAssignmentToAllocation(BufferAllocation* allocation,
+                                         const HloValue& buffer, int64_t offset,
+                                         int64_t size,
+                                         ValueLiveRange live_range = {});
 
   BufferAssignment(const HloModule* module,
                    std::unique_ptr<HloOrdering> hlo_ordering,
@@ -1006,16 +943,15 @@ class BufferAssignment {
 
   bool AllocationHasMustNotLiveOut(BufferAllocation* allocation,
                                    const MustNotLiveOutFn& pred) {
-    if (allocation->has_must_not_live_out_value_) {
+    AllocationValues& vals = mutable_values(allocation);
+    if (vals.has_must_not_live_out_value) {
       return true;
     }
-    while (allocation->must_not_live_out_checked_count_ <
-           allocation->assigned_values_.size()) {
+    while (vals.must_not_live_out_checked_count < vals.assigned_values.size()) {
       const HloValue* value =
-          allocation->assigned_values_
-              [allocation->must_not_live_out_checked_count_++];
+          vals.assigned_values[vals.must_not_live_out_checked_count++];
       if (ValueMustNotLiveOut(*value, pred)) {
-        allocation->has_must_not_live_out_value_ = true;
+        vals.has_must_not_live_out_value = true;
         return true;
       }
     }
@@ -1056,6 +992,7 @@ class BufferAssignment {
 
   // The vector of buffer allocations. Indexed by BufferAllocation::Index.
   std::vector<BufferAllocation> allocations_;
+  std::vector<AllocationValues> allocation_values_;
 
   // The total size of all temporary buffers.
   int64_t temp_allocation_total_size_ = 0;
@@ -1068,7 +1005,7 @@ class BufferAssignment {
   size_t num_assigned_values_ = 0;
 
   // Maps HloValue::Id to its live range bounds.
-  std::vector<BufferAllocation::ValueLiveRange> live_ranges_by_value_id_;
+  std::vector<ValueLiveRange> live_ranges_by_value_id_;
 
   // Precomputed live-out flags and lazy must_not_live_out caches indexed by ID.
   std::vector<uint8_t> buffer_lives_out_;
@@ -1431,9 +1368,9 @@ class BufferAssigner {
 
   // Returns true if buffer1's live range interferes with buffer2's.
   bool LiveRangeInterferes(const HloValue* buffer1,
-                           BufferAllocation::ValueLiveRange live_range1,
+                           BufferAssignment::ValueLiveRange live_range1,
                            const HloValue* buffer2,
-                           BufferAllocation::ValueLiveRange live_range2,
+                           BufferAssignment::ValueLiveRange live_range2,
                            BufferAssignment* assignment);
 
   // Returns true if any value in `hlo_buffer` has a live range that interferes

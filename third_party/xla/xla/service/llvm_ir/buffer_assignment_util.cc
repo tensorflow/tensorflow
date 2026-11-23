@@ -30,10 +30,12 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 const HloInstruction& InstrForConstantBufferAllocation(
-    const BufferAllocation& allocation) {
+    const BufferAssignment& assignment, const BufferAllocation& allocation) {
   CHECK(allocation.is_constant());
   HloInstruction* const_instr = nullptr;
-  for (const auto& buffer_offset_pair : allocation.assigned_buffers()) {
+  for (const auto& buffer_offset_pair :
+       // NOLINTNEXTLINE(google*-custom-deterministic-iteration-order)
+       assignment.assigned_buffers(allocation)) {
     const BufferValue* buffer = buffer_offset_pair.first;
     // BufferAssignment may have assigned non-constant instructions to this
     // allocation too so we can't CHECK this condition.  E.g. for
@@ -53,12 +55,6 @@ const HloInstruction& InstrForConstantBufferAllocation(
   }
   CHECK_NE(const_instr, nullptr);
   return *const_instr;
-}
-
-const HloInstruction& InstrForConstantBufferAllocation(
-    const BufferAssignment& assignment, const BufferAllocation& allocation) {
-  // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
-  return InstrForConstantBufferAllocation(allocation);
 }
 
 std::string SanitizeConstantName(const HloInstruction& instr) {
@@ -85,11 +81,6 @@ std::string ConstantNameToGlobalName(absl::string_view name) {
   // before constant buffer allocation.
   DCHECK_EQ(name, SanitizeConstantName(name));
   return absl::StrCat("buffer_for_", name);
-}
-
-const Literal& LiteralForConstantAllocation(
-    const BufferAllocation& allocation) {
-  return InstrForConstantBufferAllocation(allocation).literal();
 }
 
 const Literal& LiteralForConstantAllocation(
