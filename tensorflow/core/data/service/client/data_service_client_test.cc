@@ -113,7 +113,7 @@ StatusOr<std::vector<T>> GetResults(DataServiceClient& client) {
     if (next.end_of_sequence) {
       return results;
     }
-    results.push_back(next.tensors[0].unaligned_flat<T>().data()[0]);
+    results.push_back(next.tensors[0].unaligned_flat<T>()(0));
   }
   return results;
 }
