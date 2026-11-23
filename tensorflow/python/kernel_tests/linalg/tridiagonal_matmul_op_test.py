@@ -146,6 +146,8 @@ class TridiagonalMulOpTest(test.TestCase):
     superdiag = np.array([1., 2.])
     maindiag = np.array([1., 2., 1.])
     subdiag = np.array([2., 1.])
+    superdiag_padded = np.append(superdiag, 0.)
+    subdiag_padded = np.insert(subdiag, 0, 0.)
     rhs = np.array([[1., 1.], [2., 2.], [3., 3.]])
     expected = np.array([[3., 3.], [12., 12.], [5., 5.]])
     compact = np.array([[1., 2., 0.], [1., 2., 1.], [0., 2., 1.]])
@@ -160,10 +162,11 @@ class TridiagonalMulOpTest(test.TestCase):
           expected)
       self.assertAllClose(
           linalg_impl.tridiagonal_matmul(
-              (convert(np.append(superdiag, 0.)), convert(maindiag),
-               convert(np.insert(subdiag, 0, 0.))),
+              (convert(superdiag_padded), convert(maindiag),
+               convert(subdiag_padded)),
               convert(rhs),
-              diagonals_format="sequence"), expected)
+              diagonals_format="sequence"),
+          expected)
 
   def testBatch(self):
     b = 20
