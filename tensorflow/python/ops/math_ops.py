@@ -6129,6 +6129,9 @@ def floor(x, name=None):
   Both input range is `(-inf, inf)` and the
   output range consists of all integer values.
 
+  On CPUs that flush subnormal inputs to zero, a negative subnormal
+  `float32` input can produce `-0.0` instead of `-1.0`.
+
   For example:
 
   >>> x = tf.constant([1.3324, -1.5, 5.555, -2.532, 0.99, float("inf")])
