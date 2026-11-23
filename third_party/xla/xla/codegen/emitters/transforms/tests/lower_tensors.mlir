@@ -274,10 +274,41 @@ func.func @atomic_rmw_f32(%in: tensor<8xf32>, %i: index) -> (tensor<8xf32>) {
 }
 // CHECK-LABEL: @atomic_rmw_f32
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]]
+// CHECK-GPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic monotonic <alignment = 4> : !llvm.ptr -> i32
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f32 to i32
-// CHECK-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]]
+// CHECK-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]] monotonic monotonic : !llvm.ptr, i32
+
+// CHECK-AMPERE-LABEL: @atomic_rmw_f32
+// CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-AMPERE-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-AMPERE-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-AMPERE: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+
+// CHECK-HOPPER-LABEL: @atomic_rmw_f32
+// CHECK-HOPPER: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-HOPPER-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-HOPPER-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-HOPPER: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+
+// CHECK-GFX908-MI100-LABEL: @atomic_rmw_f32
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX908-MI100-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX908-MI100-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-GFX908-MI100: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+
+// CHECK-GFX942-MI300-LABEL: @atomic_rmw_f32
+// CHECK-GFX942-MI300: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX942-MI300-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX942-MI300-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+
+// CHECK-BMG-LABEL: @atomic_rmw_f32
+// CHECK-BMG: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-BMG-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-BMG-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-BMG: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 
 // -----
 
@@ -296,7 +327,7 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 // CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
 // CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
-// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-GPU-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
 // CHECK-GPU-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
@@ -307,7 +338,7 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 // CHECK-GPU-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
 // CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
-// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i16
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic monotonic <alignment = 2> : !llvm.ptr -> i16
 // CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i16) -> i16
 // CHECK-CPU-NEXT: %[[CUR:.*]] = arith.bitcast %[[VAR]] : i16 to f16
 // CHECK-CPU-NEXT: %[[ADD:.*]] = arith.addf %[[CUR]], %{{.*}} : f16
@@ -331,7 +362,7 @@ func.func @atomic_rmw_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
 // CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
 // CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
-// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-GPU-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
 // CHECK-GPU-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
@@ -342,12 +373,27 @@ func.func @atomic_rmw_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
 // CHECK-GPU-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
 // CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
-// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i8
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic monotonic <alignment = 1> : !llvm.ptr -> i8
 // CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i8) -> i8
 // CHECK-CPU-NEXT: %[[CUR:.*]] = arith.bitcast %[[VAR]] : i8 to f8E4M3
 // CHECK-CPU-NEXT: %[[ADD:.*]] = arith.addf %[[CUR]], %{{.*}} : f8E4M3
 // CHECK-CPU-NEXT: %[[RES:.*]] = arith.bitcast %[[ADD]] : f8E4M3 to i8
 // CHECK-CPU-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]] monotonic monotonic : !llvm.ptr, i8
+// CHECK-GFX908-MI100-LABEL: @atomic_rmw_f8E4M3
+// CHECK-GFX908-MI100: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GFX908-MI100: %[[INIT:.*]] = llvm.load %[[BASE]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX908-MI100-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX908-MI100: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300-LABEL: @atomic_rmw_f8E4M3
+// CHECK-GFX942-MI300: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GFX942-MI300: %[[INIT:.*]] = llvm.load %[[BASE]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX942-MI300-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-BMG-LABEL: @atomic_rmw_f8E4M3
+// CHECK-BMG: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-BMG: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-BMG-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-BMG: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 
 // -----
 
@@ -387,7 +433,7 @@ func.func @atomic_rmw_i4(%in: tensor<8xi4>, %i: index) -> (tensor<8xi4>) {
 // CHECK-GPU:       %[[ADD_19:.*]] = llvm.add %[[MUL_8]], %[[ZEXT_I32]] : i32
 // CHECK-GPU:       %[[SHL_20:.*]] = llvm.shl %[[C15_I32]], %[[ADD_19]] : i32
 // CHECK-GPU:       %[[XOR_21:.*]] = llvm.xor %[[C_NEG1_I32]], %[[SHL_20]] : i32
-// CHECK-GPU:       %[[LOADED_I32:.*]] = llvm.load %[[GEP_OFFSET]] : !llvm.ptr -> i32
+// CHECK-GPU:       %[[LOADED_I32:.*]] = llvm.load %[[GEP_OFFSET]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
 // CHECK-GPU:       %[[WHILE_RES:.*]] = scf.while (%[[ARG2:.*]] = %[[LOADED_I32]]) : (i32) -> i32 {
 // CHECK-GPU:         %[[LSHR:.*]] = llvm.lshr %[[ARG2]], %[[ADD_19]] : i32
 // CHECK-GPU:         %[[TRUNC_I4:.*]] = llvm.trunc %[[LSHR]] : i32 to i4
@@ -415,7 +461,7 @@ func.func @atomic_rmw_i4(%in: tensor<8xi4>, %i: index) -> (tensor<8xi4>) {
 // CHECK-CPU:       %[[GEP_BASE:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[SHR_1]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<4 x i8>
 // CHECK-CPU-NEXT:  %[[SHL_MASK:.*]] = llvm.shl %[[C15_I8]], %[[MUL_4]] : i8
 // CHECK-CPU-NEXT:  %[[INV_MASK:.*]] = llvm.xor %[[C_NEG1_I8]], %[[SHL_MASK]] : i8
-// CHECK-CPU-NEXT:  %[[LOADED_I8:.*]] = llvm.load %[[GEP_BASE]] : !llvm.ptr -> i8
+// CHECK-CPU-NEXT:  %[[LOADED_I8:.*]] = llvm.load %[[GEP_BASE]] atomic monotonic <alignment = 1> : !llvm.ptr -> i8
 // CHECK-CPU-NEXT:  %[[WHILE_RES:.*]] = scf.while (%[[ARG2:.*]] = %[[LOADED_I8]]) : (i8) -> i8 {
 // CHECK-CPU-NEXT:    %[[LSHR:.*]] = llvm.lshr %[[ARG2]], %[[MUL_4]] : i8
 // CHECK-CPU-NEXT:    %[[TRUNC_I4:.*]] = llvm.trunc %[[LSHR]] : i8 to i4
@@ -448,12 +494,32 @@ func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
 // CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
 // CHECK-GPU: %[[MASK:.*]] = llvm.xor %{{.*}}, %{{.*}}
 // CHECK-GPU-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
-// CHECK-GPU-NEXT: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU-NEXT: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-GPU-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %[[MASK]]
 // CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
-// CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
-// CHECK-CPU-NEXT: llvm.store %{{.*}}, %[[ADDR]] atomic unordered <alignment = 2> : f16, !llvm.ptr
+// CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]] monotonic monotonic : !llvm.ptr, i32
+// CHECK-CPU-NEXT: llvm.store %{{.*}}, %[[ADDR]] atomic monotonic <alignment = 2> : f16, !llvm.ptr
+// CHECK-HOPPER-LABEL: @atomic_rmw_overwrite(
+// CHECK-HOPPER: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-HOPPER: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-HOPPER-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-HOPPER: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX908-MI100-LABEL: @atomic_rmw_overwrite(
+// CHECK-GFX908-MI100: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GFX908-MI100: %[[INIT:.*]] = llvm.load %[[BASE]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX908-MI100-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX908-MI100: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300-LABEL: @atomic_rmw_overwrite(
+// CHECK-GFX942-MI300: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GFX942-MI300: %[[INIT:.*]] = llvm.load %[[BASE]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX942-MI300-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-BMG-LABEL: @atomic_rmw_overwrite(
+// CHECK-BMG: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-BMG: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-BMG-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-BMG: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 
 // -----
 
@@ -473,12 +539,12 @@ func.func @atomic_rmw_overwrite_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
 // CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
 // CHECK-GPU: %[[MASK:.*]] = llvm.xor %{{.*}}, %{{.*}}
 // CHECK-GPU-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
-// CHECK-GPU-NEXT: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU-NEXT: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-GPU-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %[[MASK]]
 // CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
-// CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
-// CHECK-CPU-NEXT: llvm.store %{{.*}}, %[[ADDR]] atomic unordered <alignment = 1> : i8, !llvm.ptr
+// CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]] monotonic monotonic : !llvm.ptr, i32
+// CHECK-CPU-NEXT: llvm.store %{{.*}}, %[[ADDR]] atomic monotonic <alignment = 1> : i8, !llvm.ptr
 
 // -----
 
@@ -510,7 +576,83 @@ func.func @shared_i4_store(%v: i4, %i: index) -> tensor<10xi4> {
 // allocation must be word aligned and a whole number of words.
 // CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<8 x i8>
 // CHECK-LABEL: @shared_i4_store
-// CHECK-GPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i32
+// CHECK-GPU: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GPU: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-HOPPER-LABEL: @shared_i4_store
+// CHECK-HOPPER: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-HOPPER: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-HOPPER-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-HOPPER: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX908-MI100-LABEL: @shared_i4_store
+// CHECK-GFX908-MI100: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GFX908-MI100: %[[INIT:.*]] = llvm.load %[[BASE]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX908-MI100-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX908-MI100: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300-LABEL: @shared_i4_store
+// CHECK-GFX942-MI300: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GFX942-MI300: %[[INIT:.*]] = llvm.load %[[BASE]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX942-MI300-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-BMG-LABEL: @shared_i4_store
+// CHECK-BMG: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-BMG: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-BMG-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-BMG: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+
+// -----
+
+func.func @shared_atomic_store_and_fmax(%v16: f16, %v32: f32, %i: index)
+    -> (tensor<4xf16>, tensor<4xf32>) {
+  %sh16 = xla_gpu.allocate_shared : tensor<4xf16>
+  %s16 = xla.atomic_store %v16 into %sh16[%i] : tensor<4xf16>
+  %sh32 = xla_gpu.allocate_shared : tensor<4xf32>
+  %s32 = xla.atomic_rmw %sh32[%i] : tensor<4xf32> {
+    ^bb0(%cur: f32):
+      %m = arith.maximumf %cur, %v32 : f32
+      xla.yield %m : f32
+  }
+  return %s16, %s32 : tensor<4xf16>, tensor<4xf32>
+}
+// CHECK-LABEL: @shared_atomic_store_and_fmax
+// CHECK-GPU: %[[BASE16:.*]] = llvm.intr.ptrmask
+// CHECK-GPU: %[[INIT16:.*]] = llvm.load %[[BASE16]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GPU-NEXT: scf.while (%[[VAR16:.*]] = %[[INIT16]]) : (i32) -> i32
+// CHECK-GPU: llvm.cmpxchg %[[BASE16]], %[[VAR16]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU: %[[ADDR32:.*]] = llvm.getelementptr inbounds
+// CHECK-GPU-NEXT: %[[CUR32:.*]] = llvm.load %[[ADDR32]] atomic unordered <alignment = 4> : !llvm.ptr -> f32
+// CHECK-GPU: llvm.atomicrmw max %[[ADDR32]], %{{.*}} monotonic
+// CHECK-GPU: llvm.atomicrmw umin %[[ADDR32]], %{{.*}} monotonic
+// CHECK-CPU: llvm.store %{{.*}}, %{{.*}} atomic monotonic <alignment = 2> : f16, !llvm.ptr
+// CHECK-CPU: %[[ADDR32:.*]] = llvm.getelementptr inbounds
+// CHECK-CPU-NEXT: %[[INIT32:.*]] = llvm.load %[[ADDR32]] atomic monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-CPU-NEXT: scf.while (%[[VAR32:.*]] = %[[INIT32]]) : (i32) -> i32
+// CHECK-CPU: llvm.cmpxchg %[[ADDR32]], %[[VAR32]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-HOPPER-LABEL: @shared_atomic_store_and_fmax
+// CHECK-HOPPER: %[[BASE16:.*]] = llvm.intr.ptrmask
+// CHECK-HOPPER: %[[INIT16:.*]] = llvm.load %[[BASE16]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-HOPPER: llvm.cmpxchg %[[BASE16]], %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-HOPPER: %[[ADDR32:.*]] = llvm.getelementptr inbounds
+// CHECK-HOPPER-NEXT: llvm.load %[[ADDR32]] atomic unordered <alignment = 4> : !llvm.ptr -> f32
+// CHECK-GFX908-MI100-LABEL: @shared_atomic_store_and_fmax
+// CHECK-GFX908-MI100: %[[BASE16:.*]] = llvm.intr.ptrmask
+// CHECK-GFX908-MI100: llvm.load %[[BASE16]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX908-MI100: llvm.cmpxchg %[[BASE16]], %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX908-MI100: %[[ADDR32:.*]] = llvm.getelementptr inbounds
+// CHECK-GFX908-MI100-NEXT: llvm.load %[[ADDR32]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> f32
+// CHECK-GFX942-MI300-LABEL: @shared_atomic_store_and_fmax
+// CHECK-GFX942-MI300: %[[BASE16:.*]] = llvm.intr.ptrmask
+// CHECK-GFX942-MI300: llvm.load %[[BASE16]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[BASE16]], %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300: %[[ADDR32:.*]] = llvm.getelementptr inbounds
+// CHECK-GFX942-MI300-NEXT: llvm.load %[[ADDR32]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> f32
+// CHECK-BMG-LABEL: @shared_atomic_store_and_fmax
+// CHECK-BMG: %[[BASE16:.*]] = llvm.intr.ptrmask
+// CHECK-BMG: llvm.load %[[BASE16]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-BMG: llvm.cmpxchg %[[BASE16]], %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-BMG: %[[ADDR32:.*]] = llvm.getelementptr inbounds
+// CHECK-BMG-NEXT: llvm.load %[[ADDR32]] atomic unordered <alignment = 4> : !llvm.ptr -> f32
 
 // -----
 
@@ -617,7 +759,7 @@ func.func @i4_store(%arg: tensor<10xi4>, %v: i4, %i: index)
 // CHECK-GPU:     %[[MUL_8:.*]] = llvm.mul %[[TRUNC_I32]], %[[C8_I32]] : i32
 // CHECK-GPU:     %[[SHL_255:.*]] = llvm.shl %[[C255_I32]], %[[MUL_8]] : i32
 // CHECK-GPU:     %[[XOR_NEG1_I32:.*]] = llvm.xor %[[C_NEG1_I32]], %[[SHL_255]] : i32
-// CHECK-GPU:     %[[LOADED_I32:.*]] = llvm.load %[[GEP_OFFSET]] : !llvm.ptr -> i32
+// CHECK-GPU:     %[[LOADED_I32:.*]] = llvm.load %[[GEP_OFFSET]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
 // CHECK-GPU:     %[[WHILE_RES:.*]] = scf.while (%[[INIT:.*]] = %[[LOADED_I32]]) : (i32) -> i32 {
 // CHECK-GPU:       %[[LSHR:.*]] = llvm.lshr %[[INIT]], %[[MUL_8]] : i32
 // CHECK-GPU:       %[[TRUNC_I8_2:.*]] = llvm.trunc %[[LSHR]] : i32 to i8
@@ -1355,7 +1497,8 @@ func.func @direct_atomic_store_f64(%in: tensor<8xf64>, %val: f64, %i: index)
 }
 // CHECK-LABEL: @direct_atomic_store_f64
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK: llvm.store %{{.*}}, %[[ADDR]] atomic unordered <alignment = 8> : f64, !llvm.ptr
+// CHECK-GPU: llvm.store %{{.*}}, %[[ADDR]] atomic unordered <alignment = 8> : f64, !llvm.ptr
+// CHECK-CPU: llvm.store %{{.*}}, %[[ADDR]] atomic monotonic <alignment = 8> : f64, !llvm.ptr
 
 // CHECK-GFX942-MI300-LABEL: @direct_atomic_store_f64
 // CHECK-GFX942-MI300: %[[ADDR:.*]] = llvm.getelementptr
@@ -1415,7 +1558,8 @@ func.func @atomic_store_c64_in_scf_if(
 // CHECK: %[[IM:.*]] = complex.im %{{.*}} : complex<f32>
 // CHECK: %[[VEC:.*]] = vector.from_elements %[[RE]], %[[IM]] : vector<2xf32>
 // CHECK: %[[BITS:.*]] = llvm.bitcast %[[VEC]] : vector<2xf32> to i64
-// CHECK: llvm.store %[[BITS]], %{{.*}} atomic unordered <alignment = 8> : i64, !llvm.ptr
+// CHECK-GPU: llvm.store %[[BITS]], %{{.*}} atomic unordered <alignment = 8> : i64, !llvm.ptr
+// CHECK-CPU: llvm.store %[[BITS]], %{{.*}} atomic monotonic <alignment = 8> : i64, !llvm.ptr
 // CHECK-NOT: llvm.cmpxchg
 // CHECK: return
 // CHECK-GFX942-MI300-LABEL: @atomic_store_c64_in_scf_if
@@ -1433,12 +1577,17 @@ func.func @atomic_store_unpacked_f6(%in: tensor<8xf6E2M3FN>, %val: f6E2M3FN,
 }
 // CHECK-LABEL: @atomic_store_unpacked_f6
 // CHECK-GPU: llvm.mlir.constant(255 : i32) : i32
-// CHECK-GPU: llvm.cmpxchg
+// CHECK-GPU: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GPU: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 // CHECK-CPU: %[[ALL_ONES:.*]] = llvm.mlir.constant(-1 : i8) : i8
+// CHECK-CPU: %[[ADDR:.*]] = llvm.getelementptr inbounds
 // CHECK-CPU: %[[MASK:.*]] = llvm.xor %[[ALL_ONES]], %[[ALL_ONES]] : i8
-// CHECK-CPU: scf.while
-// CHECK-CPU: llvm.and %{{.*}}, %[[MASK]] : i8
-// CHECK-CPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i8
+// CHECK-CPU: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic monotonic <alignment = 1> : !llvm.ptr -> i8
+// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i8) -> i8
+// CHECK-CPU: llvm.and %[[VAR]], %[[MASK]] : i8
+// CHECK-CPU: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i8
 
 // -----
 
@@ -1449,9 +1598,30 @@ func.func @atomic_store_packed_i4(%in: tensor<8xi4>, %val: i4, %i: index)
 }
 // CHECK-LABEL: @atomic_store_packed_i4
 // CHECK-GPU: llvm.mlir.constant(15 : i32) : i32
-// CHECK-GPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i32
+// CHECK-GPU: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GPU: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 // CHECK-CPU: llvm.mlir.constant(15 : i8) : i8
-// CHECK-CPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i8
+// CHECK-CPU: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-CPU: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic monotonic <alignment = 1> : !llvm.ptr -> i8
+// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i8) -> i8
+// CHECK-CPU: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i8
+// CHECK-GFX908-MI100-LABEL: @atomic_store_packed_i4
+// CHECK-GFX908-MI100: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GFX908-MI100: %[[INIT:.*]] = llvm.load %[[BASE]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX908-MI100-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX908-MI100: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300-LABEL: @atomic_store_packed_i4
+// CHECK-GFX942-MI300: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GFX942-MI300: %[[INIT:.*]] = llvm.load %[[BASE]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX942-MI300-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-BMG-LABEL: @atomic_store_packed_i4
+// CHECK-BMG: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-BMG: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-BMG-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-BMG: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 
 // -----
 
@@ -1493,8 +1663,8 @@ func.func @unsupported_vector_atomic_rmw(
 // CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory} : !llvm.ptr, bf16
 
 // CHECK-CPU-LABEL: @unsupported_vector_atomic_rmw
-// CHECK-CPU: llvm.store %{{.*}}, %{{.*}} atomic unordered <alignment = 2> : bf16, !llvm.ptr
-// CHECK-CPU: llvm.store %{{.*}}, %{{.*}} atomic unordered <alignment = 2> : bf16, !llvm.ptr
+// CHECK-CPU: llvm.store %{{.*}}, %{{.*}} atomic monotonic <alignment = 2> : bf16, !llvm.ptr
+// CHECK-CPU: llvm.store %{{.*}}, %{{.*}} atomic monotonic <alignment = 2> : bf16, !llvm.ptr
 // CHECK-CPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i16
 // CHECK-CPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i16
 
@@ -1541,7 +1711,10 @@ func.func @shared_bf16_atomic_rmw_amd(%out: tensor<8xbf16>, %i: index, %m: bf16)
 // CHECK-GFX942-MI300-LABEL: @shared_bf16_atomic_rmw_amd
 // CHECK-GFX942-MI300-NOT: !llvm.ptr<1>
 // CHECK-GFX942-MI300-NOT: llvm.atomicrmw
-// CHECK-GFX942-MI300: llvm.cmpxchg {{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300: %[[BASE:.*]] = llvm.intr.ptrmask
+// CHECK-GFX942-MI300: %[[INIT:.*]] = llvm.load %[[BASE]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX942-MI300-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
 // CHECK-GFX942-MI300-NOT: !llvm.ptr<1>
 // CHECK-GFX942-MI300-NOT: llvm.atomicrmw
 // CHECK-GFX942-MI300: return
@@ -1600,9 +1773,22 @@ func.func @aligned_cross_lane_vector_atomic_rmw_cas(
   return %r : tensor<8xf32>
 }
 // CHECK-LABEL: @aligned_cross_lane_vector_atomic_rmw_cas
-// CHECK: scf.while (%{{.*}} = %{{.*}}) : (i64) -> i64
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-GPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 8> : !llvm.ptr -> i64
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic monotonic <alignment = 8> : !llvm.ptr -> i64
+// CHECK-NEXT: scf.while (%{{.*}} = %[[INIT]]) : (i64) -> i64
 // CHECK: vector.from_elements %{{.*}}, %{{.*}} : vector<2xf32>
-// CHECK: llvm.cmpxchg %{{.*}}, %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i64
+// CHECK: llvm.cmpxchg %[[ADDR]], %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i64
+// CHECK-GFX942-MI300-LABEL: @aligned_cross_lane_vector_atomic_rmw_cas
+// CHECK-GFX942-MI300: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-GFX942-MI300-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic syncscope("agent-one-as") monotonic <alignment = 8> : !llvm.ptr -> i64
+// CHECK-GFX942-MI300-NEXT: scf.while (%{{.*}} = %[[INIT]]) : (i64) -> i64
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[ADDR]], %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i64
+// CHECK-BMG-LABEL: @aligned_cross_lane_vector_atomic_rmw_cas
+// CHECK-BMG: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-BMG-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 8> : !llvm.ptr -> i64
+// CHECK-BMG-NEXT: scf.while (%{{.*}} = %[[INIT]]) : (i64) -> i64
+// CHECK-BMG: llvm.cmpxchg %[[ADDR]], %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i64
 
 // -----
 
@@ -1744,7 +1930,7 @@ func.func @direct_atomic_rmw_maximumf(%in: tensor<8xf32>,
 // CHECK-PASCAL: %[[NAN:.*]] = llvm.mlir.constant(0x7FC00000 : f32) : f32
 // CHECK-PASCAL: %[[C0:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: %[[CURRENT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> f32
+// CHECK-PASCAL: %[[CURRENT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 4> : !llvm.ptr -> f32
 // CHECK-PASCAL: %[[CURRENT_IS_NAN:.*]] = llvm.fcmp "uno" %[[CURRENT]], %[[CURRENT]] : f32
 // CHECK-PASCAL: scf.if %[[CURRENT_IS_NAN]] {
 // CHECK-PASCAL: } else {
@@ -1763,9 +1949,41 @@ func.func @direct_atomic_rmw_maximumf(%in: tensor<8xf32>,
 // CHECK-PASCAL: }
 // CHECK-PASCAL: return
 
+// CHECK-CPU-LABEL: @direct_atomic_rmw_maximumf
+// CHECK-CPU: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-CPU: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+
+// CHECK-AMPERE-LABEL: @direct_atomic_rmw_maximumf
+// CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-AMPERE-NEXT: llvm.load %[[ADDR]] atomic unordered <alignment = 4> : !llvm.ptr -> f32
+// CHECK-AMPERE: llvm.atomicrmw max %[[ADDR]], %{{.*}} monotonic
+// CHECK-AMPERE: llvm.atomicrmw umin %[[ADDR]], %{{.*}} monotonic
+
+// CHECK-HOPPER-LABEL: @direct_atomic_rmw_maximumf
+// CHECK-HOPPER: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-HOPPER-NEXT: llvm.load %[[ADDR]] atomic unordered <alignment = 4> : !llvm.ptr -> f32
+// CHECK-HOPPER: llvm.atomicrmw max %[[ADDR]], %{{.*}} monotonic
+// CHECK-HOPPER: llvm.atomicrmw umin %[[ADDR]], %{{.*}} monotonic
+
+// CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_maximumf
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-GFX908-MI100-NEXT: llvm.load %[[ADDR]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> f32
+// CHECK-GFX908-MI100: llvm.atomicrmw max %[[ADDR]], %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+// CHECK-GFX908-MI100: llvm.atomicrmw umin %[[ADDR]], %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+
 // CHECK-GFX942-MI300-LABEL: @direct_atomic_rmw_maximumf
-// CHECK-GFX942-MI300: llvm.atomicrmw max %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
-// CHECK-GFX942-MI300: llvm.atomicrmw umin %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+// CHECK-GFX942-MI300: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-GFX942-MI300-NEXT: llvm.load %[[ADDR]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> f32
+// CHECK-GFX942-MI300: llvm.atomicrmw max %[[ADDR]], %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+// CHECK-GFX942-MI300: llvm.atomicrmw umin %[[ADDR]], %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+
+// CHECK-BMG-LABEL: @direct_atomic_rmw_maximumf
+// CHECK-BMG: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-BMG-NEXT: llvm.load %[[ADDR]] atomic unordered <alignment = 4> : !llvm.ptr -> f32
+// CHECK-BMG: llvm.atomicrmw max %[[ADDR]], %{{.*}} monotonic
+// CHECK-BMG: llvm.atomicrmw umin %[[ADDR]], %{{.*}} monotonic
 
 // -----
 
@@ -1781,7 +1999,10 @@ func.func @atomic_rmw_c32(
 }
 // CHECK-LABEL: @atomic_rmw_c32
 // CHECK-NOT: llvm.alloca
-// CHECK: scf.while (%[[ITER_ARG:.*]] = %{{.*}}) : (i64) -> i64
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-GPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 8> : !llvm.ptr -> i64
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic monotonic <alignment = 8> : !llvm.ptr -> i64
+// CHECK-NEXT: scf.while (%[[ITER_ARG:.*]] = %[[INIT]]) : (i64) -> i64
 // CHECK: %[[VEC:.*]] = llvm.bitcast %[[ITER_ARG]] : i64 to vector<2xf32>
 // CHECK: %[[RE:.*]] = vector.extract %[[VEC]][0] : f32 from vector<2xf32>
 // CHECK: %[[IM:.*]] = vector.extract %[[VEC]][1] : f32 from vector<2xf32>
@@ -1790,9 +2011,20 @@ func.func @atomic_rmw_c32(
 // CHECK: %[[OUT_RE:.*]] = complex.re %[[ADD]] : complex<f32>
 // CHECK: %[[OUT_IM:.*]] = complex.im %[[ADD]] : complex<f32>
 // CHECK: %[[OUT_VEC:.*]] = vector.from_elements %[[OUT_RE]], %[[OUT_IM]] : vector<2xf32>
-// CHECK: llvm.bitcast %[[OUT_VEC]] : vector<2xf32> to i64
+// CHECK: %[[NEW:.*]] = llvm.bitcast %[[OUT_VEC]] : vector<2xf32> to i64
+// CHECK: llvm.cmpxchg %[[ADDR]], %[[ITER_ARG]], %[[NEW]] monotonic monotonic : !llvm.ptr, i64
 // CHECK-NOT: llvm.alloca
 // CHECK: return
+// CHECK-GFX908-MI100-LABEL: @atomic_rmw_c32
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-GFX908-MI100-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic syncscope("agent-one-as") monotonic <alignment = 8> : !llvm.ptr -> i64
+// CHECK-GFX908-MI100-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i64) -> i64
+// CHECK-GFX908-MI100: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i64
+// CHECK-BMG-LABEL: @atomic_rmw_c32
+// CHECK-BMG: %[[ADDR:.*]] = llvm.getelementptr inbounds
+// CHECK-BMG-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 8> : !llvm.ptr -> i64
+// CHECK-BMG-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i64) -> i64
+// CHECK-BMG: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i64
 
 // -----
 
@@ -2447,7 +2679,7 @@ func.func @set_dynamic_dim_size_unaligned_sub_byte(%arg0: tensor<5xi4>, %size: i
 // CHECK-GPU-DAG: %[[TAIL_OFF:.*]] = llvm.mlir.constant(4 : i64) : i64
 // CHECK-GPU-DAG: %[[TOP_OFF:.*]] = llvm.mlir.constant(6 : i64) : i64
 // CHECK-GPU:     %[[SHL:.*]] = llvm.shl %[[SIZE]], %[[SHIFT24]] : i32
-// CHECK-GPU:     %[[INIT:.*]] = llvm.load %[[ARG0]] : !llvm.ptr -> i32
+// CHECK-GPU:     %[[INIT:.*]] = llvm.load %[[ARG0]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
 // CHECK-GPU:     scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32 {
 // CHECK-GPU:       %[[KEPT:.*]] = llvm.and %[[CUR]], %[[MASK]] : i32
 // CHECK-GPU:       %[[NEW:.*]] = llvm.or %[[KEPT]], %[[SHL]] : i32
@@ -2464,8 +2696,26 @@ func.func @set_dynamic_dim_size_unaligned_sub_byte(%arg0: tensor<5xi4>, %size: i
 // CHECK-GPU:     %[[TOP_INT:.*]] = llvm.add %{{.*}}, %[[TOP_OFF]] : i64
 // CHECK-GPU:     %[[TOP_PTR:.*]] = llvm.inttoptr %[[TOP_INT]] : i64 to !llvm.ptr
 // CHECK-GPU:     llvm.store %[[TOP_I8]], %[[TOP_PTR]] <alignment = 1> : i8, !llvm.ptr
+// CHECK-HOPPER-LABEL: @set_dynamic_dim_size_unaligned_sub_byte
+// CHECK-HOPPER-SAME: (%[[ARG0:.*]]: !llvm.ptr,
+// CHECK-HOPPER: %[[INIT:.*]] = llvm.load %[[ARG0]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-HOPPER-NEXT: scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-HOPPER: llvm.cmpxchg %[[ARG0]], %[[CUR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 // CHECK-GFX908-MI100-LABEL: @set_dynamic_dim_size_unaligned_sub_byte
-// CHECK-GFX908-MI100: llvm.cmpxchg {{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX908-MI100-SAME: (%[[ARG0:.*]]: !llvm.ptr,
+// CHECK-GFX908-MI100: %[[INIT:.*]] = llvm.load %[[ARG0]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX908-MI100-NEXT: scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX908-MI100: llvm.cmpxchg %[[ARG0]], %[[CUR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300-LABEL: @set_dynamic_dim_size_unaligned_sub_byte
+// CHECK-GFX942-MI300-SAME: (%[[ARG0:.*]]: !llvm.ptr,
+// CHECK-GFX942-MI300: %[[INIT:.*]] = llvm.load %[[ARG0]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX942-MI300-NEXT: scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[ARG0]], %[[CUR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-BMG-LABEL: @set_dynamic_dim_size_unaligned_sub_byte
+// CHECK-BMG-SAME: (%[[ARG0:.*]]: !llvm.ptr,
+// CHECK-BMG: %[[INIT:.*]] = llvm.load %[[ARG0]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-BMG-NEXT: scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-BMG: llvm.cmpxchg %[[ARG0]], %[[CUR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 
 // -----
 
@@ -2481,10 +2731,18 @@ func.func @set_dynamic_dim_size_unaligned_sub_byte_misalign1(%arg0: tensor<9xi4>
 // CHECK-GPU-DAG: %[[SHIFT8:.*]] = llvm.mlir.constant(8 : i32) : i32
 // CHECK-GPU-DAG: %[[TAIL_OFF:.*]] = llvm.mlir.constant(8 : i64) : i64
 // CHECK-GPU-DAG: %[[SHIFT24:.*]] = llvm.mlir.constant(24 : i32) : i32
-// CHECK-GPU:     llvm.add %{{.*}}, %[[WORD_OFF]] : i64
-// CHECK-GPU:     llvm.cmpxchg {{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:     %[[WORD_INT:.*]] = llvm.add %{{.*}}, %[[WORD_OFF]] : i64
+// CHECK-GPU:     %[[WORD_PTR:.*]] = llvm.inttoptr %[[WORD_INT]] : i64 to !llvm.ptr
+// CHECK-GPU:     %[[INIT:.*]] = llvm.load %[[WORD_PTR]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GPU-NEXT: scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GPU:     llvm.cmpxchg %[[WORD_PTR]], %[[CUR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 // CHECK-GPU:     llvm.add %{{.*}}, %[[TAIL_OFF]] : i64
 // CHECK-GPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i8, !llvm.ptr
+// CHECK-GFX942-MI300-LABEL: @set_dynamic_dim_size_unaligned_sub_byte_misalign1
+// CHECK-GFX942-MI300: %[[WORD_PTR:.*]] = llvm.inttoptr %{{.*}} : i64 to !llvm.ptr
+// CHECK-GFX942-MI300: %[[INIT:.*]] = llvm.load %[[WORD_PTR]] atomic syncscope("agent-one-as") monotonic <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GFX942-MI300-NEXT: scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GFX942-MI300: llvm.cmpxchg %[[WORD_PTR]], %[[CUR]], %{{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
 
 // -----
 
@@ -2493,12 +2751,15 @@ func.func @set_dynamic_dim_size_unaligned_sub_byte_misalign2(%arg0: tensor<3xi4>
   func.return %0 : tensor<3xi4>
 }
 // CHECK-LABEL: @set_dynamic_dim_size_unaligned_sub_byte_misalign2
+// CHECK-SAME:    (%[[ARG0:.*]]: !llvm.ptr,
 // CHECK-CPU:     llvm.mlir.constant(2 : i64) : i64
 // CHECK-CPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
 // CHECK-GPU-DAG: %[[MASK:.*]] = llvm.mlir.constant(65535 : i32) : i32
 // CHECK-GPU-DAG: %[[SHIFT16:.*]] = llvm.mlir.constant(16 : i32) : i32
 // CHECK-GPU-DAG: %[[TAIL_OFF:.*]] = llvm.mlir.constant(4 : i64) : i64
-// CHECK-GPU:     llvm.cmpxchg {{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:     %[[INIT:.*]] = llvm.load %[[ARG0]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
+// CHECK-GPU-NEXT: scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GPU:     llvm.cmpxchg %[[ARG0]], %[[CUR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
 // CHECK-GPU:     llvm.add %{{.*}}, %[[TAIL_OFF]] : i64
 // CHECK-GPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 2> : i16, !llvm.ptr
 
@@ -2598,7 +2859,8 @@ func.func @get_destination_buffer_through_atomic_store(
 }
 // CHECK-LABEL: func.func @get_destination_buffer_through_atomic_store(
 // CHECK-SAME:    %[[ARG0:.*]]: !llvm.ptr,
-// CHECK:         llvm.store %{{.*}}, %{{.*}} atomic unordered <alignment = 4> : f32, !llvm.ptr
+// CHECK-GPU:     llvm.store %{{.*}}, %{{.*}} atomic unordered <alignment = 4> : f32, !llvm.ptr
+// CHECK-CPU:     llvm.store %{{.*}}, %{{.*}} atomic monotonic <alignment = 4> : f32, !llvm.ptr
 // CHECK:         %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x f32>
 // CHECK:         llvm.store %{{.*}}, %[[GEP]] : f32, !llvm.ptr
 // CHECK:         return

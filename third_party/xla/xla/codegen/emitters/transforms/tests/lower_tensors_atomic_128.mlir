@@ -30,7 +30,7 @@ func.func @atomic_rmw_i128(
 }
 // CHECK-LABEL: @atomic_rmw_i128
 // CHECK:         %[[ADDR:.*]] = llvm.getelementptr inbounds
-// CHECK:         %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i128
+// CHECK:         %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 16> : !llvm.ptr -> i128
 // CHECK:         scf.while (%[[OLD:.*]] = %[[INIT]]) : (i128) -> i128
 // CHECK:           %[[NEW:.*]] = arith.muli %[[OLD]], %{{.*}} : i128
 // CHECK:           llvm.cmpxchg %[[ADDR]], %[[OLD]], %[[NEW]] monotonic monotonic : !llvm.ptr, i128
@@ -47,7 +47,7 @@ func.func @atomic_store_c128(
 // CHECK:         %[[ADDR:.*]] = llvm.getelementptr inbounds
 // CHECK:         %[[VEC:.*]] = vector.from_elements %{{.*}}, %{{.*}} : vector<2xf64>
 // CHECK:         %[[NEW:.*]] = llvm.bitcast %[[VEC]] : vector<2xf64> to i128
-// CHECK:         %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i128
+// CHECK:         %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 16> : !llvm.ptr -> i128
 // CHECK:         scf.while (%[[OLD:.*]] = %[[INIT]]) : (i128) -> i128
 // CHECK:           llvm.cmpxchg %[[ADDR]], %[[OLD]], %[[NEW]] monotonic monotonic : !llvm.ptr, i128
 
@@ -65,12 +65,44 @@ func.func @atomic_rmw_c128(
 }
 // CHECK-LABEL: @atomic_rmw_c128
 // CHECK:         %[[ADDR:.*]] = llvm.getelementptr inbounds
-// CHECK:         %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i128
+// CHECK:         %[[INIT:.*]] = llvm.load %[[ADDR]] atomic unordered <alignment = 16> : !llvm.ptr -> i128
 // CHECK:         scf.while (%[[OLD:.*]] = %[[INIT]]) : (i128) -> i128
 // CHECK:           %[[OLD_VEC:.*]] = llvm.bitcast %[[OLD]] : i128 to vector<2xf64>
 // CHECK:           %[[SUM:.*]] = complex.add
 // CHECK:           %[[NEW:.*]] = llvm.bitcast %{{.*}} : vector<2xf64> to i128
 // CHECK:           llvm.cmpxchg %[[ADDR]], %[[OLD]], %[[NEW]] monotonic monotonic : !llvm.ptr, i128
+
+// -----
+
+module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i128, dense<128> : vector<2xi64>>>} {
+  func.func @atomic_store_and_rmw_i128_shared(
+      %out: tensor<4xi128> {llvm.align = 16 : index}, %val: i128, %i: index)
+      -> tensor<4xi128> {
+    %shared = xla_gpu.allocate_shared : tensor<4xi128>
+    %stored = xla.atomic_store %val into %shared[%i] : tensor<4xi128>
+    %rmw = xla.atomic_rmw %stored[%i] : tensor<4xi128> {
+      ^bb0(%current : i128):
+        %a = arith.addi %current, %val : i128
+        xla.yield %a : i128
+    }
+    %synced = xla_gpu.sync_threads %rmw : tensor<4xi128>
+    %v = tensor.extract %synced[%i] : tensor<4xi128>
+    %res = tensor.insert %v into %out[%i] : tensor<4xi128>
+    return %res : tensor<4xi128>
+  }
+}
+// CHECK: llvm.mlir.global private @[[SH128:shared_.*]]() {addr_space = 3 : i32} : !llvm.array<4 x i128>
+// CHECK: @atomic_store_and_rmw_i128_shared
+// CHECK:         %[[SH_ADDR:.*]] = llvm.mlir.addressof @[[SH128]] : !llvm.ptr<3>
+// CHECK:         %[[SH_GEN:.*]] = llvm.addrspacecast %[[SH_ADDR]] : !llvm.ptr<3> to !llvm.ptr
+// CHECK:         %[[ST_ADDR:.*]] = llvm.getelementptr inbounds %[[SH_GEN]]
+// CHECK:         %[[ST_INIT:.*]] = llvm.load %[[ST_ADDR]] atomic unordered <alignment = 16> : !llvm.ptr -> i128
+// CHECK:         scf.while (%[[ST_OLD:.*]] = %[[ST_INIT]]) : (i128) -> i128
+// CHECK:           llvm.cmpxchg %[[ST_ADDR]], %[[ST_OLD]], %{{.*}} monotonic monotonic : !llvm.ptr, i128
+// CHECK:         %[[RMW_ADDR:.*]] = llvm.getelementptr inbounds %[[SH_GEN]]
+// CHECK:         %[[RMW_INIT:.*]] = llvm.load %[[RMW_ADDR]] atomic unordered <alignment = 16> : !llvm.ptr -> i128
+// CHECK:         scf.while (%[[RMW_OLD:.*]] = %[[RMW_INIT]]) : (i128) -> i128
+// CHECK:           llvm.cmpxchg %[[RMW_ADDR]], %[[RMW_OLD]], %{{.*}} monotonic monotonic : !llvm.ptr, i128
 
 // -----
 

@@ -350,6 +350,14 @@ TEST_F(SliceToDynamicKernelEmitterTest, EmitsAndExecutesSubByteS4) {
                           FusionCompiler::Options{512, 1, true});
   ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
                        compiler.Compile(std::move(definition).TakeSource()));
+  EXPECT_THAT(RunFileCheck(llvm_source.ToString(), R"(
+    CHECK: define ptr @res(ptr{{.*}})
+    CHECK-NOT: cmpxchg
+    CHECK: store i32 %{{.*}}, ptr {{.*}} align 1
+    CHECK: load i8, ptr
+    CHECK: store i8
+  )"),
+              IsOkAndHolds(true));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<FunctionLibrary> library,
                        CompileKernel(std::move(llvm_source), "res"));
   ASSERT_OK_AND_ASSIGN(

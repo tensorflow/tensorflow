@@ -313,8 +313,11 @@ TEST_F(SliceToDynamicTest, RejectsUnsupportedSubByteS1) {
 }
 
 TEST_F(SliceToDynamicTest, VerifySubByteS4LlvmIr) {
-  constexpr absl::string_view kHlo = R"hlo(
-    HloModule SliceToDynamicS4Ir, is_scheduled=true
+  // 5 s4 elements occupy 3 bytes (misalign == 3): metadata starts at byte 3,
+  // updates word 0 with an aligned atomic load and cmpxchg, and writes the
+  // remaining 3 bytes as i16 + i8.
+  constexpr absl::string_view kHloMisalign3 = R"hlo(
+    HloModule SliceToDynamicS4IrMisalign3, is_scheduled=true
     ENTRY main {
       data = s4[5]{0:E(4)} parameter(0)
       d0 = s32[] parameter(1)
@@ -322,14 +325,96 @@ TEST_F(SliceToDynamicTest, VerifySubByteS4LlvmIr) {
         custom_call_target="SliceToDynamic"
     }
   )hlo";
-  EXPECT_OK(CompileAndVerifyIr(kHlo,
-                               R"(
+  EXPECT_OK(CompileAndVerifyIr(kHloMisalign3,
+                               IsBuiltWithRocm() ? R"(
     CHECK-LABEL: @res(
     CHECK-NOT: store i32
-    CHECK: cmpxchg ptr
+    CHECK: load atomic i32, ptr %[[META_ADDR:.*]] syncscope("agent-one-as") monotonic, align 4
+    CHECK: cmpxchg ptr %[[META_ADDR]], i32 %{{.*}}, i32 %{{.*}} syncscope("agent-one-as") monotonic monotonic
     CHECK: store i16 %{{.*}}, ptr %{{.*}}, align 2
     CHECK: store i8 %{{.*}}, ptr %{{.*}}, align 1
-    CHECK: cmpxchg ptr
+    CHECK: load atomic i32, ptr %[[ELEM_ADDR:.*]] syncscope("agent-one-as") monotonic, align 4
+    CHECK: cmpxchg ptr %[[ELEM_ADDR]], i32 %{{.*}}, i32 %{{.*}} syncscope("agent-one-as") monotonic monotonic
+  )"
+                                                 : R"(
+    CHECK-LABEL: @res(
+    CHECK-NOT: store i32
+    CHECK: load atomic i32, ptr %[[META_ADDR:.*]] unordered, align 4
+    CHECK: cmpxchg ptr %[[META_ADDR]], i32 %{{.*}}, i32 %{{.*}} monotonic monotonic
+    CHECK: store i16 %{{.*}}, ptr %{{.*}}, align 2
+    CHECK: store i8 %{{.*}}, ptr %{{.*}}, align 1
+    CHECK: load atomic i32, ptr %[[ELEM_ADDR:.*]] unordered, align 4
+    CHECK: cmpxchg ptr %[[ELEM_ADDR]], i32 %{{.*}}, i32 %{{.*}} monotonic monotonic
+  )",
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/false));
+
+  // 9 s4 elements occupy 5 bytes (misalign == 1): metadata updates word 1 with
+  // an aligned atomic load and cmpxchg, then writes 1 trailing i8 byte.
+  constexpr absl::string_view kHloMisalign1 = R"hlo(
+    HloModule SliceToDynamicS4IrMisalign1, is_scheduled=true
+    ENTRY main {
+      data = s4[9]{0:E(4)} parameter(0)
+      d0 = s32[] parameter(1)
+      ROOT res = s4[<=9]{0:E(4)} custom-call(data, d0),
+        custom_call_target="SliceToDynamic"
+    }
+  )hlo";
+  EXPECT_OK(CompileAndVerifyIr(kHloMisalign1,
+                               IsBuiltWithRocm() ? R"(
+    CHECK-LABEL: @res(
+    CHECK-NOT: store i32
+    CHECK-NOT: store i16
+    CHECK: load atomic i32, ptr %[[META_ADDR:.*]] syncscope("agent-one-as") monotonic, align 4
+    CHECK: cmpxchg ptr %[[META_ADDR]], i32 %{{.*}}, i32 %{{.*}} syncscope("agent-one-as") monotonic monotonic
+    CHECK: store i8 %{{.*}}, ptr %{{.*}}, align 1
+    CHECK: load atomic i32, ptr %[[ELEM_ADDR:.*]] syncscope("agent-one-as") monotonic, align 4
+    CHECK: cmpxchg ptr %[[ELEM_ADDR]], i32 %{{.*}}, i32 %{{.*}} syncscope("agent-one-as") monotonic monotonic
+  )"
+                                                 : R"(
+    CHECK-LABEL: @res(
+    CHECK-NOT: store i32
+    CHECK-NOT: store i16
+    CHECK: load atomic i32, ptr %[[META_ADDR:.*]] unordered, align 4
+    CHECK: cmpxchg ptr %[[META_ADDR]], i32 %{{.*}}, i32 %{{.*}} monotonic monotonic
+    CHECK: store i8 %{{.*}}, ptr %{{.*}}, align 1
+    CHECK: load atomic i32, ptr %[[ELEM_ADDR:.*]] unordered, align 4
+    CHECK: cmpxchg ptr %[[ELEM_ADDR]], i32 %{{.*}}, i32 %{{.*}} monotonic monotonic
+  )",
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/false));
+
+  // 3 s4 elements occupy 2 bytes (misalign == 2): metadata updates word 0 with
+  // an aligned atomic load and cmpxchg, then writes 1 trailing i16 halfword.
+  constexpr absl::string_view kHloMisalign2 = R"hlo(
+    HloModule SliceToDynamicS4IrMisalign2, is_scheduled=true
+    ENTRY main {
+      data = s4[3]{0:E(4)} parameter(0)
+      d0 = s32[] parameter(1)
+      ROOT res = s4[<=3]{0:E(4)} custom-call(data, d0),
+        custom_call_target="SliceToDynamic"
+    }
+  )hlo";
+  EXPECT_OK(CompileAndVerifyIr(kHloMisalign2,
+                               IsBuiltWithRocm() ? R"(
+    CHECK-LABEL: @res(
+    CHECK-NOT: store i32
+    CHECK-NOT: store i8
+    CHECK: load atomic i32, ptr %[[META_ADDR:.*]] syncscope("agent-one-as") monotonic, align 4
+    CHECK: cmpxchg ptr %[[META_ADDR]], i32 %{{.*}}, i32 %{{.*}} syncscope("agent-one-as") monotonic monotonic
+    CHECK: store i16 %{{.*}}, ptr %{{.*}}, align 2
+    CHECK: load atomic i32, ptr %[[ELEM_ADDR:.*]] syncscope("agent-one-as") monotonic, align 4
+    CHECK: cmpxchg ptr %[[ELEM_ADDR]], i32 %{{.*}}, i32 %{{.*}} syncscope("agent-one-as") monotonic monotonic
+  )"
+                                                 : R"(
+    CHECK-LABEL: @res(
+    CHECK-NOT: store i32
+    CHECK-NOT: store i8
+    CHECK: load atomic i32, ptr %[[META_ADDR:.*]] unordered, align 4
+    CHECK: cmpxchg ptr %[[META_ADDR]], i32 %{{.*}}, i32 %{{.*}} monotonic monotonic
+    CHECK: store i16 %{{.*}}, ptr %{{.*}}, align 2
+    CHECK: load atomic i32, ptr %[[ELEM_ADDR:.*]] unordered, align 4
+    CHECK: cmpxchg ptr %[[ELEM_ADDR]], i32 %{{.*}}, i32 %{{.*}} monotonic monotonic
   )",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/false));
@@ -433,6 +518,56 @@ TEST_F(SliceToDynamicTest, ExecuteSliceToDynamicSubByteS4Unaligned) {
   EXPECT_EQ(outputs[1].Get<int32_t>({}), 3);
   for (int64_t i = 0; i < 3; ++i) {
     EXPECT_EQ(outputs[0].Get<s4>({i}), s4(static_cast<int8_t>(i - 2)));
+  }
+
+  // Exercise misalign == 2 (s4[3], 2 data bytes) and misalign == 1 (s4[9],
+  // 5 data bytes) end to end as well.
+  constexpr absl::string_view kHloMisalign2 = R"hlo(
+    HloModule SliceToDynamicSubByteS4Misalign2
+    ENTRY main {
+      data = s4[3]{0:E(4)} parameter(0)
+      d0 = s32[] parameter(1)
+      dyn = s4[<=3]{0:E(4)} custom-call(data, d0),
+        custom_call_target="SliceToDynamic"
+      ROOT pts = (s4[3]{0:E(4)}, s32[]) custom-call(dyn),
+        custom_call_target="PadToStatic"
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> mod2,
+                       ParseAndReturnVerifiedModule(kHloMisalign2));
+  Literal in2 = LiteralUtil::CreateR1<s4>({s4(-3), s4(5), s4(7)});
+  Literal d0_2 = LiteralUtil::CreateR0<int32_t>(2);
+  ASSERT_OK_AND_ASSIGN(Literal res2, Execute(std::move(mod2), {&in2, &d0_2},
+                                             /*run_hlo_passes=*/false));
+  std::vector<Literal> out2 = res2.DecomposeTuple();
+  ASSERT_EQ(out2.size(), 2);
+  EXPECT_EQ(out2[1].Get<int32_t>({}), 2);
+  EXPECT_EQ(out2[0].Get<s4>({0}), s4(-3));
+  EXPECT_EQ(out2[0].Get<s4>({1}), s4(5));
+
+  constexpr absl::string_view kHloMisalign1 = R"hlo(
+    HloModule SliceToDynamicSubByteS4Misalign1
+    ENTRY main {
+      data = s4[9]{0:E(4)} parameter(0)
+      d0 = s32[] parameter(1)
+      dyn = s4[<=9]{0:E(4)} custom-call(data, d0),
+        custom_call_target="SliceToDynamic"
+      ROOT pts = (s4[9]{0:E(4)}, s32[]) custom-call(dyn),
+        custom_call_target="PadToStatic"
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> mod1,
+                       ParseAndReturnVerifiedModule(kHloMisalign1));
+  Literal in1 = LiteralUtil::CreateR1<s4>(
+      {s4(-4), s4(-3), s4(-2), s4(-1), s4(0), s4(1), s4(2), s4(3), s4(4)});
+  Literal d0_1 = LiteralUtil::CreateR0<int32_t>(9);
+  ASSERT_OK_AND_ASSIGN(Literal res1, Execute(std::move(mod1), {&in1, &d0_1},
+                                             /*run_hlo_passes=*/false));
+  std::vector<Literal> out1 = res1.DecomposeTuple();
+  ASSERT_EQ(out1.size(), 2);
+  EXPECT_EQ(out1[1].Get<int32_t>({}), 9);
+  for (int64_t i = 0; i < 9; ++i) {
+    EXPECT_EQ(out1[0].Get<s4>({i}), s4(static_cast<int8_t>(i - 4)));
   }
 }
 

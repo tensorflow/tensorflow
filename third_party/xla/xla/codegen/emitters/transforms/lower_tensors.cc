@@ -1539,6 +1539,33 @@ llvm::StringRef GetAtomicSyncScope(const DeviceSpec& device_spec) {
   return llvm::StringRef();
 }
 
+// AMDGPU SIMemoryLegalizer only applies agent scope L1 cache bypass when
+// ordering is at least monotonic. CPU also uses monotonic because LLVM's
+// LoopIdiomRecognizePass rewrites contiguous loops with unordered atomic loads
+// or stores into @llvm.memcpy.element.unordered.atomic, emitting unresolved
+// __llvm_memcpy_element_unordered_atomic_* calls in the XLA:CPU JIT; monotonic
+// loads and stores block that rewrite and emit identical single instructions on
+// x86_64 and AArch64. CUDA and Intel GPU use unordered so atomic loads remain
+// Ref only in LLVM alias analysis.
+ml::AtomicOrdering GetAtomicLoadStoreOrdering(const DeviceSpec& device_spec) {
+  return (device_spec.IsAmdGpu() || device_spec.IsCpu())
+             ? ml::AtomicOrdering::monotonic
+             : ml::AtomicOrdering::unordered;
+}
+
+Value CreateAtomicLoad(OpBuilder& b, Location loc, Type type, Value addr,
+                       const DeviceSpec& device_spec) {
+  CHECK(type.isIntOrFloat());
+  unsigned bit_width = type.getIntOrFloatBitWidth();
+  CHECK_GT(bit_width, 0u);
+  CHECK_EQ(bit_width % kBitsPerByte, 0u);
+  return ml::LoadOp::create(
+      b, loc, type, addr, /*alignment=*/bit_width / kBitsPerByte,
+      /*isVolatile=*/false, /*isNonTemporal=*/false, /*isInvariant=*/false,
+      /*isInvariantGroup=*/false, /*isNoundef=*/false,
+      GetAtomicLoadStoreOrdering(device_spec), GetAtomicSyncScope(device_spec));
+}
+
 void SetAmdAtomicRMWAttrs(mlir::OpBuilder& b, ml::AtomicRMWOp rmw_op,
                           const DeviceSpec& device_spec) {
   if (!device_spec.IsAmdGpu()) {
@@ -1785,11 +1812,8 @@ class RewriteAtomicStore : public OpRewritePattern<AtomicStoreOp> {
     Value value = op.getValue();
     Type element_type = value.getType();
     llvm::StringRef sync_scope = GetAtomicSyncScope(device_spec_);
-    // AMDGPU SIMemoryLegalizer only applies agent scope L1 cache bypass when
-    // ordering is at least monotonic.
-    ml::AtomicOrdering direct_ordering = device_spec_.IsAmdGpu()
-                                             ? ml::AtomicOrdering::monotonic
-                                             : ml::AtomicOrdering::unordered;
+    ml::AtomicOrdering direct_ordering =
+        GetAtomicLoadStoreOrdering(device_spec_);
 
     if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(element_type)) {
       // The 64 bit store needs 8 byte alignment, but complex<f32> only has the
@@ -1873,8 +1897,8 @@ class RewriteAtomicStore : public OpRewritePattern<AtomicStoreOp> {
       direct_new_value = CreateBitcast(b, value, access.atomic_ty);
     }
 
-    Value initial =
-        ml::LoadOp::create(rewriter, loc, access.atomic_ty, access.addr);
+    Value initial = CreateAtomicLoad(rewriter, loc, access.atomic_ty,
+                                     access.addr, device_spec_);
     scf::WhileOp::create(
         rewriter, loc, TypeRange{access.atomic_ty}, ValueRange{initial},
         [&](mlir::OpBuilder& builder, Location loop_loc, ValueRange values) {
@@ -2415,7 +2439,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     // Evaluating floating max using integer atomics has the limitation of not
     // propagating -NaNs. To handle this, we check if the update value is -NaN
     // and convert it to a positive one by dropping the sign-bit.
-    Value current = ml::LoadOp::create(b, loc, element_type, addr);
+    Value current = CreateAtomicLoad(b, loc, element_type, addr, device_spec_);
 
     Value current_is_nan =
         ml::FCmpOp::create(b, loc, ml::FCmpPredicate::uno, current, current);
@@ -2491,8 +2515,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     llvm::StringRef sync_scope = GetAtomicSyncScope(device_spec_);
 
     // Load initial atomic value and create the loop.
-    Value initial =
-        ml::LoadOp::create(rewriter, loc, access.atomic_ty, access.addr);
+    Value initial = CreateAtomicLoad(rewriter, loc, access.atomic_ty,
+                                     access.addr, device_spec_);
     scf::WhileOp::create(
         rewriter, loc, TypeRange{access.atomic_ty}, ValueRange{initial},
         [&](mlir::OpBuilder& builder, Location loop_loc, ValueRange values) {
@@ -2661,11 +2685,9 @@ class RewriteSetDynamicDimSize : public OpRewritePattern<SetDynamicDimSizeOp> {
           b, i32_type, static_cast<int32_t>(low_mask_val));
       Value low_shift = ml::ConstantOp::create(b, i32_type, low_bits);
       Value shifted_size = ml::ShlOp::create(b, op.getSize(), low_shift);
-      Value initial = ml::LoadOp::create(b, i32_type, aligned_addr);
-
-      llvm::StringRef sync_scope = device_spec_.IsAmdGpu()
-                                       ? llvm::StringRef("agent-one-as")
-                                       : llvm::StringRef();
+      Value initial = CreateAtomicLoad(b, op.getLoc(), i32_type, aligned_addr,
+                                       device_spec_);
+      llvm::StringRef sync_scope = GetAtomicSyncScope(device_spec_);
       scf::WhileOp::create(
           b, TypeRange{i32_type}, ValueRange{initial},
           [&](mlir::OpBuilder& builder, Location loc, ValueRange values) {

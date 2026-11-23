@@ -660,7 +660,12 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":gpu_pjrt_codegen_test",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -21,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/CodeGen.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
@@ -39,9 +42,15 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/runtime/function_library.h"
+#include "xla/backends/cpu/runtime/kernel_c_api.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -56,6 +65,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 
 namespace xla {
 namespace cpu {
@@ -861,6 +871,197 @@ TEST_F(CpuFusionEmitterTest, ConcatenateComplexAndNarrowFloatCompileToMemcpy) {
                            "call void @llvm.memcpy{{.*}}i64 5"),
         absl_testing::IsOkAndHolds(true));
   }
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI XLA_CPU_KernelError* CallCpuKernel(
+    FunctionLibrary::Kernel* kernel, XLA_CPU_KernelCallFrame* frame) {
+  return (*kernel)(frame);
+}
+
+TEST_F(CpuFusionEmitterTest,
+       AtomicCasEmitsAlignedUnorderedLoadsAndJitExecutes) {
+  constexpr absl::string_view kMlir = R"(
+    module attributes {xla.cpu_memory_region_name = "cpu_fusion_emitter_test"} {
+      func.func @cpu_atomic_cas(
+          %s4_buf: tensor<4xi4> {llvm.align = 16 : index, xla.slice_index = 0},
+          %f16_buf: tensor<2xf16> {llvm.align = 16 : index, xla.slice_index = 1},
+          %f32_buf: tensor<2xf32> {llvm.align = 16 : index, xla.slice_index = 2},
+          %c64_buf: tensor<2xcomplex<f32>> {llvm.align = 16 : index, xla.slice_index = 3})
+          -> (tensor<4xi4>, tensor<2xf16>, tensor<2xf32>,
+              tensor<2xcomplex<f32>>)
+          attributes {xla.backend_kind = #xla.backend_kind<cpu>, xla.entry} {
+        %c0 = arith.constant 0 : index
+        %c1 = arith.constant 1 : index
+        %v_i4 = arith.constant 5 : i4
+        %v_f16 = arith.constant 2.5 : f16
+        %v_f32 = arith.constant 3.5 : f32
+        %v_c64 = complex.constant [4.0 : f32, 6.0 : f32] : complex<f32>
+
+        %out_s4 = xla.atomic_store %v_i4 into %s4_buf[%c1] : tensor<4xi4>
+        %out_f16 = xla.atomic_rmw %f16_buf[%c1] : tensor<2xf16> {
+          ^bb0(%cur: f16):
+            %sum = arith.addf %cur, %v_f16 : f16
+            xla.yield %sum : f16
+        }
+        %out_f32 = xla.atomic_rmw %f32_buf[%c0] : tensor<2xf32> {
+          ^bb0(%cur: f32):
+            %max = arith.maximumf %cur, %v_f32 : f32
+            xla.yield %max : f32
+        }
+        %out_c64 = xla.atomic_rmw %c64_buf[%c1] : tensor<2xcomplex<f32>> {
+          ^bb0(%cur: complex<f32>):
+            %sum = complex.add %cur, %v_c64 : complex<f32>
+            xla.yield %sum : complex<f32>
+        }
+        return %out_s4, %out_f16, %out_f32, %out_c64
+            : tensor<4xi4>, tensor<2xf16>, tensor<2xf32>,
+              tensor<2xcomplex<f32>>
+      }
+    }
+  )";
+
+  std::unique_ptr<mlir::MLIRContext> mlir_context =
+      FusionCompiler::CreateContext();
+  mlir::MLIRContext* context_ptr = mlir_context.get();
+  ASSERT_OK_AND_ASSIGN(
+      MlirKernelSource mlir_source,
+      MlirKernelSource::ParseFromString(kMlir, std::move(mlir_context)));
+  FusionCompiler compiler(context_ptr, FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
+                       compiler.Compile(std::move(mlir_source)));
+
+  EXPECT_THAT(RunFileCheck(llvm_source.ToString(), R"(
+    CHECK: load atomic i8, ptr %[[S4_ADDR:.*]] monotonic, align 1
+    CHECK: cmpxchg ptr %[[S4_ADDR]], i8 %{{.*}}, i8 %{{.*}} monotonic monotonic
+    CHECK: load atomic i16, ptr %[[F16_ADDR:.*]] monotonic, align 2
+    CHECK: cmpxchg ptr %[[F16_ADDR]], i16 %{{.*}}, i16 %{{.*}} monotonic monotonic
+    CHECK: load atomic i32, ptr %[[F32_ADDR:.*]] monotonic, align 4
+    CHECK: cmpxchg ptr %[[F32_ADDR]], i32 %{{.*}}, i32 %{{.*}} monotonic monotonic
+    CHECK: load atomic i64, ptr %[[C64_ADDR:.*]] monotonic, align 8
+    CHECK: cmpxchg ptr %[[C64_ADDR]], i64 %{{.*}}, i64 %{{.*}} monotonic monotonic
+  )"),
+              absl_testing::IsOkAndHolds(true));
+
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create({},
+                         IrCompiler::Options{
+                             /*opt_level=*/llvm::CodeGenOptLevel::Default,
+                             /*optimize_for_size=*/false,
+                             TargetMachineOptions(GetDebugOptionsFromFlags()),
+                         },
+                         IrCompiler::CompilationHooks());
+  ASSERT_OK_AND_ASSIGN(JitCompiler jit,
+                       JitCompiler::Create({}, std::move(ir_compiler)));
+  ASSERT_OK(jit.AddModule(std::move(llvm_source).thread_safe_module()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<FunctionLibrary> library,
+      std::move(jit).Compile(
+          {FunctionLibrary::Sym<FunctionLibrary::Kernel>("cpu_atomic_cas")}));
+  ASSERT_OK_AND_ASSIGN(
+      FunctionLibrary::Kernel * kernel,
+      library->ResolveFunction<FunctionLibrary::Kernel>("cpu_atomic_cas"));
+
+  alignas(16) std::array<uint8_t, 2> s4_bytes = {0xa3, 0x72};
+  alignas(16) std::array<half, 2> f16_vals = {half(1.0f), half(1.5f)};
+  alignas(16) std::array<float, 2> f32_vals = {1.25f, 9.0f};
+  alignas(16) std::array<complex64, 2> c64_vals = {complex64(1.0f, 2.0f),
+                                                   complex64(3.0f, 5.0f)};
+  std::vector<XLA_CPU_KernelArg> args = {
+      {s4_bytes.data(), s4_bytes.size()},
+      {f16_vals.data(), f16_vals.size() * sizeof(half)},
+      {f32_vals.data(), f32_vals.size() * sizeof(float)},
+      {c64_vals.data(), c64_vals.size() * sizeof(complex64)},
+  };
+  XLA_CPU_NumWorkGroups num_workgroups = {1, 1, 1};
+  XLA_CPU_WorkGroupId workgroup_id = {0, 0, 0};
+  XLA_CPU_KernelCallFrame frame = {&num_workgroups, &workgroup_id, args.size(),
+                                   args.data()};
+  EXPECT_EQ(CallCpuKernel(kernel, &frame), nullptr);
+
+  EXPECT_EQ(s4_bytes[0], 0x53);
+  EXPECT_EQ(s4_bytes[1], 0x72);
+  EXPECT_EQ(f16_vals[0], half(1.0f));
+  EXPECT_EQ(f16_vals[1], half(4.0f));
+  EXPECT_EQ(f32_vals[0], 3.5f);
+  EXPECT_EQ(f32_vals[1], 9.0f);
+  EXPECT_EQ(c64_vals[0], complex64(1.0f, 2.0f));
+  EXPECT_EQ(c64_vals[1], complex64(7.0f, 11.0f));
+}
+
+TEST_F(CpuFusionEmitterTest,
+       AtomicStoreContiguousLoopEmitsMonotonicAndExecutesInJit) {
+  constexpr absl::string_view kMlir = R"(
+    module attributes {xla.cpu_memory_region_name = "cpu_atomic_store_loop"} {
+      func.func @cpu_atomic_store_loop(
+          %src: tensor<128xf32> {llvm.align = 16 : index, xla.invariant, xla.slice_index = 0},
+          %dst: tensor<128xf32> {llvm.align = 16 : index, xla.slice_index = 1})
+          -> tensor<128xf32>
+          attributes {xla.backend_kind = #xla.backend_kind<cpu>, xla.entry} {
+        %c0 = arith.constant 0 : index
+        %c1 = arith.constant 1 : index
+        %c128 = arith.constant 128 : index
+        %res = scf.for %i = %c0 to %c128 step %c1 iter_args(%cur = %dst) -> (tensor<128xf32>) {
+          %v = tensor.extract %src[%i] : tensor<128xf32>
+          %next = xla.atomic_store %v into %cur[%i] : tensor<128xf32>
+          scf.yield %next : tensor<128xf32>
+        }
+        return %res : tensor<128xf32>
+      }
+    }
+  )";
+
+  std::unique_ptr<mlir::MLIRContext> mlir_context =
+      FusionCompiler::CreateContext();
+  mlir::MLIRContext* context_ptr = mlir_context.get();
+  ASSERT_OK_AND_ASSIGN(
+      MlirKernelSource mlir_source,
+      MlirKernelSource::ParseFromString(kMlir, std::move(mlir_context)));
+  FusionCompiler compiler(context_ptr, FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
+                       compiler.Compile(std::move(mlir_source)));
+  EXPECT_THAT(RunFileCheck(llvm_source.ToString(), R"(
+    CHECK: store atomic float %{{.*}}, ptr %{{.*}} monotonic, align 4
+  )"),
+              absl_testing::IsOkAndHolds(true));
+
+  // Optimizing and JIT linking fails with an unresolved
+  // __llvm_memcpy_element_unordered_atomic_4 symbol on x86_64 if unordered
+  // ordering is used instead of monotonic.
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create({},
+                         IrCompiler::Options{
+                             /*opt_level=*/llvm::CodeGenOptLevel::Default,
+                             /*optimize_for_size=*/false,
+                             TargetMachineOptions(GetDebugOptionsFromFlags()),
+                         },
+                         IrCompiler::CompilationHooks());
+  ASSERT_OK_AND_ASSIGN(JitCompiler jit,
+                       JitCompiler::Create({}, std::move(ir_compiler)));
+  ASSERT_OK(jit.AddModule(std::move(llvm_source).thread_safe_module()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<FunctionLibrary> library,
+      std::move(jit).Compile({FunctionLibrary::Sym<FunctionLibrary::Kernel>(
+          "cpu_atomic_store_loop")}));
+  ASSERT_OK_AND_ASSIGN(FunctionLibrary::Kernel * kernel,
+                       library->ResolveFunction<FunctionLibrary::Kernel>(
+                           "cpu_atomic_store_loop"));
+
+  alignas(16) std::array<float, 128> src;
+  alignas(16) std::array<float, 128> dst;
+  for (int i = 0; i < 128; ++i) {
+    src[i] = static_cast<float>(i * 3 + 1);
+    dst[i] = -1.0f;
+  }
+  std::array<XLA_CPU_KernelArg, 2> args = {{
+      {src.data(), sizeof(src)},
+      {dst.data(), sizeof(dst)},
+  }};
+  XLA_CPU_NumWorkGroups num_workgroups = {1, 1, 1};
+  XLA_CPU_WorkGroupId workgroup_id = {0, 0, 0};
+  XLA_CPU_KernelCallFrame frame = {&num_workgroups, &workgroup_id, args.size(),
+                                   args.data()};
+  EXPECT_EQ(CallCpuKernel(kernel, &frame), nullptr);
+  EXPECT_EQ(dst, src);
 }
 
 }  // namespace

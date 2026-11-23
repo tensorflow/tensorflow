@@ -314,13 +314,23 @@ TEST_F(PadToStaticTest, VerifySubByteS4LlvmIr) {
     }
   )hlo";
   EXPECT_OK(CompileAndVerifyIr(kHlo,
-                               R"(
+                               IsBuiltWithRocm() ? R"(
     CHECK-LABEL: @pts(
     CHECK: ptrtoint ptr
     CHECK: add i64 %{{.*}}, 3
     CHECK: load i32, ptr %{{.*}}, align 1
     CHECK: store i32
-    CHECK: cmpxchg ptr
+    CHECK: load atomic i32, ptr %[[ELEM_ADDR:.*]] syncscope("agent-one-as") monotonic, align 4
+    CHECK: cmpxchg ptr %[[ELEM_ADDR]], i32 %{{.*}}, i32 %{{.*}} syncscope("agent-one-as") monotonic monotonic
+  )"
+                                                 : R"(
+    CHECK-LABEL: @pts(
+    CHECK: ptrtoint ptr
+    CHECK: add i64 %{{.*}}, 3
+    CHECK: load i32, ptr %{{.*}}, align 1
+    CHECK: store i32
+    CHECK: load atomic i32, ptr %[[ELEM_ADDR:.*]] unordered, align 4
+    CHECK: cmpxchg ptr %[[ELEM_ADDR]], i32 %{{.*}}, i32 %{{.*}} monotonic monotonic
   )",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/false));
