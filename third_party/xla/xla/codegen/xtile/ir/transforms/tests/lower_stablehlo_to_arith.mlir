@@ -557,6 +557,24 @@ func.func @lower_convert_ui32_to_ui8(%arg0: tensor<2x4xui32>) -> tensor<2x4xui8>
 
 // -----
 
+func.func @lower_convert_i32_to_ui32(%arg0: tensor<2x4xi32>) -> tensor<2x4xui32> {
+  // CHECK: %[[RES:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xi32> to tensor<2x4xui32>
+  // CHECK: return %[[RES]] : tensor<2x4xui32>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xi32>) -> tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+// -----
+
+func.func @lower_convert_ui32_to_i32(%arg0: tensor<2x4xui32>) -> tensor<2x4xi32> {
+  // CHECK: %[[RES:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: return %[[RES]] : tensor<2x4xi32>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xui32>) -> tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+// -----
+
 func.func @lower_convert_ui32_to_i1(%arg0: tensor<2x4xui32>) -> tensor<2x4xi1> {
   // CHECK-DAG: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xui32> to tensor<2x4xi32>
   // CHECK-DAG: %[[ZERO:.*]] = arith.constant dense<0> : tensor<2x4xi32>

@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/decision.h"
@@ -33,9 +34,10 @@ namespace xla {
 namespace cpu {
 namespace {
 
-// Only dots that would otherwise be lowered to a naive LLVM IR loop nest
-// (`DotImplementationStrategy::kNaiveLlvmIr`) are wrapped. Tiled LLVM IR and
-// Eigen dots stay on the non-fusion path, where they perform better.
+// Wraps dots that would otherwise be lowered to a naive LLVM IR loop nest
+// (`DotImplementationStrategy::kNaiveLlvmIr`) for the loop emitter, or to a
+// tiled LLVM IR GEMV (`DotImplementationStrategy::kTiledLlvmIrGemv`) for the
+// tiled emitter when supported.
 Decision ShouldWrapDot(const HloInstruction& dot,
                        const TargetMachineFeatures* target_machine_features) {
   if (target_machine_features == nullptr) {
@@ -44,7 +46,7 @@ Decision ShouldWrapDot(const HloInstruction& dot,
   if (dot.operand(0)->shape().element_type() != dot.shape().element_type() ||
       dot.operand(1)->shape().element_type() != dot.shape().element_type()) {
     return Decision::Forbid(
-        "mixed-precision dots are not supported by the elemental dot emitter");
+        "mixed-precision dots are not supported by the wrapped dot emitters");
   }
 
   // `GetDotImplementationStrategy` relies on the canonical form established by
@@ -54,20 +56,32 @@ Decision ShouldWrapDot(const HloInstruction& dot,
       dnums.rhs_contracting_dimensions_size() != 1) {
     return Decision::Forbid("dot does not have one contracting dimension");
   }
-  if (!algorithm_util::IsSupportedByElementalDotEmitter(
-          dot.precision_config().algorithm())) {
-    return Decision::Forbid(
-        "dot algorithm is not supported by the elemental dot emitter");
-  }
   const HloModuleConfig& config = dot.GetModule() != nullptr
                                       ? dot.GetModule()->config()
                                       : HloModuleConfig();
-  if (GetDotImplementationStrategy(config, dot, *target_machine_features,
-                                   /*allow_runtime_calls=*/true) !=
-      DotImplementationStrategy::kNaiveLlvmIr) {
-    return Decision::Forbid("dot is not lowered to a naive LLVM IR loop nest");
+  DotImplementationStrategy strategy = GetDotImplementationStrategy(
+      config, dot, *target_machine_features, /*allow_runtime_calls=*/true);
+  switch (strategy) {
+    case DotImplementationStrategy::kNaiveLlvmIr:
+      if (!algorithm_util::IsSupportedByElementalDotEmitter(
+              dot.precision_config().algorithm())) {
+        return Decision::Forbid(
+            "dot algorithm is not supported by the elemental dot emitter");
+      }
+      return Decision::Allow();
+    case DotImplementationStrategy::kTiledLlvmIrGemv:
+      if (!options::EnableTiledEmitter(config)) {
+        return Decision::Forbid("tiled emitter is disabled");
+      }
+      if (!IsSupportedTiledDot(dot)) {
+        return Decision::Forbid(
+            "GEMV dot is not supported by the tiled emitter");
+      }
+      return Decision::Allow();
+    default:
+      return Decision::Forbid(
+          "dot is not lowered to a naive loop nest or tiled GEMV");
   }
-  return Decision::Allow();
 }
 
 }  // namespace

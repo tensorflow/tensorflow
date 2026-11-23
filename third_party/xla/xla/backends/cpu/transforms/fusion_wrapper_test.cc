@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
@@ -377,8 +377,66 @@ TEST_F(FusionWrapperTest, NaiveDotWithoutTargetMachineFeaturesNotWrapped) {
       wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
 }
 
-TEST_F(FusionWrapperTest, MatrixVectorDotNotWrapped) {
-  // Lowered to the tiled LLVM IR GEMV implementation.
+TEST_F(FusionWrapperTest, MatrixVectorDotWrapped) {
+  static constexpr absl::string_view kGemvCases[] = {
+      R"hlo(
+      HloModule m
+        ENTRY e {
+          p0 = f32[64,32] parameter(0)
+          p1 = f32[32] parameter(1)
+          ROOT dot = f32[64] dot(p0, p1),
+            lhs_contracting_dims={1}, rhs_contracting_dims={0}
+        }
+      )hlo",
+      R"hlo(
+      HloModule m
+        ENTRY e {
+          p0 = f32[1,32] parameter(0)
+          p1 = f32[32,64] parameter(1)
+          ROOT dot = f32[1,64] dot(p0, p1),
+            lhs_contracting_dims={1}, rhs_contracting_dims={0}
+        }
+      )hlo",
+      R"hlo(
+      HloModule m
+        ENTRY e {
+          p0 = f32[4,64,32] parameter(0)
+          p1 = f32[4,32] parameter(1)
+          ROOT dot = f32[4,64] dot(p0, p1),
+            lhs_batch_dims={0}, rhs_batch_dims={0},
+            lhs_contracting_dims={2}, rhs_contracting_dims={1}
+        }
+      )hlo",
+      R"hlo(
+      HloModule m
+        ENTRY e {
+          p0 = bf16[64,32] parameter(0)
+          p1 = bf16[32] parameter(1)
+          ROOT dot = bf16[64] dot(p0, p1),
+            lhs_contracting_dims={1}, rhs_contracting_dims={0}
+        }
+      )hlo",
+      R"hlo(
+      HloModule m
+        ENTRY e {
+          p0 = s32[64,32] parameter(0)
+          p1 = s32[32] parameter(1)
+          ROOT dot = s32[64] dot(p0, p1),
+            lhs_contracting_dims={1}, rhs_contracting_dims={0}
+        }
+      )hlo",
+  };
+  for (absl::string_view hlo_string : kGemvCases) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    FusionWrapper wrapper(&target_machine_features_);
+    EXPECT_TRUE(wrapper.MustWrapInstruction(
+        *m->entry_computation()->root_instruction()))
+        << hlo_string;
+  }
+}
+
+TEST_F(FusionWrapperTest, TiledGemvDotDisabledByFlagNotWrapped) {
   static constexpr absl::string_view hlo_string = R"hlo(
   HloModule m
     ENTRY e {
@@ -390,9 +448,47 @@ TEST_F(FusionWrapperTest, MatrixVectorDotNotWrapped) {
   )hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                        ParseAndReturnVerifiedModule(hlo_string));
+  m->mutable_config()
+      .mutable_debug_options()
+      .mutable_xla_backend_extra_options()
+      ->insert({"xla_cpu_disable_tiled_emitter", ""});
   FusionWrapper wrapper(&target_machine_features_);
   EXPECT_FALSE(
       wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, TiledGemvDotUnsupportedCasesNotWrapped) {
+  static constexpr absl::string_view kUnsupportedCases[] = {
+      // Unsupported dot algorithm.
+      R"hlo(
+      HloModule m
+        ENTRY e {
+          p0 = f32[64,32] parameter(0)
+          p1 = f32[32] parameter(1)
+          ROOT dot = f32[64] dot(p0, p1),
+            lhs_contracting_dims={1}, rhs_contracting_dims={0},
+            algorithm=dot_tf32_tf32_f32
+        }
+      )hlo",
+      // Unsupported F8 element type for tiled emitter.
+      R"hlo(
+      HloModule m
+        ENTRY e {
+          p0 = f8e5m2[64,32] parameter(0)
+          p1 = f8e5m2[32] parameter(1)
+          ROOT dot = f8e5m2[64] dot(p0, p1),
+            lhs_contracting_dims={1}, rhs_contracting_dims={0}
+        }
+      )hlo",
+  };
+  for (absl::string_view hlo_string : kUnsupportedCases) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    FusionWrapper wrapper(&target_machine_features_);
+    EXPECT_FALSE(wrapper.MustWrapInstruction(
+        *m->entry_computation()->root_instruction()))
+        << hlo_string;
+  }
 }
 
 TEST_F(FusionWrapperTest, MatrixMatrixDotNotWrapped) {
