@@ -182,7 +182,7 @@ absl::StatusOr<HloInstruction*> ComparisonExpander::ExpandInstruction(
     return new_compare;
   }
 
-  if (compare_type != F8E8M0FNU) {
+  if (primitive_util::IsSigned(compare_type)) {
     int64_t bit_width = primitive_util::BitWidth(lhs->shape().element_type());
     PrimitiveType signed_type =
         primitive_util::SignedIntegralTypeForBitWidth(bit_width);

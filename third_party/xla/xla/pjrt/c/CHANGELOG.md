@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.119
+
+*   Added type F8E5M3FNU.
+
 ## 0.118
 
 *   Added `local_device_id` and `memory_kind_id` fields to `PJRT_Memory`.

@@ -263,6 +263,7 @@ typedef enum {
   XLA_FFI_DataType_F8E4M3FNUZ = 25,
   XLA_FFI_DataType_F4E2M1FN = 32,
   XLA_FFI_DataType_F8E8M0FNU = 33,
+  XLA_FFI_DataType_F8E5M3FNU = 37,
 } XLA_FFI_DataType;
 // LINT.ThenChange(ffi_test.cc)
 

@@ -384,6 +384,7 @@ NB_MODULE(_hlo, m) {
       .value("F8E4M3FNUZ", F8E4M3FNUZ)
       .value("F8E5M2", F8E5M2)
       .value("F8E5M2FNUZ", F8E5M2FNUZ)
+      .value("F8E5M3FNU", F8E5M3FNU)
       .value("F8E8M0FNU", F8E8M0FNU)
       .value("BF16", BF16)
       .value("F32", F32)

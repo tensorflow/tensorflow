@@ -59,6 +59,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.F8E4M3FNUZ: np.dtype(ml_dtypes.float8_e4m3fnuz),
     PrimitiveType.F8E5M2: np.dtype(ml_dtypes.float8_e5m2),
     PrimitiveType.F8E5M2FNUZ: np.dtype(ml_dtypes.float8_e5m2fnuz),
+    PrimitiveType.F8E5M3FNU: np.dtype(ml_dtypes.float8_e5m3fnu),
     PrimitiveType.F8E8M0FNU: np.dtype(ml_dtypes.float8_e8m0fnu),
     PrimitiveType.BF16: np.dtype(ml_dtypes.bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
