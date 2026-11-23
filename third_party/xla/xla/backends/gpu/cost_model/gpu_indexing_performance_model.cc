@@ -1427,15 +1427,7 @@ FilterAndSortCandidates(
 
   absl::c_stable_sort(
       candidates, [](const TiledRunTimeData& a, const TiledRunTimeData& b) {
-        if (a.runtime_data.exec_time != b.runtime_data.exec_time) {
-          return a.runtime_data.exec_time < b.runtime_data.exec_time;
-        }
-        // Break exact ties towards larger contracting dimension tiles
-        // (currently reductions and scans), if they exist, i.e. fewer
-        // iterations of the sequential loop, whose per-iteration overhead the
-        // model does not charge.
-        return Product(a.block_level_parameters.sequential_tile_sizes) >
-               Product(b.block_level_parameters.sequential_tile_sizes);
+        return a.runtime_data.exec_time < b.runtime_data.exec_time;
       });
   if (VLOG_IS_ON(2)) {
     const std::string fusion_name = GetFusionRootName(fusion_adaptor);
