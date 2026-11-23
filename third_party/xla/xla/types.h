@@ -40,6 +40,7 @@ using ::tsl::float8_e4m3fn;       // NOLINT(misc-unused-using-decls)
 using ::tsl::float8_e4m3fnuz;     // NOLINT(misc-unused-using-decls)
 using ::tsl::float8_e5m2;         // NOLINT(misc-unused-using-decls)
 using ::tsl::float8_e5m2fnuz;     // NOLINT(misc-unused-using-decls)
+using ::tsl::float8_e5m3fnu;      // NOLINT(misc-unused-using-decls)
 using ::tsl::float8_e8m0fnu;      // NOLINT(misc-unused-using-decls)
 
 using ::Eigen::bfloat16;  // NOLINT(misc-unused-using-decls)

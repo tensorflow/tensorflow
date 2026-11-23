@@ -163,6 +163,8 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "F8E4M3FNUZ";
     case XLA_FFI_DataType_F8E8M0FNU:
       return os << "F8E8M0FNU";
+    case XLA_FFI_DataType_F8E5M3FNU:
+      return os << "F8E5M3FNU";
   }
 }
 

@@ -104,10 +104,10 @@ bool LiteralProtoHasValues(const LiteralProto& proto) {
          !proto.f8e5m2s().empty() || !proto.f8e4m3s().empty() ||
          !proto.f8e4m3fns().empty() || !proto.f8e4m3b11fnuzs().empty() ||
          !proto.f8e5m2fnuzs().empty() || !proto.f8e4m3fnuzs().empty() ||
-         !proto.f8e3m4s().empty() || !proto.f16s().empty() ||
-         !proto.bf16s().empty() || proto.f32s_size() || proto.f64s_size() ||
-         proto.c64s_size() || proto.c128s_size() || proto.preds_size() ||
-         proto.tuple_literals_size();
+         !proto.f8e3m4s().empty() || !proto.f8e5m3fnus().empty() ||
+         !proto.f16s().empty() || !proto.bf16s().empty() || proto.f32s_size() ||
+         proto.f64s_size() || proto.c64s_size() || proto.c128s_size() ||
+         proto.preds_size() || proto.tuple_literals_size();
 }
 
 // Lazy getter for the interned scalar shape in static storage. We reuse this
@@ -2300,6 +2300,8 @@ inline constexpr bool is_padding_free_v<tsl::float8_e4m3fnuz> = true;
 template <>
 inline constexpr bool is_padding_free_v<tsl::float8_e3m4> = true;
 template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e5m3fnu> = true;
+template <>
 inline constexpr bool is_padding_free_v<tsl::float8_e8m0fnu> = true;
 
 template <>
@@ -2728,6 +2730,12 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
                           data<tsl::float8_e3m4>().data()),
                       size_bytes_dense());
       break;
+    case F8E5M3FNU:
+      *proto->mutable_f8e5m3fnus() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e5m3fnu>().data()),
+                      size_bytes_dense());
+      break;
     case F8E8M0FNU:
       *proto->mutable_f8e8m0fnus() =
           std::string(tsl::safe_reinterpret_cast<const char*>(
@@ -2958,6 +2966,14 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     case F8E3M4: {
       const std::string& s(proto.f8e3m4s());
       TF_RET_CHECK(data<tsl::float8_e3m4>().size() * sizeof(tsl::float8_e3m4) ==
+                   s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      break;
+    }
+    case F8E5M3FNU: {
+      const std::string& s(proto.f8e5m3fnus());
+      TF_RET_CHECK(data<tsl::float8_e5m3fnu>().size() *
+                       sizeof(tsl::float8_e5m3fnu) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
       break;

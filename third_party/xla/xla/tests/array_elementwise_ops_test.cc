@@ -1488,11 +1488,8 @@ using Types =
     ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fn,
                      tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
                      tsl::float8_e5m2, tsl::float8_e5m2fnuz,
-                     Eigen::half,
-                     Eigen::bfloat16,
-                     double,
-                     tsl::float4_e2m1fn, tsl::float8_e8m0fnu,
-                     float>;
+                     tsl::float8_e5m3fnu, Eigen::half, Eigen::bfloat16, double,
+                     tsl::float4_e2m1fn, tsl::float8_e8m0fnu, float>;
 
 TYPED_TEST_SUITE(TotalOrderTest, Types);
 

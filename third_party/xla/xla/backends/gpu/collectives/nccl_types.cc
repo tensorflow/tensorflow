@@ -38,6 +38,7 @@ absl::StatusOr<ncclDataType_t> ToNcclDataType(
     case S8:
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
+    case F8E5M3FNU:
     case F8E8M0FNU:
       return ncclInt8;
     // For pre-Hopper FP8 reductions, let NCCL throw appropriate errors.

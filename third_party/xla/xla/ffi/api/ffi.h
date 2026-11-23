@@ -102,6 +102,7 @@ enum class DataType : uint8_t {
   F8E3M4 = XLA_FFI_DataType_F8E3M4,
   F4E2M1FN = XLA_FFI_DataType_F4E2M1FN,
   F8E8M0FNU = XLA_FFI_DataType_F8E8M0FNU,
+  F8E5M3FNU = XLA_FFI_DataType_F8E5M3FNU,
 };
 
 // Create aliases in ::xla::ffi namespace for all DataTypes, for consistency
@@ -137,6 +138,7 @@ inline constexpr DataType F8E4M3FNUZ = DataType::F8E4M3FNUZ;
 inline constexpr DataType F8E3M4 = DataType::F8E3M4;
 inline constexpr DataType F4E2M1FN = DataType::F4E2M1FN;
 inline constexpr DataType F8E8M0FNU = DataType::F8E8M0FNU;
+inline constexpr DataType F8E5M3FNU = DataType::F8E5M3FNU;
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
   return os << static_cast<XLA_FFI_DataType>(dtype);
@@ -166,6 +168,7 @@ constexpr size_t ByteWidth(DataType dtype) {
     case DataType::F8E3M4:
     case DataType::F4E2M1FN:
     case DataType::F8E8M0FNU:
+    case DataType::F8E5M3FNU:
       return 1;
     case DataType::S16:
     case DataType::U16:

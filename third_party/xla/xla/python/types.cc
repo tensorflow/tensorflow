@@ -71,6 +71,7 @@ struct CustomDtypes {
   nb_dtype float8_e4m3fnuz;
   nb_dtype float8_e5m2;
   nb_dtype float8_e5m2fnuz;
+  nb_dtype float8_e5m3fnu;
   nb_dtype float8_e8m0fnu;
   std::optional<nb_dtype> int1;
   nb_dtype int2;
@@ -103,6 +104,8 @@ const CustomDtypes& GetCustomDtypes() {
         nb_dtype::from_args(ml_dtypes.attr("float8_e4m3fnuz"));
     dtypes->float8_e5m2fnuz =
         nb_dtype::from_args(ml_dtypes.attr("float8_e5m2fnuz"));
+    dtypes->float8_e5m3fnu =
+        nb_dtype::from_args(ml_dtypes.attr("float8_e5m3fnu"));
     dtypes->float8_e8m0fnu =
         nb_dtype::from_args(ml_dtypes.attr("float8_e8m0fnu"));
     dtypes->int4 = nb_dtype::from_args(ml_dtypes.attr("int4"));
@@ -175,6 +178,7 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
     map->emplace(custom_dtypes.float8_e4m3fnuz, F8E4M3FNUZ);
     map->emplace(custom_dtypes.float8_e5m2, F8E5M2);
     map->emplace(custom_dtypes.float8_e5m2fnuz, F8E5M2FNUZ);
+    map->emplace(custom_dtypes.float8_e5m3fnu, F8E5M3FNU);
     map->emplace(custom_dtypes.float8_e8m0fnu, F8E8M0FNU);
     if (custom_dtypes.int1.has_value()) {
       map->emplace(custom_dtypes.int1.value(), S1);
@@ -266,6 +270,8 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
       return custom_dtypes.float8_e5m2;
     case F8E5M2FNUZ:
       return custom_dtypes.float8_e5m2fnuz;
+    case F8E5M3FNU:
+      return custom_dtypes.float8_e5m3fnu;
     case F8E8M0FNU:
       return custom_dtypes.float8_e8m0fnu;
       break;
@@ -363,6 +369,8 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
       return custom_dtypes.float8_e5m2;
     case ifrt::DType::kF8E5M2FNUZ:
       return custom_dtypes.float8_e5m2fnuz;
+    case ifrt::DType::kF8E5M3FNU:
+      return custom_dtypes.float8_e5m3fnu;
     case ifrt::DType::kF8E8M0FNU:
       return custom_dtypes.float8_e8m0fnu;
     case ifrt::DType::kString:
@@ -436,6 +444,7 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_float8_e5m2 = nb::object(ml_dtypes.attr("float8_e5m2"));
     dtypes->np_float8_e4m3fnuz = nb::object(ml_dtypes.attr("float8_e4m3fnuz"));
     dtypes->np_float8_e5m2fnuz = nb::object(ml_dtypes.attr("float8_e5m2fnuz"));
+    dtypes->np_float8_e5m3fnu = nb::object(ml_dtypes.attr("float8_e5m3fnu"));
     dtypes->np_float8_e8m0fnu = nb::object(ml_dtypes.attr("float8_e8m0fnu"));
     dtypes->np_float16 = nb::object(numpy.attr("float16"));
     dtypes->np_float32 = nb::object(numpy.attr("float32"));
