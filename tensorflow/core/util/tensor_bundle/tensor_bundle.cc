@@ -761,6 +761,9 @@ static absl::Status MergeOneBundle(Env* env, absl::string_view prefix,
 
     TF_RETURN_IF_ERROR(
         ParseEntryProto(iter->key(), iter->value(), &to_merge_entry));
+    TensorShape to_merge_shape;
+    TF_RETURN_IF_ERROR(
+        TensorShape::BuildTensorShape(to_merge_entry.shape(), &to_merge_shape));
 
     // The duplicated entry holds metadata for a sliced full tensor.
     // Allows the duplication and merges "slices".
@@ -771,14 +774,29 @@ static absl::Status MergeOneBundle(Env* env, absl::string_view prefix,
             absl::StrCat("Duplicate tensor keyed by ", key,
                          "; attempting to merge in a non-slice bundle entry"));
       }
-      // Only needs merge the "slices" field (and validate dtype/shape).
+      if (existing_entry.dtype() != to_merge_entry.dtype()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Duplicate tensor keyed by ", key,
+                         " encountered with conflicting dtype (",
+                         DataTypeString(existing_entry.dtype()), " vs. ",
+                         DataTypeString(to_merge_entry.dtype()),
+                         "), when merging prefix: ", prefix));
+      }
+      TensorShape existing_shape;
+      TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(existing_entry.shape(),
+                                                       &existing_shape));
+      if (existing_shape != to_merge_shape) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Duplicate tensor keyed by ", key,
+            " encountered with conflicting shape (",
+            existing_shape.DebugString(), " vs. ", to_merge_shape.DebugString(),
+            "), when merging prefix: ", prefix));
+      }
+      // Only needs merge the "slices" field (dtype and shape are validated).
       for (int i = 0; i < to_merge_entry.slices_size(); ++i) {
         TensorSliceProto* slot = existing_entry.add_slices();
         *slot = to_merge_entry.slices(i);
       }
-      CHECK_EQ(existing_entry.dtype(), to_merge_entry.dtype());
-      CHECK(TensorShape(existing_entry.shape()) ==
-            TensorShape(to_merge_entry.shape()));
       continue;
     }
 
