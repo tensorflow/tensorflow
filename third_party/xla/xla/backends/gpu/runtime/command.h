@@ -75,7 +75,7 @@ class Command : public Thunk {
     token_ = Resource::Create(Resource::kToken);
   }
 
-  virtual ~Command() = default;
+  ~Command() override = default;
 
   absl::StatusOr<ThunkProto> ToProto() const override {
     return absl::InvalidArgumentError("Command can't be serialized.");
