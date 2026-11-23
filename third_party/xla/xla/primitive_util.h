@@ -79,6 +79,9 @@ bool HasNegativeZero(PrimitiveType type);
 // Returns whether the type has a value for positive zero.
 bool HasPositiveZero(PrimitiveType type);
 
+// Returns whether the type can represent negative values.
+bool IsSigned(PrimitiveType type);
+
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float). Doesn't compile if the native
 // type has no corresponding primitive type.
@@ -236,6 +239,11 @@ constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2fnuz>() {
 template <>
 constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fnuz>() {
   return F8E4M3FNUZ;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e5m3fnu>() {
+  return F8E5M3FNU;
 }
 
 template <>
@@ -410,6 +418,11 @@ struct PrimitiveTypeToNative<F8E4M3FNUZ> {
 };
 
 template <>
+struct PrimitiveTypeToNative<F8E5M3FNU> {
+  using type = tsl::float8_e5m3fnu;
+};
+
+template <>
 struct PrimitiveTypeToNative<F8E3M4> {
   using type = tsl::float8_e3m4;
 };
@@ -457,7 +470,7 @@ constexpr bool IsF6Type(PrimitiveType type) {
 constexpr bool IsF8Type(PrimitiveType type) {
   return type == F8E5M2 || type == F8E4M3 || type == F8E4M3FN ||
          type == F8E4M3B11FNUZ || type == F8E5M2FNUZ || type == F8E4M3FNUZ ||
-         type == F8E3M4 || type == F8E8M0FNU;
+         type == F8E5M3FNU || type == F8E3M4 || type == F8E8M0FNU;
 }
 
 // Returns true if the given primitive type is a floating-point type.
@@ -613,6 +626,9 @@ constexpr decltype(auto) FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
       case F8E5M2FNUZ:
         return std::forward<F>(f)(
             PrimitiveTypeConstant<PrimitiveType::F8E5M2FNUZ>());
+      case F8E5M3FNU:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E5M3FNU>());
       case F8E8M0FNU:
         return std::forward<F>(f)(
             PrimitiveTypeConstant<PrimitiveType::F8E8M0FNU>());
@@ -720,6 +736,7 @@ constexpr void FloatingPointTypeForEach(F&& f) {
   std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E4M3FNUZ>());
   std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E5M2>());
   std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E5M2FNUZ>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E5M3FNU>());
   std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E8M0FNU>());
   std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F16>());
   std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::BF16>());

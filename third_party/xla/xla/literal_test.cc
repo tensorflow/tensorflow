@@ -131,11 +131,11 @@ class LiteralUtilTest : public ::testing::Test {
 template <typename T>
 class LiteralUtilFloatTest : public LiteralUtilTest {};
 
-using FloatTypes = ::testing::Types<float, half, bfloat16, tsl::float4_e2m1fn,
-                                    tsl::float8_e3m4, tsl::float8_e4m3,
-                                    tsl::float8_e4m3b11fnuz, tsl::float8_e4m3fn,
-                                    tsl::float8_e4m3fnuz, tsl::float8_e5m2,
-                                    tsl::float8_e5m2fnuz, tsl::float8_e8m0fnu>;
+using FloatTypes = ::testing::Types<
+    float, half, bfloat16, tsl::float4_e2m1fn, tsl::float8_e3m4,
+    tsl::float8_e4m3, tsl::float8_e4m3b11fnuz, tsl::float8_e4m3fn,
+    tsl::float8_e4m3fnuz, tsl::float8_e5m2, tsl::float8_e5m2fnuz,
+    tsl::float8_e5m3fnu, tsl::float8_e8m0fnu>;
 
 class FloatTypeNames {
  public:
@@ -2713,6 +2713,9 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
       LiteralUtil::CreateR1<e4f>({e4f{10.0}, e4f{20.0}, e4f{-30.0}});
   using e3 = tsl::float8_e3m4;
   auto vector_f8e3m4 = LiteralUtil::CreateR1<e3>({e3{2.5}, e3{5.0}, e3{-8.0}});
+  using e5m3 = tsl::float8_e5m3fnu;
+  auto vector_f8e5m3fnu =
+      LiteralUtil::CreateR1<e5m3>({e5m3{1.0}, e5m3{2.5}, e5m3{10.0}});
   using e8m0 = tsl::float8_e8m0fnu;
   auto vector_f8e8m0fnu =
       LiteralUtil::CreateR1<e8m0>({e8m0{1.0}, e8m0{2.0}, e8m0{4.0}});
@@ -2744,6 +2747,7 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   EXPECT_EQ(vector_f8e4m3fnuz, to_from_proto(vector_f8e4m3fnuz));
   EXPECT_EQ(vector_f8e5m2, to_from_proto(vector_f8e5m2));
   EXPECT_EQ(vector_f8e5m2fnuz, to_from_proto(vector_f8e5m2fnuz));
+  EXPECT_EQ(vector_f8e5m3fnu, to_from_proto(vector_f8e5m3fnu));
   EXPECT_EQ(vector_f8e8m0fnu, to_from_proto(vector_f8e8m0fnu));
   EXPECT_EQ(matrix_pred, to_from_proto(matrix_pred));
   EXPECT_EQ(vector_s4, to_from_proto(vector_s4));
@@ -3519,8 +3523,8 @@ class LiteralSerializationTest : public ::testing::Test,
          {PRED,          S4,       U4,         S8,       U8,         S16,
           U16,           S32,      U32,        S64,      U64,        F16,
           F32,           F64,      BF16,       F4E2M1FN, F8E3M4,     F8E4M3,
-          F8E4M3B11FNUZ, F8E4M3FN, F8E4M3FNUZ, F8E5M2,   F8E5M2FNUZ, F8E8M0FNU,
-          C64,           C128}) {
+          F8E4M3B11FNUZ, F8E4M3FN, F8E4M3FNUZ, F8E5M2,   F8E5M2FNUZ, F8E5M3FNU,
+          F8E8M0FNU,     C64,      C128}) {
       for (const DimensionVector& dimensions : {
                DimensionVector{},
                DimensionVector{0},

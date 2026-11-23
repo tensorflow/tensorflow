@@ -151,6 +151,17 @@ bool HasPositiveZero(PrimitiveType type) {
   return false;
 }
 
+bool IsSigned(PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch(
+        [&](auto constant_type) -> bool {
+          return std::numeric_limits<NativeTypeOf<constant_type>>::is_signed;
+        },
+        type);
+  }
+  return IsSignedIntegralType(type) || IsComplexType(type);
+}
+
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 1:
@@ -188,6 +199,10 @@ bool CastPreservesValues(const PrimitiveType from_type,
   }
   // ~PRED -> PRED is not safe because it drops almost all numbers.
   if (to_type == PRED) {
+    return false;
+  }
+  // Signed -> unsigned is not safe because it drops negative numbers.
+  if (IsSigned(from_type) && !IsSigned(to_type)) {
     return false;
   }
   // * -> C is safe if the components of * and C can be safely converted.
@@ -243,10 +258,6 @@ bool CastPreservesValues(const PrimitiveType from_type,
     // trailing significand field when the exponent is smaller than n-1.
     return from_bits <= SignificandWidth(to_type) &&
            BitWidth(from_type) - 1 < OverflowExponent(to_type);
-  }
-  // S -> U is not safe because it drops negative numbers.
-  if (IsSignedIntegralType(from_type) && IsUnsignedIntegralType(to_type)) {
-    return false;
   }
   // I -> I is safe if the integer can be represented exactly; we've already
   // ensured that signed to unsigned conversions won't happen here.
