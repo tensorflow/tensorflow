@@ -46,16 +46,40 @@ cc_library(
     hdrs = ["builtin_definition_generator.h"],
     copts = tsl_copts(),
     deps = [
-        ":builtin_atan2",
-        ":builtin_fp16",
-        ":builtin_pow",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_map",
+        ":builtin_symbols",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:mlir_c_runner_utils",
+    ],
+)
+
+cc_library(
+    name = "builtin_symbols",
+    srcs = ["builtin_symbols.cc"],
+    hdrs = ["builtin_symbols.h"],
+    copts = tsl_copts(),
+    deps = [
+        ":builtin_atan2",
+        ":builtin_fp16",
+        ":builtin_pow",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        # Weak fallbacks for __truncsfbf2 and __truncdfbf2. Unlike
+        # mlir_c_runner_utils, it doesn't depend on LLVM.
+        "@llvm-project//mlir:mlir_float16_utils",  # buildcleaner: keep
+    ],
+)
+
+xla_cc_test(
+    name = "builtin_symbols_test",
+    srcs = ["builtin_symbols_test.cc"],
+    deps = [
+        ":builtin_symbols",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
