@@ -89,6 +89,11 @@ class HloFusionAdaptor {
   bool ContainsInstruction(const HloInstruction* instruction) const;
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const;
   absl::InlinedVector<const HloInstruction*, 2> GetParameters() const;
+  // Returns the instructions in post order. For a producer-consumer adaptor,
+  // matches the order of `HloComputation::MakeInstructionPostOrder()` on the
+  // fused computation after the producer is merged into the consumer, except
+  // when several producer outputs are kept only for users outside the
+  // consumer. Instructions that the roots do not reach come last.
   absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
       const;
   // Returns an adaptor for the given instruction in the fusion.

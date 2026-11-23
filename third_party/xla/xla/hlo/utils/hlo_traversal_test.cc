@@ -46,6 +46,14 @@ using ::testing::IsEmpty;
 
 MATCHER_P(InstructionAdaptorName, name, "") { return arg.name() == name; }
 
+std::vector<HloOpcode> PostOrderOpcodes(const HloFusionAdaptor& fusion) {
+  std::vector<HloOpcode> opcodes;
+  for (const HloInstructionAdaptor& instr : fusion.MakeInstructionPostOrder()) {
+    opcodes.push_back(instr.opcode());
+  }
+  return opcodes;
+}
+
 class HloTraversalTest : public HloHardwareIndependentTestBase {};
 
 const char kTestModule[] = R"(
@@ -569,9 +577,148 @@ TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoMultiOutputFusions) {
 
   auto nodes = fusion->MakeInstructionPostOrder();
   EXPECT_THAT(nodes, ElementsAre(InstructionAdaptorName("mul"),
-                                 InstructionAdaptorName("reduce.1"),
                                  InstructionAdaptorName("neg"),
-                                 InstructionAdaptorName("reduce.2")));
+                                 InstructionAdaptorName("reduce.2"),
+                                 InstructionAdaptorName("reduce.1")));
+}
+
+TEST_F(HloTraversalTest, MakeInstructionsPostOrder_MatchesMergedFusion) {
+  // The post order of a producer-consumer adaptor must be the post order of
+  // the merged fusion: the producer's `neg` comes after `exp`, where the
+  // consumer first reads the producer (`p1.2`).
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    computation1 {
+      p0.1 = f32[128] parameter(0)
+      ROOT neg = f32[128] negate(p0.1)
+    }
+
+    computation2 {
+      p0.2 = f32[128] parameter(0)
+      p1.2 = f32[128] parameter(1)
+      exp = f32[128] exponential(p0.2)
+      mul = f32[128] multiply(exp, p1.2)
+      log = f32[128] log(p0.2)
+      ROOT add = f32[128] add(mul, log)
+    }
+
+    ENTRY entry {
+      p0.3 = f32[128] parameter(0)
+      fusion1 = f32[128] fusion(p0.3), kind=kLoop, calls=computation1
+      ROOT fusion2 = f32[128] fusion(p0.3, fusion1), kind=kLoop, calls=computation2
+    })"));
+  HloInstruction* producer =
+      module->entry_computation()->GetInstructionWithName("fusion1");
+  HloInstruction* consumer =
+      module->entry_computation()->GetInstructionWithName("fusion2");
+  std::vector<HloOpcode> producer_consumer_opcodes = PostOrderOpcodes(
+      *HloFusionAdaptor::ForProducerConsumer(producer, consumer));
+  consumer->MergeFusionInstruction(producer);
+
+  EXPECT_EQ(producer_consumer_opcodes,
+            PostOrderOpcodes(*HloFusionAdaptor::ForInstruction(consumer)));
+}
+
+TEST_F(HloTraversalTest,
+       MakeInstructionsPostOrder_MatchesMergedMultiOutputProducer) {
+  // The consumer reads the second output of the producer first, so the merged
+  // fusion has `neg` and its reduce before `mul` and its reduce.
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    accumulate {
+      p0.0 = f32[] parameter(0)
+      p1.0 = f32[] parameter(1)
+      ROOT add = f32[] add(p0.0, p1.0)
+    }
+
+    computation1 {
+      p0.1 = f32[] parameter(0)
+      p1.1 = f32[128] parameter(1)
+      mul = f32[128] multiply(p1.1, p1.1)
+      reduce.1 = f32[] reduce(mul, p0.1), dimensions={0}, to_apply=accumulate
+      neg = f32[128] negate(p1.1)
+      reduce.2 = f32[] reduce(neg, p0.1), dimensions={0}, to_apply=accumulate
+      ROOT tuple.1 = (f32[], f32[]) tuple(reduce.1, reduce.2)
+    }
+
+    computation2 {
+      p0.2 = f32[] parameter(0)
+      p1.2 = f32[] parameter(1)
+      ROOT add = f32[] add(p0.2, p1.2)
+    }
+
+    ENTRY entry {
+      p0.3 = f32[] parameter(0)
+      p1.3 = f32[128] parameter(1)
+      fusion1 = (f32[], f32[]) fusion(p0.3, p1.3), kind=kLoop, calls=computation1
+      gte0 = f32[] get-tuple-element(fusion1), index=0
+      gte1 = f32[] get-tuple-element(fusion1), index=1
+      ROOT fusion2 = f32[] fusion(gte1, gte0), kind=kLoop, calls=computation2
+    })"));
+  HloInstruction* producer =
+      module->entry_computation()->GetInstructionWithName("fusion1");
+  HloInstruction* consumer =
+      module->entry_computation()->GetInstructionWithName("fusion2");
+  std::vector<HloOpcode> producer_consumer_opcodes = PostOrderOpcodes(
+      *HloFusionAdaptor::ForProducerConsumer(producer, consumer));
+  consumer->MergeFusionInstructionIntoMultiOutput(producer);
+
+  EXPECT_EQ(producer_consumer_opcodes,
+            PostOrderOpcodes(*HloFusionAdaptor::ForInstruction(consumer)));
+}
+
+TEST_F(HloTraversalTest,
+       MakeInstructionsPostOrder_ExtraProducerOutputsDifferFromMergedFusion) {
+  // Known limit: `reduce.1` and `reduce.2` are kept only for users outside
+  // the consumer. The adaptor lists them by output index, but the merged
+  // fusion appends them in reverse order.
+  // TODO(b/502910372): Make the orders match before tiling such fusions.
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    accumulate {
+      p0.0 = f32[] parameter(0)
+      p1.0 = f32[] parameter(1)
+      ROOT add = f32[] add(p0.0, p1.0)
+    }
+
+    computation1 {
+      p0.1 = f32[] parameter(0)
+      p1.1 = f32[128] parameter(1)
+      mul = f32[128] multiply(p1.1, p1.1)
+      reduce.1 = f32[] reduce(mul, p0.1), dimensions={0}, to_apply=accumulate
+      neg = f32[128] negate(p1.1)
+      reduce.2 = f32[] reduce(neg, p0.1), dimensions={0}, to_apply=accumulate
+      abs = f32[128] abs(p1.1)
+      ROOT tuple.1 = (f32[128], f32[], f32[]) tuple(abs, reduce.1, reduce.2)
+    }
+
+    computation2 {
+      p0.2 = f32[128] parameter(0)
+      ROOT exp = f32[128] exponential(p0.2)
+    }
+
+    ENTRY entry {
+      p0.3 = f32[] parameter(0)
+      p1.3 = f32[128] parameter(1)
+      fusion1 = (f32[128], f32[], f32[]) fusion(p0.3, p1.3), kind=kLoop, calls=computation1
+      gte0 = f32[128] get-tuple-element(fusion1), index=0
+      gte1 = f32[] get-tuple-element(fusion1), index=1
+      gte2 = f32[] get-tuple-element(fusion1), index=2
+      fusion2 = f32[128] fusion(gte0), kind=kLoop, calls=computation2
+      ROOT t = (f32[128], f32[], f32[]) tuple(fusion2, gte1, gte2)
+    })"));
+  HloInstruction* producer =
+      module->entry_computation()->GetInstructionWithName("fusion1");
+  HloInstruction* consumer =
+      module->entry_computation()->GetInstructionWithName("fusion2");
+
+  EXPECT_THAT(
+      PostOrderOpcodes(*HloFusionAdaptor::ForProducerConsumer(
+          producer, consumer, /*with_extra_outputs=*/true)),
+      ElementsAre(HloOpcode::kAbs, HloOpcode::kExp, HloOpcode::kMultiply,
+                  HloOpcode::kReduce, HloOpcode::kNegate, HloOpcode::kReduce));
+  consumer->MergeFusionInstructionIntoMultiOutput(producer);
+  EXPECT_THAT(PostOrderOpcodes(*HloFusionAdaptor::ForInstruction(consumer)),
+              ElementsAre(HloOpcode::kAbs, HloOpcode::kExp, HloOpcode::kNegate,
+                          HloOpcode::kReduce, HloOpcode::kMultiply,
+                          HloOpcode::kReduce));
 }
 
 TEST_F(HloTraversalTest, GetRootsForProducerConsumerFusion) {

@@ -16,12 +16,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <queue>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -448,14 +448,50 @@ absl::InlinedVector<const HloInstruction*, 2> HloFusionAdaptor::GetParameters()
 
 absl::InlinedVector<HloInstructionAdaptor, 2>
 HloFusionAdaptor::MakeInstructionPostOrder() const {
-  absl::InlinedVector<HloInstructionAdaptor, 2> result_post_order;
-
-  for (const auto& fusion_instruction : fusion_instructions_) {
-    absl::c_move(fusion_instruction->MakeInstructionPostOrder(),
-                 std::back_inserter(result_post_order));
+  if (fusion_instructions_.size() == 1) {
+    return fusion_instructions_.back()->MakeInstructionPostOrder();
   }
-
-  return result_post_order;
+  // The order must be exactly the one that
+  // `HloComputation::MakeInstructionPostOrder()` returns for the fused
+  // computation: a depth-first walk from the roots that visits operands in
+  // order.
+  // TODO(b/538986250): Relax this if the new block-level config does not need
+  // a strict match.
+  absl::InlinedVector<HloInstructionAdaptor, 2> post_order;
+  absl::flat_hash_set<HloInstructionAdaptor> visited;
+  // The flag is set once the operands of the instruction are on the stack.
+  std::vector<std::pair<HloInstructionAdaptor, bool>> stack;
+  for (const HloInstructionAdaptor& root : GetRoots()) {
+    stack.emplace_back(root, /*operands_pushed=*/false);
+    while (!stack.empty()) {
+      auto [instr, operands_pushed] = stack.back();
+      stack.pop_back();
+      if (operands_pushed) {
+        post_order.push_back(instr);
+        continue;
+      }
+      if (instr.opcode() == HloOpcode::kParameter ||
+          !ContainsInstruction(instr) || !visited.insert(instr).second) {
+        continue;
+      }
+      stack.emplace_back(instr, /*operands_pushed=*/true);
+      auto operands = instr.GetOperands();
+      for (auto it = operands.rbegin(); it != operands.rend(); ++it) {
+        stack.emplace_back(*it, /*operands_pushed=*/false);
+      }
+    }
+  }
+  // Instructions that the roots do not reach, like those of producer outputs
+  // that the fusion does not keep, come last.
+  for (const auto& fusion_instruction : fusion_instructions_) {
+    for (const HloInstructionAdaptor& instr :
+         fusion_instruction->MakeInstructionPostOrder()) {
+      if (visited.insert(instr).second) {
+        post_order.push_back(instr);
+      }
+    }
+  }
+  return post_order;
 }
 
 void HloFusionAdaptor::ForEach(

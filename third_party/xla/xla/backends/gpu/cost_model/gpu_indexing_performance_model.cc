@@ -1223,14 +1223,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
 }
 
 // TODO(b/534676634): Support multi-reduction and multi-dimension reduction
-// fusions. When supporting multi-reduction fusions, `sequential_tile_sizes`
-// must be ordered in the reverse post-order that the merged fusion computation
-// will have after `MergeFusionInstruction` (e.g., via a post-order DFS from
-// `fusion_adaptor.GetRoots()` following
-// `HloInstructionAdaptor::GetOperands()`), because
-// `HloFusionAdaptor::MakeInstructionPostOrder()` on a producer-consumer adaptor
-// concatenates the producer's post-order before the consumer's post-order,
-// which can differ from the post-order of the merged computation.
+// fusions.
 std::vector<int64_t> GetSequentialTileSizes(
     const TiledHloComputation& tiled_hlo_computation) {
   const TilingSpace& tiling_space = tiled_hlo_computation.tiling_space();
