@@ -882,10 +882,13 @@ def TPU_DynamicGatherOp : TPU_Op<"dynamic_gather", [Pure, InferTypeOpAdaptor, Al
     `indices`.
 
     Given a shape `N0 x N1 x ...`,  the `output[i0, i1, ...]` is given by
-    `collapsed_source[j0, j1, ..., indices[i0, i1, ...] mod M]` where
+    `collapsed_source[j0, j1, ..., indices[i0, i1, ...]]` where
     - `collapsed_source` is the result of collapsing `dimensions` of `source`
       into a new trailing dimension of size `M`.
     - `jk` is the subsequence of `in` for `n` not in `dimensions`.
+
+    Indices must be in `[0, M)`. The values gathered for other indices are
+    unspecified.
 
     When a single dimension is specified, this is similar to
     `np.take_along_axis`.
