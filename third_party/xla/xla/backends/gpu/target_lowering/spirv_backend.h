@@ -35,11 +35,11 @@ namespace xla::gpu::spirv {
 // TODO(intel-tf): The current list is based on Intel Arc B580 (Battlemage) GPU.
 // Adjust the list to support other Intel GPU architectures.
 inline const llvm::ExtensionSet common_spirv_extensions{
-    llvm::SPIRV::Extension::SPV_EXT_bfloat16_arithmetic,
     llvm::SPIRV::Extension::SPV_EXT_optnone,
     llvm::SPIRV::Extension::SPV_EXT_shader_atomic_float_add,
     llvm::SPIRV::Extension::SPV_EXT_shader_atomic_float_min_max,
     llvm::SPIRV::Extension::SPV_INTEL_2d_block_io,
+    llvm::SPIRV::Extension::SPV_INTEL_bfloat16_arithmetic,
     llvm::SPIRV::Extension::SPV_INTEL_bfloat16_conversion,
     llvm::SPIRV::Extension::SPV_INTEL_bindless_images,
     llvm::SPIRV::Extension::SPV_INTEL_cache_controls,
