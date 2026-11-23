@@ -136,6 +136,27 @@ class TridiagonalSolveOpTest(test.TestCase):
 
   # Tests with small matrix sizes
 
+  def testArrayLikeInputs(self):
+    diags = np.array([[1., 1., 0.], [2., 2., 2.], [0., 1., 1.]])
+    rhs = np.array([[4.], [8.], [8.]])
+    expected = np.array([[1.], [2.], [3.]])
+    matrix = np.array([[2., 1., 0.], [1., 2., 1.], [0., 1., 2.]])
+    for convert in (lambda x: x, lambda x: x.tolist()):
+      self.assertAllClose(
+          linalg_impl.tridiagonal_solve(convert(diags), convert(rhs)),
+          expected)
+      self.assertAllClose(
+          linalg_impl.tridiagonal_solve(
+              convert(matrix), convert(rhs), diagonals_format="matrix"),
+          expected)
+      self.assertAllClose(
+          linalg_impl.tridiagonal_solve(
+              tuple(convert(d) for d in diags),
+              convert(rhs),
+              diagonals_format="sequence"), expected)
+    self.assertEqual(
+        linalg_impl.tridiagonal_solve(diags, rhs).dtype, dtypes.float64)
+
   def test3x3(self):
     self._testWithLists(
         diags=[[2, -1, 0], [1, 3, 1], [0, -1, -2]],
