@@ -6129,8 +6129,8 @@ def floor(x, name=None):
   Both input range is `(-inf, inf)` and the
   output range consists of all integer values.
 
-  On CPUs that flush subnormal inputs to zero, a negative subnormal
-  `float32` input can produce `-0.0` instead of `-1.0`.
+  If the CPU flushes subnormal inputs of a given floating-point type to zero,
+  a negative subnormal input of that type can produce `-0.0` instead of `-1.0`.
 
   For example:
 
