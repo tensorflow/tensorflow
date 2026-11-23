@@ -47,7 +47,9 @@ namespace optimize {
 namespace {
 
 // Bias tensors must be duplicated if it is used as a non-bias input in another
-// op (quantized to 8 bit), in order to quantize to 32 bit.
+// op (quantized to 8 bit), in order to quantize to 32 bit. A bias is quantized
+// with the scales of its op's input and weights, so a bias tensor that is the
+// bias of several ops must also be duplicated for each of them.
 TfLiteStatus DuplicateBiasesWithMultipleUses(ModelT* model,
                                              ErrorReporter* error_reporter) {
   std::set<int> input_uses;
@@ -81,6 +83,7 @@ TfLiteStatus DuplicateBiasesWithMultipleUses(ModelT* model,
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    std::set<int> biases_seen;
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       operator_property::OperatorProperty property =
           operator_property::GetOperatorProperty(model, subgraph_idx, op_idx);
@@ -99,8 +102,10 @@ TfLiteStatus DuplicateBiasesWithMultipleUses(ModelT* model,
         if (!bias_buffer || bias_buffer->data.empty()) {
           continue;
         }
-        if (input_uses.find(op->inputs[bias_idx]) != input_uses.end()) {
-          // If used as input, duplicate the tensor and insert into bias uses.
+        if (input_uses.find(op->inputs[bias_idx]) != input_uses.end() ||
+            !biases_seen.insert(op->inputs[bias_idx]).second) {
+          // If used as input, or as the bias of an earlier op, duplicate the
+          // tensor and insert into bias uses.
           int bias_use_count = 1;
           auto inserted =
               bias_uses.insert({op->inputs[bias_idx], bias_use_count});

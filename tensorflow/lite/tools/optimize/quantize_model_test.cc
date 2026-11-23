@@ -445,6 +445,121 @@ TEST_F(QuantizeConvNoBiasModelTest, QuantizationSucceeds) {
   ASSERT_TRUE(output_model);
 }
 
+// Two CONV_2D ops that share their weights and bias tensors, applied to inputs
+// with different ranges.
+class QuantizeConvSharedBiasTest : public testing::TestWithParam<TensorType> {
+ protected:
+  static constexpr float kBias[2] = {0.25f, -0.75f};
+
+  QuantizeConvSharedBiasTest()
+      : tensor_type_(GetParam()), bias_type_(GetBiasTensorType(tensor_type_)) {
+    auto conv_code = std::make_unique<OperatorCodeT>();
+    conv_code->builtin_code = BuiltinOperator_CONV_2D;
+    conv_code->deprecated_builtin_code =
+        static_cast<int8_t>(BuiltinOperator_CONV_2D);
+    conv_code->version = 1;
+    model_.operator_codes.push_back(std::move(conv_code));
+    model_.buffers.push_back(std::make_unique<BufferT>());
+
+    auto subgraph = std::make_unique<SubGraphT>();
+    AddTensor(subgraph.get(), "x", {1, 2, 2, 1}, -1.0f, 1.0f);
+    AddTensor(subgraph.get(), "y", {1, 2, 2, 1}, -8.0f, 8.0f);
+    AddConstantTensor(subgraph.get(), "weights", {2, 1, 1, 1}, {0.5f, -1.0f});
+    AddConstantTensor(subgraph.get(), "bias", {2}, {kBias[0], kBias[1]});
+    AddTensor(subgraph.get(), "conv_x", {1, 2, 2, 2}, -2.0f, 2.0f);
+    AddTensor(subgraph.get(), "conv_y", {1, 2, 2, 2}, -9.0f, 9.0f);
+    AddConv(subgraph.get(), /*input=*/0, /*output=*/4);
+    AddConv(subgraph.get(), /*input=*/1, /*output=*/5);
+    subgraph->inputs = {0, 1};
+    subgraph->outputs = {4, 5};
+    model_.subgraphs.push_back(std::move(subgraph));
+  }
+
+  void AddTensor(SubGraphT* subgraph, const std::string& name,
+                 const std::vector<int32_t>& shape, float min, float max) {
+    auto tensor = std::make_unique<TensorT>();
+    tensor->name = name;
+    tensor->shape = shape;
+    tensor->type = TensorType_FLOAT32;
+    tensor->buffer = 0;
+    tensor->quantization = std::make_unique<QuantizationParametersT>();
+    tensor->quantization->min = {min};
+    tensor->quantization->max = {max};
+    subgraph->tensors.push_back(std::move(tensor));
+  }
+
+  void AddConstantTensor(SubGraphT* subgraph, const std::string& name,
+                         const std::vector<int32_t>& shape,
+                         const std::vector<float>& values) {
+    auto buffer = std::make_unique<BufferT>();
+    const auto* bytes = reinterpret_cast<const uint8_t*>(values.data());
+    buffer->data.assign(bytes, bytes + values.size() * sizeof(float));
+    model_.buffers.push_back(std::move(buffer));
+    auto tensor = std::make_unique<TensorT>();
+    tensor->name = name;
+    tensor->shape = shape;
+    tensor->type = TensorType_FLOAT32;
+    tensor->buffer = model_.buffers.size() - 1;
+    subgraph->tensors.push_back(std::move(tensor));
+  }
+
+  void AddConv(SubGraphT* subgraph, int32_t input, int32_t output) {
+    auto op = std::make_unique<OperatorT>();
+    op->opcode_index = 0;
+    op->inputs = {input, /*weights=*/2, /*bias=*/3};
+    op->outputs = {output};
+    Conv2DOptionsT options;
+    options.padding = Padding_SAME;
+    options.stride_w = 1;
+    options.stride_h = 1;
+    op->builtin_options.Set(std::move(options));
+    subgraph->operators.push_back(std::move(op));
+  }
+
+  TensorType tensor_type_;
+  TensorType bias_type_;
+  ModelT model_;
+  flatbuffers::FlatBufferBuilder builder_;
+  ::mlir::lite::internal::FailOnErrorReporter error_reporter_;
+};
+
+INSTANTIATE_TEST_SUITE_P(QuantizeConvSharedBiasTestInst,
+                         QuantizeConvSharedBiasTest,
+                         testing::ValuesIn({TensorType_INT8,
+                                            TensorType_INT16}));
+
+TEST_P(QuantizeConvSharedBiasTest, EachOpGetsItsOwnBias) {
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
+  ASSERT_EQ(status, kTfLiteOk);
+
+  const SubGraphT* subgraph = model_.subgraphs[0].get();
+  ASSERT_EQ(subgraph->operators.size(), 2);
+  EXPECT_NE(subgraph->operators[0]->inputs[2],
+            subgraph->operators[1]->inputs[2]);
+  for (const auto& op : subgraph->operators) {
+    const TensorT* input = subgraph->tensors[op->inputs[0]].get();
+    const TensorT* weights = subgraph->tensors[op->inputs[1]].get();
+    const TensorT* bias = subgraph->tensors[op->inputs[2]].get();
+    EXPECT_EQ(bias->type, bias_type_);
+    ASSERT_EQ(bias->quantization->scale.size(), 2);
+    ASSERT_EQ(weights->quantization->scale.size(), 2);
+    const auto bias_buffer = model_.buffers[bias->buffer].get();
+    for (int i = 0; i < 2; ++i) {
+      // Bias scale should be input * per_channel_weight_scale.
+      const float scale =
+          input->quantization->scale[0] * weights->quantization->scale[i];
+      EXPECT_FLOAT_EQ(bias->quantization->scale[i], scale);
+      const int64_t value =
+          bias_type_ == TensorType_INT64
+              ? reinterpret_cast<int64_t*>(bias_buffer->data.data())[i]
+              : reinterpret_cast<int32_t*>(bias_buffer->data.data())[i];
+      EXPECT_NEAR(value * scale, kBias[i], scale);
+    }
+  }
+}
+
 class QuantizeConcatModelTest : public QuantizeModelTest,
                                 public testing::WithParamInterface<TensorType> {
  protected:
