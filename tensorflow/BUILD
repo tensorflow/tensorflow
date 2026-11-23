@@ -1736,7 +1736,7 @@ py_strict_library(
         "//tensorflow/lite/python/authoring",
         "//tensorflow/python:no_contrib",
         "//tensorflow/python/profiler:profiler_client",
-        "@pypi//keras_nightly",
+        "@pypi//keras",
         "@pypi//tb_nightly",
     ],
 )
