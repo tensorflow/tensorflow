@@ -115,7 +115,7 @@ void CanonicalizeIotaDims(absl::Span<int64_t>& dims, absl::Span<int>& perm) {
     for (int i = 1, base = 0, n = dims.size(); i < n; ++i) {
       const int base_dim = perm[base];
       const int dim = perm[i];
-      if (base_dim + (i - base) == dim) {
+      if (dim - base_dim == i - base) {
         dims[base_dim] *= dims[dim];
         dims[dim] = 1;
         changed = true;
@@ -277,10 +277,14 @@ std::optional<IotaTileAssignment> TryToConvertV1ToV2(const TileAssignment& T) {
 }
 
 absl::StatusOr<int64_t> ValidateIotaDims(absl::Span<const int64_t> dims) {
-  if (dims.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+  constexpr size_t kMaxIotaRank =
+      std::min<size_t>(std::numeric_limits<int>::max(),
+                       std::numeric_limits<std::ptrdiff_t>::max() /
+                           (2 * sizeof(int64_t) + sizeof(int)));
+  if (dims.size() > kMaxIotaRank) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Iota dimensions rank (%d) exceeds maximum (%d)",
-                        dims.size(), std::numeric_limits<int>::max()));
+                        dims.size(), kMaxIotaRank));
   }
   bool has_zero = false;
   int64_t nonzero_product = 1;
@@ -411,18 +415,26 @@ Array<int64_t> IotaTileAssignment::ToArray() const {
 
 IotaTileAssignment::IotaTileAssignment(const IotaTileAssignment& other)
     : IotaTileAssignment(other.ndims_, other.reshape_ndims_) {
-  std::memcpy(storage_.get(), other.storage_.get(), size_bytes());
+  const size_t size = size_bytes();
+  if (size > 0) {
+    std::memcpy(storage_.get(), other.storage_.get(), size);
+  }
 }
 
 IotaTileAssignment& IotaTileAssignment::operator=(
     const IotaTileAssignment& other) {
-  const int new_size = other.size_bytes();
+  if (this == &other) {
+    return *this;
+  }
+  const size_t new_size = other.size_bytes();
   if (size_bytes() != new_size) {
-    storage_.reset(new char[new_size]);
+    storage_.reset(new_size > 0 ? new char[new_size] : nullptr);
   }
   ndims_ = other.ndims_;
   reshape_ndims_ = other.reshape_ndims_;
-  std::memcpy(storage_.get(), other.storage_.get(), new_size);
+  if (new_size > 0) {
+    std::memcpy(storage_.get(), other.storage_.get(), new_size);
+  }
   return *this;
 }
 
@@ -432,19 +444,25 @@ IotaTileAssignment::IotaTileAssignment(absl::Span<const int64_t> dims,
     : IotaTileAssignment(dims.size(), reshape_dims.size()) {
   DCHECK_EQ(reshape_dims.size(), transpose_perm.size());
   if (ndims_ > 0) {
-    std::memcpy(dims_ptr(), dims.data(), ndims_ * sizeof(int64_t));
+    std::memcpy(dims_ptr(), dims.data(),
+                static_cast<size_t>(ndims_) * sizeof(int64_t));
   }
   DCHECK_EQ(num_elements(), Product(reshape_dims));
-  std::memcpy(reshape_dims_ptr(), reshape_dims.data(),
-              reshape_ndims_ * sizeof(int64_t));
-  std::memcpy(transpose_perm_ptr(), transpose_perm.data(),
-              reshape_ndims_ * sizeof(int));
+  if (reshape_ndims_ > 0) {
+    std::memcpy(reshape_dims_ptr(), reshape_dims.data(),
+                static_cast<size_t>(reshape_ndims_) * sizeof(int64_t));
+    std::memcpy(transpose_perm_ptr(), transpose_perm.data(),
+                static_cast<size_t>(reshape_ndims_) * sizeof(int));
+  }
 }
 
 IotaTileAssignment::IotaTileAssignment(int ndims, int reshape_ndims)
     : ndims_(ndims),
       reshape_ndims_(reshape_ndims),
-      storage_(new char[size_bytes()]) {}
+      storage_(size_bytes() > 0 ? new char[size_bytes()] : nullptr) {
+  DCHECK_GE(ndims_, 0);
+  DCHECK_GE(reshape_ndims_, 0);
+}
 
 std::optional<IotaTileAssignment> IotaTileAssignment::Transpose(
     absl::Span<const int> perm) const {

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
@@ -86,9 +87,19 @@ class IotaTileAssignment {
 
   ~IotaTileAssignment() = default;
   IotaTileAssignment(const IotaTileAssignment& other);
-  IotaTileAssignment(IotaTileAssignment&& other) = default;
+  IotaTileAssignment(IotaTileAssignment&& other) noexcept
+      : ndims_(std::exchange(other.ndims_, 0)),
+        reshape_ndims_(std::exchange(other.reshape_ndims_, 0)),
+        storage_(std::move(other.storage_)) {}
   IotaTileAssignment& operator=(const IotaTileAssignment& other);
-  IotaTileAssignment& operator=(IotaTileAssignment&& other) = default;
+  IotaTileAssignment& operator=(IotaTileAssignment&& other) noexcept {
+    if (this != &other) {
+      ndims_ = std::exchange(other.ndims_, 0);
+      reshape_ndims_ = std::exchange(other.reshape_ndims_, 0);
+      storage_ = std::move(other.storage_);
+    }
+    return *this;
+  }
 
   bool operator==(const IotaTileAssignment& other) const {
     return dims() == other.dims() && reshape_dims() == other.reshape_dims() &&
@@ -136,8 +147,8 @@ class IotaTileAssignment {
 
  private:
   friend class TileAssignment;
-  static constexpr int kPerDimBytes = sizeof(int64_t);
-  static constexpr int kPerReshapeDimBytes = sizeof(int64_t) + sizeof(int);
+  static constexpr size_t kPerDimBytes = sizeof(int64_t);
+  static constexpr size_t kPerReshapeDimBytes = sizeof(int64_t) + sizeof(int);
 
   explicit IotaTileAssignment(absl::Span<const int64_t> dims,
                               absl::Span<const int64_t> reshape_dims,
@@ -162,8 +173,9 @@ class IotaTileAssignment {
         const_cast<const IotaTileAssignment*>(this)->transpose_perm_ptr());
   }
 
-  int size_bytes() const {
-    return ndims_ * kPerDimBytes + reshape_ndims_ * kPerReshapeDimBytes;
+  size_t size_bytes() const {
+    return static_cast<size_t>(ndims_) * kPerDimBytes +
+           static_cast<size_t>(reshape_ndims_) * kPerReshapeDimBytes;
   }
   int32_t ndims_;
   int32_t reshape_ndims_;

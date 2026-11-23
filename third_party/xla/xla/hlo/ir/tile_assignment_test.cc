@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/hlo/ir/tile_assignment.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -492,6 +494,77 @@ TEST(IotaTileAssignmentTest, TryCreateEnforcesInvariants) {
   EXPECT_THAT(
       IotaTileAssignment::TryCreate({16}, {4, 2, 2}, {0, 2, 2}),
       StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("not unique")));
+  EXPECT_THAT(
+      IotaTileAssignment::TryCreate(absl::Span<const int64_t>(
+          nullptr, static_cast<size_t>(std::numeric_limits<int>::max()) + 1)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("exceeds maximum")));
+}
+
+TEST(IotaTileAssignmentTest, CopyAndMove) {
+  constexpr size_t kLargeRank = size_t{1} << 16;
+  std::vector<int64_t> large_dims(kLargeRank, 1);
+  IotaTileAssignment large = IotaTileAssignment::Create(large_dims);
+  IotaTileAssignment small =
+      IotaTileAssignment::Create({4, 4}, {2, 2, 4}, {1, 0, 2});
+
+  // Copy-construct and copy-assign across different ranks.
+  IotaTileAssignment large_copy(large);
+  EXPECT_EQ(large_copy.dims(), large.dims());
+  EXPECT_EQ(large_copy.reshape_dims(), large.reshape_dims());
+  EXPECT_EQ(large_copy.transpose_perm(), large.transpose_perm());
+
+  IotaTileAssignment assigned = small;
+  assigned = large;
+  EXPECT_EQ(assigned.dims(), large.dims());
+  EXPECT_EQ(assigned.reshape_dims(), large.reshape_dims());
+  EXPECT_EQ(assigned.transpose_perm(), large.transpose_perm());
+
+  assigned = small;
+  EXPECT_EQ(assigned.dims(), small.dims());
+  EXPECT_EQ(assigned.reshape_dims(), small.reshape_dims());
+  EXPECT_EQ(assigned.transpose_perm(), small.transpose_perm());
+
+  // Self copy-assignment.
+  IotaTileAssignment& self_ref = assigned;
+  assigned = self_ref;
+  EXPECT_EQ(assigned.dims(), small.dims());
+  EXPECT_EQ(assigned.reshape_dims(), small.reshape_dims());
+  EXPECT_EQ(assigned.transpose_perm(), small.transpose_perm());
+
+  // Move-construct leaves source empty and safe to copy from or assign to.
+  IotaTileAssignment moved_from =
+      IotaTileAssignment::Create({4, 4}, {2, 2, 4}, {1, 0, 2});
+  IotaTileAssignment moved_to(std::move(moved_from));
+  EXPECT_EQ(moved_to, small);
+  // Intentionally inspect moved-from state.
+  // NOLINTNEXTLINE(bugprone-use-after-move)
+  EXPECT_TRUE(moved_from.dims().empty());
+  EXPECT_TRUE(moved_from.reshape_dims().empty());
+  EXPECT_TRUE(moved_from.transpose_perm().empty());
+
+  IotaTileAssignment copy_of_moved_from(moved_from);
+  EXPECT_TRUE(copy_of_moved_from.dims().empty());
+  EXPECT_TRUE(copy_of_moved_from.reshape_dims().empty());
+  EXPECT_TRUE(copy_of_moved_from.transpose_perm().empty());
+
+  // Copy-assign valid object into moved-from (empty) target.
+  moved_from = small;
+  EXPECT_EQ(moved_from, small);
+
+  // Copy-assign moved-from (empty) object into valid target.
+  IotaTileAssignment moved_from_2 = IotaTileAssignment::Create({2, 3});
+  IotaTileAssignment moved_to_2 = IotaTileAssignment::Create({1});
+  moved_to_2 = std::move(moved_from_2);
+  EXPECT_THAT(moved_to_2.dims(), ::testing::ElementsAre(2, 3));
+  // Intentionally inspect moved-from state.
+  // NOLINTNEXTLINE(bugprone-use-after-move)
+  EXPECT_TRUE(moved_from_2.dims().empty());
+
+  moved_to_2 = moved_from_2;
+  EXPECT_TRUE(moved_to_2.dims().empty());
+  EXPECT_TRUE(moved_to_2.reshape_dims().empty());
+  EXPECT_TRUE(moved_to_2.transpose_perm().empty());
 }
 
 }  // namespace
