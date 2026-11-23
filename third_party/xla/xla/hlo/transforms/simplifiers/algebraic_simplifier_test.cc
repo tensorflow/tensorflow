@@ -38,7 +38,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -12459,89 +12458,119 @@ TEST_F(AlgebraicSimplifierTest, ClampOfClamp) {
 }
 
 TEST_F(AlgebraicSimplifierTest, MaxOfClamp) {
-  constexpr absl::string_view kModuleStr = R"hlo(
+  constexpr absl::string_view kModuleStr = R"(
     HloModule m
     test {
       p0 = f32[] parameter(0)
-      lo = f32[] constant(3.0)
-      hi = f32[] constant(4.0)
-      c0 = f32[] clamp(lo, p0, hi)
-      ROOT m0 = f32[] maximum(lo, c0)
+      lower = f32[] constant(0)
+      upper = f32[] constant(6)
+      c0 = f32[] clamp(lower, p0, upper)
+      ROOT m0 = f32[] maximum(lower, c0)
     }
-  )hlo";
+  )";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  ASSERT_THAT(AlgebraicSimplifier(default_options_).Run(m.get()),
+              absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Clamp(m::ConstantScalar(3.0), m::Parameter(0),
-                                  m::ConstantScalar(4.0))));
+              GmockMatch(m::Clamp(m::ConstantScalar(0), m::Parameter(0),
+                                  m::ConstantScalar(6))));
 }
 
-TEST_F(AlgebraicSimplifierTest, MaxOfClampWithSameBounds) {
-  constexpr absl::string_view kModuleStr = R"hlo(
+TEST_F(AlgebraicSimplifierTest, MaxOfClampWithBroadcastBounds) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      lower = f32[] constant(0)
+      lower_bcast = f32[4] broadcast(lower), dimensions={}
+      upper = f32[] constant(6)
+      upper_bcast = f32[4] broadcast(upper), dimensions={}
+      c0 = f32[4] clamp(lower_bcast, p0, upper_bcast)
+      ROOT m0 = f32[4] maximum(c0, lower_bcast)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_THAT(AlgebraicSimplifier(default_options_).Run(m.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Clamp(m::Broadcast(m::ConstantScalar(0)), m::Parameter(0),
+                          m::Broadcast(m::ConstantScalar(6)))));
+}
+
+// clamp(lower, x, upper) with lower > upper is upper for every x, so
+// maximum(lower, clamp(lower, x, upper)) is lower, not the clamp.
+TEST_F(AlgebraicSimplifierTest, MaxOfClampWithUnorderedBounds) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[] parameter(0)
+      lower = s32[] constant(10)
+      upper = s32[] constant(0)
+      c0 = s32[] clamp(lower, p0, upper)
+      ROOT m0 = s32[] maximum(c0, lower)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_THAT(AlgebraicSimplifier(default_options_).Run(m.get()),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Clamp(), m::ConstantScalar(10))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaxOfClampWithParameterBounds) {
+  constexpr absl::string_view kModuleStr = R"(
     HloModule m
     test {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
-      c0 = f32[] clamp(p0, p1, p0)
-      ROOT m0 = f32[] maximum(c0, p0)
+      p2 = f32[] parameter(2)
+      c0 = f32[] clamp(p0, p1, p2)
+      ROOT m0 = f32[] maximum(p0, c0)
     }
-  )hlo";
+  )";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-  EXPECT_THAT(
-      m->entry_computation()->root_instruction(),
-      GmockMatch(m::Clamp(m::Parameter(0), m::Parameter(1), m::Parameter(0))));
+  ASSERT_THAT(AlgebraicSimplifier(default_options_).Run(m.get()),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Parameter(0), m::Clamp())));
 }
 
-// max(a, clamp(a, b, c)) is not clamp(a, b, c) when a > c: for (a, b, c) =
-// (10, 5, 0), the clamp is 0 and the maximum is 10.
-TEST_F(AlgebraicSimplifierTest, MaxOfClampWithUnknownBoundsIsNotSimplified) {
-  for (absl::string_view root : {"maximum(p0, c0)", "maximum(c0, p0)"}) {
-    const std::string module_str = absl::StrFormat(R"hlo(
-      HloModule m
-      test {
-        p0 = s32[] parameter(0)
-        p1 = s32[] parameter(1)
-        p2 = s32[] parameter(2)
-        c0 = s32[] clamp(p0, p1, p2)
-        ROOT m0 = s32[] %s
-      }
-    )hlo",
-                                                   root);
-    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-    ASSERT_OK(AlgebraicSimplifier(default_options_).Run(m.get()).status());
-    EXPECT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::MaximumAnyOrder(
-                    m::Parameter(0), m::Clamp(m::Parameter(0), m::Parameter(1),
-                                              m::Parameter(2)))));
-
-    const Literal a = LiteralUtil::CreateR0<int32_t>(10);
-    const Literal b = LiteralUtil::CreateR0<int32_t>(5);
-    const Literal c = LiteralUtil::CreateR0<int32_t>(0);
-    HloEvaluator evaluator;
-    ASSERT_OK_AND_ASSIGN(Literal result, evaluator.Evaluate(*m, {&a, &b, &c}));
-    EXPECT_EQ(result.Get<int32_t>({}), 10);
-  }
-}
-
-TEST_F(AlgebraicSimplifierTest, MaxOfClampWithReversedBoundsIsNotSimplified) {
-  constexpr absl::string_view kModuleStr = R"hlo(
+// +0.0 <= -0.0 holds, but maximum(+0.0, -0.0) is +0.0 while the clamp is -0.0.
+TEST_F(AlgebraicSimplifierTest, MaxOfClampWithSignedZeroBounds) {
+  constexpr absl::string_view kModuleStr = R"(
     HloModule m
     test {
-      p0 = f32[4] parameter(0)
-      lo = f32[] constant(10.0)
-      hi = f32[] constant(0.0)
-      b_lo = f32[4] broadcast(lo), dimensions={}
-      b_hi = f32[4] broadcast(hi), dimensions={}
-      c0 = f32[4] clamp(b_lo, p0, b_hi)
-      ROOT m0 = f32[4] maximum(b_lo, c0)
+      p0 = f32[] parameter(0)
+      lower = f32[] constant(0.0)
+      upper = f32[] constant(-0.0)
+      c0 = f32[] clamp(lower, p0, upper)
+      ROOT m0 = f32[] maximum(lower, c0)
     }
-  )hlo";
+  )";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_OK(AlgebraicSimplifier(default_options_).Run(m.get()).status());
+  ASSERT_THAT(AlgebraicSimplifier(default_options_).Run(m.get()),
+              absl_testing::IsOkAndHolds(false));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Maximum(m::Broadcast(m::ConstantScalar(10.0)),
-                                    m::Clamp())));
+              GmockMatch(m::Maximum(m::ConstantScalar(0), m::Clamp())));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaxOfClampWithComplexBounds) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = c64[] parameter(0)
+      lower = c64[] constant((1.0, 2.0))
+      upper = c64[] constant((3.0, 4.0))
+      c0 = c64[] clamp(lower, p0, upper)
+      ROOT m0 = c64[] maximum(lower, c0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_THAT(AlgebraicSimplifier(default_options_).Run(m.get()),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Constant(), m::Clamp())));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {

@@ -47,7 +47,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/core/collectives/reduction_kind.h"
-#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -4843,9 +4842,31 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
 }
 
 namespace {
-absl::StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
+// Evaluates `lower < upper` for two effective-scalar constants.
+bool CompareConstantBounds(const HloInstruction* lower,
+                           const HloInstruction* upper) {
+  PrimitiveType ty = lower->shape().element_type();
+  if (ty != upper->shape().element_type() || !primitive_util::IsArrayType(ty) ||
+      primitive_util::IsComplexType(ty)) {
+    return false;
+  }
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant) &&
+                      !primitive_util::IsComplexType(primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return Comparison(ComparisonDirection::kLt, primitive_type_constant)
+              .Compare(lower->literal().GetFirstElement<NativeT>(),
+                       upper->literal().GetFirstElement<NativeT>());
+        }
+        return false;
+      },
+      ty);
+}
+
+std::unique_ptr<HloInstruction> MinMaxToClamp(
     HloInstruction* clamp_lower_bound_bcast, HloInstruction* to_clamp,
-    HloInstruction* clamp_upper_bound_bcast, AlgebraicSimplifier* simplifier) {
+    HloInstruction* clamp_upper_bound_bcast) {
   HloInstruction* clamp_lower_bound;
   CHECK(Match(clamp_lower_bound_bcast,
               m::Broadcast(m::ConstantEffectiveScalar(&clamp_lower_bound))))
@@ -4856,80 +4877,29 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
               m::Broadcast(m::ConstantEffectiveScalar(&clamp_upper_bound))))
       << clamp_upper_bound_bcast->ToString();
 
-  const Literal& lower_bound =
-      Cast<HloConstantInstruction>(clamp_lower_bound)->literal();
-  const Literal& upper_bound =
-      Cast<HloConstantInstruction>(clamp_upper_bound)->literal();
-
-  ABSL_ASSIGN_OR_RETURN(Literal lower_bound_literal_reshaped,
-                   lower_bound.Reshape({}));
-  ABSL_ASSIGN_OR_RETURN(Literal upper_bound_literal_reshaped,
-                   upper_bound.Reshape({}));
-  std::unique_ptr<HloInstruction> lower_bound_instr =
-      HloInstruction::CreateConstant(std::move(lower_bound_literal_reshaped));
-  std::unique_ptr<HloInstruction> upper_bound_instr =
-      HloInstruction::CreateConstant(std::move(upper_bound_literal_reshaped));
-
-  Shape compare_shape =
-      ShapeUtil::ChangeElementType(lower_bound_instr->shape(), PRED);
-  simplifier->UpdateLayout(&compare_shape);
-  std::unique_ptr<HloInstruction> cloned_instruction =
-      HloInstruction::CreateCompare(compare_shape, lower_bound_instr.get(),
-                                    upper_bound_instr.get(),
-                                    ComparisonDirection::kLt);
-
-  HloEvaluator evaluator;
-  ABSL_ASSIGN_OR_RETURN(auto result, evaluator.Evaluate(cloned_instruction.get()));
-  if (result.IsAll(true)) {
+  if (CompareConstantBounds(clamp_lower_bound, clamp_upper_bound)) {
     return HloInstruction::CreateTernary(to_clamp->shape(), HloOpcode::kClamp,
                                          clamp_lower_bound_bcast, to_clamp,
                                          clamp_upper_bound_bcast);
   }
-  return std::unique_ptr<HloInstruction>();
+  return nullptr;
 }
 
-// Returns whether `lhs <= rhs` holds for every element: `lhs` and `rhs` are
-// the same instruction, or both are effective scalar constants, possibly
-// broadcast, that compare less than or equal. Returns false when this cannot be
-// established, which includes a NaN on either side.
-absl::StatusOr<bool> IsKnownLessThanOrEqual(HloInstruction* lhs,
-                                            HloInstruction* rhs,
-                                            AlgebraicSimplifier* simplifier) {
-  if (lhs == rhs) {
-    return true;
-  }
-  auto match_effective_scalar_constant = [](HloInstruction* hlo,
-                                            HloInstruction** constant) {
-    return Match(hlo, m::ConstantEffectiveScalar(constant)) ||
-           Match(hlo, m::Broadcast(m::ConstantEffectiveScalar(constant)));
-  };
-  HloInstruction* lhs_constant;
-  HloInstruction* rhs_constant;
-  if (!match_effective_scalar_constant(lhs, &lhs_constant) ||
-      !match_effective_scalar_constant(rhs, &rhs_constant)) {
+// Returns true if `lower` and `upper` are effective-scalar constants (or
+// broadcasts of them) with lower < upper.
+bool ClampBoundsAreOrdered(const HloInstruction* lower,
+                           const HloInstruction* upper) {
+  const HloInstruction* lower_constant;
+  const HloInstruction* upper_constant;
+  if ((!Match(lower, m::ConstantEffectiveScalar(&lower_constant)) &&
+       !Match(lower,
+              m::Broadcast(m::ConstantEffectiveScalar(&lower_constant)))) ||
+      (!Match(upper, m::ConstantEffectiveScalar(&upper_constant)) &&
+       !Match(upper,
+              m::Broadcast(m::ConstantEffectiveScalar(&upper_constant))))) {
     return false;
   }
-
-  ABSL_ASSIGN_OR_RETURN(
-      Literal lhs_literal,
-      Cast<HloConstantInstruction>(lhs_constant)->literal().Reshape({}));
-  ABSL_ASSIGN_OR_RETURN(
-      Literal rhs_literal,
-      Cast<HloConstantInstruction>(rhs_constant)->literal().Reshape({}));
-  std::unique_ptr<HloInstruction> lhs_instr =
-      HloInstruction::CreateConstant(std::move(lhs_literal));
-  std::unique_ptr<HloInstruction> rhs_instr =
-      HloInstruction::CreateConstant(std::move(rhs_literal));
-
-  Shape compare_shape = ShapeUtil::ChangeElementType(lhs_instr->shape(), PRED);
-  simplifier->UpdateLayout(&compare_shape);
-  std::unique_ptr<HloInstruction> compare =
-      HloInstruction::CreateCompare(compare_shape, lhs_instr.get(),
-                                    rhs_instr.get(), ComparisonDirection::kLe);
-
-  HloEvaluator evaluator;
-  ABSL_ASSIGN_OR_RETURN(Literal result, evaluator.Evaluate(compare.get()));
-  return result.IsAll(true);
+  return CompareConstantBounds(lower_constant, upper_constant);
 }
 }  // namespace
 
@@ -5003,17 +4973,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
                              m::Op(&to_clamp),
                              m::Broadcast(&clamp_upper_bound_bcast,
                                           m::ConstantEffectiveScalar()))))) {
-    ABSL_ASSIGN_OR_RETURN(auto clamp,
-                     MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
-                                   clamp_upper_bound_bcast, simplifier_));
-    if (clamp) {
+    if (std::unique_ptr<HloInstruction> clamp = MinMaxToClamp(
+            clamp_lower_bound_bcast, to_clamp, clamp_upper_bound_bcast)) {
       return ReplaceWithNewInstruction(maximum, std::move(clamp));
     }
   }
 
-  // max(a, clamp(a, x, b)) -> clamp(a, x, b)
-  // This holds only if a <= b: for a > b, clamp(a, x, b) is b, and the maximum
-  // is a.
   HloInstruction* clamp_lower_bound;
   HloInstruction* clamp_upper_bound;
   HloInstruction* max_operand;
@@ -5022,12 +4987,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
             m::MaximumAnyOrder(
                 m::Op(&max_operand),
                 m::Clamp(&clamp, m::Op(&clamp_lower_bound), m::Op(&to_clamp),
-                         m::Op(&clamp_upper_bound)))) &&
-      max_operand == clamp_lower_bound) {
-    ABSL_ASSIGN_OR_RETURN(bool bounds_are_ordered,
-                     IsKnownLessThanOrEqual(clamp_lower_bound,
-                                            clamp_upper_bound, simplifier_));
-    if (bounds_are_ordered && ReplaceInstructionIfCompatible(maximum, clamp)) {
+                         m::Op(&clamp_upper_bound))))) {
+    // max(a, clamp(a, x, b)) -> clamp(a, x, b), valid only for ordered bounds.
+    // Require a < b, as a <= b also holds for a = +0.0, b = -0.0.
+    if (max_operand == clamp_lower_bound &&
+        ClampBoundsAreOrdered(clamp_lower_bound, clamp_upper_bound) &&
+        ReplaceInstructionIfCompatible(maximum, clamp)) {
       return absl::OkStatus();
     }
   }
@@ -5118,10 +5083,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleMinimum(
                              m::Op(&to_clamp),
                              m::Broadcast(&clamp_lower_bound_bcast,
                                           m::ConstantEffectiveScalar()))))) {
-    ABSL_ASSIGN_OR_RETURN(auto clamp,
-                     MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
-                                   clamp_upper_bound_bcast, simplifier_));
-    if (clamp) {
+    if (std::unique_ptr<HloInstruction> clamp = MinMaxToClamp(
+            clamp_lower_bound_bcast, to_clamp, clamp_upper_bound_bcast)) {
       return ReplaceWithNewInstruction(minimum, std::move(clamp));
     }
   }
