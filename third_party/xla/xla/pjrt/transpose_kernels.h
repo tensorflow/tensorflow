@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 
 #include "absl/base/optimization.h"
 
@@ -104,12 +103,27 @@ TransposeOp::Fn GetPackSubbyteOp();
 // for `elem_size_in_bytes` on the active Highway target.
 int GetMaxTransposeInnerBlockSizeBytes(int elem_size_in_bytes);
 
-// Returns whether deinterleaving `k` rows of `elem_size`-byte elements is
-// faster than the default 2D transpose, based on the BM_TransposeSmallDim_*
-// benchmarks in transpose_test.cc across Arm and x86 CPUs:
+// Returns whether interleaving or deinterleaving `k` rows of `elem_size`-byte
+// elements is faster than the default 2D transpose, based on the
+// BM_TransposeSmallDim_* benchmarks in transpose_test.cc across Arm and x86
+// CPUs:
 // - k = 2, 3, and 4 are vectorized with Highway for 1- to 8-byte elements.
-// - Larger k up to the limits below use a plain loop; beyond those limits
-//   (and for all 16-byte elements), deinterleave is slower on at least one CPU.
+// - Larger k up to the limits below (and 16-byte interleave except k = 4) use a
+//   plain loop; beyond those limits, interleave/deinterleave is slower on at
+//   least one CPU.
+constexpr bool InterleaveKernelIsFaster(size_t elem_size, int64_t k) {
+  switch (elem_size) {
+    case 1:
+    case 2:
+    case 4:
+    case 8:
+      return k >= 2 && k <= 7;
+    case 16:
+      return k >= 2 && k <= 7 && k != 4;
+  }
+  return false;
+}
+
 constexpr bool DeinterleaveKernelIsFaster(size_t elem_size, int64_t k) {
   switch (elem_size) {
     case 1:
@@ -123,9 +137,11 @@ constexpr bool DeinterleaveKernelIsFaster(size_t elem_size, int64_t k) {
   return false;
 }
 
-// Returns the deinterleave function for `k` rows of `elem_size`-byte elements
-// (matching `DeinterleaveKernelIsFaster`), or nullptr if unsupported. Defined
-// in transpose_kernels_interleave.cc.
+// Returns the interleave / deinterleave function for `k` rows of
+// `elem_size`-byte elements (matching `InterleaveKernelIsFaster` and
+// `DeinterleaveKernelIsFaster`), or nullptr if unsupported. Defined in
+// transpose_kernels_interleave.cc.
+TransposeOp::Fn GetInterleaveOp(size_t elem_size, int64_t k);
 TransposeOp::Fn GetDeinterleaveOp(size_t elem_size, int64_t k);
 template <typename T, int bs>
 void TransposeMacroKernelDispatch(const char* a, int64_t lda, int outer_bs_a,
@@ -145,18 +161,6 @@ void TransposeMicroKernelDispatch(const char* a, int64_t lda, char* b,
                                   int64_t ldb) {
   TransposeMacroKernelDispatch<T, bs>(a, lda, /*outer_bs_a=*/1, b, ldb,
                                       /*outer_bs_b=*/1);
-}
-
-// Plain loop that zips (interleaves) `n` elements across `K` rows.
-template <typename T, int K>
-void InterleaveKernel(const char* __restrict a, int64_t lda, char* __restrict b,
-                      int64_t n) {
-  for (int64_t i = 0; i < n; ++i) {
-    for (int k = 0; k < K; ++k) {
-      std::memcpy(b + k * sizeof(T), a + k * lda + i * sizeof(T), sizeof(T));
-    }
-    b += K * sizeof(T);
-  }
 }
 
 }  // namespace xla

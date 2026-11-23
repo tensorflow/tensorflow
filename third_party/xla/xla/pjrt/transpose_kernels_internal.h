@@ -26,6 +26,14 @@ void EnsureHighwayTargetInitialized();
 
 }  // namespace xla
 
+// Highway targets disabled in `transpose_kernels_interleave.cc` (SVE/SVE2 is
+// slower than NEON for deinterleave, and NEON_BF16 / AVX3_SPR only add
+// bfloat16/FP16 over NEON / AVX3_DL). Defined as a macro without including
+// `detect_targets.h` so `transpose_kernels_interleave.cc` can set
+// `HWY_DISABLED_TARGETS` before any Highway header is included.
+#define XLA_INTERLEAVE_DISABLED_TARGETS \
+  (HWY_ALL_SVE | HWY_NEON_BF16 | HWY_AVX3_SPR)
+
 // Stops the compiler from keeping a separate base pointer per row across the
 // outer `count` loop. Without this, x86-64 runs out of integer registers and
 // spills loop variables to the stack. We avoid `hwy::PreventElision` here

@@ -1289,50 +1289,9 @@ void BM_TransposePack(const TransposeTestCase& bm, int parallelism,
   }
 }
 
-template <int bits_per_element>
-void BM_TransposeUnfusedPack(const TransposeTestCase& bm, int parallelism,
-                             ::testing::benchmark::State& state) {
-  TransposePlan::Options options;
-  options.elem_size_in_bytes = 1;
-  options.dims = bm.dims;
-  options.permutation = bm.permutation;
-  options.num_threads = parallelism;
-
-  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
-  int64_t num_elems = plan->InputNumElems();
-  std::vector<int8_t> input(num_elems);
-  absl::BitGen bitgen;
-  int max_val = (1 << bits_per_element) - 1;
-  for (int64_t i = 0; i < num_elems; ++i) {
-    input[i] = absl::Uniform<int>(bitgen, 0, max_val + 1);
-  }
-
-  int elements_per_byte = 8 / bits_per_element;
-  int64_t packed_size = CeilOfRatio<int64_t>(num_elems, elements_per_byte);
-  std::vector<char> output(packed_size);
-
-  tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
-                                     parallelism);
-  for (auto s : state) {
-    auto temp_buf = std::make_unique<char[]>(num_elems);
-    plan->Execute(
-        reinterpret_cast<const char*>(input.data()), temp_buf.get(),
-        [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
-    PackIntN(bits_per_element, absl::MakeConstSpan(temp_buf.get(), num_elems),
-             absl::MakeSpan(output));
-    tsl::testing::DoNotOptimize(output);
-  }
-}
-
 static void BM_Transpose_Pack4(const TransposeTestCase& bm, int parallelism,
                                ::testing::benchmark::State& state) {
   BM_TransposePack<4>(bm, parallelism, state);
-}
-
-static void BM_Transpose_UnfusedPack4(const TransposeTestCase& bm,
-                                      int parallelism,
-                                      ::testing::benchmark::State& state) {
-  BM_TransposeUnfusedPack<4>(bm, parallelism, state);
 }
 
 static void* benchmarks = []() {
@@ -1345,8 +1304,6 @@ static void* benchmarks = []() {
           {"BM_Eigen_float", BM_Eigen_float, {1}},
           {"BM_Transpose_float", BM_Transpose_float, {1, 4, 8}},  //
           {"BM_Transpose_Pack4", BM_Transpose_Pack4, {1, 4, 8}},
-          //          {"BM_Transpose_Pack4", BM_Transpose_UnfusedPack4, {1, 4,
-          //          8}},
       };
   auto benchmark_cases = BenchmarkCases();
   for (const auto& benchmark_case : benchmark_cases) {
@@ -1398,6 +1355,9 @@ static void* small_dim_benchmarks = []() {
   cases.push_back({"HWC_256x4x3_deinterleave",
                    TransposeTestCase(/*dims=*/{256, 4, 3},
                                      /*permutation=*/{2, 0, 1})});
+  cases.push_back(
+      {"CHW_2x256x4_interleave", TransposeTestCase(/*dims=*/{2, 256, 4},
+                                                   /*permutation=*/{1, 2, 0})});
   cases.push_back(
       {"CHW_3x256x4_interleave", TransposeTestCase(/*dims=*/{3, 256, 4},
                                                    /*permutation=*/{1, 2, 0})});
@@ -2132,7 +2092,9 @@ TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
       {{7, 8}, {1, 0}, 16, {}, {}, {}, "inner_kernel=interleave(7)"},
       {{4, 8}, {1, 0}, 1, {}, {}, {}, "inner_kernel=interleave(4)"},
       {{4, 8}, {1, 0}, 2, {}, {}, {}, "inner_kernel=interleave(4)"},
-      {{4, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{4, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(4)"},
+      {{4, 8}, {1, 0}, 8, {}, {}, {}, "inner_kernel=interleave(4)"},
+      {{4, 8}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
       {{8, 16}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
       {{8, 2}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave(2)"},
       {{8, 2}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
@@ -2157,7 +2119,8 @@ TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
       {{2, 3, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=interleave(6)"},
       {{8, 2, 3}, {1, 2, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(6)"},
       {{2, 2, 8}, {2, 0, 1}, 1, {}, {}, {}, "inner_kernel=interleave(4)"},
-      {{2, 2, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{2, 2, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=interleave(4)"},
+      {{2, 2, 8}, {2, 0, 1}, 16, {}, {}, {}, "inner_kernel=default"},
       {{2, 4, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=default"},
       {{3, 2, 4}, {1, 2, 0}, 4, {}, {}, {}, "inner_kernel=interleave(3)"},
       {{3, 256, 4}, {1, 2, 0}, 4, {}, {}, {}, "inner_kernel=interleave(3)"},

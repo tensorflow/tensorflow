@@ -1244,9 +1244,11 @@ cc_library(
     srcs = [
         "transpose_kernels.cc",
         "transpose_kernels_interleave.cc",
+    ],
+    hdrs = [
+        "transpose_kernels.h",
         "transpose_kernels_internal.h",
     ],
-    hdrs = ["transpose_kernels.h"],
     deps = [
         "//xla:compiler_macros",
         "@com_google_absl//absl/base:core_headers",

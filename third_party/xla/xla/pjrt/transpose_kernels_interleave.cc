@@ -18,12 +18,14 @@ limitations under the License.
 // and its stores cannot be paired into 32-byte writes.
 //
 // Disable SVE only in this file (before any header can pull in Highway) so
-// deinterleave uses NEON on Arm64 while the 2D transpose and sub-byte packing
-// code in transpose_kernels.cc stays untouched. Also skip `HWY_NEON_BF16` and
-// `HWY_AVX3_SPR` (which only add bfloat16/FP16 over NEON/AVX3_DL) since nothing
-// here uses those types.
+// interleave and deinterleave use NEON on Arm64 while the 2D transpose and
+// sub-byte packing code in transpose_kernels.cc stays untouched. Also skip
+// `HWY_NEON_BF16` and `HWY_AVX3_SPR` (which only add bfloat16/FP16 over
+// NEON/AVX3_DL) since nothing here uses those types.
+#include "xla/pjrt/transpose_kernels_internal.h"
+
 #undef HWY_DISABLED_TARGETS
-#define HWY_DISABLED_TARGETS (HWY_ALL_SVE | HWY_NEON_BF16 | HWY_AVX3_SPR)
+#define HWY_DISABLED_TARGETS XLA_INTERLEAVE_DISABLED_TARGETS
 
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_TRANSPOSE_KERNELS_INTERLEAVE_ONCE_
 #define TENSORFLOW_COMPILER_XLA_PJRT_TRANSPOSE_KERNELS_INTERLEAVE_ONCE_
@@ -35,13 +37,38 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "xla/pjrt/transpose_kernels.h"
-#include "xla/pjrt/transpose_kernels_internal.h"
 
 namespace xla {
 namespace {
 
-// Plain fallback loop used for K = 5, 6, 7, unaligned buffers, and rows
-// narrower than 8 bytes.
+// Plain fallback loops used for larger K (5, 6, 7), 16-byte interleave,
+// unaligned buffers, and rows narrower than 8 bytes.
+template <size_t kElemSize, int K>
+inline void InterleaveScalarImpl(int64_t count, int64_t da, int64_t db,
+                                 int64_t lda, int64_t n,
+                                 const char* __restrict a, char* __restrict b) {
+  for (int64_t r = 0; r < count; ++r) {
+    const char* a_r = a + r * da;
+    char* b_r = b + r * db;
+    for (int64_t i = 0; i < n; ++i) {
+      for (int k = 0; k < K; ++k) {
+        std::memcpy(b_r + k * kElemSize, a_r + k * lda + i * kElemSize,
+                    kElemSize);
+      }
+      b_r += K * kElemSize;
+    }
+  }
+}
+
+template <size_t kElemSize, int K>
+ABSL_ATTRIBUTE_NOINLINE void InterleaveScalarFallback(int64_t count, int64_t da,
+                                                      int64_t db, int64_t lda,
+                                                      int64_t n,
+                                                      const char* __restrict a,
+                                                      char* __restrict b) {
+  InterleaveScalarImpl<kElemSize, K>(count, da, db, lda, n, a, b);
+}
+
 template <typename T, int K>
 ABSL_ATTRIBUTE_NOINLINE void DeinterleaveScalar(int64_t count, int64_t da,
                                                 int64_t db, int64_t ldb,
@@ -71,7 +98,6 @@ ABSL_ATTRIBUTE_NOINLINE void DeinterleaveScalar(int64_t count, int64_t da,
 // clang-format on
 #include "hwy/foreach_target.h"  // IWYU pragma: keep
 #include "hwy/highway.h"
-#include "hwy/targets.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace xla {
@@ -354,6 +380,22 @@ HWY_NOINLINE HWY_FLATTEN void DeinterleaveNarrowRows(int64_t count, int64_t da,
 }
 #endif
 
+template <typename T>
+HWY_INLINE bool ArePointersAndStridesAligned(int64_t count, int64_t da,
+                                             int64_t db, int64_t row_stride,
+                                             const char* a, const char* b) {
+  if constexpr (sizeof(T) == 1) {
+    return true;
+  }
+  const uintptr_t stride_bits =
+      static_cast<uintptr_t>(row_stride) |
+      (count > 1 ? (static_cast<uintptr_t>(da) | static_cast<uintptr_t>(db))
+                 : uintptr_t{0});
+  return ((reinterpret_cast<uintptr_t>(a) | reinterpret_cast<uintptr_t>(b) |
+           stride_bits) &
+          (sizeof(T) - 1)) == 0;
+}
+
 // Splits `op->count` contiguous runs of `op->b_elems * K` elements in
 // `a + i*op->da` into `K` rows of `op->b_elems` elements spaced `op->ldb` bytes
 // apart in `b + i*op->db`, computing `b[k][j] = a[K * j + k]`.
@@ -374,17 +416,10 @@ HWY_FLATTEN void OpDeinterleaveHwy(const TransposeOp* HWY_RESTRICT op,
   if (count <= 0 || b_elems <= 0) {
     return;
   }
-  if constexpr (sizeof(T) > 1) {
-    const uintptr_t stride_bits =
-        static_cast<uintptr_t>(ldb) |
-        (count > 1 ? (static_cast<uintptr_t>(da) | static_cast<uintptr_t>(db))
-                   : uintptr_t{0});
-    if (HWY_UNLIKELY(((reinterpret_cast<uintptr_t>(a) |
-                       reinterpret_cast<uintptr_t>(b) | stride_bits) &
-                      (sizeof(T) - 1)) != 0)) {
-      DeinterleaveScalar<T, k>(count, da, db, ldb, b_elems, a, b);
-      return;
-    }
+  if (HWY_UNLIKELY(
+          !ArePointersAndStridesAligned<T>(count, da, db, ldb, a, b))) {
+    DeinterleaveScalar<T, k>(count, da, db, ldb, b_elems, a, b);
+    return;
   }
   const auto main_d = MainDeinterleaveTag<T, k>();
 #if HWY_TARGET != HWY_SCALAR
@@ -397,6 +432,266 @@ HWY_FLATTEN void OpDeinterleaveHwy(const TransposeOp* HWY_RESTRICT op,
   DeinterleaveRows<k>(main_d, count, da, db, ldb, b_elems, a, b);
 }
 
+// Stores four vectors `v0..v3` interleaved into one stream
+// (`[a0,b0,c0,d0, a1,b1,c1,d1, ...]`).
+//
+// On 64-bit Arm NEON, the 4-way `st4` instruction is much slower than 2-way
+// `st2` or regular stores:
+//   - For 1- to 4-byte elements, interleave `(a, c)` and `(b, d)` in registers
+//     and write them using two `T`-typed 2-way `st2` stores.
+//   - For 8-byte elements on 128-bit NEON (2 elements per vector), rearrange
+//     them in registers and do four plain stores.
+template <class D>
+HWY_INLINE void FastStoreInterleaved4(const hn::Vec<D>& v0,
+                                      const hn::Vec<D>& v1,
+                                      const hn::Vec<D>& v2,
+                                      const hn::Vec<D>& v3, D d,
+                                      hn::TFromD<D>* HWY_RESTRICT unaligned) {
+#if HWY_ARCH_ARM_A64 && (HWY_TARGET & HWY_ALL_NEON)
+  if constexpr (sizeof(hn::TFromD<D>) <= 4 && D().MaxLanes() >= 2) {
+    const size_t lanes = hn::Lanes(d);
+    const auto ac_lo = hn::InterleaveWholeLower(d, v0, v2);
+    const auto bd_lo = hn::InterleaveWholeLower(d, v1, v3);
+    const auto ac_hi = hn::InterleaveWholeUpper(d, v0, v2);
+    const auto bd_hi = hn::InterleaveWholeUpper(d, v1, v3);
+    hn::StoreInterleaved2(ac_lo, bd_lo, d, unaligned);
+    hn::StoreInterleaved2(ac_hi, bd_hi, d, unaligned + 2 * lanes);
+    return;
+  }
+  if constexpr (sizeof(hn::TFromD<D>) == 8 && D().MaxLanes() == 2) {
+    hn::StoreU(hn::InterleaveLower(d, v0, v1), d, unaligned + 0);  // [a0, b0]
+    hn::StoreU(hn::InterleaveLower(d, v2, v3), d, unaligned + 2);  // [c0, d0]
+    hn::StoreU(hn::InterleaveUpper(d, v0, v1), d, unaligned + 4);  // [a1, b1]
+    hn::StoreU(hn::InterleaveUpper(d, v2, v3), d, unaligned + 6);  // [c1, d1]
+    return;
+  }
+#endif
+  hn::StoreInterleaved4(v0, v1, v2, v3, d, unaligned);
+}
+
+template <typename T>
+HWY_INLINE auto MainInterleaveTag() {
+#if HWY_MIN_BYTES > 32
+  if constexpr (HWY_TARGET == HWY_AVX3_ZEN4) {
+    // HWY_AVX3_ZEN4 splits 512-bit ops into 256-bit halves, so using 256-bit
+    // directly avoids extra shuffles.
+    return hn::FixedTag<T, 32 / sizeof(T)>();
+  } else {
+    return hn::ScalableTag<T>();
+  }
+#else
+  return hn::ScalableTag<T>();
+#endif
+}
+
+// Pairs two vectors per input row on 128-bit Arm NEON so loads use `ldp`
+// without bursting 4 `st3` stores back-to-back (which stalls Neoverse V2's
+// store queue / L1D).
+template <class D>
+constexpr int InterleaveBatchVectors() {
+#if HWY_ARCH_ARM_A64 && (HWY_TARGET & HWY_ALL_NEON)
+  if constexpr (D().MaxBytes() == 16) {
+    return 2;
+  }
+#endif
+  return 1;
+}
+
+// Loads `M` consecutive vectors from each of the `K` input rows at `a` and
+// writes `M` interleaved groups of `K` vectors to `out`.
+template <int K, int M, class D>
+HWY_INLINE void InterleaveBatch(D d, const char* a, int64_t lda,
+                                hn::TFromD<D>* out) {
+  static_assert(K >= 2 && K <= 4);
+  static_assert(M == 1 || M == 2);
+  using T = hn::TFromD<D>;
+#if HWY_HAVE_SCALABLE
+  static_assert(M == 1);
+  if constexpr (K == 2) {
+    const auto v0 = hn::LoadU(d, reinterpret_cast<const T*>(a));
+    const auto v1 = hn::LoadU(d, reinterpret_cast<const T*>(a + lda));
+    hn::StoreInterleaved2(v0, v1, d, out);
+  } else if constexpr (K == 3) {
+    const auto v0 = hn::LoadU(d, reinterpret_cast<const T*>(a));
+    const auto v1 = hn::LoadU(d, reinterpret_cast<const T*>(a + lda));
+    const auto v2 = hn::LoadU(d, reinterpret_cast<const T*>(a + 2 * lda));
+    hn::StoreInterleaved3(v0, v1, v2, d, out);
+  } else {
+    const auto v0 = hn::LoadU(d, reinterpret_cast<const T*>(a));
+    const auto v1 = hn::LoadU(d, reinterpret_cast<const T*>(a + lda));
+    const auto v2 = hn::LoadU(d, reinterpret_cast<const T*>(a + 2 * lda));
+    const auto v3 = hn::LoadU(d, reinterpret_cast<const T*>(a + 3 * lda));
+    FastStoreInterleaved4(v0, v1, v2, v3, d, out);
+  }
+#else
+  constexpr int64_t kElemBytes = static_cast<int64_t>(sizeof(T));
+  const int64_t lanes = static_cast<int64_t>(hn::Lanes(d));
+  hn::Vec<D> rows[K][M];
+  for (int row = 0; row < K; ++row) {
+    const char* row_ptr = a + row * lda;
+    for (int m = 0; m < M; ++m) {
+      rows[row][m] = hn::LoadU(
+          d, reinterpret_cast<const T*>(row_ptr + m * lanes * kElemBytes));
+    }
+  }
+  for (int m = 0; m < M; ++m) {
+    T* out_m = out + m * K * lanes;
+    if constexpr (K == 2) {
+      hn::StoreInterleaved2(rows[0][m], rows[1][m], d, out_m);
+    } else if constexpr (K == 3) {
+      hn::StoreInterleaved3(rows[0][m], rows[1][m], rows[2][m], d, out_m);
+    } else if constexpr (K == 4) {
+      FastStoreInterleaved4(rows[0][m], rows[1][m], rows[2][m], rows[3][m], d,
+                            out_m);
+    }
+  }
+#endif
+}
+
+template <int K, class D>
+HWY_INLINE void InterleaveRows(D d, int64_t count, int64_t da, int64_t db,
+                               int64_t lda, int64_t n,
+                               const char* HWY_RESTRICT a,
+                               char* HWY_RESTRICT b) {
+  using T = hn::TFromD<D>;
+  constexpr int64_t kElemBytes = static_cast<int64_t>(sizeof(T));
+  constexpr int kBatch = InterleaveBatchVectors<D>();
+  const int64_t lanes = static_cast<int64_t>(hn::Lanes(d));
+  const int64_t step = kBatch * lanes;
+  const int64_t chunks = n / step;
+  const int64_t done = chunks * step;
+
+  auto run_chunks = [&](const char* a_r, char* b_r) HWY_ATTR {
+    T* out = reinterpret_cast<T*>(b_r);
+    for (int64_t c = 0; c < chunks;
+         ++c, a_r += step * kElemBytes, out += K * step) {
+      InterleaveBatch<K, kBatch>(d, a_r, lda, out);
+    }
+  };
+  auto run_tail = [&](const char* a_r, char* b_r) HWY_ATTR {
+    int64_t i = done;
+    if constexpr (kBatch == 2) {
+      if (i + lanes <= n) {
+        InterleaveBatch<K, 1>(d, a_r + i * kElemBytes, lda,
+                              reinterpret_cast<T*>(b_r + i * K * kElemBytes));
+        i += lanes;
+      }
+    }
+    if (i < n) {
+      const int64_t tail = n - lanes;
+      InterleaveBatch<K, 1>(d, a_r + tail * kElemBytes, lda,
+                            reinterpret_cast<T*>(b_r + tail * K * kElemBytes));
+    }
+  };
+
+  if (done == n) {
+    ForEachRow(count, da, db, a, b, run_chunks);
+  } else if (chunks == 0) {
+    ForEachRow(count, da, db, a, b, run_tail);
+  } else {
+    ForEachRow(count, da, db, a, b, [&](const char* a_r, char* b_r) HWY_ATTR {
+      run_chunks(a_r, b_r);
+      run_tail(a_r, b_r);
+    });
+  }
+}
+
+// Variant of `InterleaveRows` for rows with `Lanes(d) <= n < 2 * Lanes(d)`.
+template <int K, class D>
+HWY_INLINE void InterleaveOneOrTwo(D d, int64_t count, int64_t da, int64_t db,
+                                   int64_t lda, int64_t n,
+                                   const char* HWY_RESTRICT a,
+                                   char* HWY_RESTRICT b) {
+  using T = hn::TFromD<D>;
+  constexpr int64_t kElemBytes = static_cast<int64_t>(sizeof(T));
+  const int64_t rem = n - static_cast<int64_t>(hn::Lanes(d));
+  if (rem == 0) {
+    ForEachRow(count, da, db, a, b, [&](const char* a_r, char* b_r) HWY_ATTR {
+      InterleaveBatch<K, 1>(d, a_r, lda, reinterpret_cast<T*>(b_r));
+    });
+  } else {
+    ForEachRow(count, da, db, a, b, [&](const char* a_r, char* b_r) HWY_ATTR {
+      InterleaveBatch<K, 1>(d, a_r, lda, reinterpret_cast<T*>(b_r));
+      InterleaveBatch<K, 1>(d, a_r + rem * kElemBytes, lda,
+                            reinterpret_cast<T*>(b_r + rem * K * kElemBytes));
+    });
+  }
+}
+
+#if HWY_TARGET != HWY_SCALAR
+// Handles rows shorter than `Lanes(main_d)` out of line so the main loop does
+// not spill registers or load shuffle tables for narrower vector widths.
+template <typename T, int K, size_t kMainBytes>
+HWY_NOINLINE HWY_FLATTEN void InterleaveNarrowRows(int64_t count, int64_t da,
+                                                   int64_t db, int64_t lda,
+                                                   int64_t n,
+                                                   const char* HWY_RESTRICT a,
+                                                   char* HWY_RESTRICT b) {
+#if HWY_MIN_BYTES > 32
+  if constexpr (kMainBytes > 32) {
+    if (n >= static_cast<int64_t>(32 / sizeof(T))) {
+      InterleaveOneOrTwo<K>(hn::FixedTag<T, 32 / sizeof(T)>(), count, da, db,
+                            lda, n, a, b);
+      return;
+    }
+  }
+#endif
+#if HWY_MIN_BYTES > 16 || HWY_HAVE_SCALABLE
+  if constexpr (kMainBytes > 16) {
+    if (n >= static_cast<int64_t>(16 / sizeof(T))) {
+#if HWY_HAVE_SCALABLE
+      InterleaveRows<K>(hn::Full128<T>(), count, da, db, lda, n, a, b);
+#else
+      InterleaveOneOrTwo<K>(hn::Full128<T>(), count, da, db, lda, n, a, b);
+#endif
+      return;
+    }
+  }
+#endif
+  if constexpr (sizeof(T) <= 4) {
+    if (n >= static_cast<int64_t>(8 / sizeof(T))) {
+      InterleaveOneOrTwo<K>(hn::FixedTag<T, 8 / sizeof(T)>(), count, da, db,
+                            lda, n, a, b);
+      return;
+    }
+  }
+  InterleaveScalarFallback<sizeof(T), K>(count, da, db, lda, n, a, b);
+}
+#endif
+
+// Zips `op->count` groups of `K` rows of `op->a_elems` elements spaced
+// `op->lda` bytes apart in `a + i*op->da` into contiguous runs of
+// `op->a_elems * K` elements in `b + i*op->db`, computing
+// `b[K * j + k] = a[k][j]`.
+template <typename Spec>
+ABSL_ATTRIBUTE_FUNC_ALIGN(64)
+HWY_FLATTEN void OpInterleaveHwy(const TransposeOp* HWY_RESTRICT op,
+                                 const char* a, char* b, char* /*scratch*/) {
+  using T = hwy::UnsignedFromSize<Spec::kElemSize>;
+  constexpr int k = Spec::kRows;
+  const int64_t count = op->count;
+  const int64_t da = op->da;
+  const int64_t db = op->db;
+  const int64_t lda = op->lda;
+  const int a_elems = op->a_elems;
+  if (count <= 0 || a_elems <= 0) {
+    return;
+  }
+  if (HWY_UNLIKELY(
+          !ArePointersAndStridesAligned<T>(count, da, db, lda, a, b))) {
+    InterleaveScalarFallback<sizeof(T), k>(count, da, db, lda, a_elems, a, b);
+    return;
+  }
+  const auto main_d = MainInterleaveTag<T>();
+#if HWY_TARGET != HWY_SCALAR
+  if (HWY_UNLIKELY(a_elems < static_cast<int64_t>(hn::Lanes(main_d)))) {
+    InterleaveNarrowRows<T, k, decltype(main_d)().MaxBytes()>(
+        count, da, db, lda, a_elems, a, b);
+    return;
+  }
+#endif
+  InterleaveRows<k>(main_d, count, da, db, lda, a_elems, a, b);
+}
 }  // namespace HWY_NAMESPACE
 }  // namespace xla
 HWY_AFTER_NAMESPACE();
@@ -408,15 +703,46 @@ namespace {
 // Bundles element size and row count into one type so `HWY_EXPORT_T` receives a
 // single macro argument without a comma (required for Highway 1.4.0).
 template <size_t elem_size, int k>
-struct DeinterleaveSpec {
+struct InterleaveSpec {
   static constexpr size_t kElemSize = elem_size;
   static constexpr int kRows = k;
 };
 
 template <size_t elem_size, int k>
+TransposeOp::Fn GetInterleaveHwyOp() {
+  EnsureHighwayTargetInitialized();
+  using Spec = InterleaveSpec<elem_size, k>;
+  HWY_EXPORT_T(Table, OpInterleaveHwy<Spec>);
+  return HWY_DYNAMIC_POINTER_T(Table);
+}
+
+// Plain loop for larger K (5, 6, 7) or 16-byte interleave where the compiler's
+// own codegen is used instead of an explicit Highway kernel.
+template <size_t elem_size, int K>
+ABSL_ATTRIBUTE_FUNC_ALIGN(64)
+void OpInterleaveScalar(const TransposeOp* __restrict op,
+                        const char* __restrict a, char* __restrict b,
+                        char* __restrict /*scratch*/) {
+  InterleaveScalarImpl<elem_size, K>(op->count, op->da, op->db, op->lda,
+                                     op->a_elems, a, b);
+}
+
+template <size_t elem_size, int k>
+TransposeOp::Fn PickInterleaveOp() {
+  if constexpr (InterleaveKernelIsFaster(elem_size, k)) {
+    if constexpr (elem_size <= 8 && k <= 4) {
+      return GetInterleaveHwyOp<elem_size, k>();
+    } else {
+      return &OpInterleaveScalar<elem_size, k>;
+    }
+  }
+  return nullptr;
+}
+
+template <size_t elem_size, int k>
 TransposeOp::Fn GetDeinterleaveHwyOp() {
   EnsureHighwayTargetInitialized();
-  using Spec = DeinterleaveSpec<elem_size, k>;
+  using Spec = InterleaveSpec<elem_size, k>;
   HWY_EXPORT_T(Table, OpDeinterleaveHwy<Spec>);
   return HWY_DYNAMIC_POINTER_T(Table);
 }
@@ -426,9 +752,6 @@ ABSL_ATTRIBUTE_FUNC_ALIGN(64)
 void OpDeinterleaveScalar(const TransposeOp* __restrict op,
                           const char* __restrict a, char* __restrict b,
                           char* __restrict /*scratch*/) {
-  if (op->count <= 0 || op->b_elems <= 0) {
-    return;
-  }
   DeinterleaveScalar<T, K>(op->count, op->da, op->db, op->ldb, op->b_elems, a,
                            b);
 }
@@ -476,6 +799,42 @@ TransposeOp::Fn GetDeinterleaveOp(size_t elem_size, int64_t k) {
       return dispatch_k(std::integral_constant<size_t, 4>{});
     case 8:
       return dispatch_k(std::integral_constant<size_t, 8>{});
+    default:
+      return nullptr;
+  }
+}
+
+TransposeOp::Fn GetInterleaveOp(size_t elem_size, int64_t k) {
+  auto dispatch_k = [&](auto elem_tag) -> TransposeOp::Fn {
+    constexpr size_t kSize = decltype(elem_tag)::value;
+    switch (k) {
+      case 2:
+        return PickInterleaveOp<kSize, 2>();
+      case 3:
+        return PickInterleaveOp<kSize, 3>();
+      case 4:
+        return PickInterleaveOp<kSize, 4>();
+      case 5:
+        return PickInterleaveOp<kSize, 5>();
+      case 6:
+        return PickInterleaveOp<kSize, 6>();
+      case 7:
+        return PickInterleaveOp<kSize, 7>();
+      default:
+        return nullptr;
+    }
+  };
+  switch (elem_size) {
+    case 1:
+      return dispatch_k(std::integral_constant<size_t, 1>{});
+    case 2:
+      return dispatch_k(std::integral_constant<size_t, 2>{});
+    case 4:
+      return dispatch_k(std::integral_constant<size_t, 4>{});
+    case 8:
+      return dispatch_k(std::integral_constant<size_t, 8>{});
+    case 16:
+      return dispatch_k(std::integral_constant<size_t, 16>{});
     default:
       return nullptr;
   }

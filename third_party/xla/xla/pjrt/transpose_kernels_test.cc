@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "hwy/targets.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/pjrt/transpose_kernels_internal.h"
 
 namespace xla {
 namespace {
@@ -52,9 +53,13 @@ int64_t StridedStart(int64_t extent, int64_t stride) {
 void CheckTransposeKernel(TransposeOp::Fn fn, size_t elem_size, int64_t rows,
                           int64_t cols, int64_t lda, int64_t ldb,
                           int64_t count = 1, size_t byte_offset = 0) {
-  const int64_t slice_a =
-      lda == 0 ? cols * static_cast<int64_t>(elem_size) : rows * std::abs(lda);
-  const int64_t slice_b = cols * std::abs(ldb);
+  const int64_t elem_bytes = static_cast<int64_t>(elem_size);
+  const int64_t slice_a = (rows > 0 && cols > 0)
+                              ? (rows - 1) * std::abs(lda) + cols * elem_bytes
+                              : 0;
+  const int64_t slice_b = (rows > 0 && cols > 0)
+                              ? (cols - 1) * std::abs(ldb) + rows * elem_bytes
+                              : 0;
 
   std::vector<uint8_t> input(byte_offset +
                              static_cast<size_t>(count * slice_a));
@@ -220,6 +225,7 @@ TEST(TransposeMacroKernelTest, InitializesHighwayTargetEagerly) {
       [] { return GetTransposeMacroKernelOp(sizeof(uint16_t), 8); });
   expect_eager_init([] { return GetPackSubbyteOp<4>(); });
   expect_eager_init([] { return GetDeinterleaveOp(sizeof(uint32_t), 2); });
+  expect_eager_init([] { return GetInterleaveOp(sizeof(uint32_t), 2); });
 }
 
 TEST(TransposeKernelsTest, MacroKernelUnsupportedReturnsNull) {
@@ -231,6 +237,11 @@ TEST(TransposeKernelsTest, MacroKernelUnsupportedReturnsNull) {
   EXPECT_EQ(GetTransposeMacroKernelOp(16, 8), nullptr);
 }
 
+// Row widths covering early-return (0), 8/16/32/64-byte vector boundaries (+/-1
+// across 1- to 8-byte elements), mid-tier overlapping tails (12, 24), and
+// multi-chunk main loops with non-aligned tails (135, 271).
+constexpr int64_t kTestRowWidths[] = {0,  1,  2,  3,  4,  7,  8,  12,  15, 16,
+                                      17, 24, 31, 32, 33, 63, 64, 135, 271};
 struct DeinterleaveParam {
   // Highway target bit (`0` selects the plain scalar fallback for k >= 5).
   int64_t target;
@@ -267,6 +278,10 @@ std::string ParamName(const ::testing::TestParamInfo<DeinterleaveParam>& info) {
   return FormatParam(info.param);
 }
 
+// Targets disabled in transpose_kernels_interleave.cc. Filtering them out
+// prevents tests from re-running fallback targets under disabled target names.
+constexpr int64_t kDisabledInterleaveTargets = XLA_INTERLEAVE_DISABLED_TARGETS;
+
 std::vector<DeinterleaveParam> BuildDeinterleaveParams() {
   std::vector<DeinterleaveParam> params;
   auto add_variants = [&](int64_t target, size_t elem_size, int k) {
@@ -284,6 +299,9 @@ std::vector<DeinterleaveParam> BuildDeinterleaveParams() {
     }
   };
   for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    if ((target & kDisabledInterleaveTargets) != 0) {
+      continue;
+    }
     for (size_t elem_size : {1, 2, 4, 8}) {
       for (int k : {2, 3, 4}) {
         add_variants(target, elem_size, k);
@@ -316,8 +334,7 @@ TEST_P(DeinterleaveKernelTest, MatchesReference) {
 
   const int64_t elem_size = static_cast<int64_t>(p.elem_size);
   const int64_t lda = p.k * elem_size;
-  for (int64_t n :
-       {0, 1, 2, 3, 4, 7, 8, 12, 15, 16, 17, 24, 31, 32, 33, 63, 64, 135}) {
+  for (int64_t n : kTestRowWidths) {
     const int64_t row_bytes = n * elem_size;
     // Test tightly-packed rows, element-aligned padded rows (leaving 0x5a guard
     // bytes between rows), and unaligned row strides (for elem_size > 1,
@@ -344,6 +361,129 @@ TEST(TransposeKernelsTest, DeinterleaveUnsupportedReturnsNull) {
   EXPECT_EQ(GetDeinterleaveOp(4, 6), nullptr);
   EXPECT_EQ(GetDeinterleaveOp(8, 5), nullptr);
   EXPECT_EQ(GetDeinterleaveOp(16, 2), nullptr);
+}
+
+struct InterleaveParam {
+  // Highway target bit (`0` selects the plain scalar fallback).
+  int64_t target;
+  // Element size in bytes (1, 2, 4, 8, or 16).
+  size_t elem_size;
+  // Number of input rows to interleave (2..7).
+  int k;
+  // Number of outer slices to process in one op call (`0`, `1`, or `3`).
+  int64_t count;
+  // Byte offset applied to input and output buffers to test pointer alignment.
+  size_t byte_offset;
+  // Sign of input row stride `lda`: -1 (negative), 0 (broadcast), 1 (positive).
+  int stride_sign;
+};
+
+std::string FormatParam(const InterleaveParam& p) {
+  std::string target =
+      p.target == 0 ? "Fallback" : std::string(hwy::TargetName(p.target));
+  for (char& c : target) {
+    if (!std::isalnum(static_cast<unsigned char>(c))) {
+      c = '_';
+    }
+  }
+  const char* stride_label =
+      p.stride_sign < 0 ? "neg" : (p.stride_sign == 0 ? "zero" : "pos");
+  return absl::StrFormat("%s_b%zu_k%d_c%d_off%zu_%s", target, p.elem_size, p.k,
+                         p.count, p.byte_offset, stride_label);
+}
+
+void PrintTo(const InterleaveParam& p, std::ostream* os) {
+  *os << FormatParam(p);
+}
+
+std::string InterleaveParamName(
+    const ::testing::TestParamInfo<InterleaveParam>& info) {
+  return FormatParam(info.param);
+}
+
+std::vector<InterleaveParam> BuildInterleaveParams() {
+  std::vector<InterleaveParam> params;
+  auto add_variants = [&](int64_t target, size_t elem_size, int k) {
+    for (int64_t count : {0, 1, 3}) {
+      for (int stride_sign : {-1, 0, 1}) {
+        params.push_back(
+            {target, elem_size, k, count, /*byte_offset=*/0, stride_sign});
+        params.push_back(
+            {target, elem_size, k, count, /*byte_offset=*/1, stride_sign});
+        if (elem_size > 1) {
+          params.push_back(
+              {target, elem_size, k, count, elem_size, stride_sign});
+        }
+      }
+    }
+  };
+  for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    if ((target & kDisabledInterleaveTargets) != 0) {
+      continue;
+    }
+    for (size_t elem_size : {1, 2, 4, 8}) {
+      for (int k : {2, 3, 4}) {
+        add_variants(target, elem_size, k);
+      }
+    }
+  }
+  for (size_t elem_size : {1, 2, 4, 8, 16}) {
+    for (int k : {2, 3, 5, 6, 7}) {
+      if (elem_size == 16 || k >= 5) {
+        add_variants(/*target=*/0, elem_size, k);
+      }
+    }
+  }
+  return params;
+}
+
+class InterleaveKernelTest : public ::testing::TestWithParam<InterleaveParam> {
+ protected:
+  void TearDown() override { hwy::SetSupportedTargetsForTest(0); }
+};
+
+TEST_P(InterleaveKernelTest, MatchesReference) {
+  const InterleaveParam& p = GetParam();
+  if (p.target != 0) {
+    hwy::SetSupportedTargetsForTest(p.target);
+  }
+  TransposeOp::Fn fn = GetInterleaveOp(p.elem_size, p.k);
+  ASSERT_NE(fn, nullptr);
+
+  const int64_t elem_size = static_cast<int64_t>(p.elem_size);
+  const int64_t ldb = p.k * elem_size;
+  for (int64_t n : kTestRowWidths) {
+    const int64_t row_bytes = n * elem_size;
+    if (p.stride_sign == 0) {
+      CheckTransposeKernel(fn, p.elem_size, p.k, n, /*lda=*/0, ldb, p.count,
+                           p.byte_offset);
+      continue;
+    }
+    // Test tightly-packed rows, element-aligned padded rows (leaving 0x5a guard
+    // bytes between rows), and unaligned row strides (for elem_size > 1,
+    // exercising the stride alignment guard with aligned a/b pointers).
+    CheckTransposeKernel(fn, p.elem_size, p.k, n, p.stride_sign * row_bytes,
+                         ldb, p.count, p.byte_offset);
+    CheckTransposeKernel(fn, p.elem_size, p.k, n,
+                         p.stride_sign * (row_bytes + 16), ldb, p.count,
+                         p.byte_offset);
+    if (elem_size > 1) {
+      CheckTransposeKernel(fn, p.elem_size, p.k, n,
+                           p.stride_sign * (row_bytes + 1), ldb, p.count,
+                           p.byte_offset);
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(Interleave, InterleaveKernelTest,
+                         ::testing::ValuesIn(BuildInterleaveParams()),
+                         InterleaveParamName);
+
+TEST(TransposeKernelsTest, InterleaveUnsupportedReturnsNull) {
+  EXPECT_EQ(GetInterleaveOp(1, 1), nullptr);
+  EXPECT_EQ(GetInterleaveOp(1, 8), nullptr);
+  EXPECT_EQ(GetInterleaveOp(16, 4), nullptr);
+  EXPECT_EQ(GetInterleaveOp(32, 2), nullptr);
 }
 
 }  // namespace
