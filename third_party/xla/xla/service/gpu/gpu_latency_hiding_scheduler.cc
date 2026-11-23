@@ -565,8 +565,20 @@ static bool IsPartiallyPipelinedSendRecv(const HloInstruction* instr) {
 // users would only take scheduling freedom away from the ready-set heuristics.
 static constexpr int64_t kMinForceEarlyFillBytes = 1024 * 1024;
 
-// Returns true if `instr` is a large fill: a loop fusion with no operands, such
-// as a broadcast of a scalar constant or an iota, whose outputs total at least
+// Returns true if every operand of `instr` is an effective scalar that is
+// either a constant or an effective parameter (parameter or tuple element /
+// bitcast of a parameter), so scheduling `instr` neither depends on upstream
+// compute/collectives nor allocates non-trivial live operand buffers.
+static bool HasOnlyIndependentScalarOperands(const HloInstruction& instr) {
+  return absl::c_all_of(instr.operands(), [](const HloInstruction* operand) {
+    return ShapeUtil::IsEffectiveScalar(operand->shape()) &&
+           (operand->IsConstant() || hlo_query::IsEffectiveParameter(*operand));
+  });
+}
+
+// Returns true if `instr` is a large independent fill: a loop fusion with no
+// operands (or only independent scalar parameter/constant operands), such as a
+// broadcast of a scalar or an iota, whose outputs total at least
 // kMinForceEarlyFillBytes. Multi-output fills count, too: copy insertion and
 // copy fusion leave behind fusions that emit a broadcast together with a copy
 // of it, and at scheduling time those are the largest fills in the module.
@@ -574,7 +586,7 @@ static constexpr int64_t kMinForceEarlyFillBytes = 1024 * 1024;
 static bool IsLargeIndependentFill(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion ||
       instr.fusion_kind() != HloInstruction::FusionKind::kLoop ||
-      instr.operand_count() != 0) {
+      !HasOnlyIndependentScalarOperands(instr)) {
     return false;
   }
   int64_t output_bytes = 0;
