@@ -624,6 +624,8 @@ def tridiagonal_solve(diagonals,
   if perturb_singular and not partial_pivoting:
     raise ValueError('partial_pivoting must be True if perturb_singular is.')
 
+  diagonals, rhs = _convert_tridiagonal_inputs(diagonals, rhs, diagonals_format)
+
   if diagonals_format == 'compact':
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
                                              conjugate_rhs, partial_pivoting,
@@ -780,6 +782,7 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
     ValueError: An unsupported type is provided as input, or when the input
     tensors have incorrect shapes.
   """
+  diagonals, rhs = _convert_tridiagonal_inputs(diagonals, rhs, diagonals_format)
   if diagonals_format == 'compact':
     superdiag = diagonals[..., 0, :]
     maindiag = diagonals[..., 1, :]
@@ -808,6 +811,35 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
   subdiag = array_ops.expand_dims(subdiag, -2)
 
   return linalg_ops.tridiagonal_mat_mul(superdiag, maindiag, subdiag, rhs, name)
+
+
+def _convert_tridiagonal_inputs(diagonals, rhs, diagonals_format):
+  """Converts array-like `diagonals` and `rhs` of a tridiagonal op to tensors.
+
+  Args:
+    diagonals: A `Tensor`, array-like, or a sequence of three of those,
+      depending on `diagonals_format`.
+    rhs: A `Tensor` or array-like.
+    diagonals_format: One of `compact`, `sequence` or `matrix`.
+
+  Returns:
+    A tuple `(diagonals, rhs)` of tensors, where `diagonals` is a tuple of
+    three tensors when `diagonals_format` is `sequence`. A `sequence` that does
+    not hold exactly three elements is returned unchanged, so that the callers
+    report their usual error for it.
+  """
+  if diagonals_format == 'sequence':
+    if isinstance(diagonals, (tuple, list)) and len(diagonals) == 3:
+      diagonals = tuple(
+          _convert_with_float32_hint(d, name='diagonals') for d in diagonals)
+      dtype = diagonals[1].dtype
+    else:
+      return diagonals, rhs
+  else:
+    diagonals = _convert_with_float32_hint(diagonals, name='diagonals')
+    dtype = diagonals.dtype
+  rhs = ops.convert_to_tensor(rhs, dtype_hint=dtype, name='rhs')
+  return diagonals, rhs
 
 
 def _convert_with_float32_hint(value, name):
