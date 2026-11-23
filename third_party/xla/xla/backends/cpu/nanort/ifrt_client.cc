@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <new>
