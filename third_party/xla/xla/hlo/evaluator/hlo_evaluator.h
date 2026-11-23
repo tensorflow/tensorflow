@@ -712,6 +712,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     // Returns the argument literals set for the evaluation.
     absl::Span<const Literal* const> args() const { return args_; }
     const Literal* arg(int64_t index) const { return args_.at(index); }
+    void set_arg(int64_t index, const Literal* arg) { args_.at(index) = arg; }
     bool has_args() const { return !args_.empty(); }
 
     // Sets the evaluated literal for the given instruction.

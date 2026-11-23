@@ -27,15 +27,19 @@ limitations under the License.
 #include <queue>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/flags/commandlineflag.h"
 #include "absl/flags/reflection.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -57,7 +61,10 @@ limitations under the License.
 #include "re2/re2.h"
 #include "xla/comparison_util.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
@@ -384,11 +391,13 @@ struct SubnormalFlushReport {
 };
 
 // Scans every array leaf of `expected` against `actual`. For each leaf with a
-// flushed subnormal, invokes `callback` with the flush mask so the caller can
-// record bounding boxes for exactly those elements.
+// flushed subnormal where `should_check_leaf(shape_index)` is true, invokes
+// `callback` with the flush mask so the caller can record bounding boxes for
+// exactly those elements.
 void DetectSubnormalFlushInLiteral(
     const LiteralSlice& expected, const LiteralSlice& actual,
     const literal_comparison::MiscompareCallback& callback,
+    absl::FunctionRef<bool(const ShapeIndex&)> should_check_leaf,
     const ShapeIndex& shape_index, SubnormalFlushReport& report) {
   if (expected.shape().IsTuple() && actual.shape().IsTuple()) {
     const int64_t count = std::min(expected.shape().tuple_shapes().size(),
@@ -398,11 +407,12 @@ void DetectSubnormalFlushInLiteral(
       next_index.push_back(i);
       DetectSubnormalFlushInLiteral(LiteralSlice(expected, {i}),
                                     LiteralSlice(actual, {i}), callback,
-                                    next_index, report);
+                                    should_check_leaf, next_index, report);
     }
     return;
   }
-  if (!expected.shape().IsArray() || !actual.shape().IsArray() ||
+  if (!should_check_leaf(shape_index) || !expected.shape().IsArray() ||
+      !actual.shape().IsArray() ||
       expected.shape().element_type() != actual.shape().element_type() ||
       !ShapeUtil::SameDimensions(expected.shape(), actual.shape())) {
     return;
@@ -449,10 +459,11 @@ void DetectSubnormalFlushInLiteral(
 // nullopt when nothing was flushed.
 std::optional<SubnormalFlushReport> DetectSubnormalFlushInLiteral(
     const LiteralSlice& expected, const LiteralSlice& actual,
-    const literal_comparison::MiscompareCallback& callback = nullptr) {
+    const literal_comparison::MiscompareCallback& callback,
+    absl::FunctionRef<bool(const ShapeIndex&)> should_check_leaf) {
   SubnormalFlushReport report;
-  DetectSubnormalFlushInLiteral(expected, actual, callback, ShapeIndex(),
-                                report);
+  DetectSubnormalFlushInLiteral(expected, actual, callback, should_check_leaf,
+                                ShapeIndex(), report);
   if (report.mismatches.empty()) {
     return std::nullopt;
   }
@@ -469,11 +480,13 @@ absl::Status NearWithSubnormalFlushCheck(
     const LiteralSlice& expected, const LiteralSlice& actual,
     const ErrorSpec& error_spec,
     const literal_comparison::MiscompareCallback& callback,
-    std::vector<NumericMismatch>& flush_mismatches) {
+    std::vector<NumericMismatch>& flush_mismatches,
+    absl::FunctionRef<bool(const ShapeIndex&)> should_check_leaf =
+        [](const ShapeIndex&) { return true; }) {
   absl::Status status = literal_comparison::Near(
       expected, actual, error_spec, /*detailed_message=*/true, callback);
   std::optional<SubnormalFlushReport> report = DetectSubnormalFlushInLiteral(
-      expected, actual, status.ok() ? callback : nullptr);
+      expected, actual, status.ok() ? callback : nullptr, should_check_leaf);
   if (!report.has_value()) {
     return status;
   }
@@ -518,6 +531,342 @@ bool InputsContainSubnormal(absl::Span<const Literal> inputs) {
   for (const Literal& input : inputs) {
     if (LiteralContainsSubnormal(LiteralSlice(input))) {
       return true;
+    }
+  }
+  return false;
+}
+
+bool IsBitPreservingOp(const HloInstruction& instr) {
+  switch (instr.opcode()) {
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kConstant:
+    case HloOpcode::kCopy:
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kGather:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kIota:
+    case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kPad:
+    case HloOpcode::kParameter:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReplicaId:
+    case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
+    case HloOpcode::kSelect:
+    case HloOpcode::kSend:
+    case HloOpcode::kSlice:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kTuple:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool IsIndexOrPredicateOperand(HloOpcode opcode, int64_t operand_idx) {
+  switch (opcode) {
+    case HloOpcode::kSelect:
+      return operand_idx == 0;
+    case HloOpcode::kGather:
+      return operand_idx == 1;
+    case HloOpcode::kDynamicSlice:
+      return operand_idx >= 1;
+    case HloOpcode::kDynamicUpdateSlice:
+      return operand_idx >= 2;
+    default:
+      return false;
+  }
+}
+
+// Summarizes bit preserving data flow within and across computations.
+//
+// `ComputeParamDeps` maps each `(instr, shape_index)` to the set of enclosing
+// computation `(parameter_number, shape_index)` leaves that reach it solely
+// through bit preserving ops, or `std::nullopt` if any non bit preserving op
+// is encountered. Callee summaries and upward caller checks are both memoized
+// per `(instr, shape_index)`, keeping call diamond traversals linear in both
+// top down and bottom up directions.
+class BitPreservingAnalyzer {
+ public:
+  bool IsBitPreserving(const HloInstruction* instr,
+                       absl::Span<const int64_t> shape_index) {
+    if (instr == nullptr) {
+      return false;
+    }
+    Key key{instr,
+            std::vector<int64_t>(shape_index.begin(), shape_index.end())};
+    if (auto [it, inserted] = output_memo_.emplace(key, false); !inserted) {
+      return it->second;
+    }
+    std::optional<ParamDepSet> deps = ComputeParamDeps(instr, shape_index);
+    if (!deps.has_value()) {
+      return false;
+    }
+    if (deps->empty()) {
+      output_memo_[std::move(key)] = true;
+      return true;
+    }
+    const HloComputation* computation = instr->parent();
+    if (computation->IsEntryComputation()) {
+      output_memo_[std::move(key)] = true;
+      return true;
+    }
+    // Only `call`, `fusion` and `async-start` forward their operands to callee
+    // parameters one to one; any other caller (`while`, `conditional`,
+    // reducers, ...) is treated as not bit preserving.
+    const absl::InlinedVector<HloInstruction*, 1> callers =
+        computation->caller_instructions();
+    bool has_forwarding_caller = false;
+    for (const HloInstruction* caller : callers) {
+      if (caller->opcode() == HloOpcode::kAsyncUpdate ||
+          caller->opcode() == HloOpcode::kAsyncDone) {
+        continue;
+      }
+      if (caller->opcode() != HloOpcode::kCall &&
+          caller->opcode() != HloOpcode::kFusion &&
+          caller->opcode() != HloOpcode::kAsyncStart) {
+        return false;
+      }
+      for (const ParamDep& dep : *deps) {
+        if (dep.param_number < 0 ||
+            dep.param_number >= caller->operand_count()) {
+          return false;
+        }
+        if (!IsBitPreserving(caller->operand(dep.param_number),
+                             dep.shape_index)) {
+          return false;
+        }
+      }
+      has_forwarding_caller = true;
+    }
+    output_memo_[std::move(key)] = has_forwarding_caller;
+    return has_forwarding_caller;
+  }
+
+ private:
+  struct Key {
+    const HloInstruction* instr;
+    std::vector<int64_t> shape_index;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const Key& k) {
+      return H::combine(std::move(h), k.instr, k.shape_index);
+    }
+    bool operator==(const Key& other) const {
+      return instr == other.instr && shape_index == other.shape_index;
+    }
+  };
+
+  struct ParamDep {
+    int64_t param_number;
+    std::vector<int64_t> shape_index;
+
+    bool operator<(const ParamDep& other) const {
+      return std::tie(param_number, shape_index) <
+             std::tie(other.param_number, other.shape_index);
+    }
+  };
+
+  using ParamDepSet = absl::btree_set<ParamDep>;
+
+  std::optional<ParamDepSet> MapCalleeDeps(
+      const HloInstruction* caller, const HloInstruction* callee_root,
+      absl::Span<const int64_t> callee_shape_index) {
+    std::optional<ParamDepSet> callee_deps =
+        ComputeParamDeps(callee_root, callee_shape_index);
+    if (!callee_deps.has_value()) {
+      return std::nullopt;
+    }
+    ParamDepSet mapped;
+    for (const ParamDep& dep : *callee_deps) {
+      if (dep.param_number < 0 || dep.param_number >= caller->operand_count()) {
+        return std::nullopt;
+      }
+      std::optional<ParamDepSet> op_deps =
+          ComputeParamDeps(caller->operand(dep.param_number), dep.shape_index);
+      if (!op_deps.has_value()) {
+        return std::nullopt;
+      }
+      mapped.insert(op_deps->begin(), op_deps->end());
+    }
+    return mapped;
+  }
+
+  std::optional<ParamDepSet> ComputeParamDeps(
+      const HloInstruction* instr, absl::Span<const int64_t> shape_index) {
+    if (instr == nullptr) {
+      return std::nullopt;
+    }
+    Key key{instr,
+            std::vector<int64_t>(shape_index.begin(), shape_index.end())};
+    if (auto [it, inserted] = summary_memo_.emplace(key, std::nullopt);
+        !inserted) {
+      return it->second;
+    }
+    auto record =
+        [&](std::optional<ParamDepSet> result) -> std::optional<ParamDepSet> {
+      summary_memo_[std::move(key)] = result;
+      return result;
+    };
+
+    if (instr->opcode() == HloOpcode::kCollectivePermute &&
+        Cast<HloCollectivePermuteInstruction>(instr)->inplace()) {
+      if (instr->operand_count() < 2) {
+        return std::nullopt;
+      }
+      // In-place `collective-permute(input_buf, output_buf, in_off, out_off)`
+      // writes `input_buf` into `output_buf` and returns `output_buf`'s shape.
+      // Ignore the integer offset operands and check both buffers at
+      // `shape_index`.
+      std::optional<ParamDepSet> input_deps =
+          ComputeParamDeps(instr->operand(0), shape_index);
+      if (!input_deps.has_value()) {
+        return std::nullopt;
+      }
+      std::optional<ParamDepSet> output_deps =
+          ComputeParamDeps(instr->operand(1), shape_index);
+      if (!output_deps.has_value()) {
+        return std::nullopt;
+      }
+      input_deps->insert(output_deps->begin(), output_deps->end());
+      return record(std::move(input_deps));
+    }
+    if ((instr->opcode() == HloOpcode::kTuple ||
+         instr->opcode() == HloOpcode::kAllGather ||
+         instr->opcode() == HloOpcode::kCollectivePermute) &&
+        instr->shape().IsTuple() && !shape_index.empty()) {
+      const int64_t idx = shape_index.front();
+      if (idx < 0 || idx >= instr->operand_count()) {
+        return std::nullopt;
+      }
+      return record(
+          ComputeParamDeps(instr->operand(idx), shape_index.subspan(1)));
+    }
+    if (instr->opcode() == HloOpcode::kGetTupleElement) {
+      std::vector<int64_t> next_index = {instr->tuple_index()};
+      next_index.insert(next_index.end(), shape_index.begin(),
+                        shape_index.end());
+      return record(ComputeParamDeps(instr->operand(0), next_index));
+    }
+    if (instr->opcode() == HloOpcode::kAsyncUpdate ||
+        instr->opcode() == HloOpcode::kCopy ||
+        instr->opcode() == HloOpcode::kOptimizationBarrier) {
+      return record(ComputeParamDeps(instr->operand(0), shape_index));
+    }
+    if (instr->opcode() == HloOpcode::kAsyncDone) {
+      std::vector<int64_t> next_index = {1};
+      next_index.insert(next_index.end(), shape_index.begin(),
+                        shape_index.end());
+      return record(ComputeParamDeps(instr->operand(0), next_index));
+    }
+    if (instr->opcode() == HloOpcode::kAsyncStart) {
+      if (shape_index.size() >= 2 && shape_index[0] == 0) {
+        const int64_t idx = shape_index[1];
+        if (idx < 0 || idx >= instr->operand_count()) {
+          return std::nullopt;
+        }
+        return record(
+            ComputeParamDeps(instr->operand(idx), shape_index.subspan(2)));
+      }
+      if (!shape_index.empty() && shape_index[0] == 1) {
+        return record(MapCalleeDeps(instr, instr->async_wrapped_instruction(),
+                                    shape_index.subspan(1)));
+      }
+      return std::nullopt;
+    }
+    if (instr->opcode() == HloOpcode::kFusion) {
+      return record(
+          MapCalleeDeps(instr, instr->fused_expression_root(), shape_index));
+    }
+    if (instr->opcode() == HloOpcode::kCall) {
+      const HloInstruction* callee_root =
+          instr->to_apply() == nullptr ? nullptr
+                                       : instr->to_apply()->root_instruction();
+      return record(MapCalleeDeps(instr, callee_root, shape_index));
+    }
+    if (instr->opcode() == HloOpcode::kParameter) {
+      ParamDepSet deps;
+      deps.insert(ParamDep{
+          instr->parameter_number(),
+          std::vector<int64_t>(shape_index.begin(), shape_index.end()),
+      });
+      return record(std::move(deps));
+    }
+    if (!IsBitPreservingOp(*instr)) {
+      return std::nullopt;
+    }
+    ParamDepSet deps;
+    for (int64_t i = 0; i < instr->operand_count(); ++i) {
+      if (IsIndexOrPredicateOperand(instr->opcode(), i) ||
+          instr->operand(i)->shape().IsToken()) {
+        continue;
+      }
+      std::optional<ParamDepSet> op_deps =
+          ComputeParamDeps(instr->operand(i), {});
+      if (!op_deps.has_value()) {
+        return std::nullopt;
+      }
+      deps.insert(op_deps->begin(), op_deps->end());
+    }
+    return record(std::move(deps));
+  }
+
+  absl::flat_hash_map<Key, std::optional<ParamDepSet>> summary_memo_;
+  absl::flat_hash_map<Key, bool> output_memo_;
+};
+
+// Returns whether any floating point output leaf, or any float to non float
+// `bitcast-convert`, is fed solely by a bit preserving chain. Such modules can
+// hide a backend subnormal flush when both fused and defused runs flush the
+// same bit preserving op.
+bool HasBitPreservingSubnormalPath(const HloModule& module) {
+  if (!module.has_entry_computation()) {
+    return false;
+  }
+  const HloInstruction* root = module.entry_computation()->root_instruction();
+  BitPreservingAnalyzer analyzer;
+  bool has_bit_preserving_path = false;
+  ShapeUtil::ForEachSubshape(
+      root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (has_bit_preserving_path) {
+          return;
+        }
+        if (subshape.IsArray() &&
+            primitive_util::IsFloatingPointType(subshape.element_type()) &&
+            analyzer.IsBitPreserving(root, index)) {
+          has_bit_preserving_path = true;
+        }
+      });
+  if (has_bit_preserving_path) {
+    return true;
+  }
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      if (instr->opcode() == HloOpcode::kBitcastConvert &&
+          instr->operand_count() == 1 && instr->shape().IsArray() &&
+          instr->operand(0)->shape().IsArray() &&
+          !primitive_util::IsFloatingPointType(instr->shape().element_type()) &&
+          primitive_util::IsFloatingPointType(
+              instr->operand(0)->shape().element_type()) &&
+          analyzer.IsBitPreserving(instr, {})) {
+        return true;
+      }
     }
   }
   return false;
@@ -579,10 +928,17 @@ absl::Status CompareOutputs(const HloModule& module, const Literal& test_output,
   absl::flat_hash_map<int64_t, numerics::debug_info::MismatchBoundingBox>
       computed_bboxes;
   std::vector<NumericMismatch> flush_mismatches;
+  BitPreservingAnalyzer bit_preserving_analyzer;
+  const HloInstruction* root =
+      module.has_entry_computation()
+          ? module.entry_computation()->root_instruction()
+          : nullptr;
   absl::Status status = NearWithSubnormalFlushCheck(
       reference_output, test_output, error_spec,
       MakeMiscompareCallback(std::string(literal_prefix), &computed_bboxes),
-      flush_mismatches);
+      flush_mismatches, [&](const ShapeIndex& shape_index) {
+        return bit_preserving_analyzer.IsBitPreserving(root, shape_index);
+      });
   NumericCheck* numeric_check = result.add_numeric_checks();
   numeric_check->set_name(check_name);
   numeric_check->set_expected_contains_inf_or_nan(
@@ -775,6 +1131,7 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
 
   const HloInstruction* entry_root =
       test_module_clone->entry_computation()->root_instruction();
+  BitPreservingAnalyzer bit_preserving_analyzer;
   for (auto* computation : test_module_clone->computations()) {
     for (auto* instruction : computation->instructions()) {
       int64_t hlo_id = next_hlo_id++;
@@ -813,6 +1170,15 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
 
       double abs_error = options.abs_error_bound;
       double rel_error = options.rel_error_bound;
+      absl::flat_hash_set<ShapeIndex> bit_preserving_leaves;
+      ShapeUtil::ForEachSubshape(
+          instruction->shape(),
+          [&](const Shape& subshape, const ShapeIndex& index) {
+            if (subshape.IsArray() &&
+                bit_preserving_analyzer.IsBitPreserving(instruction, index)) {
+              bit_preserving_leaves.insert(index);
+            }
+          });
 
       xla::HloOutputCallback dynamic_cb;
       dynamic_cb.callback_id = hlo_id;
@@ -820,6 +1186,7 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
       dynamic_cb.callback =
           [op_name, ref_op_name, expected_literals, record_verified,
            module_name = original_module.name(), abs_error, rel_error,
+           bit_preserving_leaves = std::move(bit_preserving_leaves),
            result_mutex, test_result](
               int64_t replica_id, int64_t partition_id,
               absl::Span<std::shared_ptr<const Literal> const> literals) {
@@ -868,7 +1235,9 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
                 expected_literal, actual_literal, error_spec,
                 MakeMiscompareCallback(absl::StrCat(module_name, "-", op_name),
                                        &computed_bboxes),
-                flush_mismatches);
+                flush_mismatches, [&](const ShapeIndex& idx) {
+                  return bit_preserving_leaves.contains(idx);
+                });
 
             if (!matched.ok()) {
               std::string error_message = absl::StrFormat(
@@ -1115,10 +1484,13 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
   }
 
   // The backend may flush subnormals to zero in both the fused and the
-  // defused run, so a matching stage 1 proves nothing about subnormal inputs.
-  // Only skip the stage 1 short circuit when a reference will actually run.
-  const bool inputs_have_subnormals =
-      reference_runner != nullptr && InputsContainSubnormal(input_data);
+  // defused run, so a matching stage 1 proves nothing about subnormal inputs
+  // when a floating point output leaf or float to non float `bitcast-convert`
+  // is produced by a bit preserving chain. Only skip the stage 1 short circuit
+  // when a reference will actually run.
+  const bool inputs_have_subnormals = reference_runner != nullptr &&
+                                      HasBitPreservingSubnormalPath(module) &&
+                                      InputsContainSubnormal(input_data);
   if (defused_output.ok()) {
     // Compare Test vs Defused Test.
     absl::Status compare_status =
