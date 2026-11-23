@@ -99,6 +99,7 @@ bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
       // they involve actual computation and not just data movement.
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
+    case F8E5M3FNU:
     case F8E8M0FNU:
       return !IsReductionCollective(reduction_op);
     default:

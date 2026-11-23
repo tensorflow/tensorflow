@@ -62,6 +62,7 @@ static absl::StatusOr<onecclDataType_t> ToCclDataType(PrimitiveType dtype,
     case F8E4M3FN:
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
+    case F8E5M3FNU:
     case F8E8M0FNU:
       return onecclInt8;
     case PRED:

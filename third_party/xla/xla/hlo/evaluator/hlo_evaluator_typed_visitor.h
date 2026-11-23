@@ -1322,6 +1322,7 @@ extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3b11fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e3m4, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m3fnu, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e8m0fnu, float>;
 
 }  // namespace xla
