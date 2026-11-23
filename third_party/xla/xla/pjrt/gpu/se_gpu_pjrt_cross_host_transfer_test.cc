@@ -217,12 +217,11 @@ TEST(StreamExecutorGpuClientTest, CrossHostTransferPoisonedDescriptor) {
 
   auto* const src_device = client->addressable_devices()[0];
 
-  Literal input_literal =
-      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
   ASSERT_OK_AND_ASSIGN(auto* src_memory_space,
                        src_device->default_memory_space());
-  ASSERT_OK_AND_ASSIGN(auto src_buffer, client->BufferFromHostLiteral(
-                                            input_literal, src_memory_space));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> src_buffer,
+                       client->CreateUninitializedBuffer(
+                           ShapeUtil::MakeShape(F32, {4}), src_memory_space));
 
   auto [promise, future] = MakePromise<std::string>();
 

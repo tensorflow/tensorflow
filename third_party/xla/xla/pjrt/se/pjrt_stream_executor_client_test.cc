@@ -927,11 +927,10 @@ TEST(PjRtStreamExecutorClientTest,
                                  std::make_unique<FailingHostMemoryAllocator>(),
                                  LinearizeThrottler::Options{}));
 
-  std::vector<int32_t> data(256, 1);
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> src_buf,
-      src_client->BufferFromHostLiteral(LiteralUtil::CreateR1<int32_t>(data),
-                                        src_client->memory_spaces()[0]));
+      src_client->CreateUninitializedBuffer(ShapeUtil::MakeShape(S32, {256}),
+                                            src_client->memory_spaces()[0]));
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> copied_buf,
       src_buf->CopyToMemorySpace(dst_client->memory_spaces()[0]));
