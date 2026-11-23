@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -50,6 +51,11 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/mock_command_buffer.h"
+#include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -65,7 +71,15 @@ absl::StatusOr<void*> LoadNativeFunctionPtr(se::StreamExecutor* executor,
 
 namespace {
 
+using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
+using ::testing::_;
+using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::testing::InSequence;
+using ::testing::Matcher;
+using ::testing::Ref;
+using ::testing::Return;
 
 struct KernelBinary {
   absl::Span<const uint8_t> bytes;
@@ -117,8 +131,9 @@ void RunRecordFfiTest(se::StreamExecutor* executor, ffi::Ffi& handler) {
   std::vector<int32_t> c(8, 0);
   DeviceMemoryBundle initial_memory;
   initial_memory.Allocate(executor, 8);
-  ASSERT_OK(
-      stream->Memcpy(&initial_memory.a, a.data(), a.size() * sizeof(int32_t)));
+  se::DeviceAddress<int32_t> ext_src = executor->AllocateArray<int32_t>(8);
+  ASSERT_OK(stream->Memcpy(&ext_src, a.data(), a.size() * sizeof(int32_t)));
+  ASSERT_OK(stream->MemZero(&initial_memory.a, a.size() * sizeof(int32_t)));
   ASSERT_OK(
       stream->Memcpy(&initial_memory.b, b.data(), b.size() * sizeof(int32_t)));
   ASSERT_OK(stream->MemZero(&initial_memory.scratch, 8 * sizeof(int32_t)));
@@ -127,12 +142,17 @@ void RunRecordFfiTest(se::StreamExecutor* executor, ffi::Ffi& handler) {
   ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
                        executor->CreateCommandBuffer(
                            stream_executor::CommandBuffer::Mode::kPrimary));
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* ext_dep,
+      cmd_buffer->CreateMemcpyD2D(&initial_memory.a, ext_src,
+                                  a.size() * sizeof(int32_t), {}));
 
   const XLA_FFI_RecordApi* ffi_api = GetXlaFfiRecordApi();
   int64_t num_commands = 0;
   const XLA_FFI_Command* commands_storage[2] = {nullptr, nullptr};
 
-  XLA_FFI_RecordContext record_ctx_c = {cmd_buffer.get(), executor, {}, false};
+  XLA_FFI_RecordContext record_ctx_c = {
+      cmd_buffer.get(), executor, {ext_dep}, false};
   XLA_FFI_RecordFrame record_frame = {
       &record_ctx_c,    ffi_api,       XLA_FFI_RecordAction_Create,
       commands_storage, &num_commands, 2};
@@ -163,8 +183,11 @@ void RunRecordFfiTest(se::StreamExecutor* executor, ffi::Ffi& handler) {
   std::vector<int32_t> b_new = {1, 2, 3, 4, 5, 6, 7, 8};
   DeviceMemoryBundle update_memory;
   update_memory.Allocate(executor, 8);
-  ASSERT_OK(stream->Memcpy(&update_memory.a, a_new.data(),
+  se::DeviceAddress<int32_t> update_ext_src =
+      executor->AllocateArray<int32_t>(8);
+  ASSERT_OK(stream->Memcpy(&update_ext_src, a_new.data(),
                            a_new.size() * sizeof(int32_t)));
+  ASSERT_OK(stream->MemZero(&update_memory.a, a_new.size() * sizeof(int32_t)));
   ASSERT_OK(stream->Memcpy(&update_memory.b, b_new.data(),
                            b_new.size() * sizeof(int32_t)));
   ASSERT_OK(stream->MemZero(&update_memory.scratch, 8 * sizeof(int32_t)));
@@ -178,6 +201,9 @@ void RunRecordFfiTest(se::StreamExecutor* executor, ffi::Ffi& handler) {
   ffi::InvokeContext update_context;
   update_context.extension_start = &record_extension.extension_base;
   ASSERT_OK(cmd_buffer->Update());  // Begin command buffer update.
+  ASSERT_OK(cmd_buffer->UpdateMemcpyD2D(ext_dep, &update_memory.a,
+                                        update_ext_src,
+                                        a_new.size() * sizeof(int32_t)));
   ASSERT_OK(ffi::Invoke(ffi::GetXlaFfiApi(), handler, call_frame,
                         update_context, ffi::ExecutionStage::kRecord));
   ASSERT_OK(cmd_buffer->Finalize());
@@ -463,6 +489,160 @@ TEST(RecordFfiTest, KernelLaunchRejectsInvalidRecordKernel) {
       ffi::TakeError(ffi_api->create_launch(
           &record_ctx, &valid_fn, &launch_params, &null_dep, 1, &out_cmd)),
       StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+class FakeCommand : public se::CommandBuffer::Command {};
+
+class FakeKernel : public se::Kernel {
+ public:
+  unsigned Arity() const override { return 0; }
+  absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(se::ThreadDim,
+                                                      size_t) const override {
+    return 1;
+  }
+  absl::Status Launch(const se::ThreadDim&, const se::BlockDim&,
+                      const std::optional<se::ClusterDim>&, se::Stream*,
+                      const se::KernelArgs&) override {
+    return absl::OkStatus();
+  }
+};
+
+TEST(RecordFfiTest, RecordCommandsResolveContextAndExplicitDependencies) {
+  se::MockStreamExecutor mock_executor;
+  ON_CALL(mock_executor, device_ordinal).WillByDefault(Return(0));
+  EXPECT_CALL(mock_executor, LoadKernel).WillOnce([] {
+    return std::make_unique<FakeKernel>();
+  });
+
+  FfiKernelRegistry registry(/*num_devices=*/1);
+  constexpr char kDummyCubin[] = "cubin";
+  ASSERT_OK_AND_ASSIGN(
+      const XLA_FFI_Kernel* kernel,
+      registry.Register(&mock_executor, "k0", kDummyCubin, sizeof(kDummyCubin),
+                        XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false));
+  ASSERT_OK_AND_ASSIGN(se::Kernel * se_kernel,
+                       FindDeviceKernel(kernel, /*device_ordinal=*/0));
+
+  se::MockCommandBuffer mock_cmd_buffer;
+  FakeCommand ext_dep_0;
+  FakeCommand ext_dep_1;
+  FakeCommand memcpy_root_se_cmd;
+  FakeCommand empty_root_se_cmd;
+  FakeCommand launch_root_se_cmd;
+  FakeCommand launch_chained_se_cmd;
+  FakeCommand memcpy_chained_se_cmd;
+  FakeCommand empty_join_se_cmd;
+
+  XLA_FFI_RecordContext record_ctx_c = {
+      &mock_cmd_buffer, &mock_executor, {&ext_dep_0, &ext_dep_1}, false};
+  const XLA_FFI_Command* commands_storage[8] = {};
+  int64_t num_commands = 0;
+  XLA_FFI_RecordFrame record_frame = {
+      &record_ctx_c,    GetXlaFfiRecordApi(), XLA_FFI_RecordAction_Create,
+      commands_storage, &num_commands,        8};
+  ffi::RecordContext record_ctx(ffi::GetXlaFfiApi(), &record_frame);
+
+  void* dummy_dst = reinterpret_cast<void*>(0x1000);
+  void* dummy_src = reinterpret_cast<void*>(0x2000);
+  constexpr size_t kCopyBytes = 32;
+  const XLA_FFI_LaunchDims dims = {{1, 1, 1}, {1, 1, 1}};
+  const std::vector<ffi::KernelArg> empty_args;
+
+  {
+    InSequence seq;
+    EXPECT_CALL(
+        mock_cmd_buffer,
+        CreateMemcpyD2D(_, _, kCopyBytes, ElementsAre(&ext_dep_0, &ext_dep_1)))
+        .WillOnce(Return(&memcpy_root_se_cmd));
+    EXPECT_CALL(mock_cmd_buffer,
+                CreateEmptyCmd(ElementsAre(&ext_dep_0, &ext_dep_1), _))
+        .WillOnce(Return(&empty_root_se_cmd));
+    EXPECT_CALL(
+        mock_cmd_buffer,
+        CreateLaunch(_, _, _, Matcher<const se::Kernel&>(Ref(*se_kernel)), _,
+                     ElementsAre(&ext_dep_0, &ext_dep_1), _))
+        .WillOnce(Return(&launch_root_se_cmd));
+    EXPECT_CALL(
+        mock_cmd_buffer,
+        CreateLaunch(_, _, _, Matcher<const se::Kernel&>(Ref(*se_kernel)), _,
+                     ElementsAre(&memcpy_root_se_cmd), _))
+        .WillOnce(Return(&launch_chained_se_cmd));
+    EXPECT_CALL(
+        mock_cmd_buffer,
+        CreateMemcpyD2D(_, _, kCopyBytes, ElementsAre(&launch_root_se_cmd)))
+        .WillOnce(Return(&memcpy_chained_se_cmd));
+    EXPECT_CALL(
+        mock_cmd_buffer,
+        CreateEmptyCmd(
+            ElementsAre(&launch_chained_se_cmd, &memcpy_chained_se_cmd), _))
+        .WillOnce(Return(&empty_join_se_cmd));
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      const XLA_FFI_Command* memcpy_root_cmd,
+      record_ctx.CreateMemcpyD2D(dummy_dst, dummy_src, kCopyBytes));
+  EXPECT_THAT(record_ctx.CreateEmptyCommand(), IsOk());
+  ASSERT_OK_AND_ASSIGN(const XLA_FFI_Command* launch_root_cmd,
+                       record_ctx.CreateLaunch(
+                           kernel, dims, /*shared_mem_bytes=*/0, empty_args));
+  ASSERT_OK_AND_ASSIGN(
+      const XLA_FFI_Command* launch_chained_cmd,
+      record_ctx.CreateLaunch(kernel, dims, /*shared_mem_bytes=*/0, empty_args,
+                              /*dependencies=*/{memcpy_root_cmd}));
+  ASSERT_OK_AND_ASSIGN(
+      const XLA_FFI_Command* memcpy_chained_cmd,
+      record_ctx.CreateMemcpyD2D(dummy_dst, dummy_src, kCopyBytes,
+                                 /*dependencies=*/{launch_root_cmd}));
+  EXPECT_THAT(record_ctx.CreateEmptyCommand(
+                  /*dependencies=*/{launch_chained_cmd, memcpy_chained_cmd}),
+              IsOk());
+}
+
+TEST(RecordFfiTest, MemcpyD2DAndEmptyCommandRejectInvalidArguments) {
+  se::MockStreamExecutor mock_executor;
+  se::MockCommandBuffer mock_cmd_buffer;
+  XLA_FFI_RecordContext record_ctx = {
+      &mock_cmd_buffer, &mock_executor, {}, false};
+  const XLA_FFI_RecordApi* ffi_api = GetXlaFfiRecordApi();
+  const XLA_FFI_Command* out_cmd = nullptr;
+  const XLA_FFI_Command* null_dep = nullptr;
+  void* dummy_dst = reinterpret_cast<void*>(0x1000);
+  void* dummy_src = reinterpret_cast<void*>(0x2000);
+
+  EXPECT_THAT(ffi::TakeError(ffi_api->create_memcpy_d2d(
+                  nullptr, dummy_dst, dummy_src, 32, nullptr, 0, &out_cmd)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("ctx and out_command")));
+  EXPECT_THAT(ffi::TakeError(ffi_api->create_memcpy_d2d(
+                  &record_ctx, dummy_dst, dummy_src, 32, nullptr, 0, nullptr)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("ctx and out_command")));
+  EXPECT_THAT(ffi::TakeError(ffi_api->create_memcpy_d2d(
+                  &record_ctx, dummy_dst, dummy_src, 32, nullptr, 1, &out_cmd)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("dependencies must not be null")));
+  EXPECT_THAT(
+      ffi::TakeError(ffi_api->create_memcpy_d2d(
+          &record_ctx, dummy_dst, dummy_src, 32, &null_dep, 1, &out_cmd)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("dependency command must not be null")));
+
+  EXPECT_THAT(ffi::TakeError(
+                  ffi_api->create_empty_command(nullptr, nullptr, 0, &out_cmd)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("ctx and out_command")));
+  EXPECT_THAT(ffi::TakeError(ffi_api->create_empty_command(&record_ctx, nullptr,
+                                                           0, nullptr)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("ctx and out_command")));
+  EXPECT_THAT(ffi::TakeError(ffi_api->create_empty_command(&record_ctx, nullptr,
+                                                           1, &out_cmd)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("dependencies must not be null")));
+  EXPECT_THAT(ffi::TakeError(ffi_api->create_empty_command(
+                  &record_ctx, &null_dep, 1, &out_cmd)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("dependency command must not be null")));
 }
 
 }  // namespace

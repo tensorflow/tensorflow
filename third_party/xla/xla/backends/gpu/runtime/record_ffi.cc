@@ -70,6 +70,30 @@ const XLA_FFI_Command* AsXlaFfiCommand(
       const_cast<se::CommandBuffer::Command*>(command));
 }
 
+// Returns `ctx->dependencies` when `num_dependencies == 0`, or validates and
+// converts the caller-specified `dependencies` otherwise.
+absl::StatusOr<std::vector<const se::CommandBuffer::Command*>>
+ResolveDependencies(const XLA_FFI_RecordContext* ctx,
+                    const XLA_FFI_Command* const* dependencies,
+                    uint32_t num_dependencies) {
+  if (num_dependencies == 0) {
+    return ctx->dependencies;
+  }
+  if (dependencies == nullptr) {
+    return absl::InvalidArgumentError(
+        "dependencies must not be null when num_dependencies > 0");
+  }
+  std::vector<const se::CommandBuffer::Command*> deps;
+  deps.reserve(num_dependencies);
+  for (uint32_t i = 0; i < num_dependencies; ++i) {
+    if (dependencies[i] == nullptr) {
+      return absl::InvalidArgumentError("dependency command must not be null");
+    }
+    deps.push_back(AsStreamExecutorCommand(dependencies[i]));
+  }
+  return deps;
+}
+
 struct FfiLaunchParams {
   LaunchDimensions launch_dimensions;
   std::optional<stream_executor::ClusterDim> cluster_dims;
@@ -139,10 +163,12 @@ XLA_FFI_Error* RecordKernelLaunch(
     const XLA_FFI_KernelLaunchParams* launch_params,
     const XLA_FFI_Command* const* dependencies, uint32_t num_dependencies,
     const XLA_FFI_Command** out_command) {
-  if (num_dependencies > 0 && dependencies == nullptr) {
-    return xla::ffi::CreateError(absl::InvalidArgumentError(
-        "dependencies must not be null when num_dependencies > 0"));
+  absl::StatusOr<std::vector<const se::CommandBuffer::Command*>> deps =
+      ResolveDependencies(ctx, dependencies, num_dependencies);
+  if (!deps.ok()) {
+    return xla::ffi::CreateError(deps.status());
   }
+  const std::vector<const se::CommandBuffer::Command*>& resolved_deps = *deps;
   const uint32_t shared_mem_bytes = launch_params->shared_mem_bytes;
   absl::StatusOr<FfiLaunchDims> dims =
       ConvertFfiLaunchDims(launch_params->launch_dims);
@@ -157,19 +183,6 @@ XLA_FFI_Error* RecordKernelLaunch(
 
   se::CommandBuffer* cmd_buffer = ctx->command_buffer;
   auto* cache = cmd_buffer->GetOrConstructResource<FfiKernelCache>();
-  // Map dependencies
-  std::vector<const se::CommandBuffer::Command*> deps;
-  deps.reserve(num_dependencies + ctx->dependencies.size());
-  for (const se::CommandBuffer::Command* dep : ctx->dependencies) {
-    deps.push_back(dep);
-  }
-  for (uint32_t i = 0; i < num_dependencies; ++i) {
-    if (dependencies[i] == nullptr) {
-      return xla::ffi::CreateError(
-          absl::InvalidArgumentError("dependency command must not be null"));
-    }
-    deps.push_back(AsStreamExecutorCommand(dependencies[i]));
-  }
 
   const se::ThreadDim& threads = dims->threads;
   const se::BlockDim& blocks = dims->blocks;
@@ -185,19 +198,19 @@ XLA_FFI_Error* RecordKernelLaunch(
       << "FfiCreateLaunch for kernel: " << params.kernel_name()
       << ", use_pdl: " << params.use_pdl()
       << ", num_dependencies passed: " << num_dependencies
-      << ", resolved deps size: " << deps.size()
+      << ", resolved deps size: " << resolved_deps.size()
       << ", launch_params: " << params;
 
   const se::KernelArgsPackedArray& kernel_args = **packed_args;
-  auto status_or_cmd = std::visit(
+  absl::StatusOr<const se::CommandBuffer::Command*> status_or_cmd = std::visit(
       absl::Overload{
           [&](se::Kernel* k) {
             return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, *k,
-                                            kernel_args, deps);
+                                            kernel_args, resolved_deps);
           },
           [&](const se::NativeKernel& nk) {
             return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, nk,
-                                            kernel_args, deps);
+                                            kernel_args, resolved_deps);
           }},
       params.kernel);
 
@@ -327,25 +340,27 @@ XLA_FFI_Error* FfiCreateMemcpyD2D(XLA_FFI_RecordContext* ctx, void* dst,
                                   const XLA_FFI_Command* const* dependencies,
                                   uint32_t num_dependencies,
                                   const XLA_FFI_Command** out_command) {
-  se::CommandBuffer* cmd_buffer = ctx->command_buffer;
-
-  std::vector<const se::CommandBuffer::Command*> deps;
-  deps.reserve(num_dependencies);
-  for (uint32_t i = 0; i < num_dependencies; ++i) {
-    deps.push_back(
-        reinterpret_cast<const se::CommandBuffer::Command*>(dependencies[i]));
+  if (ctx == nullptr || out_command == nullptr) {
+    return xla::ffi::CreateError(
+        absl::InvalidArgumentError("ctx and out_command must not be null"));
+  }
+  absl::StatusOr<std::vector<const se::CommandBuffer::Command*>> deps =
+      ResolveDependencies(ctx, dependencies, num_dependencies);
+  if (!deps.ok()) {
+    return xla::ffi::CreateError(deps.status());
   }
 
+  se::CommandBuffer* cmd_buffer = ctx->command_buffer;
   se::DeviceAddressBase dst_addr(dst, size);
   se::DeviceAddressBase src_addr(src, size);
-  auto status_or_cmd =
-      cmd_buffer->CreateMemcpyD2D(&dst_addr, src_addr, size, deps);
+  absl::StatusOr<const se::CommandBuffer::Command*> status_or_cmd =
+      cmd_buffer->CreateMemcpyD2D(&dst_addr, src_addr, size, *deps);
 
   if (!status_or_cmd.ok()) {
     return xla::ffi::CreateError(status_or_cmd.status());
   }
 
-  *out_command = reinterpret_cast<const XLA_FFI_Command*>(*status_or_cmd);
+  *out_command = AsXlaFfiCommand(*status_or_cmd);
   return nullptr;
 }
 
@@ -353,7 +368,7 @@ XLA_FFI_Error* FfiUpdateMemcpyD2D(XLA_FFI_RecordContext* ctx,
                                   const XLA_FFI_Command* command, void* dst,
                                   void* src, int64_t size) {
   se::CommandBuffer* cmd_buffer = ctx->command_buffer;
-  auto* cmd = reinterpret_cast<const se::CommandBuffer::Command*>(command);
+  se::CommandBuffer::Command* cmd = AsStreamExecutorCommand(command);
 
   se::DeviceAddressBase dst_addr(dst, size);
   se::DeviceAddressBase src_addr(src, size);
@@ -374,13 +389,19 @@ XLA_FFI_Error* FfiCreateEmptyCommand(XLA_FFI_RecordContext* ctx,
                                      const XLA_FFI_Command* const* dependencies,
                                      uint32_t num_dependencies,
                                      const XLA_FFI_Command** out_command) {
-  se::CommandBuffer* cmd_buffer = ctx->command_buffer;
-  std::vector<const se::CommandBuffer::Command*> deps;
-  deps.reserve(num_dependencies);
-  for (uint32_t i = 0; i < num_dependencies; ++i) {
-    deps.push_back(AsStreamExecutorCommand(dependencies[i]));
+  if (ctx == nullptr || out_command == nullptr) {
+    return xla::ffi::CreateError(
+        absl::InvalidArgumentError("ctx and out_command must not be null"));
   }
-  auto status_or_cmd = cmd_buffer->CreateEmptyCmd(deps);
+  absl::StatusOr<std::vector<const se::CommandBuffer::Command*>> deps =
+      ResolveDependencies(ctx, dependencies, num_dependencies);
+  if (!deps.ok()) {
+    return xla::ffi::CreateError(deps.status());
+  }
+
+  se::CommandBuffer* cmd_buffer = ctx->command_buffer;
+  absl::StatusOr<const se::CommandBuffer::Command*> status_or_cmd =
+      cmd_buffer->CreateEmptyCmd(*deps);
   if (!status_or_cmd.ok()) {
     return xla::ffi::CreateError(status_or_cmd.status());
   }
