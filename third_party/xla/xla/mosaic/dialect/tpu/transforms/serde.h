@@ -62,7 +62,7 @@ struct MosaicSerdePass : public jaxlib::mlir::Pass<MosaicSerdePass, ModuleOp> {
     return *this;
   }
 
-  void runOnOperation();
+  void runOnOperation() override;
 
  protected:
   ::mlir::Pass::Option<bool> serialize{*this, "serialize", llvm::cl::desc("")};
