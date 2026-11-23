@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -314,6 +315,100 @@ TEST(MoeDelegateKernelInvokeTest, ExecutesSiluSingleAndMultiToken) {
   EXPECT_NEAR(out[1 * kModelDim + 0], silu(1.0f) * 2.0f * 1.5f * 0.5f, 1e-5f);
   EXPECT_NEAR(out[2 * kModelDim + 0], silu(-2.0f) * (-4.0f) * 1.5f * 2.0f,
               1e-5f);
+}
+
+TEST(MoeDelegateKernelInvokeTest, ExecutesSoftcappedSwiGLUSingleAndMultiToken) {
+  ASSERT_EQ(xnn_initialize(nullptr), xnn_status_success);
+
+  constexpr int kTokens = 3;
+  MoeNodeBuilder builder;
+  builder.AddInput(kTfLiteFloat32, {1, 1, kTokens, kModelDim});
+  builder.AddInput(kTfLiteFloat32, {1, 1, kTokens, kNumActiveExperts});
+  builder.AddInput(kTfLiteInt32, {1, 1, kTokens, kNumActiveExperts});
+
+  std::vector<float> gate_w(kGateFf1Rows * kModelDim, 0.0f);
+  std::vector<float> ff1_w(kGateFf1Rows * kModelDim, 0.0f);
+  std::vector<float> linear_w(kLinearRows * kHiddenDim, 0.0f);
+  for (int e = 0; e < kNumExperts; ++e) {
+    gate_w[e * kModelDim + 0] = 3.0f;
+    ff1_w[e * kModelDim + 0] = 10.0f;
+    linear_w[e * kHiddenDim + 0] = 1.0f;
+  }
+  builder.AddConstFloatInput({kHiddenDim, kNumExperts, 1, kModelDim}, gate_w);
+  builder.AddConstFloatInput({kHiddenDim, kNumExperts, 1, kModelDim}, ff1_w);
+  builder.AddConstFloatInput({kModelDim, kNumExperts, 1, kHiddenDim}, linear_w);
+  builder.AddConstFloatInput({kNumExperts}, {1.0f, 1.5f});
+  builder.AddOutput(kTfLiteFloat32, {1, 1, kTokens, kModelDim});
+
+  flexbuffers::Builder fbb;
+  fbb.Map([&]() {
+    fbb.Int("num_experts", kNumExperts);
+    fbb.Int("num_active_experts", kNumActiveExperts);
+    fbb.Int("model_dim", kModelDim);
+    fbb.Int("hidden_dim", kHiddenDim);
+    fbb.String("weight_type", "fp32");
+    fbb.String("activation", "silu");
+    fbb.Bool("renormalized_top_weights", true);
+    fbb.Float("gate_softcap", 4.0f);
+    fbb.Float("up_softcap", 25.0f);
+  });
+  fbb.Finish();
+  builder.SetCustomData(fbb.GetBuffer());
+  builder.Finish();
+
+  Interpreter* interp = builder.interpreter();
+  ASSERT_EQ(interp->AllocateTensors(), kTfLiteOk);
+
+  float* src = interp->typed_input_tensor<float>(0);
+  std::fill(src, src + kTokens * kModelDim, 0.0f);
+  src[0 * kModelDim + 0] = 2.0f;
+  src[1 * kModelDim + 0] = -1.5f;
+  src[2 * kModelDim + 0] = 3.0f;
+
+  float* top_weights = interp->typed_input_tensor<float>(1);
+  top_weights[0] = 1.0f;
+  top_weights[1] = 0.5f;
+  top_weights[2] = 2.0f;
+
+  int32_t* top_indices = interp->typed_input_tensor<int32_t>(2);
+  top_indices[0] = 0;
+  top_indices[1] = 1;
+  top_indices[2] = 1;
+
+  TfLiteIntArray* nodes = TfLiteIntArrayCreate(1);
+  nodes->data[0] = 0;
+  TfLiteDelegateParams params{};
+  params.nodes_to_replace = nodes;
+
+  TfLiteContext* ctx = interp->primary_subgraph().context();
+  ctx->GetNodeAndRegistration = [](struct TfLiteContext* context,
+                                   int node_index, TfLiteNode** node,
+                                   TfLiteRegistration** registration) {
+    auto* subgraph = static_cast<Subgraph*>(context->impl_);
+    const auto* pair = subgraph->node_and_registration(node_index);
+    *node = const_cast<TfLiteNode*>(&pair->first);
+    *registration = const_cast<TfLiteRegistration*>(&pair->second);
+    return kTfLiteOk;
+  };
+  auto kernel = MoeExpertsDelegateKernel::Create(ctx, &params, nullptr);
+  TfLiteIntArrayFree(nodes);
+  ASSERT_NE(kernel, nullptr);
+  ASSERT_EQ(kernel->Prepare(ctx), kTfLiteOk);
+  ASSERT_EQ(kernel->Invoke(ctx), kTfLiteOk);
+
+  auto softcapped_swiglu = [](float g, float u) {
+    const float g_cap = std::tanh(g / 4.0f) * 4.0f;
+    const float g_sig = 1.0f / (1.0f + std::exp(-g));
+    const float u_cap = std::tanh(u / 25.0f) * 25.0f;
+    return g_cap * g_sig * u_cap;
+  };
+  const float* out = interp->typed_output_tensor<float>(0);
+  EXPECT_NEAR(out[0 * kModelDim + 0],
+              softcapped_swiglu(6.0f, 20.0f) * 1.0f * 1.0f, 1e-4f);
+  EXPECT_NEAR(out[1 * kModelDim + 0],
+              softcapped_swiglu(-4.5f, -15.0f) * 1.5f * 0.5f, 1e-4f);
+  EXPECT_NEAR(out[2 * kModelDim + 0],
+              softcapped_swiglu(9.0f, 30.0f) * 1.5f * 2.0f, 1e-4f);
 }
 
 }  // namespace
