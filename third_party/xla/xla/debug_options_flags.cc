@@ -359,7 +359,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_memory_fraction_policy("");
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
   opts.set_xla_gpu_experimental_nccl_window_symmetric(false);
-  opts.set_xla_gpu_experimental_cache_nccl_window_in_communicator(false);
+  opts.set_xla_gpu_experimental_cache_nccl_window_in_communicator(true);
   opts.set_xla_gpu_experimental_vmm_disabled(false);
   opts.set_xla_gpu_experimental_emit_collective_reduce(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
