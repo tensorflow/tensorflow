@@ -209,6 +209,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:debug_options_flags",
+        "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_computation",
@@ -218,11 +219,10 @@ cc_library(
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt/c:pjrt_c_api_custom_partitioner_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/service:custom_call_sharding_helper",
+        "//xla/service:hlo_module_config",
         "//xla/service/spmd:spmd_partitioner",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -231,6 +231,7 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

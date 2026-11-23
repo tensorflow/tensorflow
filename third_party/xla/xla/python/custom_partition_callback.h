@@ -34,8 +34,6 @@ struct PartitionScratch {
   std::vector<std::string> strings;
   std::vector<JAX_CustomCallPartitioner_aval> op_args_storage;
 };
-PartitionScratch PopulateArgs(JAX_CustomCallPartitioner_Partition_Args* args,
-                              const xla::HloInstruction* instruction);
 absl::StatusOr<std::tuple<
     std::vector<xla::Shape>, std::vector<std::optional<xla::HloSharding>>,
     xla::Shape, std::optional<xla::HloSharding>, absl::string_view>>

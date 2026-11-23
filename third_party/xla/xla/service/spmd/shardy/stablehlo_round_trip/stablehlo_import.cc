@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <vector>
@@ -26,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
@@ -66,9 +66,9 @@ limitations under the License.
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/sharding_import_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -85,13 +85,11 @@ using ::mlir::OpBuilder;
 using ::mlir::OperationPass;
 using ::mlir::Pass;
 using ::mlir::PassWrapper;
-using ::mlir::ShapedType;
 using ::mlir::SmallVector;
 using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::func::FuncOp;
 
-using ::mlir::sdy::attributeToString;
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
 using ::mlir::sdy::kShardingAttr;
@@ -459,74 +457,11 @@ TensorShardingAttr convertToSdySharding(
   CHECK(result.has_value())
       << "tile assignment: " << hloSharding.tile_assignment().ToString();
 
-  // 1. Create a mapping from local axis to global axis refs.
-  CHECK_EQ(Product(result->local_mesh), globalMesh.getTotalSize());
-  SmallVector<SmallVector<AxisRefAttr>> localAxisIndexToGlobalAxes;
-  localAxisIndexToGlobalAxes.reserve(result->local_mesh.size());
-  ArrayRef<MeshAxisAttr> remainingGlobalAxes = globalMesh.getAxes();
-  int64_t globalAxisPreSize = 1;
-  for (int64_t localAxisRemainingSize : result->local_mesh) {
-    SmallVector<AxisRefAttr>& globalAxes =
-        localAxisIndexToGlobalAxes.emplace_back();
-    // The local axis size can correspond to multiple global axes or sub-axes.
-    while (localAxisRemainingSize > 1) {
-      CHECK(!remainingGlobalAxes.empty());
-      int64_t globalAxisRemainingSize =
-          remainingGlobalAxes.front().getSize() / globalAxisPreSize;
-      if (globalAxisRemainingSize == 1) {
-        remainingGlobalAxes = remainingGlobalAxes.drop_front();
-        globalAxisPreSize = 1;
-        continue;
-      }
-      int64_t gcd = std::gcd(localAxisRemainingSize, globalAxisRemainingSize);
-      CHECK_NE(gcd, 1) << "Incompatible local and global axis sizes: "
-                       << localAxisRemainingSize << " vs "
-                       << globalAxisRemainingSize;
-      StringRef globalAxisName = remainingGlobalAxes.front().getName();
-      if (gcd == globalAxisRemainingSize && globalAxisPreSize == 1) {
-        // The full global axis is used.
-        globalAxes.push_back(AxisRefAttr::get(ctx, globalAxisName));
-      } else {
-        // We use a sub-axis of the global axis.
-        globalAxes.push_back(
-            AxisRefAttr::get(ctx, globalAxisName, globalAxisPreSize, gcd));
-      }
-      globalAxisPreSize *= gcd;
-      localAxisRemainingSize /= gcd;
-    }
-  }
-
-  // 2. Create a mapping from dim and nested sub-dim to local axis index.
-  SmallVector<SmallVector<int64_t>> dimToSubDimToLocalAxisIndex(rank);
-  for (auto [localAxisIndex, subDimInfo] : llvm::enumerate(result->sub_dims)) {
-    if (subDimInfo.tile_dim_index >= rank) {
-      // This is the last tile dimension that is replicated.
-      continue;
-    }
-    SmallVector<int64_t>& subDimToLocalAxisIndex =
-        dimToSubDimToLocalAxisIndex[subDimInfo.tile_dim_index];
-    if (subDimInfo.tile_sub_dim_index >= subDimToLocalAxisIndex.size()) {
-      subDimToLocalAxisIndex.resize(subDimInfo.tile_sub_dim_index + 1);
-    }
-    subDimToLocalAxisIndex[subDimInfo.tile_sub_dim_index] = localAxisIndex;
-  }
-
-  // 3. Finally, create the new sharding by flattening
-  // `dimToSubDimToLocalAxisIndex` and replacing each local axis index with the
-  // corresponding global axes in `localAxisIndexToGlobalAxes`.
-  SmallVector<DimensionShardingAttr> dimShardings;
-  dimShardings.reserve(rank);
-  for (ArrayRef<int64_t> subDimToLocalAxisIndex : dimToSubDimToLocalAxisIndex) {
-    SmallVector<AxisRefAttr> axes;
-    // We iterate the sub dims in the reverse order since they are minor to
-    // major.
-    for (int64_t localAxisIndex : llvm::reverse(subDimToLocalAxisIndex)) {
-      absl::c_copy(localAxisIndexToGlobalAxes[localAxisIndex],
-                   std::back_inserter(axes));
-    }
-    dimShardings.push_back(
-        DimensionShardingAttr::get(ctx, axes, /*is_closed=*/!openDims));
-  }
+  absl::StatusOr<TileFactorizationResult> factorized =
+      factorizeTileAssignmentToSdy(*result, globalMesh, rank,
+                                   openDims ? ShardingDimClosedness::kOpen
+                                            : ShardingDimClosedness::kClosed);
+  CHECK_OK(factorized.status());
 
   SmallVector<AxisRefAttr> replicatedAxes;
   SmallVector<AxisRefAttr> unreducedAxes;
@@ -536,10 +471,10 @@ TensorShardingAttr convertToSdySharding(
       if (subgroupIndex < hloSharding.subgroup_types().size()) {
         auto subgroupType = hloSharding.subgroup_types()[subgroupIndex];
         if (subgroupType == xla::OpSharding::REPLICATED) {
-          absl::c_copy(localAxisIndexToGlobalAxes[localAxisIndex],
+          absl::c_copy(factorized->localAxisIndexToGlobalAxes[localAxisIndex],
                        std::back_inserter(replicatedAxes));
         } else if (subgroupType == xla::OpSharding::UNREDUCED) {
-          absl::c_copy(localAxisIndexToGlobalAxes[localAxisIndex],
+          absl::c_copy(factorized->localAxisIndexToGlobalAxes[localAxisIndex],
                        std::back_inserter(unreducedAxes));
         }
       }
@@ -562,12 +497,12 @@ TensorShardingAttr convertToSdySharding(
   }
 
   if (inlineMesh) {
-    return TensorShardingAttr::get(ctx, globalMesh, dimShardings,
+    return TensorShardingAttr::get(ctx, globalMesh, factorized->dimShardings,
                                    replicatedAxes, unreducedAxes, reductionOp);
   }
   return TensorShardingAttr::get(ctx, StringAttr::get(ctx, kGlobalMeshName),
-                                 dimShardings, replicatedAxes, unreducedAxes,
-                                 reductionOp);
+                                 factorized->dimShardings, replicatedAxes,
+                                 unreducedAxes, reductionOp);
 }
 
 namespace {
@@ -664,6 +599,7 @@ class ImportShardingsPass
         allowPropagationToResults(allowPropagationToResults),
         inlineMesh(inlineMesh) {}
 
+ protected:
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
 
@@ -713,6 +649,7 @@ class ImportShardingsPass
     }
   }
 
+ public:
   StringRef getArgument() const override { return "xla-sdy-import-shardings"; }
 
   StringRef getDescription() const override {

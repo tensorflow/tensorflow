@@ -15,15 +15,20 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 
+#include <atomic>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -31,22 +36,32 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
 #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+#include "xla/array.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
+#include "xla/python/custom_partition_callback.h"
 #include "xla/python/inspect_sharding.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape.h"
@@ -69,6 +84,7 @@ using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
+using ::testing::UnitTest;
 using ::testing::ValuesIn;
 
 class ShardyXLATestBase : public HloHardwareIndependentTestBase {
@@ -2326,6 +2342,848 @@ TEST_F(ShardyXLATestV2Only, DumpToSpongeRespectsTestUndeclaredOutputsDir) {
   EXPECT_THAT(tsl::Env::Default()->IsDirectory(shardyDir), IsOk());
   EXPECT_THAT(dumpFiles, Not(IsEmpty()));
 }
+
+constexpr absl::string_view kTestCApiCustomPartitionTarget =
+    "TestCApiCustomSPMDPartitioning";
+
+// Registers one stateless C-API custom call partitioner once per test process
+// to exercise `custom_partition_callback.cc` end-to-end.
+void ensureTestCApiCustomPartitionerRegistered() {
+  static const bool kRegistered = []() {
+    static JAX_CustomCallPartitioner_Callbacks callbacks = {};
+    callbacks.version = 0;
+    callbacks.dtor = +[](JAX_CustomCallPartitioner_Callbacks*) {};
+    callbacks.partition = +[](JAX_CustomCallPartitioner_Callbacks* /*data*/,
+                              JAX_CustomCallPartitioner_Partition_Args* args) {
+      auto parsed = jax::ReadArgs(args);
+      if (!parsed.ok()) {
+        jax::PopulateResults(parsed.status(), args);
+        return;
+      }
+      auto& [argShapes, argShardings, resultShape, resultSharding,
+             backendConfig] = *parsed;
+      HloSharding expectedS0 = HloSharding::IotaTile({2, 2});
+      HloSharding expectedS1 =
+          HloSharding::PartialTile(TileAssignment({2, 2}, {2, 2}, {1, 0}));
+      EXPECT_EQ(argShapes.size(), 2);
+      EXPECT_TRUE(
+          ShapeUtil::Equal(argShapes[0], ShapeUtil::MakeShape(F32, {8, 4})));
+      EXPECT_TRUE(
+          ShapeUtil::Equal(argShapes[1], ShapeUtil::MakeShape(F32, {4})));
+      EXPECT_TRUE(ShapeUtil::Equal(
+          resultShape,
+          ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {8, 4}),
+                                     ShapeUtil::MakeShape(F32, {4})})));
+      EXPECT_EQ(argShardings[0], expectedS0);
+      EXPECT_EQ(argShardings[1], expectedS1);
+      EXPECT_TRUE(resultSharding.has_value() && resultSharding->IsTuple());
+
+      const char* const mlirModule = R"(
+      module {
+        func.func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<2xf32>)
+            -> (tensor<4x2xf32>, tensor<2xf32>) {
+          %bcast = stablehlo.broadcast_in_dim %arg1, dims = [1]
+              : (tensor<2xf32>) -> tensor<4x2xf32>
+          %sum = stablehlo.add %arg0, %bcast : tensor<4x2xf32>
+          %sq = stablehlo.multiply %arg1, %arg1 : tensor<2xf32>
+          return %sum, %sq : tensor<4x2xf32>, tensor<2xf32>
+        }
+      })";
+      jax::PopulateResults(
+          std::make_tuple(std::string(mlirModule),
+                          std::vector<HloSharding>{expectedS0, expectedS1},
+                          *resultSharding),
+          args);
+    };
+    RegisterCustomCallPartitioner(
+        kTestCApiCustomPartitionTarget,
+        jax::CreateCApiCustomCallPartitioner(&callbacks));
+    return true;
+  }();
+  (void)kRegistered;
+}
+
+// Lightweight C++ `CustomCallPartitioner` backed by a test lambda.
+class LambdaCustomCallPartitioner : public CustomCallPartitioner {
+ public:
+  using PartitionFn =
+      std::function<absl::StatusOr<std::optional<CustomCallPartitionResult>>(
+          absl::Span<const Shape> argShapes,
+          absl::Span<const std::optional<HloSharding>> argShardings,
+          const Shape& resultShape,
+          const std::optional<HloSharding>& resultSharding,
+          absl::string_view backendConfig)>;
+
+  explicit LambdaCustomCallPartitioner(PartitionFn fn) : fn_(std::move(fn)) {}
+
+  bool SupportsMlirPartitioning() const override { return true; }
+
+  absl::StatusOr<std::optional<CustomCallPartitionResult>> PartitionToMlir(
+      absl::Span<const Shape> argShapes,
+      absl::Span<const std::optional<HloSharding>> argShardings,
+      const Shape& resultShape,
+      const std::optional<HloSharding>& resultSharding,
+      absl::string_view backendConfig) const override {
+    return fn_(argShapes, argShardings, resultShape, resultSharding,
+               backendConfig);
+  }
+
+ private:
+  PartitionFn fn_;
+};
+
+// Registers a unique `CustomCallPartitioner` for the active test instantiation
+// and points every custom call in `insts` at its target name.
+void registerTestCustomCallPartitioner(
+    absl::Span<HloInstruction* const> insts,
+    std::unique_ptr<CustomCallPartitioner> partitioner,
+    absl::string_view suffix = "") {
+  static std::atomic<int64_t> nextId{0};
+  std::string target = absl::StrCat(
+      "TestCustomSPMD_", UnitTest::GetInstance()->current_test_info()->name(),
+      suffix, "_", nextId.fetch_add(1, std::memory_order_relaxed));
+  RegisterCustomCallPartitioner(target, std::move(partitioner));
+  for (HloInstruction* inst : insts) {
+    inst->set_custom_call_target(target);
+  }
+}
+
+void registerTestCustomCallPartitioner(
+    absl::Span<HloInstruction* const> insts,
+    LambdaCustomCallPartitioner::PartitionFn fn,
+    absl::string_view suffix = "") {
+  registerTestCustomCallPartitioner(
+      insts, std::make_unique<LambdaCustomCallPartitioner>(std::move(fn)),
+      suffix);
+}
+
+// Verifies multi-operand, multi-result tuple C-API custom call partitioning
+// passes exact global shapes and V2 shardings and lowers @main cleanly without
+// introducing boundary collectives when shardings already match.
+TEST_P(ShardyXLATest, CustomSPMDPartitioningMultiResultTuple) {
+  ensureTestCApiCustomPartitionerRegistered();
+  const char* const hloString = R"(
+    HloModule main, num_partitions=4
+
+    ENTRY %main {
+      %p0 = f32[8,4] parameter(0), sharding={devices=[2,2]<=[4]}
+      %p1 = f32[4] parameter(1), sharding={devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+      ROOT %call = (f32[8,4], f32[4]) custom-call(%p0, %p1),
+        custom_call_target="TestCApiCustomSPMDPartitioning",
+        sharding={{devices=[2,2]<=[4]}, {devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}}
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  EXPECT_EQ(FindInstruction(module.get(), xla::HloOpcode::kCustomCall),
+            nullptr);
+  EXPECT_EQ(FindInstruction(module.get(), xla::HloOpcode::kAllGather), nullptr);
+  EXPECT_EQ(FindInstruction(module.get(), xla::HloOpcode::kCollectivePermute),
+            nullptr);
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_TRUE(ShapeUtil::Compatible(entry->parameter_instruction(0)->shape(),
+                                    ShapeUtil::MakeShape(F32, {4, 2})));
+  EXPECT_TRUE(ShapeUtil::Compatible(entry->parameter_instruction(1)->shape(),
+                                    ShapeUtil::MakeShape(F32, {2})));
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      entry->root_instruction()->shape(),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 2}),
+                                 ShapeUtil::MakeShape(F32, {2})})));
+}
+
+// Verifies that when the partition callback overrides operand and result
+// shardings (e.g. forcing replication on sharded inputs/outputs), Shardy emits
+// the required boundary collective reshards.
+TEST_P(ShardyXLATest, CustomSPMDPartitioningShardingOverride) {
+  const char* const hloString = R"(
+    HloModule main, num_partitions=4
+
+    ENTRY %main {
+      %p0 = f32[8,4] parameter(0), sharding={devices=[2,2]<=[4]}
+      ROOT %call = f32[8,4] custom-call(%p0),
+        custom_call_target="Placeholder",
+        sharding={devices=[2,2]<=[4]},
+        frontend_attributes={xla.sdy.sharding_rule="#sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=4}, custom>"}
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+
+  registerTestCustomCallPartitioner(
+      {FindInstruction(module.get(), "call")},
+      [](absl::Span<const Shape> /*argShapes*/,
+         absl::Span<const std::optional<HloSharding>> argShardings,
+         const Shape& /*resultShape*/,
+         const std::optional<HloSharding>& resultSharding,
+         absl::string_view /*backendConfig*/)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        EXPECT_EQ(argShardings[0], HloSharding::IotaTile({2, 2}));
+        EXPECT_EQ(resultSharding, HloSharding::IotaTile({2, 2}));
+        const char* const mlirModule = R"(
+      module {
+        func.func @main(%arg0: tensor<8x4xf32>) -> tensor<8x4xf32> {
+          %neg = stablehlo.negate %arg0 : tensor<8x4xf32>
+          return %neg : tensor<8x4xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(mlirModule),
+            {HloSharding::Replicate()},
+            HloSharding::Replicate(),
+        };
+      });
+
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  EXPECT_EQ(FindInstruction(module.get(), xla::HloOpcode::kCustomCall),
+            nullptr);
+  EXPECT_NE(FindInstruction(module.get(), xla::HloOpcode::kAllGather), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), xla::HloOpcode::kDynamicSlice),
+            nullptr);
+  const HloInstruction* negate =
+      FindInstruction(module.get(), xla::HloOpcode::kNegate);
+  ASSERT_NE(negate, nullptr);
+  EXPECT_TRUE(ShapeUtil::Compatible(negate->shape(),
+                                    ShapeUtil::MakeShape(F32, {8, 4})));
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      module->entry_computation()->root_instruction()->shape(),
+      ShapeUtil::MakeShape(F32, {4, 2})));
+}
+
+// Verifies uneven global shape partitioning (`f32[14]` across 4 shards ->
+// shard shape `f32[4]`) passes unpadded `f32[14]` to callbacks and inserts
+// pad-to-16 before partitioning and slice-to-14 after gathering.
+TEST_P(ShardyXLATest, CustomSPMDPartitioningUnevenPadding) {
+  const char* const hloString = R"(
+    HloModule main, num_partitions=4
+
+    ENTRY %main {
+      %p0 = f32[14] parameter(0)
+      %call0 = f32[14] custom-call(%p0),
+        custom_call_target="Placeholder",
+        sharding={devices=[4]<=[4]}
+      %call1 = f32[14] custom-call(%call0),
+        custom_call_target="Placeholder",
+        sharding={devices=[4]<=[4]}
+      ROOT %out = f32[14] add(%call1, %call1)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+
+  auto callCount = std::make_shared<int>(0);
+  registerTestCustomCallPartitioner(
+      {FindInstruction(module.get(), "call0"),
+       FindInstruction(module.get(), "call1")},
+      [callCount](absl::Span<const Shape> argShapes,
+                  absl::Span<const std::optional<HloSharding>> /*argShardings*/,
+                  const Shape& resultShape,
+                  const std::optional<HloSharding>& /*resultSharding*/,
+                  absl::string_view /*backendConfig*/)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        ++(*callCount);
+        // Verify that the callback receives unpadded f32[14], not f32[16].
+        EXPECT_TRUE(
+            ShapeUtil::Equal(argShapes[0], ShapeUtil::MakeShape(F32, {14})));
+        EXPECT_TRUE(
+            ShapeUtil::Equal(resultShape, ShapeUtil::MakeShape(F32, {14})));
+        const char* const mlirModule = R"(
+      module {
+        func.func @main(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+          %dbl = stablehlo.add %arg0, %arg0 : tensor<4xf32>
+          return %dbl : tensor<4xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(mlirModule),
+            {HloSharding::IotaTile({4})},
+            HloSharding::IotaTile({4}),
+        };
+      });
+
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  EXPECT_EQ(*callCount, 2);
+  EXPECT_EQ(FindInstruction(module.get(), xla::HloOpcode::kCustomCall),
+            nullptr);
+  EXPECT_NE(FindInstruction(module.get(), xla::HloOpcode::kPad), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), xla::HloOpcode::kSlice), nullptr);
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      module->entry_computation()->root_instruction()->shape(),
+      ShapeUtil::MakeShape(F32, {14})));
+}
+
+// Verifies callback module inlining across multiple custom calls and Stage 6
+// outer collectives: helper calls are inlined and DCE'd, `xla.scaled_dot`
+// composite decompositions and colliding RGV3 `sdy.mesh` symbols are renamed
+// uniquely (while unused `sdy.mesh` symbols are dropped), and positive channel
+// handles are shifted without breaking paired send/recv channels.
+TEST_P(ShardyXLATest, CustomSPMDPartitioningInlineCallbackModule) {
+  const char* const hloString = R"(
+    HloModule main, num_partitions=4
+
+    ENTRY %main {
+      %p0 = f32[8,4] parameter(0), sharding={devices=[2,2]<=[4]}
+      %call0 = f32[8,4] custom-call(%p0),
+        custom_call_target="Placeholder",
+        sharding={devices=[2,2]<=[4]}
+      ROOT %call1 = f32[8,4] custom-call(%call0),
+        custom_call_target="Placeholder",
+        sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+
+  registerTestCustomCallPartitioner(
+      {FindInstruction(module.get(), "call0")},
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        const char* const mlirModule = R"(
+      module {
+        func.func @helper(%x: tensor<4x2xf32>) -> tensor<4x2xf32> {
+          %neg = stablehlo.negate %x : tensor<4x2xf32>
+          return %neg : tensor<4x2xf32>
+        }
+        func.func private @scaled_dot_decomp(%x: tensor<4x2xf32>) -> tensor<4x2xf32> {
+          %add = stablehlo.add %x, %x : tensor<4x2xf32>
+          return %add : tensor<4x2xf32>
+        }
+        func.func @main(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
+          %h = call @helper(%arg0) : (tensor<4x2xf32>) -> tensor<4x2xf32>
+          %tok = stablehlo.after_all : !stablehlo.token
+          %send_tok = "stablehlo.send"(%h, %tok) {
+            channel_handle = #stablehlo.channel_handle<handle = 2, type = 1>,
+            is_host_transfer = false
+          } : (tensor<4x2xf32>, !stablehlo.token) -> !stablehlo.token
+          %recv:2 = "stablehlo.recv"(%send_tok) {
+            channel_handle = #stablehlo.channel_handle<handle = 2, type = 1>,
+            is_host_transfer = false
+          } : (!stablehlo.token) -> (tensor<4x2xf32>, !stablehlo.token)
+          %ar = "stablehlo.all_reduce"(%recv#0) ({
+          ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+            %sum = stablehlo.add %lhs, %rhs : tensor<f32>
+            stablehlo.return %sum : tensor<f32>
+          }) {
+            channel_handle = #stablehlo.channel_handle<handle = 1, type = 1>,
+            replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>,
+            use_global_device_ids
+          } : (tensor<4x2xf32>) -> tensor<4x2xf32>
+          %c = stablehlo.composite "xla.scaled_dot" %ar {
+            decomposition = @scaled_dot_decomp
+          } : (tensor<4x2xf32>) -> tensor<4x2xf32>
+          return %c : tensor<4x2xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(mlirModule),
+            {HloSharding::IotaTile({2, 2})},
+            HloSharding::IotaTile({2, 2}),
+        };
+      },
+      "_0");
+  registerTestCustomCallPartitioner(
+      {FindInstruction(module.get(), "call1")},
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        const char* const mlirModule = R"(
+      module {
+        sdy.mesh @mesh = <["x"=2, "y"=2]>
+        sdy.mesh @unused_mesh = <["u"=4]>
+        func.func private @scaled_dot_decomp(%x: tensor<4x2xf32>) -> tensor<4x2xf32> {
+          %mul = stablehlo.multiply %x, %x : tensor<4x2xf32>
+          return %mul : tensor<4x2xf32>
+        }
+        func.func @main(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
+          %ar = "stablehlo.all_reduce"(%arg0) ({
+          ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+            %sum = stablehlo.add %lhs, %rhs : tensor<f32>
+            stablehlo.return %sum : tensor<f32>
+          }) {
+            channel_handle = #stablehlo.channel_handle<handle = 1, type = 1>,
+            replica_groups = #stablehlo.replica_group_mesh_axes<
+                mesh = @mesh, axes = [#stablehlo.axis_ref<name = "x">]>,
+            use_global_device_ids
+          } : (tensor<4x2xf32>) -> tensor<4x2xf32>
+          %c = stablehlo.composite "xla.scaled_dot" %ar {
+            decomposition = @scaled_dot_decomp
+          } : (tensor<4x2xf32>) -> tensor<4x2xf32>
+          return %c : tensor<4x2xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(mlirModule),
+            {HloSharding::IotaTile({2, 2})},
+            HloSharding::IotaTile({2, 2}),
+        };
+      },
+      "_1");
+
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  EXPECT_NE(FindInstruction(module.get(), HloOpcode::kNegate), nullptr);
+  for (const HloComputation* comp : module->computations()) {
+    EXPECT_THAT(comp->name(), ::testing::Not(HasSubstr("helper")));
+  }
+
+  std::vector<const HloInstruction*> compositeCalls;
+  absl::flat_hash_set<int64_t> nonSendRecvChannels;
+  int64_t sendChannel = -1;
+  int64_t recvChannel = -1;
+  for (const HloInstruction* inst :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kCall) {
+      EXPECT_TRUE(inst->is_composite());
+      compositeCalls.push_back(inst);
+    }
+    if (const auto* ch = DynCast<HloChannelInstruction>(inst);
+        ch && ch->channel_id().has_value()) {
+      EXPECT_GT(*ch->channel_id(), 0);
+      if (inst->opcode() == HloOpcode::kSend) {
+        sendChannel = *ch->channel_id();
+      } else if (inst->opcode() == HloOpcode::kRecv) {
+        recvChannel = *ch->channel_id();
+      } else if (inst->opcode() != HloOpcode::kSendDone &&
+                 inst->opcode() != HloOpcode::kRecvDone) {
+        EXPECT_TRUE(nonSendRecvChannels.insert(*ch->channel_id()).second);
+      }
+    }
+  }
+  ASSERT_EQ(compositeCalls.size(), 2);
+  EXPECT_EQ(compositeCalls[0]->to_apply()->root_instruction()->opcode(),
+            HloOpcode::kAdd);
+  EXPECT_EQ(compositeCalls[1]->to_apply()->root_instruction()->opcode(),
+            HloOpcode::kMultiply);
+  EXPECT_EQ(compositeCalls[1]->operand(0)->opcode(), HloOpcode::kAllReduce);
+  EXPECT_EQ(
+      compositeCalls[1]->operand(0)->device_list()->flattened_replica_groups(),
+      (std::vector<std::vector<int64_t>>{{0, 2}, {1, 3}}));
+  EXPECT_GT(sendChannel, 0);
+  EXPECT_EQ(sendChannel, recvChannel);
+  EXPECT_FALSE(nonSendRecvChannels.contains(sendChannel));
+  EXPECT_GE(nonSendRecvChannels.size(), 3);
+}
+
+// Verifies custom call partitioning inside a partially manual computation on a
+// non-iota mesh shards only along the remaining free mesh axes and remaps
+// physical device IDs to logical mesh coordinates.
+TEST_P(ShardyXLATest, CustomSPMDPartitioningManualComputationPartialManual) {
+  const char* const hloString = R"(
+    HloModule sdy_manual_partial, num_partitions=4,
+      frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2], device_ids=[2, 0, 3, 1]>}}
+
+    xla.sdy.manual_computation_body.0 {
+      %arg0 = f32[4,8] parameter(0)
+      ROOT %call = f32[4,8] custom-call(%arg0),
+        custom_call_target="Placeholder",
+        frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{}, {\"b\"}]>"}
+    }
+
+    ENTRY %main {
+      %p0 = f32[8,8] parameter(0), sharding={devices=[2,2]2,0,3,1},
+        frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"a\"}, {\"b\"}]>"}
+      %g2l = (f32[4,8]) custom-call(%p0), custom_call_target="xla.sdy.GlobalToLocalShape",
+        frontend_attributes={
+          xla.sdy.in_shardings="#sdy.sharding_per_value<[<@mesh, [{\"a\"}, {\"b\"}]>]>",
+          xla.sdy.manual_axes="#sdy<manual_axes{\"a\"}>"
+        }
+      %local_param = f32[4,8] get-tuple-element(%g2l), index=0
+      %call = f32[4,8] call(%local_param), to_apply=xla.sdy.manual_computation_body.0
+      ROOT %l2g = f32[8,8] custom-call(%call), custom_call_target="xla.sdy.LocalToGlobalShape",
+        frontend_attributes={
+          xla.sdy.manual_axes="#sdy<manual_axes{\"a\"}>",
+          xla.sdy.out_shardings="#sdy.sharding_per_value<[<@mesh, [{\"a\"}, {\"b\"}]>]>"
+        }
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+
+  registerTestCustomCallPartitioner(
+      {FindInstruction(module.get(), "call")},
+      [](absl::Span<const Shape> argShapes,
+         absl::Span<const std::optional<HloSharding>> argShardings,
+         const Shape& /*resultShape*/,
+         const std::optional<HloSharding>& resultSharding,
+         absl::string_view /*backendConfig*/)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        EXPECT_TRUE(
+            ShapeUtil::Equal(argShapes[0], ShapeUtil::MakeShape(F32, {4, 8})));
+        if (!argShardings[0].has_value()) {
+          return absl::InternalError("Expected argShardings[0]");
+        }
+        EXPECT_EQ(argShardings[0]->ToString(),
+                  "{devices=[1,2,2]2,3,0,1 last_tile_dim_replicate}");
+        EXPECT_EQ(resultSharding, argShardings[0]);
+        const char* const mlirModule = R"(
+      module {
+        func.func @main(%arg0: tensor<4x4xf32>) -> tensor<4x4xf32> {
+          %mul = stablehlo.multiply %arg0, %arg0 : tensor<4x4xf32>
+          return %mul : tensor<4x4xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(mlirModule),
+            {*argShardings[0]},
+            *argShardings[0],
+        };
+      });
+
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardy(module.get(), /*stablehloImport=*/false,
+            /*runSdyShardingPropagation=*/true, /*expectChanged=*/true,
+            propagationOptions);
+
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCustomCall), nullptr);
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      module->entry_computation()->root_instruction()->shape(),
+      ShapeUtil::MakeShape(F32, {4, 4})));
+}
+
+// Verifies V3 `NamedSharding` returns from C++ partitioners take the direct
+// path when the mesh matches `resolvedMesh` (even with different axis names on
+// a non-iota mesh) and fall back cleanly to V2 tile factorization when the
+// callback uses a differently factored mesh.
+TEST_P(ShardyXLATest, CustomSPMDPartitioningNamedShardingDirectAndFallback) {
+  const char* const hloString = R"(
+    HloModule sdy_named_sharding, num_partitions=4,
+      frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2], device_ids=[2, 0, 3, 1]>}}
+
+    ENTRY %main {
+      %p0 = f32[8,4] parameter(0),
+        frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"a\"}, {\"b\"}]>"}
+      %call0 = f32[8,4] custom-call(%p0),
+        custom_call_target="Placeholder",
+        frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"a\"}, {\"b\"}]>]>"}
+      %call1 = f32[8,4] custom-call(%call0),
+        custom_call_target="Placeholder",
+        frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"a\", \"b\"}, {}]>]>"}
+      ROOT %out = f32[8,4] custom-call(%call1),
+        custom_call_target="xla.sdy.FuncResultSharding",
+        frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"a\", \"b\"}, {}]>]>"}
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+
+  // Matching non-iota mesh with different axis names -> direct NamedSharding
+  // conversion path without V3ToV2Sharding.
+  registerTestCustomCallPartitioner(
+      {FindInstruction(module.get(), "call0")},
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        Mesh matchingMesh(Array<int64_t>({{2, 0}, {3, 1}}), {"x", "y"});
+        HloSharding named(NamedSharding(
+            matchingMesh,
+            {NamedSharding::DimensionSharding({AxisRef(0)}, /*is_closed=*/true),
+             NamedSharding::DimensionSharding({AxisRef(1)},
+                                              /*is_closed=*/true)}));
+        const char* const mlirModule = R"(
+      module {
+        func.func @main(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
+          %neg = stablehlo.negate %arg0 : tensor<4x2xf32>
+          return %neg : tensor<4x2xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(mlirModule),
+            {named},
+            named,
+        };
+      },
+      "_direct");
+
+  // Differently factored 1D mesh -> V3ToV2Sharding + tile factorization
+  // fallback across ["a"=2, "b"=2].
+  registerTestCustomCallPartitioner(
+      {FindInstruction(module.get(), "call1")},
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        Array<int64_t> flatDevices({4});
+        flatDevices.SetValues({2, 0, 3, 1});
+        Mesh flatMesh(std::move(flatDevices), {"flat"});
+        HloSharding named(NamedSharding(
+            flatMesh,
+            {NamedSharding::DimensionSharding({AxisRef(0)}, /*is_closed=*/true),
+             NamedSharding::DimensionSharding({}, /*is_closed=*/true)}));
+        const char* const mlirModule = R"(
+      module {
+        func.func @main(%arg0: tensor<2x4xf32>) -> tensor<2x4xf32> {
+          %add = stablehlo.add %arg0, %arg0 : tensor<2x4xf32>
+          return %add : tensor<2x4xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(mlirModule),
+            {named},
+            named,
+        };
+      },
+      "_fallback");
+
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardy(module.get(), /*stablehloImport=*/false,
+            /*runSdyShardingPropagation=*/true, /*expectChanged=*/true,
+            propagationOptions);
+
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCustomCall), nullptr);
+  const HloInstruction* negate =
+      FindInstruction(module.get(), HloOpcode::kNegate);
+  ASSERT_NE(negate, nullptr);
+  EXPECT_TRUE(ShapeUtil::Compatible(negate->shape(),
+                                    ShapeUtil::MakeShape(F32, {4, 2})));
+  const HloInstruction* add = FindInstruction(module.get(), HloOpcode::kAdd);
+  ASSERT_NE(add, nullptr);
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(add->shape(), ShapeUtil::MakeShape(F32, {2, 4})));
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      module->entry_computation()->root_instruction()->shape(),
+      ShapeUtil::MakeShape(F32, {2, 4})));
+}
+
+// Verifies that GSPMD-only `CustomCallPartitioner` subclasses (which inherit
+// `SupportsMlirPartitioning() == false`) are skipped by Shardy's MLIR custom
+// call partitioner without invoking `PartitionToMlir`.
+TEST_P(ShardyXLATest, CustomSPMDPartitioningSkipsGspmdOnlyPartitioner) {
+  class GspmdOnlyCustomCallPartitioner : public CustomCallPartitioner {
+   public:
+    absl::StatusOr<std::optional<CustomCallPartitionResult>> PartitionToMlir(
+        absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+        const Shape&, const std::optional<HloSharding>&,
+        absl::string_view) const override {
+      ADD_FAILURE() << "PartitionToMlir must not be called for GSPMD-only "
+                       "CustomCallPartitioner";
+      return absl::InternalError("unexpected PartitionToMlir call");
+    }
+  };
+
+  const char* const hloString = R"(
+    HloModule main, num_partitions=4
+
+    ENTRY %main {
+      %p0 = f32[8,4] parameter(0), sharding={devices=[2,2]<=[4]}
+      ROOT %call = f32[8,4] custom-call(%p0),
+        custom_call_target="Placeholder",
+        sharding={devices=[2,2]<=[4]},
+        frontend_attributes={xla.sdy.sharding_rule="#sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=4}>"}
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+
+  registerTestCustomCallPartitioner(
+      {FindInstruction(module.get(), "call")},
+      std::make_unique<GspmdOnlyCustomCallPartitioner>());
+
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  const HloInstruction* call =
+      FindInstruction(module.get(), HloOpcode::kCustomCall);
+  ASSERT_NE(call, nullptr);
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(call->shape(), ShapeUtil::MakeShape(F32, {4, 2})));
+}
+
+// Verifies that partition callback errors and invalid callback MLIR modules
+// abort ShardyXLA cleanly and surface diagnostic messages.
+TEST_P(ShardyXLATest, CustomSPMDPartitioningCallbackErrorPropagated) {
+  const char* const hloString = R"(
+    HloModule main, num_partitions=4
+
+    ENTRY %main {
+      %p0 = f32[8,4] parameter(0), sharding={devices=[2,2]<=[4]}
+      ROOT %call = f32[8,4] custom-call(%p0),
+        custom_call_target="Placeholder",
+        sharding={devices=[2,2]<=[4]}
+    })";
+  auto runExpectingError = [&](LambdaCustomCallPartitioner::PartitionFn fn,
+                               absl::string_view suffix,
+                               const char* expectedSubstring) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hloString));
+    registerTestCustomCallPartitioner({FindInstruction(module.get(), "call")},
+                                      std::move(fn), suffix);
+    bool enableV3 = GetParam() ==
+                    xla::test_only::ShardingFormatPicker::ShardingType::kNamed;
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_enable_hlo_sharding_v3(enableV3);
+    module->add_frontend_attribute(std::string(xla::sdy::kImportMhloShardings),
+                                   "t");
+    xla::test_only::ShardingFormatPicker formatPicker(GetParam());
+    ASSERT_THAT(formatPicker.Run(module.get()), IsOk());
+
+    mlir::sdy::PropagationOptions propagationOptions;
+    propagationOptions.partitionerStage =
+        mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+    EXPECT_THAT(
+        ShardyXLA(/*runSdyShardingPropagation=*/true, propagationOptions)
+            .Run(module.get()),
+        StatusIs(absl::StatusCode::kUnknown, HasSubstr(expectedSubstring)));
+  };
+
+  runExpectingError(
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        return absl::InvalidArgumentError("Mismatch in result shapes");
+      },
+      "_err", "Mismatch in result shapes");
+
+  runExpectingError(
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        return CustomCallPartitionResult{
+            std::string("not valid mlir {"),
+            {HloSharding::IotaTile({2, 2})},
+            HloSharding::IotaTile({2, 2}),
+        };
+      },
+      "_bad_mlir", "failed to parse custom call partitioner MLIR module");
+
+  runExpectingError(
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        const char* const wrongTypeMlir = R"(
+      module {
+        func.func @main(%arg0: tensor<8x4xf32>) -> tensor<8x4xf32> {
+          return %arg0 : tensor<8x4xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(wrongTypeMlir),
+            {HloSharding::IotaTile({2, 2})},
+            HloSharding::IotaTile({2, 2}),
+        };
+      },
+      "_type_mismatch", "does not match tiled local type");
+
+  runExpectingError(
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        const char* const recursiveMainMlir = R"(
+      module {
+        func.func @main(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
+          %0 = call @main(%arg0) : (tensor<4x2xf32>) -> tensor<4x2xf32>
+          return %0 : tensor<4x2xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(recursiveMainMlir),
+            {HloSharding::IotaTile({2, 2})},
+            HloSharding::IotaTile({2, 2}),
+        };
+      },
+      "_recursive_main", "@main cannot be referenced");
+
+  runExpectingError(
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        const char* const topLevelSymMlir = R"(
+      module {
+        module @extra {}
+        func.func @main(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
+          return %arg0 : tensor<4x2xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(topLevelSymMlir),
+            {HloSharding::IotaTile({2, 2})},
+            HloSharding::IotaTile({2, 2}),
+        };
+      },
+      "_unexpected_top_level_op", "unexpected top-level op");
+
+  // Also verify that binding an already-manual enclosing axis is rejected.
+  const char* const manualHlo = R"(
+    HloModule sdy_manual_overlap, num_partitions=4,
+      frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2]>}}
+
+    xla.sdy.manual_computation_body.0 {
+      %arg0 = f32[4,8] parameter(0)
+      ROOT %call = f32[4,8] custom-call(%arg0),
+        custom_call_target="Placeholder",
+        frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{}, {\"b\"}]>"}
+    }
+
+    ENTRY %main {
+      %p0 = f32[8,8] parameter(0),
+        frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"a\"}, {\"b\"}]>"}
+      %g2l = (f32[4,8]) custom-call(%p0), custom_call_target="xla.sdy.GlobalToLocalShape",
+        frontend_attributes={
+          xla.sdy.in_shardings="#sdy.sharding_per_value<[<@mesh, [{\"a\"}, {\"b\"}]>]>",
+          xla.sdy.manual_axes="#sdy<manual_axes{\"a\"}>"
+        }
+      %local_param = f32[4,8] get-tuple-element(%g2l), index=0
+      %call = f32[4,8] call(%local_param), to_apply=xla.sdy.manual_computation_body.0
+      ROOT %l2g = f32[8,8] custom-call(%call), custom_call_target="xla.sdy.LocalToGlobalShape",
+        frontend_attributes={
+          xla.sdy.manual_axes="#sdy<manual_axes{\"a\"}>",
+          xla.sdy.out_shardings="#sdy.sharding_per_value<[<@mesh, [{\"a\"}, {\"b\"}]>]>"
+        }
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> manualModule,
+                       ParseAndReturnVerifiedModule(manualHlo));
+  registerTestCustomCallPartitioner(
+      {FindInstruction(manualModule.get(), "call")},
+      [](absl::Span<const Shape>, absl::Span<const std::optional<HloSharding>>,
+         const Shape&, const std::optional<HloSharding>&, absl::string_view)
+          -> absl::StatusOr<std::optional<CustomCallPartitionResult>> {
+        const char* const mlirModule = R"(
+      module {
+        func.func @main(%arg0: tensor<2x4xf32>) -> tensor<2x4xf32> {
+          return %arg0 : tensor<2x4xf32>
+        }
+      })";
+        return CustomCallPartitionResult{
+            std::string(mlirModule),
+            {HloSharding::IotaTile({2, 2})},
+            HloSharding::IotaTile({2, 2}),
+        };
+      },
+      "_manual_overlap");
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  EXPECT_THAT(
+      ShardyXLA(/*runSdyShardingPropagation=*/true, propagationOptions)
+          .Run(manualModule.get()),
+      StatusIs(absl::StatusCode::kUnknown, HasSubstr("already manual")));
+}
+
 // NOLINTEND(misc-override-with-different-visibility)
 
 INSTANTIATE_TEST_SUITE_P(

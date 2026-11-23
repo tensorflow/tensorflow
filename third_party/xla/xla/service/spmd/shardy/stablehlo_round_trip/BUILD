@@ -119,12 +119,30 @@ cc_library(
 )
 
 cc_library(
+    name = "sharding_import_utils",
+    srcs = ["sharding_import_utils.cc"],
+    hdrs = ["sharding_import_utils.h"],
+    deps = [
+        "//xla:util",
+        "//xla/hlo/ir:tile_assignment",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+    ],
+)
+
+cc_library(
     name = "stablehlo_import",
     srcs = ["stablehlo_import.cc"],
     hdrs = ["stablehlo_import.h"],
     deps = [
+        ":sharding_import_utils",
         "//xla:shape_util",
-        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:mesh_and_axis",
@@ -137,6 +155,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
