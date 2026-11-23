@@ -55,6 +55,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
@@ -2841,6 +2842,134 @@ ENTRY main {
             GetIndexByName(sequence, "ar-done"));
   EXPECT_EQ(GetIndexByName(sequence, "fill") + 1,
             GetIndexByName(sequence, "negated"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       OverlapLimitResolvesAsyncStartThroughIntermediaries) {
+  // The optimization barrier forces both all-gathers to be in flight at the
+  // same time. Each async-done reaches its async-start through a tuple, the
+  // barrier, and a gte rather than as a direct operand. Every group of `ag0`
+  // shares at most one device with every group of `ag1`, so the overlap is
+  // allowed.
+  constexpr absl::string_view kHloModule = R"hlo(
+HloModule test, replica_count=4
+
+ag0 {
+  p = f32[1] parameter(0)
+  ROOT ag = f32[2] all-gather(p), dimensions={0}, replica_groups={{0,1},{2,3}}
+}
+
+ag1 {
+  p = f32[1] parameter(0)
+  ROOT ag = f32[2] all-gather(p), dimensions={0}, replica_groups={{0,2},{1,3}}
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+
+  ag0-start = ((f32[1]), f32[2]) async-start(p0), calls=ag0
+  ag1-start = ((f32[1]), f32[2]) async-start(p1), calls=ag1
+  starts = (((f32[1]), f32[2]), ((f32[1]), f32[2])) tuple(ag0-start, ag1-start)
+
+  barrier = (((f32[1]), f32[2]), ((f32[1]), f32[2])) opt-barrier(starts)
+
+  ag0-future = ((f32[1]), f32[2]) get-tuple-element(barrier), index=0
+  ag1-future = ((f32[1]), f32[2]) get-tuple-element(barrier), index=1
+
+  ag0-done = f32[2] async-done(ag0-future), calls=ag0
+  ag1-done = f32[2] async-done(ag1-future), calls=ag1
+
+  ROOT result = (f32[2], f32[2]) tuple(ag0-done, ag1-done)
+})hlo";
+
+  HloModuleConfig config = GetModuleConfig(/*fdo_profile=*/"");
+  config.set_replica_count(4);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       OverlapLimitRejectsLoopCarriedAsyncDoneWithUnknownStart) {
+  // A pipelined all-gather: `next-future` is started in one iteration and
+  // completed by `carried-done` in the next. `while_body` is scheduled on its
+  // own, so the start of `carried-done` is unknown there and its participating
+  // devices cannot be checked. The optimization barriers force
+  // `x-start` to be in flight when `carried-done` is scheduled, so the
+  // scheduler conservatively refuses to schedule `carried-done` and fails, even
+  // though the two all-gathers share at most one device.
+  constexpr absl::string_view kHloModule = R"hlo(
+HloModule test, replica_count=4
+
+ag0 {
+  p = f32[1] parameter(0)
+  ROOT ag = f32[2] all-gather(p), dimensions={0}, replica_groups={{0,1},{2,3}}
+}
+
+ag1 {
+  p = f32[1] parameter(0)
+  ROOT ag = f32[2] all-gather(p), dimensions={0}, replica_groups={{0,2},{1,3}}
+}
+
+while_cond {
+  state = ((f32[1]), f32[2]) parameter(0)
+  ROOT continue = pred[] constant(false)
+}
+
+while_body {
+  carried-future = ((f32[1]), f32[2]) parameter(0)
+  c = f32[1] constant({1})
+
+  x-start = ((f32[1]), f32[2]) async-start(c), calls=ag1
+
+  futures = (((f32[1]), f32[2]), ((f32[1]), f32[2]))
+    tuple(carried-future, x-start)
+  futures-barrier = (((f32[1]), f32[2]), ((f32[1]), f32[2]))
+    opt-barrier(futures)
+
+  carried-future-gte = ((f32[1]), f32[2]) get-tuple-element(futures-barrier),
+    index=0
+  carried-done = f32[2] async-done(carried-future-gte), calls=ag0
+
+  x-future = ((f32[1]), f32[2]) get-tuple-element(futures-barrier), index=1
+  pending = (f32[2], ((f32[1]), f32[2])) tuple(carried-done, x-future)
+  pending-barrier = (f32[2], ((f32[1]), f32[2])) opt-barrier(pending)
+
+  x-future-gte = ((f32[1]), f32[2]) get-tuple-element(pending-barrier),
+    index=1
+  x-done = f32[2] async-done(x-future-gte), calls=ag1
+
+  ROOT next-future = ((f32[1]), f32[2]) async-start(c), calls=ag0
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  prologue-future = ((f32[1]), f32[2]) async-start(p0), calls=ag0
+  loop = ((f32[1]), f32[2]) while(prologue-future), condition=while_cond,
+    body=while_body
+  ROOT epilogue-done = f32[2] async-done(loop), calls=ag0
+})hlo";
+
+  HloModuleConfig config = GetModuleConfig(/*fdo_profile=*/"");
+  config.set_replica_count(4);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+
+  EXPECT_THAT(
+      ScheduleModule(module.get(), /*num_parallel_resources=*/2),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInternal,
+          HasSubstr("carried-done: Skipped due to kExceedsOverlapLimit")));
 }
 
 }  // namespace

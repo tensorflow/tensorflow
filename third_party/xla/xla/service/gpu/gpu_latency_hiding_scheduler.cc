@@ -437,7 +437,13 @@ bool GpuScheduleCrossesOverlapLimit(
 
   // A collective group contributes the participating device groups of all
   // collectives in its wrapped computation.
-  const HloInstruction* curr_start = curr_hlo.operand(0);
+  const HloInstruction* curr_start = FindStart(&curr_hlo);
+  if (curr_start == nullptr ||
+      !sched_state.async_tracker->IsSupportedAsyncStart(*curr_start)) {
+    // If we are not able to resolve curr_hlo's corresponding async-start,
+    // conservatively indicate that the schedule is invalid.
+    return true;
+  }
   auto curr_groups =
       IsCollectivesGroupAsyncStartOp(*curr_start)
           ? GetParticipatingDevicesGroups(
