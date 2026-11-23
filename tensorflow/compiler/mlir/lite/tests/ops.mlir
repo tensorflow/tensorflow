@@ -3554,3 +3554,60 @@ func.func @testFloat8RuntimeTypes(
   // CHECK: "tfl.broadcast_to"
   func.return
 }
+
+// -----
+
+// CHECK-LABEL: testQConstPerAxis
+func.func @testQConstPerAxis() -> tensor<2x3x!quant.uniform<i8:f32:1, {1.0,2.0,3.0}>> {
+  // CHECK: "tfl.pseudo_qconst"
+  %0 = "tfl.pseudo_qconst"() {qtype = tensor<2x3x!quant.uniform<i8:f32:1, {1.0,2.0,3.0}>>, value = dense<1> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8:f32:1, {1.0,2.0,3.0}>>
+  func.return %0 : tensor<2x3x!quant.uniform<i8:f32:1, {1.0,2.0,3.0}>>
+}
+
+// -----
+
+func.func @testQConstPerAxisScalesMismatch() -> tensor<8x!quant.uniform<i8:f32:0, {1.0,2.0}>> {
+  // expected-error @+1 {{expects 8 scales and zero points to match dimension 0 of value, got 2 scales and 2 zero points}}
+  %0 = "tfl.pseudo_qconst"() {qtype = tensor<8x!quant.uniform<i8:f32:0, {1.0,2.0}>>, value = dense<1> : tensor<8xi8>} : () -> tensor<8x!quant.uniform<i8:f32:0, {1.0,2.0}>>
+  func.return %0 : tensor<8x!quant.uniform<i8:f32:0, {1.0,2.0}>>
+}
+
+// -----
+
+func.func @testQConstPerAxisQuantizedDimensionOutOfRank() -> tensor<2x!quant.uniform<i8:f32:1, {1.0,2.0}>> {
+  // expected-error @+1 {{expects the quantized dimension 1 to be in the range [0, 1) of value}}
+  %0 = "tfl.pseudo_qconst"() {qtype = tensor<2x!quant.uniform<i8:f32:1, {1.0,2.0}>>, value = dense<1> : tensor<2xi8>} : () -> tensor<2x!quant.uniform<i8:f32:1, {1.0,2.0}>>
+  func.return %0 : tensor<2x!quant.uniform<i8:f32:1, {1.0,2.0}>>
+}
+
+// -----
+
+func.func @testQConstPerAxisQtypeDiffersFromResult() -> tensor<2x!quant.uniform<i8:f32:0, {1.0,2.0}>> {
+  // expected-error @+1 {{expects 8 scales and zero points to match dimension 0 of value, got 2 scales and 2 zero points}}
+  %0 = "tfl.pseudo_qconst"() {qtype = tensor<8x!quant.uniform<i8:f32:0, {1.0,2.0}>>, value = dense<1> : tensor<8xi8>} : () -> tensor<2x!quant.uniform<i8:f32:0, {1.0,2.0}>>
+  func.return %0 : tensor<2x!quant.uniform<i8:f32:0, {1.0,2.0}>>
+}
+
+// -----
+
+func.func @testQConstPerAxisDynamicQtype() -> tensor<?x!quant.uniform<i8:f32:0, {1.0,2.0}>> {
+  // expected-error @+1 {{expects 8 scales and zero points to match dimension 0 of value, got 2 scales and 2 zero points}}
+  %0 = "tfl.pseudo_qconst"() {qtype = tensor<?x!quant.uniform<i8:f32:0, {1.0,2.0}>>, value = dense<1> : tensor<8xi8>} : () -> tensor<?x!quant.uniform<i8:f32:0, {1.0,2.0}>>
+  func.return %0 : tensor<?x!quant.uniform<i8:f32:0, {1.0,2.0}>>
+}
+
+// -----
+
+func.func @testQConstPerAxisScalar() -> tensor<!quant.uniform<i8:f32:0, {1.0}>> {
+  // expected-error @+1 {{expects the quantized dimension 0 to be in the range [0, 0) of value}}
+  %0 = "tfl.pseudo_qconst"() {qtype = tensor<!quant.uniform<i8:f32:0, {1.0}>>, value = dense<1> : tensor<i8>} : () -> tensor<!quant.uniform<i8:f32:0, {1.0}>>
+  func.return %0 : tensor<!quant.uniform<i8:f32:0, {1.0}>>
+}
+
+// -----
+
+func.func @testSparseQConstPerAxisScalesMismatch() -> tensor<4x!quant.uniform<i8:f32:0, {1.0,2.0}>> {
+  // expected-error @+1 {{expects 4 scales and zero points to match dimension 0 of value, got 2 scales and 2 zero points}}
+  %0 = "tfl.pseudo_sparse_qconst"() {qtype = tensor<4x!quant.uniform<i8:f32:0, {1.0,2.0}>>, compressed_data = dense<[1, 10, 127]> : tensor<3xi8>, s_param = #tfl.sparsity_parameter<traversal_order = [0], block_map = [], dim_metadata = #tfl.dimension_metadata<dense_size = 0, format = SPARSE_CSR, indices = [1, 2, 3], segments = [0, 3]>>, value = dense<0> : tensor<4xi8>} : () -> tensor<4x!quant.uniform<i8:f32:0, {1.0,2.0}>>
+  func.return %0 : tensor<4x!quant.uniform<i8:f32:0, {1.0,2.0}>>
+}
