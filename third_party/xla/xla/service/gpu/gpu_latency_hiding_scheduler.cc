@@ -565,28 +565,105 @@ static bool IsPartiallyPipelinedSendRecv(const HloInstruction* instr) {
 // users would only take scheduling freedom away from the ready-set heuristics.
 static constexpr int64_t kMinForceEarlyFillBytes = 1024 * 1024;
 
-// Returns true if every operand of `instr` is an effective scalar that is
-// either a constant or an effective parameter (parameter or tuple element /
-// bitcast of a parameter), so scheduling `instr` neither depends on upstream
-// compute/collectives nor allocates non-trivial live operand buffers.
-static bool HasOnlyIndependentScalarOperands(const HloInstruction& instr) {
-  return absl::c_all_of(instr.operands(), [](const HloInstruction* operand) {
-    return ShapeUtil::IsEffectiveScalar(operand->shape()) &&
-           (operand->IsConstant() || hlo_query::IsEffectiveParameter(*operand));
-  });
+// Minimum output-to-input byte ratio for a loop fusion with operands to be
+// treated as a memory-amplifying fill (e.g. broadcasting a scalar or small
+// parameter vector into a large tensor).
+//
+// The exact value of 100 (inputs <= 1% of output bytes) is a conservative
+// heuristic chosen to:
+//   1. Stay well above pure dtype-widening ratios (up to 16x-32x, e.g. s4/f8
+//      to f64/c128) so same-shape elementwise casts on large parameters are not
+//      pinned with ForceEarly, and
+//   2. Ensure that even if sinking delays the last use of an input parameter,
+//      the input footprint is negligible (<= 1%) compared to the output buffer.
+// Lowering this (e.g. to 32-64) to catch smaller-batch broadcasts or raising
+// it to be more restrictive is safe as long as it remains above dtype-widening
+// ratios.
+static constexpr int64_t kMinFillAmplificationFactor = 100;
+
+// Maximum number of instructions to inspect when verifying that a computed
+// scalar operand is derived purely from constants and effective parameters.
+//
+// The value of 16 is an arbitrary compile-time cap to keep the per-operand DFS
+// O(1) without cross-instruction memoization (unfused scalar chains remaining
+// after fusion passes are typically 1-4 ops deep). Schedule correctness and
+// memory safety rely only on the structural checks in
+// IsIndependentScalarSubgraph, so increasing this limit is safe.
+static constexpr int64_t kMaxScalarConeNodes = 16;
+
+// Returns true if `root` is an effective scalar whose ancestor cone consists
+// solely of effective-scalar constants, effective parameters, and pure
+// synchronous scalar operations (elementwise, bitcast, or reshape). Requiring
+// every node in the cone to be an effective scalar guarantees zero collective
+// async depth and ensures we never sink a fusion whose scalar operand comes
+// from reducing or slicing a large upstream tensor.
+static bool IsIndependentScalarSubgraph(const HloInstruction& root) {
+  if (!ShapeUtil::IsEffectiveScalar(root.shape())) {
+    return false;
+  }
+  std::vector<const HloInstruction*> worklist = {&root};
+  absl::flat_hash_set<const HloInstruction*> visited = {&root};
+  while (!worklist.empty()) {
+    const HloInstruction* curr = worklist.back();
+    worklist.pop_back();
+    if (!ShapeUtil::IsEffectiveScalar(curr->shape()) || curr->HasSideEffect()) {
+      return false;
+    }
+    if (curr->IsConstant() || hlo_query::IsEffectiveParameter(*curr)) {
+      continue;
+    }
+    if (curr->operand_count() == 0 ||
+        (!curr->IsElementwise() &&
+         !HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kReshape>(curr))) {
+      return false;
+    }
+    for (const HloInstruction* operand : curr->operands()) {
+      if (visited.insert(operand).second) {
+        if (visited.size() > kMaxScalarConeNodes) {
+          return false;
+        }
+        worklist.push_back(operand);
+      }
+    }
+  }
+  return true;
+}
+
+// Returns true if every operand of `instr` is independent of upstream tensor
+// compute/collectives (either a direct constant/effective parameter or a pure
+// scalar subgraph rooted at constants/parameters) and the total input byte size
+// is at most `output_bytes / kMinFillAmplificationFactor`.
+static bool HasOnlyIndependentAmplifiedOperands(const HloInstruction& instr,
+                                                int64_t output_bytes) {
+  const int64_t max_input_bytes = output_bytes / kMinFillAmplificationFactor;
+  int64_t input_bytes = 0;
+  for (const HloInstruction* operand : instr.operands()) {
+    if (!operand->shape().IsArray()) {
+      return false;
+    }
+    input_bytes += ShapeUtil::ByteSizeOfElements(operand->shape());
+    if (input_bytes > max_input_bytes) {
+      return false;
+    }
+    if (!operand->IsConstant() && !hlo_query::IsEffectiveParameter(*operand) &&
+        !IsIndependentScalarSubgraph(*operand)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Returns true if `instr` is a large independent fill: a loop fusion with no
-// operands (or only independent scalar parameter/constant operands), such as a
-// broadcast of a scalar or an iota, whose outputs total at least
-// kMinForceEarlyFillBytes. Multi-output fills count, too: copy insertion and
-// copy fusion leave behind fusions that emit a broadcast together with a copy
-// of it, and at scheduling time those are the largest fills in the module.
-// Fills that carry an explicit placement constraint are excluded.
+// operands (or only small independent operands that it amplifies by at least
+// kMinFillAmplificationFactor), such as a broadcast of a scalar/small parameter
+// or an iota, whose outputs total at least kMinForceEarlyFillBytes.
+// Multi-output fills count, too: copy insertion and copy fusion leave behind
+// fusions that emit a broadcast together with a copy of it, and at scheduling
+// time those are the largest fills in the module. Fills that carry an explicit
+// placement constraint are excluded.
 static bool IsLargeIndependentFill(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion ||
-      instr.fusion_kind() != HloInstruction::FusionKind::kLoop ||
-      !HasOnlyIndependentScalarOperands(instr)) {
+      instr.fusion_kind() != HloInstruction::FusionKind::kLoop) {
     return false;
   }
   int64_t output_bytes = 0;
@@ -596,7 +673,8 @@ static bool IsLargeIndependentFill(const HloInstruction& instr) {
           output_bytes += ShapeUtil::ByteSizeOfElements(subshape);
         }
       });
-  if (output_bytes < kMinForceEarlyFillBytes) {
+  if (output_bytes < kMinForceEarlyFillBytes ||
+      !HasOnlyIndependentAmplifiedOperands(instr, output_bytes)) {
     return false;
   }
   // Scheduling groups are placed as a unit by the annotation scheduler.
