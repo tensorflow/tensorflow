@@ -32,6 +32,8 @@ cc_library(
         "//xla/backends/cpu/nanort:nanort_executable",
         "//xla/service:executable",
         "//xla/service/cpu:executable_proto_cc",
+        "//xla/service/cpu:function_library_loader",
+        "//xla/service/cpu:orc_function_library_loader",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",

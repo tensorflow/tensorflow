@@ -4221,6 +4221,7 @@ xla_cc_test(
         "//xla/service/cpu:cpu_aot_loader",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:executable_proto_cc",
+        "//xla/service/cpu:orc_function_library_loader",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:log_severity",

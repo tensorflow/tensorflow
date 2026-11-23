@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/cpu/orc_function_library_loader.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -92,6 +93,7 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> GetExecutable(
     CpuAotCompilationResult* aot_compilation_result =
         absl::down_cast<CpuAotCompilationResult*>(exported.get());
     return NanoRtExecutable::Create(aot_compilation_result->proto(),
+                                    LoadFunctionLibraryWithOrc,
                                     executable->program_shape());
   }
 
@@ -460,6 +462,7 @@ TEST_P(NanoRtClientTest, YnnFusionUsesIntraOpThreadPool) {
         absl::down_cast<CpuAotCompilationResult*>(exported.get());
     TF_ASSERT_OK_AND_ASSIGN(
         executable, NanoRtExecutable::Create(aot_compilation_result->proto(),
+                                             LoadFunctionLibraryWithOrc,
                                              executable->program_shape()));
   }
 

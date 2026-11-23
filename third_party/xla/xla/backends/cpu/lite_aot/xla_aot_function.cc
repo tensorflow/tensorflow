@@ -36,6 +36,8 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/literal.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/function_library_loader.h"
+#include "xla/service/cpu/orc_function_library_loader.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -64,14 +66,17 @@ absl::StatusOr<ProgramShape> GetProgramShape(
 
 absl::StatusOr<ExecutableAndSupportingLiterals>
 CreateExecutableAndSupportingLiterals(
-    const CompilationResultProto& compilation_result) {
+    const CompilationResultProto& compilation_result,
+    FunctionLibraryLoader function_library_loader) {
   ABSL_ASSIGN_OR_RETURN(
       ProgramShape program_shape,
       ProgramShape::FromProto(
           compilation_result.hlo_module().hlo_module().host_program_shape()));
 
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<NanoRtExecutable> nanort_executable,
-                   NanoRtExecutable::Create(compilation_result, program_shape));
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<NanoRtExecutable> nanort_executable,
+      NanoRtExecutable::Create(compilation_result, function_library_loader,
+                               program_shape));
 
   std::vector<Literal> results_literals;
 
@@ -112,6 +117,7 @@ bool AreStringsInVectorUnique(const std::vector<std::string>& strings) {
 
 absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
     const CompilationResultProto& compilation_result,
+    FunctionLibraryLoader function_library_loader,
     std::vector<std::string> arg_names, std::vector<std::string> result_names) {
   if (!AreStringsInVectorUnique(arg_names)) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -123,7 +129,8 @@ absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
   }
 
   ABSL_ASSIGN_OR_RETURN(auto executable_and_supporting_literals,
-                   CreateExecutableAndSupportingLiterals(compilation_result));
+                   CreateExecutableAndSupportingLiterals(
+                       compilation_result, function_library_loader));
 
   ABSL_ASSIGN_OR_RETURN(
       auto program_shape,
@@ -156,9 +163,11 @@ absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
 }
 
 absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
-    const CompilationResultProto& compilation_result) {
+    const CompilationResultProto& compilation_result,
+    FunctionLibraryLoader function_library_loader) {
   ABSL_ASSIGN_OR_RETURN(auto executable_and_supporting_literals,
-                   CreateExecutableAndSupportingLiterals(compilation_result));
+                   CreateExecutableAndSupportingLiterals(
+                       compilation_result, function_library_loader));
 
   auto& nanort_executable =
       executable_and_supporting_literals.nanort_executable;
@@ -205,6 +214,18 @@ absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
   return absl::WrapUnique(new XlaAotFunction(
       std::move(nanort_executable), std::move(results_literals),
       std::move(temp_literal), std::move(arg_names), std::move(result_names)));
+}
+
+absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
+    const CompilationResultProto& compilation_result) {
+  return Create(compilation_result, LoadFunctionLibraryWithOrc);
+}
+
+absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
+    const CompilationResultProto& compilation_result,
+    std::vector<std::string> arg_names, std::vector<std::string> result_names) {
+  return Create(compilation_result, LoadFunctionLibraryWithOrc,
+                std::move(arg_names), std::move(result_names));
 }
 
 XlaAotFunction::XlaAotFunction(std::unique_ptr<NanoRtExecutable> executable,

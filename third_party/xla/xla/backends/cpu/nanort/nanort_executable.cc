@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_aot_loader.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/function_library_loader.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_value.h"
@@ -303,10 +304,12 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
 
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
     CompilationResultProto aot_compilation_result,
+    FunctionLibraryLoader function_library_loader,
     std::optional<ProgramShape> program_shape) {
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      CpuAotLoader::LoadExecutable(std::move(aot_compilation_result)));
+      CpuAotLoader::LoadExecutable(std::move(aot_compilation_result),
+                                   function_library_loader));
   return Create(std::move(executable), program_shape);
 }
 

@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/function_library_loader.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/shape.h"
@@ -56,9 +57,10 @@ class NanoRtExecutable {
       std::optional<ProgramShape> program_shape = std::nullopt);
 
   // Creates a new instance of the NanoRtExecutable from an AOT compilation
-  // result.
+  // result using `function_library_loader` to load compiled kernels.
   static absl::StatusOr<std::unique_ptr<NanoRtExecutable>> Create(
       CompilationResultProto aot_compilation_result,
+      FunctionLibraryLoader function_library_loader,
       std::optional<ProgramShape> program_shape = std::nullopt);
 
   // NanoRtExecutable can be asynchronous and return unavailable async value

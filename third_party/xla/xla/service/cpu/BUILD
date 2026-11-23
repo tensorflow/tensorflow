@@ -155,7 +155,9 @@ cc_library(
         ":cpu_options",
         ":dot_op_emitter",
         ":executable_proto_cc",
+        ":function_library_loader",
         ":metrics",
+        ":orc_function_library_loader",
         ":parallel_task_assignment",
         ":thunk_emitter",
         "//xla:comparison_util",
@@ -1427,32 +1429,84 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "function_library_loader",
+    srcs = ["function_library_loader.cc"],
+    hdrs = ["function_library_loader.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":executable_proto_cc",
+        "//xla:util",
+        "//xla/backends/cpu/runtime:function_library",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:any_span",
+    ],
+)
+
+cc_library(
     name = "cpu_aot_loader",
     srcs = ["cpu_aot_loader.cc"],
     hdrs = ["cpu_aot_loader.h"],
     deps = [
         ":cpu_aot_compilation_result",
         ":executable_proto_cc",
+        ":function_library_loader",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
-        "//xla/backends/cpu/codegen:builtin_definition_generator",
-        "//xla/backends/cpu/codegen:execution_engine",
-        "//xla/backends/cpu/codegen:object_loader",
         "//xla/backends/cpu/runtime:function_library",
-        "//xla/hlo/ir:hlo",
         "//xla/service:compiled_module",
-        "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
+    ],
+)
+
+cc_library(
+    name = "orc_function_library_loader",
+    srcs = ["orc_function_library_loader.cc"],
+    hdrs = ["orc_function_library_loader.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":executable_proto_cc",
+        ":function_library_loader",
+        "//xla:util",
+        "//xla/backends/cpu/codegen:builtin_definition_generator",
+        "//xla/backends/cpu/codegen:execution_engine",
+        "//xla/backends/cpu/codegen:object_loader",
+        "//xla/backends/cpu/runtime:function_library",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:any_span",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "cpu_aot_loader_test",
+    srcs = ["cpu_aot_loader_test.cc"],
+    deps = [
+        ":cpu_aot_loader",
+        ":executable_proto_cc",
+        ":function_library_loader",
+        "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/cpu/runtime:function_library",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

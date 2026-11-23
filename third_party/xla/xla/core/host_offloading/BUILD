@@ -188,6 +188,7 @@ cc_library(
         "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/service/cpu:orc_function_library_loader",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_aot_loader.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/orc_function_library_loader.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/platform/env.h"
@@ -98,8 +99,9 @@ TEST(XlaCompileTest, LoadAotResultWithDefinedTargetFeatures) {
   ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
-  ASSERT_OK_AND_ASSIGN(auto result, cpu::CpuAotLoader::LoadAotCompilationResult(
-                                        serialized_aot_result));
+  ASSERT_OK_AND_ASSIGN(
+      auto result, cpu::CpuAotLoader::LoadAotCompilationResult(
+                       serialized_aot_result, cpu::LoadFunctionLibraryWithOrc));
   const auto& opts = static_cast<cpu::CpuAotCompilationResult*>(result.get())
                          ->proto()
                          .target_machine_options();
@@ -145,7 +147,8 @@ TEST(XlaCompileTest, LoadAotResultWithTuningOptions) {
   auto cleanup = absl::MakeCleanup([&sink] { absl::RemoveLogSink(&sink); });
 
   ASSERT_OK_AND_ASSIGN(auto result,
-                       cpu::CpuAotLoader::LoadAotCompilationResult(proto));
+                       cpu::CpuAotLoader::LoadAotCompilationResult(
+                           proto, cpu::LoadFunctionLibraryWithOrc));
   EXPECT_FALSE(sink.has_unexpected_error());
 }
 

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/literal.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/function_library_loader.h"
 #include "xla/service/executable.h"
 
 namespace xla::cpu {
@@ -49,13 +50,24 @@ namespace xla::cpu {
 
 class XlaAotFunction {
  public:
-  // Creates an XlaAotFunction object from a CompilationResultProto.
-  // It infers the argument and result names from the HLO module in the
-  // produced executable.
+  // Creates an XlaAotFunction object from a CompilationResultProto using
+  // `function_library_loader` to load compiled kernels. It infers the argument
+  // and result names from the HLO module in the produced executable.
+  static absl::StatusOr<std::unique_ptr<XlaAotFunction>> Create(
+      const CompilationResultProto& compilation_result,
+      FunctionLibraryLoader function_library_loader);
+
+  // Same as above but allows users to specify custom argument and result names.
+  static absl::StatusOr<std::unique_ptr<XlaAotFunction>> Create(
+      const CompilationResultProto& compilation_result,
+      FunctionLibraryLoader function_library_loader,
+      std::vector<std::string> arg_names,
+      std::vector<std::string> result_names);
+
+  // Convenience overloads that load compiled object files using LLVM ORC.
   static absl::StatusOr<std::unique_ptr<XlaAotFunction>> Create(
       const CompilationResultProto& compilation_result);
 
-  // Same as above but allows users to specify custom argument and result names.
   static absl::StatusOr<std::unique_ptr<XlaAotFunction>> Create(
       const CompilationResultProto& compilation_result,
       std::vector<std::string> arg_names,

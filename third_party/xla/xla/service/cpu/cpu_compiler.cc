@@ -195,7 +195,9 @@ limitations under the License.
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/function_library_loader.h"
 #include "xla/service/cpu/metrics.h"
+#include "xla/service/cpu/orc_function_library_loader.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
 #include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
@@ -1911,10 +1913,8 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> CpuCompiler::Export(
                    GetCompiledSymbolsFromProto(compiled_symbols_proto));
 
   ABSL_ASSIGN_OR_RETURN(auto function_library,
-                   LoadFunctionLibrary(compiled_symbols, obj_files,
-                                       &cpu_executable->module(),
-                                       cpu_executable->target_machine_options(),
-                                       cpu_executable->data_layout()));
+                   LoadObjectFilesWithOrc(compiled_symbols, obj_files,
+                                          cpu_executable->data_layout()));
 
   return CpuAotCompilationResult::Create(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),
@@ -1928,7 +1928,8 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> CpuCompiler::Export(
 absl::StatusOr<std::unique_ptr<CompiledModule>>
 CpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
-  return CpuAotLoader::LoadAotCompilationResult(serialized_aot_result);
+  return CpuAotLoader::LoadAotCompilationResult(serialized_aot_result,
+                                                LoadFunctionLibraryWithOrc);
 }
 
 absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(

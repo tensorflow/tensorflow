@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/cpu/orc_function_library_loader.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -173,7 +174,8 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
   if (proto.has_aot_compilation_result()) {
     ABSL_ASSIGN_OR_RETURN(executable,
                      xla::cpu::NanoRtExecutable::Create(
-                         proto.aot_compilation_result(), program_shape));
+                         proto.aot_compilation_result(),
+                         xla::cpu::LoadFunctionLibraryWithOrc, program_shape));
   } else {
     XlaComputation computation;
     computation = XlaComputation(proto.hlo_module());
