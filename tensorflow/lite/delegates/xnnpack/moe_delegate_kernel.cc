@@ -66,6 +66,8 @@ struct MoeExpertsAttributes {
   int hidden_dim = 0;
   WeightType weight_type = WeightType::kFp32;
   Activation activation = Activation::kGelu;
+  float gate_softcap = 0.0f;
+  float up_softcap = 0.0f;
 };
 
 struct MoeExpertsAssignment {
@@ -639,6 +641,12 @@ class MoeExpertsDelegateKernel::Impl {
     attr->num_active_experts = (*map)["num_active_experts"].AsInt32();
     attr->model_dim = (*map)["model_dim"].AsInt32();
     attr->hidden_dim = (*map)["hidden_dim"].AsInt32();
+    if (!(*map)["gate_softcap"].IsNull()) {
+      attr->gate_softcap = (*map)["gate_softcap"].AsFloat();
+    }
+    if (!(*map)["up_softcap"].IsNull()) {
+      attr->up_softcap = (*map)["up_softcap"].AsFloat();
+    }
     if (attr->num_experts <= 0 || attr->num_active_experts <= 0 ||
         attr->num_active_experts > attr->num_experts || attr->model_dim <= 0 ||
         attr->hidden_dim <= 0) {
@@ -693,13 +701,22 @@ class MoeExpertsDelegateKernel::Impl {
 
   static float Silu(float x) { return x / (1.0f + std::exp(-x)); }
 
+  static float Softcap(float x, float cap) { return std::tanh(x / cap) * cap; }
+
   float Activate(float x) const {
     if (attr_.activation == MoeExpertsAttributes::Activation::kSilu) {
+      if (attr_.gate_softcap > 0.0f) {
+        return Softcap(x, attr_.gate_softcap) / (1.0f + std::exp(-x));
+      }
       return Silu(x);
     }
     return (attr_.activation == MoeExpertsAttributes::Activation::kGeluTanh)
                ? GeluTanh(x)
                : Gelu(x);
+  }
+
+  float ActivateUp(float x) const {
+    return (attr_.up_softcap > 0.0f) ? Softcap(x, attr_.up_softcap) : x;
   }
 
   static void* AlignWorkspace(void* ptr) {
@@ -982,7 +999,7 @@ class MoeExpertsDelegateKernel::Impl {
                     const float ff1_val = DotExpertWeightRow(
                         ff1_weight, ff1_scale, ff1_layout, num_experts, expert,
                         out, model_dim, token_src);
-                    hidden[out] = Activate(gate_val) * ff1_val;
+                    hidden[out] = Activate(gate_val) * ActivateUp(ff1_val);
                   }
                 });
 
@@ -1063,7 +1080,7 @@ class MoeExpertsDelegateKernel::Impl {
                     const float* ff1 = gate + hidden_dim;
                     float* hidden = scratch->hidden.data() + token * hidden_dim;
                     for (size_t dim = 0; dim < hidden_dim; ++dim) {
-                      hidden[dim] = Activate(gate[dim]) * ff1[dim];
+                      hidden[dim] = Activate(gate[dim]) * ActivateUp(ff1[dim]);
                     }
                   }
                 });
