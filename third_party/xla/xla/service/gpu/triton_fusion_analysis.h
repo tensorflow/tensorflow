@@ -64,15 +64,6 @@ class TritonFusionAnalysis {
   using IterationSpecByInstructionByScopeMap =
       std::map<Scope, IterationSpecByInstructionMap>;
 
-  // Every parameter requires a separate piece of shared memory for asynchronous
-  // loads. Multiple parameters are approximately equivalent to multiple
-  // pipeline stages.
-  // Note: This has been tuned specifically for GEMMs, where pipelining with
-  // more than 4 stages has been shown to rarely be practical. This limitation
-  // is not necessarily applicable to other operations.
-  // Note: The limit doesn't apply to the epilogue of the fusion.
-  static constexpr int kMaxParameterPerDotOperand = 4;
-
   // Scope -> HLO -> dot dimension number -> iteration spec at the HLO's output.
   const TensorIterationSpec::DimIterationSpec* IterSpec(Scope scope,
                                                         const HloInstruction*,

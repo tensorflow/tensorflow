@@ -1062,11 +1062,11 @@ ENTRY e {
   EXPECT_EQ(module->entry_computation()->root_instruction()->fusion_kind(),
             HloInstruction::FusionKind::kCustom);
   EXPECT_LE(module->entry_computation()->root_instruction()->operand_count(),
-            TritonFusionAnalysis::kMaxParameterPerDotOperand * 2);
+            GemmFusion::kMaxParameterPerDotOperand * 2);
 }
 
 TEST_F(GemmFusionTest, DoNotFuseTooManyParametersForConcat) {
-  static_assert(TritonFusionAnalysis::kMaxParameterPerDotOperand == 4,
+  static_assert(GemmFusion::kMaxParameterPerDotOperand == 4,
                 "We have to update this test.");
   // The concat shouldn't overgo the allowed parameter limit.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -1089,12 +1089,12 @@ ENTRY e {
   EXPECT_EQ(module->entry_computation()->root_instruction()->fusion_kind(),
             HloInstruction::FusionKind::kCustom);
   EXPECT_LE(module->entry_computation()->root_instruction()->operand_count(),
-            TritonFusionAnalysis::kMaxParameterPerDotOperand + 1);
+            GemmFusion::kMaxParameterPerDotOperand + 1);
 }
 
 TEST_F(GemmFusionTest,
        InstructionsReachableFromMultipleOperandsAreHandledCorrectly) {
-  static_assert(TritonFusionAnalysis::kMaxParameterPerDotOperand == 4,
+  static_assert(GemmFusion::kMaxParameterPerDotOperand == 4,
                 "We have to update this test.");
   // There was a bug that some dead code was generated into some fusions in a
   // specific edge case. When some instructions were reachable both through the

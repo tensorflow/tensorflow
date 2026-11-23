@@ -281,8 +281,6 @@ cc_library(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:triton_fusion_analysis",
-        "//xla/service/gpu:triton_tiling_propagation",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
