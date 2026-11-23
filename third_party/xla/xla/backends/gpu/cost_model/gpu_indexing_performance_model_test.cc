@@ -755,16 +755,16 @@ ENTRY main {
   constexpr int64_t kParam1SizeBytes = 911 * 4;
   constexpr int64_t kOutputSizeBytes = 512 * 911 * 4;
 
-  // Launch grid consists of 128 blocks. Each block reads 1 tile of shape [4,
+  // Launch grid consists of 256 blocks. Each block reads 1 tile of shape [2,
   // 911] from param_0 and full param_1. In total param_0 is read once and
-  // param_1 is read 128 times.
+  // param_1 is read 256 times.
   constexpr int64_t kExpectedBytesRead =
-      kParam0SizeBytes + 128 * kParam1SizeBytes;
+      kParam0SizeBytes + 256 * kParam1SizeBytes;
 
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
             1);
   EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-              ElementsAre(4, 1024));
+              ElementsAre(2, 1024));
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
 
   EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_read, kExpectedBytesRead);
@@ -811,7 +811,7 @@ ENTRY main {
 
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 2932, 2);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 14, 1);
-  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2932, 2);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2936, 2);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -852,6 +852,72 @@ ENTRY main {
             4 * 128 * (96 * 64 / 96)        // ==> %p1
                 + 4 * 128 * (96 * 32 / 96)  // ==> %p0
   );
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_SingleReduceOverlapScalesWithOccupancy) {
+  // Returns the fraction of the compute/memory overlap that the estimate does
+  // not credit for a softmax over `num_rows` rows, which is one over the number
+  // of resident blocks per core.
+  auto lost_overlap_fraction =
+      [&](int64_t num_rows,
+          const BlockLevelParameters& block_level_parameters) {
+        auto module = ParseAndReturnVerifiedModule(absl::Substitute(
+            R"(
+HloModule softmax
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+softmax {
+  param_0 = f32[$0,2048]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[$0]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[$0,2048]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[$0,2048]{1,0} subtract(param_0, broadcast)
+}
+
+ENTRY main {
+  param_0 = f32[$0,2048]{1,0} parameter(0)
+  ROOT fusion = f32[$0,2048]{1,0} fusion(param_0), kind=kCustom, calls=softmax
+})",
+            num_rows));
+        CHECK_OK(module);
+        auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+            module.value()->entry_computation()->root_instruction());
+        auto data = indexing_cost_model_.EstimateRunTimeForTiledFusion(
+            *fusion_adaptor, block_level_parameters);
+        CHECK_OK(data);
+        const absl::Duration memory_time = data->read_time + data->write_time;
+        const absl::Duration fully_overlapped =
+            GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
+                data->compute_time, memory_time);
+        return absl::FDivDuration(
+            data->exec_time - fully_overlapped,
+            data->compute_time + memory_time - fully_overlapped);
+      };
+
+  // The 16384 registers of the largest tile limit a core to 4 blocks.
+  EXPECT_NEAR(lost_overlap_fraction(
+                  65536, BlockLevelParameters{/*output_tile_sizes=*/{{8, 2048}},
+                                              /*num_warps=*/8}),
+              1.0 / 4, 1e-4);
+
+  // The 64 threads of a block limit a core to 24 blocks.
+  EXPECT_NEAR(lost_overlap_fraction(
+                  65536, BlockLevelParameters{/*output_tile_sizes=*/{{1, 2048}},
+                                              /*num_warps=*/2}),
+              1.0 / 24, 1e-4);
+
+  // A core could hold 24 blocks, but the 168 blocks of the kernel are spread
+  // over 84 cores, which leaves 2 blocks per core.
+  EXPECT_NEAR(lost_overlap_fraction(
+                  168, BlockLevelParameters{/*output_tile_sizes=*/{{1, 2048}},
+                                            /*num_warps=*/2}),
+              1.0 / 2, 1e-4);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -1862,7 +1928,7 @@ ENTRY main {
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
           *fusion_adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{4, 4}},
                                                 /*num_warps=*/8}));
-  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 147, 1);
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 160, 1);
 
   ASSERT_OK_AND_ASSIGN(
       auto res2,
