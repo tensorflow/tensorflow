@@ -440,11 +440,16 @@ TEST(StreamExecutorGpuClientTest, DonateExternalMem) {
                           buffer_a->AcquireExternalReference());
 
   auto device_ptr = buffer_ref->OpaqueDeviceMemoryDataPointer();
+  auto done = std::make_shared<absl::Notification>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer, client->CreateViewOfDeviceBuffer(
                        device_ptr, shape, buffer_a->memory_space(),
                        [buf = std::shared_ptr<PjRtBuffer::ExternalReference>(
-                            std::move(buffer_ref))]() {}));
+                            std::move(buffer_ref)),
+                        done]() mutable {
+                         buf.reset();
+                         done->Notify();
+                       }));
 
   static constexpr char const* kAddProgram =
       R"(
@@ -465,6 +470,11 @@ ENTRY main.5 {
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result[0].size(), 1);
   TF_EXPECT_OK(result[0][0]->GetReadyFuture().Await());
+
+  result.clear();
+  buffer.reset();
+  // Wait for the executable to stop using the buffer.
+  ASSERT_TRUE(done->WaitForNotificationWithTimeout(absl::Seconds(60)));
 }
 #endif  // defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM) ||
         // defined(TENSORFLOW_USE_SYCL)
