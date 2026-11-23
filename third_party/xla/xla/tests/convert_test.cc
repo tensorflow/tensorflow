@@ -2302,6 +2302,119 @@ TYPED_TEST(ConvertTestF16, ConvertF8e8m0fnuF16RoundtripExhaustive4) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
+// ----- F8E5M3FNU
+
+TEST_F(ConvertTest, ConvertF32ToF8e5m3fnu) {
+  XlaBuilder builder(TestName());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  float inf = std::numeric_limits<float>::infinity();
+
+  struct TestCase {
+    float input;
+    uint8_t expected_code;
+  } test_cases[] = {
+      {0.0, 0x00},        //
+      {-0.0, 0x00},       // No negative zero
+      {1.0, 0x78},        //
+      {-1.0, 0xFF},       // No negative values
+      {2.0, 0x80},        // Top bit is part of the exponent
+      {nan, 0xFF},        //
+      {inf, 0xFF},        // No infinity
+      {-inf, 0xFF},       //
+      {0x1.cp16, 0xFE},   // Max value (114688)
+      {0x1.dp16, 0xFE},   // Rounds down to max
+      {0x1.ep16, 0xFF},   // Midpoint rounds to even, which overflows
+      {0x1p-14, 0x08},    // Min normal
+      {0x1p-17, 0x01},    // Min subnormal
+      {0x1.8p-18, 0x01},  // Rounds up to min subnormal
+      {0x1p-18, 0x00},    // Midpoint rounds to even (zero)
+  };
+
+  std::vector<float> inputs;
+  std::vector<uint8_t> expected_codes;
+  for (TestCase test_case : test_cases) {
+    inputs.push_back(test_case.input);
+    expected_codes.push_back(test_case.expected_code);
+  }
+
+  Literal param0 = LiteralUtil::CreateR1<float>(inputs);
+  XlaOp x = Parameter(&builder, 0, param0.shape(), "input");
+  BitcastConvertType(ConvertElementType(x, F8E5M3FNU), U8);
+  ComputeAndCompareR1<uint8_t>(&builder, expected_codes, {&param0});
+}
+
+TYPED_TEST(ConvertTestT, ConvertF8e5m3fnuRoundtripExhaustive) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
+  // Convert from FP8 to supported floating point type, then back to FP8.
+  XlaBuilder builder(this->TestName());
+
+  using From = tsl::float8_e5m3fnu;
+  std::vector<From> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(Eigen::numext::bit_cast<From>(static_cast<uint8_t>(i)));
+  }
+
+  xla::XlaOp all_f8_as_fp =
+      ConvertElementType(ConstantR1<From>(&builder, all_f8),
+                         primitive_util::NativeToPrimitiveType<TypeParam>());
+  ConvertElementType(all_f8_as_fp, F8E5M3FNU);
+  this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+TYPED_TEST(ConvertTestT, ConvertF8e5m3fnuRoundtripExhaustive2) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
+  // Convert from supported floating point type to FP8.
+  XlaBuilder builder(this->TestName());
+
+  std::vector<TypeParam> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(static_cast<TypeParam>(
+        Eigen::numext::bit_cast<tsl::float8_e5m3fnu>(static_cast<uint8_t>(i))));
+  }
+
+  ConvertElementType(ConstantR1<TypeParam>(&builder, all_f8), F8E5M3FNU);
+  this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+TYPED_TEST(ConvertTestT, ConvertF8e5m3fnuRoundtripExhaustive3) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
+  // Convert from FP8 to supported floating point type.
+  XlaBuilder builder(this->TestName());
+
+  using From = tsl::float8_e5m3fnu;
+  std::vector<From> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(Eigen::numext::bit_cast<From>(static_cast<uint8_t>(i)));
+  }
+
+  ConvertElementType(ConstantR1<From>(&builder, all_f8),
+                     primitive_util::NativeToPrimitiveType<TypeParam>());
+  this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+TYPED_TEST(ConvertTestF16, ConvertF8e5m3fnuF16RoundtripExhaustive4) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
+  // Convert from (B)F16 to FP8, including negative values.
+  XlaBuilder builder(this->TestName());
+
+  std::vector<TypeParam> all_f16;
+  for (int i = 0; i < 65536; i++) {
+    all_f16.push_back(
+        Eigen::numext::bit_cast<TypeParam>(static_cast<uint16_t>(i)));
+  }
+
+  ConvertElementType(ConstantR1<TypeParam>(&builder, all_f16), F8E5M3FNU);
+  this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
 std::vector<float> MakeRoundNearestEvenConvertTestInputs() {
   std::vector<float> values = {
       0.0f,

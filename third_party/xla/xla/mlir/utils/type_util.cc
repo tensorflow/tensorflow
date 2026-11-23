@@ -54,6 +54,8 @@ absl::StatusOr<mlir::Type> ConvertPrimitiveTypeToMlirType(
       return b.getType<mlir::Float8E4M3FNUZType>();
     case xla::PrimitiveType::F8E3M4:
       return b.getType<mlir::Float8E3M4Type>();
+    case xla::PrimitiveType::F8E5M3FNU:
+      return b.getType<mlir::Float8E5M3FNUType>();
     case xla::PrimitiveType::F8E8M0FNU:
       return b.getType<mlir::Float8E8M0FNUType>();
     case xla::PrimitiveType::F16:
@@ -117,6 +119,9 @@ xla::PrimitiveType ConvertMlirTypeToPrimitiveType(mlir::Type type) {
   }
   if (llvm::isa<mlir::Float8E3M4Type>(type)) {
     return xla::PrimitiveType::F8E3M4;
+  }
+  if (llvm::isa<mlir::Float8E5M3FNUType>(type)) {
+    return xla::PrimitiveType::F8E5M3FNU;
   }
   if (llvm::isa<mlir::Float8E8M0FNUType>(type)) {
     return xla::PrimitiveType::F8E8M0FNU;
