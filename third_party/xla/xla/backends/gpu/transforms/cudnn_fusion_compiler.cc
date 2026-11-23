@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/backends/gpu/transforms/compiled_cudnn_graph_cache.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_utils.h"
+#include "xla/backends/gpu/transforms/cudnn_gemm_dimensions.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -63,7 +65,6 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
@@ -403,13 +404,10 @@ class RaggedDotDimensionAdapter {
 };
 
 class GemmDimensionAdapter {
-  explicit GemmDimensionAdapter(const HloInstruction& dot,
-                                TritonFusionAnalysis analysis)
-      : analysis_(std::move(analysis)), dot_(dot) {}
+  explicit GemmDimensionAdapter(CuDnnGemmDimensions dimensions)
+      : dimensions_(std::move(dimensions)) {}
 
  public:
-  const TritonFusionAnalysis analysis_;
-
   static absl::StatusOr<std::optional<GemmDimensionAdapter>> Create(
       const HloComputation& computation) {
     const HloInstruction* maybe_scaled_dot =
@@ -432,157 +430,29 @@ class GemmDimensionAdapter {
       VLOG(3) << "Non-default algorithm is not supported.";
       return std::nullopt;
     }
-    ABSL_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(computation));
-    return GemmDimensionAdapter{*dot, std::move(analysis)};
+    ABSL_ASSIGN_OR_RETURN(CuDnnGemmDimensions dimensions,
+                     CuDnnGemmDimensions::Create(*dot));
+    return GemmDimensionAdapter(std::move(dimensions));
   }
 
+  // Returns the dimensions of a parameter or an output of the fusion.
   std::optional<CudnnTensorLayout> DimensionsAndStrides(
-      const HloInstruction& hlo, const TritonFusionAnalysis::Scope scope) {
-    const DotDimensionNumbers& dims = dot_.dot_dimension_numbers();
-    // GEMM fusions require a specific canonical order of dimensions.
-    constexpr int kBatchDimensionIndex = 0;
-    constexpr int kOutputLHSNonContractingDimensionIndex = 1;
-    std::vector<int64_t> dim_indices;
-    int lhs_noncontracting_index = -1;
-    switch (scope) {
-      case TritonFusionAnalysis::Scope::LHS:
-      case TritonFusionAnalysis::Scope::LHS_SCALE:
-        lhs_noncontracting_index =
-            GetNonContractingDims(dot_.operand(0)->shape(),
-                                  dims.lhs_batch_dimensions(),
-                                  dims.lhs_contracting_dimensions())
-                .value()[0];
-        dim_indices = {
-            dims.lhs_batch_dimensions().empty() ? -1
-                                                : dims.lhs_batch_dimensions(0),
-            lhs_noncontracting_index, dims.lhs_contracting_dimensions(0)};
-        break;
-      case TritonFusionAnalysis::Scope::RHS:
-      case TritonFusionAnalysis::Scope::RHS_SCALE:
-        dim_indices = {dims.rhs_batch_dimensions().empty()
-                           ? -1
-                           : dims.rhs_batch_dimensions(0),
-                       dims.rhs_contracting_dimensions(0),
-                       GetNonContractingDims(dot_.operand(1)->shape(),
-                                             dims.rhs_batch_dimensions(),
-                                             dims.rhs_contracting_dimensions())
-                           .value()[0]};
-        break;
-      case TritonFusionAnalysis::Scope::OUTPUT:
-        lhs_noncontracting_index = dot_.shape().dimensions().size() - 2;
-        dim_indices = {dims.lhs_batch_dimensions().empty() ? -1 : 0,
-                       lhs_noncontracting_index,
-                       dot_.shape().dimensions_size() - 1};
-        break;
+      const HloInstruction& hlo) const {
+    const CudnnTensorLayout* layout = dimensions_.TensorLayout(hlo);
+    if (layout == nullptr) {
+      return std::nullopt;
     }
+    return *layout;
+  }
 
-    CudnnTensorLayout result;
-    result.sizes.reserve(dim_indices.size());
-    result.strides.reserve(dim_indices.size());
-    result.slices = std::vector<std::pair<int64_t, int64_t>>{};
-    result.slices->reserve(dim_indices.size());
-    bool slicing_is_present = false;
-
-    for (const int index : dim_indices) {
-      const auto* spec = analysis_.IterSpec(scope, &hlo, index);
-      if (spec == nullptr) {
-        result.sizes.push_back(1);
-        result.strides.push_back(
-            result.strides.empty() ? 1 : result.strides.back());
-        result.slices->push_back({0, 1});
-        continue;
-      }
-      if (spec->size() == 1) {
-        // The dimension is not split, nothing to do.
-      } else if (spec->size() == 2) {
-        if (!dims.lhs_batch_dimensions().empty()) {
-          VLOG(8) << "Noncontracting dimension split is not compatible with "
-                     "batch dimensions.";
-          return std::nullopt;
-        }
-        if (index != lhs_noncontracting_index) {
-          VLOG(8) << "Only LHS noncontracting dimension can be split.";
-          return std::nullopt;
-        }
-        switch (scope) {
-          case TritonFusionAnalysis::Scope::LHS:
-            lhs_noncontracting_split_ = spec->back().count;
-            break;
-          case TritonFusionAnalysis::Scope::OUTPUT:
-            if (lhs_noncontracting_split_ != spec->back().count) {
-              VLOG(8) << "Output non-contracting dimension has to be split "
-                         "the same way as the LHS input one if it is split.";
-              return std::nullopt;
-            }
-            break;
-          default:
-            VLOG(8) << "Only LHS noncontracting dimension can be split.";
-            return std::nullopt;
-        }
-        // Assign the major part of the noncontracting dimension to the
-        // unused batch one.
-        CHECK_EQ(result.sizes[kBatchDimensionIndex], 1);
-        result.sizes[kBatchDimensionIndex] = spec->back().count;
-        result.strides[kBatchDimensionIndex] = spec->back().stride;
-      } else {
-        VLOG(8) << "The dimension is split multiple times.";
-        return std::nullopt;
-      }
-      result.sizes.push_back(spec->front().count);
-      result.strides.push_back(spec->front().stride);
-      result.slices->push_back(
-          {spec->front().slice_start,
-           spec->front().slice_start + spec->front().sliced_count});
-      if (spec->front().count != spec->front().sliced_count) {
-        slicing_is_present = true;
-      }
-    }
-    if (lhs_noncontracting_split_ > 1 &&
-        scope == TritonFusionAnalysis::Scope::OUTPUT &&
-        result.sizes[kBatchDimensionIndex] == 1) {
-      // LHS input noncontracting dimension is split but the corresponding
-      // output one is not. Assign part of the output one to the unused batch
-      // dimension.
-      result.sizes[kBatchDimensionIndex] = lhs_noncontracting_split_;
-      result.sizes[kOutputLHSNonContractingDimensionIndex] /=
-          lhs_noncontracting_split_;
-      result.strides[kBatchDimensionIndex] =
-          result.strides[kOutputLHSNonContractingDimensionIndex] *
-          result.sizes[kOutputLHSNonContractingDimensionIndex];
-    }
-
-    // 0 (kBatchDimensionIndex) is always the batch dimension;
-    // 1 and 2 are the non-batch ones. cuDNN relies on strides to determine
-    // layouts and gets confused when both strides of non-batch dimensions
-    // are equal to 1 - this is the case for tensors with 1-sized dimension
-    // like [A,1]. The stride of the 1-sized dimension does not matter for
-    // correctness because there is no iteration along this dimension, but
-    // setting it to A and representing the tensor as its equivalent [1,A]
-    // helps cuDNN.
-    if (result.strides[1] == 1 && result.strides[2] == 1) {
-      const int one_sized_dim_idx = (result.sizes[1] == 1) ? 1 : 2;
-      result.strides[one_sized_dim_idx] = result.sizes[1] * result.sizes[2];
-    }
-
-    // For 2D tensors with an implicit batch dimension, set the batch stride to
-    // the total packed size of the non-batch dimensions as required by cuDNN
-    // for operations like block-scale dequantization.
-    if (dim_indices[kBatchDimensionIndex] == -1 &&
-        result.sizes[kBatchDimensionIndex] == 1) {
-      result.strides[kBatchDimensionIndex] =
-          std::max(result.sizes[1] * result.strides[1],
-                   result.sizes[2] * result.strides[2]);
-    }
-
-    if (!slicing_is_present) {
-      result.slices.reset();
-    }
-    return result;
+  // Canonical sizes of the port that `hlo` contributes to, or nullptr.
+  const std::vector<int64_t>* absl_nullable CanonicalSizes(
+      const HloInstruction& hlo) const {
+    return dimensions_.CanonicalSizes(hlo);
   }
 
  private:
-  int64_t lhs_noncontracting_split_ = 1;
-  const HloInstruction& dot_;
+  CuDnnGemmDimensions dimensions_;
 };
 
 class ConvDimensionAdapter {
@@ -999,27 +869,16 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
       ABSL_RETURN_IF_ERROR(add_parameter(*parameter, *dims));
     }
   } else if (gemm_adapter.has_value()) {
-    for (const TritonFusionAnalysis::Scope scope :
-         {TritonFusionAnalysis::Scope::LHS,
-          TritonFusionAnalysis::Scope::LHS_SCALE,
-          TritonFusionAnalysis::Scope::RHS,
-          TritonFusionAnalysis::Scope::RHS_SCALE,
-          TritonFusionAnalysis::Scope::OUTPUT}) {
-      if (!gemm_adapter->analysis_.is_scaled_dot() &&
-          (scope == TritonFusionAnalysis::Scope::LHS_SCALE ||
-           scope == TritonFusionAnalysis::Scope::RHS_SCALE)) {
-        continue;
+    for (const HloInstruction* parameter :
+         computation.parameter_instructions()) {
+      const std::optional<CudnnTensorLayout> dims =
+          gemm_adapter->DimensionsAndStrides(*parameter);
+      VLOG(3) << "parameter: " << parameter->ToString() << "\n";
+      if (!dims.has_value()) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Unsupported dimensions for parameter: ", parameter->ToString()));
       }
-      for (const HloInstruction* parameter :
-           gemm_adapter->analysis_.ScopeParameters(scope)) {
-        const std::optional<CudnnTensorLayout> dims =
-            gemm_adapter->DimensionsAndStrides(*parameter, scope);
-        if (!dims.has_value()) {
-          return absl::UnimplementedError(absl::StrCat(
-              "Unsupported dimensions for parameter: ", parameter->ToString()));
-        }
-        ABSL_RETURN_IF_ERROR(add_parameter(*parameter, *dims));
-      }
+      ABSL_RETURN_IF_ERROR(add_parameter(*parameter, *dims));
     }
   } else {
     for (const HloInstruction* parameter :
@@ -1191,20 +1050,10 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
           // the cuDNN graph.
           if (gemm_adapter.has_value() &&
               hlo->operand(0)->opcode() == HloOpcode::kBroadcast) {
-            const std::optional<TritonFusionAnalysis::Scope> scope =
-                gemm_adapter->analysis_.QueryInstructionScope(*hlo);
-            if (!scope.has_value()) {
-              LOG(FATAL) << "No scope for instruction: "
-                         << hlo->ToShortString();
-            }
-            const std::optional<CudnnTensorLayout> dims =
-                gemm_adapter->DimensionsAndStrides(*hlo, *scope);
-            if (!dims.has_value()) {
-              VLOG(3) << "Unsupported hlo for querying dimensions: "
-                      << hlo->ToShortString();
-            } else {
-              hlo_to_cudnn[hlo]->set_dim(dims->sizes);
-            }
+            const std::vector<int64_t>* sizes =
+                gemm_adapter->CanonicalSizes(*hlo);
+            TF_RET_CHECK(sizes != nullptr);
+            hlo_to_cudnn[hlo]->set_dim(*sizes);
           }
         } else if (hlo->operand_count() == 2) {
           hlo_to_cudnn[hlo] = graph.pointwise(operand(0), operand(1), attrs);
@@ -1532,8 +1381,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
     } else if (ragged_dot_adapter.has_value()) {
       dims = ragged_dot_adapter->DimensionsAndStrides(*output);
     } else if (gemm_adapter.has_value()) {
-      dims = gemm_adapter->DimensionsAndStrides(
-          *output, TritonFusionAnalysis::Scope::OUTPUT);
+      dims = gemm_adapter->DimensionsAndStrides(*output);
     } else {
       // Pin non-specialized graph outputs to the HLO shape so cuDNN does not
       // infer dims/strides from upstream tensors with a different logical rank
