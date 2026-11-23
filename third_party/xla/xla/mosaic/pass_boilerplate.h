@@ -34,7 +34,7 @@ class Pass : public ::mlir::OperationPass<Op> {
   Pass& operator=(const Pass&) = delete;
   Pass(Pass&&) = delete;
   Pass& operator=(Pass&&) = delete;
-  ~Pass() = default;
+  ~Pass() override = default;
 
   static constexpr ::llvm::StringLiteral getArgumentName() {
     return ::llvm::StringLiteral(Derived::kArgumentName);
