@@ -394,7 +394,7 @@ def _gen_kernel_library(
             )
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
-            gpu_arch_option = "sm_70,compute_75" if cuda_gpu_architectures() else ",".join(rocm_gpu_architectures())
+            gpu_arch_option = "sm_80,compute_80" if cuda_gpu_architectures() else ",".join(rocm_gpu_architectures())
             test_args = [
                 "$(location //tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel)",
                 "$(location {op}_{name}_{platform}_{type}_{output_type}.mlir)".format(
