@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/analysis/shape_tracker.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
