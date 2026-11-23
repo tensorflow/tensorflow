@@ -40,6 +40,8 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(["data/cudnn_reproducer.hlo"])
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
