@@ -141,6 +141,14 @@ absl::StatusOr<std::optional<ConfigAssigner::Config>> ParseForcedConfig(
       std::make_unique<BackendConfig>(config_proto.backend_config())};
 }
 
+bool SameConfig(const ConfigAssigner::Config& lhs,
+                const ConfigAssigner::Config& rhs) {
+  return lhs.codegen_backend == rhs.codegen_backend &&
+         lhs.backend_config != nullptr && rhs.backend_config != nullptr &&
+         tsl::protobuf::util::MessageDifferencer::Equals(*lhs.backend_config,
+                                                         *rhs.backend_config);
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<ConfigAssigner>> ConfigAssigner::Create(
@@ -497,6 +505,20 @@ ConfigAssigner::GetFirstCompilableConfigOrDefault(const HloInstruction* instr) {
       return config.codegen_backend->backend() == *default_backend;
     });
   }
+  std::optional<absl::StatusOr<Config>> default_config;
+  // If there is only one candidate and it matches the default config, we will
+  // return it whether compilation succeeds or falls back to the default, so
+  // skip the compilation check.
+  if (!options_.compile_all_supported_configs && supported_configs.ok() &&
+      supported_configs->size() == 1) {
+    default_config = orchestrator_->GetDefaultConfig(*instr);
+    if (default_config->ok() &&
+        SameConfig(**default_config, (*supported_configs)[0])) {
+      VLOG(1) << "Skipping compilation check for sole config matching default: "
+              << (*supported_configs)[0].ToString();
+      return std::move((*supported_configs)[0]);
+    }
+  }
   absl::StatusOr<Config> supported_config =
       supported_configs.ok()
           ? GetFirstCompilableConfig(instr, std::move(*supported_configs))
@@ -505,18 +527,19 @@ ConfigAssigner::GetFirstCompilableConfigOrDefault(const HloInstruction* instr) {
     return supported_config;
   }
 
-  absl::StatusOr<Config> default_config =
-      orchestrator_->GetDefaultConfig(*instr);
-  if (default_config.ok()) {
-    VLOG(1) << "Using default config: " << default_config->ToString();
-    return default_config;
+  if (!default_config.has_value()) {
+    default_config = orchestrator_->GetDefaultConfig(*instr);
+  }
+  if (default_config->ok()) {
+    VLOG(1) << "Using default config: " << (*default_config)->ToString();
+    return std::move(*default_config);
   }
 
-  VLOG(1) << "Failed to get default config: " << default_config.status();
+  VLOG(1) << "Failed to get default config: " << default_config->status();
   return absl::InternalError(absl::StrCat(
       "No supported config found for HLO: ", instr->ToString(),
       "; Supported configs status: ", supported_config.status().ToString(),
-      "; Default config status: ", default_config.status().ToString()));
+      "; Default config status: ", default_config->status().ToString()));
 }
 
 std::optional<ConfigAssigner::Config> ConfigAssigner::LookUp(

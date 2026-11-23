@@ -433,6 +433,105 @@ TEST_F(ConfigAssignerTest, AutotuningDisabledPicksFirstCompilable) {
 }
 
 TEST_F(ConfigAssignerTest,
+       AutotuningDisabledSkipsCompileWhenSoleConfigMatchesDefault) {
+  config_.allow_autotuning = false;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("default"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, GetDefaultConfig(_))
+      .WillOnce(Return(ByMove(GetTestConfig("default"))));
+  EXPECT_CALL(*backend, Compile(_, _)).Times(0);
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("default")))
+      .WillOnce(Return(absl::OkStatus()));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto config_assigner,
+      CreateConfigAssigner(std::move(backends), /*profiler=*/nullptr, config_,
+                           /*cache=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(config_assigner->AssignConfig(
+                  module->entry_computation()->root_instruction()),
+              absl_testing::IsOk());
+}
+
+TEST_F(ConfigAssignerTest,
+       AutotuningDisabledCompilesSoleConfigWhenDefaultIsFromDifferentBackend) {
+  config_.allow_autotuning = false;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("same_proto"));
+
+  auto backend_a = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend_a, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend_a, GetDefaultConfig(_))
+      .WillOnce(Return(absl::UnimplementedError("no default")));
+  EXPECT_CALL(*backend_a, Compile(_, ConfigMatcher("same_proto")))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+  EXPECT_CALL(*backend_a, ApplyConfig(_, ConfigMatcher("same_proto")))
+      .WillOnce(Return(absl::OkStatus()));
+
+  auto backend_b = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend_b, GetSupportedConfigs(_))
+      .WillOnce(Return(absl::UnimplementedError("unsupported")));
+  EXPECT_CALL(*backend_b, GetDefaultConfig(_))
+      .WillOnce(Return(ByMove(GetTestConfig("same_proto"))));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend_a));
+  backends.push_back(std::move(backend_b));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto config_assigner,
+      CreateConfigAssigner(std::move(backends), /*profiler=*/nullptr, config_,
+                           /*cache=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(config_assigner->AssignConfig(
+                  module->entry_computation()->root_instruction()),
+              absl_testing::IsOk());
+}
+
+TEST_F(ConfigAssignerTest,
+       AutotuningDisabledCompilesSoleConfigMatchingDefaultWhenCompileAllIsSet) {
+  config_.allow_autotuning = false;
+  config_.compile_all_supported_configs = true;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("default"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, GetDefaultConfig(_)).Times(0);
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("default")))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("default")))
+      .WillOnce(Return(absl::OkStatus()));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto config_assigner,
+      CreateConfigAssigner(std::move(backends), /*profiler=*/nullptr, config_,
+                           /*cache=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(config_assigner->AssignConfig(
+                  module->entry_computation()->root_instruction()),
+              absl_testing::IsOk());
+}
+
+TEST_F(ConfigAssignerTest,
        AutotuningDisabledFallsBackToDefaultIfNoSupportedConfigCompiles) {
   config_.allow_autotuning = false;
 
