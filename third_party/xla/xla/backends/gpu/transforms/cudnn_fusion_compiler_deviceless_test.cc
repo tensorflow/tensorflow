@@ -226,9 +226,10 @@ constexpr absl::string_view kGroupedFp8ConvHlo = R"(
       feature_group_count=16
   })";
 
-// Plain f32 convolutions of every kind are supported on any GPU generation.
-// Also the control for the FP8 tests below: their V100 kUnsupported cannot be
-// blamed on an unusable V100 device description.
+// Plain f32 convolutions of every kind are supported on cuDNN-supported GPU
+// generations (sm_75+ for cuDNN >= 9.11). This is also the control for the FP8
+// tests below: their A100 kUnsupported cannot be blamed on an unusable A100
+// device description.
 TEST_F(CudnnFusionCompilerDevicelessTest, PlainF32ConvAllKindsSupported) {
   struct KindCase {
     absl::string_view name;
@@ -253,7 +254,7 @@ TEST_F(CudnnFusionCompilerDevicelessTest, PlainF32ConvAllKindsSupported) {
             kind_case.kind));
     const HloFusionInstruction* fusion = FindCudnnFusion(*module);
     ASSERT_NE(fusion, nullptr);
-    for (GpuModel model : {GpuModel::H100_SXM, GpuModel::V100}) {
+    for (GpuModel model : {GpuModel::H100_SXM, GpuModel::A100_SXM_80}) {
       SCOPED_TRACE(absl::StrCat("model=", static_cast<int>(model)));
       ASSERT_OK_AND_ASSIGN(GpuTargetConfig target_config,
                            DevicelessTargetConfig(model));
@@ -265,7 +266,7 @@ TEST_F(CudnnFusionCompilerDevicelessTest, PlainF32ConvAllKindsSupported) {
 }
 
 // FP8 convolutions require sm_89+, so the same host cuDNN must probe
-// kSupported for H100 (sm_90) and kUnsupported for V100 (sm_70). The V100
+// kSupported for H100 (sm_90) and kUnsupported for A100 (sm_80). The A100
 // case also checks end to end that cuDNN's negative verdicts surface as
 // kUnsupported rather than kUnknown.
 TEST_F(CudnnFusionCompilerDevicelessTest, Fp8ConvVerdictTracksTargetGpu) {
@@ -353,7 +354,7 @@ TEST_F(CudnnFusionCompilerDevicelessTest, Fp8ConvVerdictTracksTargetGpu) {
     for (const auto& [model, expected] :
          {ModelExpectation{GpuModel::H100_SXM,
                            DevicelessFusionSupport::kSupported},
-          ModelExpectation{GpuModel::V100,
+          ModelExpectation{GpuModel::A100_SXM_80,
                            DevicelessFusionSupport::kUnsupported}}) {
       SCOPED_TRACE(absl::StrCat("model=", static_cast<int>(model)));
       ASSERT_OK_AND_ASSIGN(GpuTargetConfig target_config,
