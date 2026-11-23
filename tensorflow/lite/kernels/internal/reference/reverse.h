@@ -19,7 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 
-#include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 
 namespace tflite {
