@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/rendezvous.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
@@ -254,6 +255,13 @@ AcquireSymmetricMemory(
     CollectiveMemoryCache& memory_cache) {
   absl::flat_hash_map<CollectiveMemory::Key, std::shared_ptr<SymmetricMemory>>
       sym_memories;
+  const bool cache_on_communicator = params.cache_nccl_window_in_communicator;
+  // `GetMemoryRange` below needs an active context on CUDA.
+  // TODO(b/576523277): Activate the context in `CudaExecutor::GetMemoryRange`.
+  std::unique_ptr<se::ActivateContext> activation;
+  if (cache_on_communicator && !allocs.empty()) {
+    activation = params.executor->Activate();
+  }
 
   for (const CollectiveMemoryRequests::CollectiveAllocations& r : allocs) {
     std::optional<RankId> rank = r.clique.rank(params.global_device_id);
@@ -279,6 +287,27 @@ AcquireSymmetricMemory(
     for (BufferAllocation::Index i : r.allocations) {
       se::DeviceAddressBase addr = buffers.GetDeviceAddress(i);
       CollectiveMemory::Key mem_key = std::make_pair(r.clique, i);
+      if (cache_on_communicator) {
+        if (addr.is_null() || addr.size() == 0) {
+          continue;
+        }
+        // Register the whole device allocation that contains `addr`, so that
+        // all buffers carved out of it share one window, and cache it on the
+        // communicator. The allocator free visitor releases it.
+        //
+        // This relies on every rank having the buffer at the same offset in a
+        // device allocation of the same size: the offset is applied to peer
+        // windows, and ranks must agree on whether the window is a cache hit,
+        // because registration is collective. Symmetric collective allocators
+        // provide that, but nothing checks it here.
+        // TODO(b/576523277): Verify it across ranks with a clique rendezvous.
+        ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase base_range,
+                         params.executor->GetMemoryRange(addr));
+        ABSL_ASSIGN_OR_RETURN(sym_memories[mem_key],
+                         comm->AcquireSymmetricMemory(
+                             base_range, params.nccl_window_symmetric));
+        continue;
+      }
       // Check cache first to avoid redundant collective window registration.
       if (auto cached = memory_cache.FindSymmetricMemory(
               params.executor->device_ordinal(), r.clique, addr)) {

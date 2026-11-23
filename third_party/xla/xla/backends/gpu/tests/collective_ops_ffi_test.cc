@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -76,6 +78,8 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+using ::testing::Bool;
+using ::testing::Combine;
 using ::testing::Values;
 
 // Defined in `collective_ops_ffi_communicator_{cuda,default}.cc` and selected
@@ -106,11 +110,18 @@ struct SynchronizationSignals {
 
 absl::NoDestructor<std::unique_ptr<SynchronizationSignals>> global_signals;
 
-class CollectiveOpsTestFFI : public CollectiveOpsE2ETestBase {
+// Base fixture for the FFI collective tests. Every module the test parses gets
+// `xla_gpu_experimental_cache_nccl_window_in_communicator` set to
+// `cache_windows_in_communicator`.
+// TODO(b/576523277): Drop the parameter once caching on communicators is the
+// only mode.
+class CollectiveOpsTestFFIBase : public CollectiveOpsE2ETestBase {
  public:
-  CollectiveOpsTestFFI()
+  explicit CollectiveOpsTestFFIBase(bool cache_windows_in_communicator)
       : CollectiveOpsE2ETestBase(/*memory_size=*/32 * kMB,
-                                 /*collectives_memory_size=*/32 * kMB) {}
+                                 /*collectives_memory_size=*/32 * kMB),
+        cache_windows_in_communicator_(cache_windows_in_communicator) {}
+
   void SetUp() override {
     CollectiveOpsE2ETestBase::SetUp();
     *global_signals =
@@ -120,8 +131,44 @@ class CollectiveOpsTestFFI : public CollectiveOpsE2ETestBase {
   void TearDown() override {
     CollectiveOpsE2ETestBase::TearDown();
     global_signals->reset();
+    // Cliques and the symmetric windows cached on their communicators outlive
+    // a test. Destroy them so that tests that run in the other mode do not see
+    // windows registered in this one.
+    internal::DestroyAcquiredCliques();
   }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        CollectiveOpsE2ETestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_cache_nccl_window_in_communicator(
+        cache_windows_in_communicator_);
+    return debug_options;
+  }
+
+  bool cache_windows_in_communicator() const {
+    return cache_windows_in_communicator_;
+  }
+
+ private:
+  const bool cache_windows_in_communicator_;
 };
+
+// Parameterized over whether symmetric windows are cached on communicators.
+class CollectiveOpsTestFFI : public CollectiveOpsTestFFIBase,
+                             public ::testing::WithParamInterface<bool> {
+ public:
+  CollectiveOpsTestFFI() : CollectiveOpsTestFFIBase(GetParam()) {}
+};
+
+static std::string WindowCacheModeName(bool cache_windows_in_communicator) {
+  return cache_windows_in_communicator ? "CommunicatorWindowCache"
+                                       : "ExecutableWindowCache";
+}
+
+INSTANTIATE_TEST_SUITE_P(WindowCacheModes, CollectiveOpsTestFFI, Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return WindowCacheModeName(info.param);
+                         });
 
 static constexpr int64_t kNumReplicas = 2;
 
@@ -1403,7 +1450,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                              /*execute=*/kCmdBufferSymPeerAllReduce,
                          });
 
-TEST_F(CollectiveOpsTestFFI, AllReduce) {
+TEST_P(CollectiveOpsTestFFI, AllReduce) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << device_count() << " available)";
@@ -1445,7 +1492,7 @@ TEST_F(CollectiveOpsTestFFI, AllReduce) {
   }
 }
 
-TEST_F(CollectiveOpsTestFFI, PublicApiAllReduce) {
+TEST_P(CollectiveOpsTestFFI, PublicApiAllReduce) {
   if (!Capability().IsCuda()) {
     GTEST_SKIP() << "Communicator all-reduce is not implemented for this "
                     "platform";
@@ -1484,7 +1531,7 @@ TEST_F(CollectiveOpsTestFFI, PublicApiAllReduce) {
   }
 }
 
-TEST_F(CollectiveOpsTestFFI, PublicApiCommunicatorRankWithReversedGroup) {
+TEST_P(CollectiveOpsTestFFI, PublicApiCommunicatorRankWithReversedGroup) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << device_count() << " available)";
@@ -1512,7 +1559,7 @@ TEST_F(CollectiveOpsTestFFI, PublicApiCommunicatorRankWithReversedGroup) {
   }
 }
 
-TEST_F(CollectiveOpsTestFFI, PublicApiWindow) {
+TEST_P(CollectiveOpsTestFFI, PublicApiWindow) {
   if (!Capability().IsCuda()) {
     GTEST_SKIP() << "Window peer all-reduce is not implemented for this "
                     "platform";
@@ -1554,7 +1601,7 @@ TEST_F(CollectiveOpsTestFFI, PublicApiWindow) {
   }
 }
 
-TEST_F(CollectiveOpsTestFFI, PublicApiWindowRequiresCommunicatorRequest) {
+TEST_P(CollectiveOpsTestFFI, PublicApiWindowRequiresCommunicatorRequest) {
   if (!Capability().IsCuda()) {
     GTEST_SKIP() << "Window peer all-reduce is not implemented for this "
                     "platform";
@@ -1589,7 +1636,7 @@ TEST_F(CollectiveOpsTestFFI, PublicApiWindowRequiresCommunicatorRequest) {
               ::testing::HasSubstr("request_communicator"));
 }
 
-TEST_F(CollectiveOpsTestFFI, PublicApiRequestWindowRequiresPrepareStage) {
+TEST_P(CollectiveOpsTestFFI, PublicApiRequestWindowRequiresPrepareStage) {
   if (!Capability().IsCuda()) {
     GTEST_SKIP() << "Window peer all-reduce is not implemented for this "
                     "platform";
@@ -1624,7 +1671,7 @@ TEST_F(CollectiveOpsTestFFI, PublicApiRequestWindowRequiresPrepareStage) {
               ::testing::HasSubstr("prepare stage"));
 }
 
-TEST_F(CollectiveOpsTestFFI, PublicApiGetWindowFailsInPrepareStage) {
+TEST_P(CollectiveOpsTestFFI, PublicApiGetWindowFailsInPrepareStage) {
   if (!Capability().IsCuda()) {
     GTEST_SKIP() << "Window peer all-reduce is not implemented for this "
                     "platform";
@@ -1659,7 +1706,7 @@ TEST_F(CollectiveOpsTestFFI, PublicApiGetWindowFailsInPrepareStage) {
               ::testing::HasSubstr("collective memory is acquired"));
 }
 
-TEST_F(CollectiveOpsTestFFI, PublicApiGetWindowUnregisteredBufferIsNotFound) {
+TEST_P(CollectiveOpsTestFFI, PublicApiGetWindowUnregisteredBufferIsNotFound) {
   if (!Capability().IsCuda()) {
     GTEST_SKIP() << "Window peer all-reduce is not implemented for this "
                     "platform";
@@ -1696,7 +1743,7 @@ TEST_F(CollectiveOpsTestFFI, PublicApiGetWindowUnregisteredBufferIsNotFound) {
               ::testing::HasSubstr("No symmetric memory registered"));
 }
 
-TEST_F(CollectiveOpsTestFFI, PublicApiGetWindowReturnsNonZeroOffset) {
+TEST_P(CollectiveOpsTestFFI, PublicApiGetWindowReturnsNonZeroOffset) {
   if (!Capability().IsCuda()) {
     GTEST_SKIP() << "Window peer all-reduce is not implemented for this "
                     "platform";
@@ -1734,8 +1781,16 @@ TEST_F(CollectiveOpsTestFFI, PublicApiGetWindowReturnsNonZeroOffset) {
   ASSERT_EQ(results.size(), kNumReplicas);
 }
 
-class AllReduceTest : public CollectiveOpsTestFFI,
-                      public ::testing::WithParamInterface<absl::string_view> {
+// Parameterized over the kernel variant ("blocked" or "delayed") and over
+// whether symmetric windows are cached on communicators.
+class AllReduceTest : public CollectiveOpsTestFFIBase,
+                      public ::testing::WithParamInterface<
+                          std::tuple<absl::string_view, bool>> {
+ public:
+  AllReduceTest() : CollectiveOpsTestFFIBase(std::get<1>(GetParam())) {}
+
+ protected:
+  static absl::string_view Variant() { return std::get<0>(GetParam()); }
 };
 
 TEST_P(AllReduceTest, DeviceAllReduce) {
@@ -1760,7 +1815,7 @@ TEST_P(AllReduceTest, DeviceAllReduce) {
         ROOT out = u32[] copy(all-reduce)
       }
     )",
-                                            GetParam());
+                                            Variant());
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
@@ -1803,7 +1858,7 @@ TEST_P(AllReduceTest, PeerAllReduce) {
           api_version=API_VERSION_TYPED_FFI
       }
     )",
-                                            GetParam());
+                                            Variant());
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
@@ -1847,7 +1902,7 @@ TEST_P(AllReduceTest, SymMulticastAllReduce) {
         ROOT out = u32[] copy(all-reduce)
       }
     )",
-                                            GetParam());
+                                            Variant());
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
@@ -1891,7 +1946,7 @@ TEST_P(AllReduceTest, SymPeerAllReduce) {
         ROOT out = u32[] copy(all-reduce)
       }
     )",
-                                            GetParam());
+                                            Variant());
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
@@ -1914,14 +1969,16 @@ TEST_P(AllReduceTest, SymPeerAllReduce) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AllReduceTests, AllReduceTest, Values("blocked", "delayed"),
-    [](const ::testing::TestParamInfo<absl::string_view>& info) {
-      return std::string(info.param);
+    AllReduceTests, AllReduceTest,
+    Combine(Values("blocked", "delayed"), Bool()),
+    [](const ::testing::TestParamInfo<AllReduceTest::ParamType>& info) {
+      return absl::StrCat(std::get<0>(info.param), "_",
+                          WindowCacheModeName(std::get<1>(info.param)));
     });
 
 // Same as DeviceAllReduce, but uses frontend_attributes to specify memory
 // spaces instead of hardcoded S(7).
-TEST_F(CollectiveOpsTestFFI, DeviceAllReduceWithFrontendAttributes) {
+TEST_P(CollectiveOpsTestFFI, DeviceAllReduceWithFrontendAttributes) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << device_count() << " available)";
@@ -1967,7 +2024,7 @@ TEST_F(CollectiveOpsTestFFI, DeviceAllReduceWithFrontendAttributes) {
   }
 }
 
-TEST_F(CollectiveOpsTestFFI, MultiGpuBarrier) {
+TEST_P(CollectiveOpsTestFFI, MultiGpuBarrier) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << device_count() << " available)";
@@ -2012,7 +2069,7 @@ TEST_F(CollectiveOpsTestFFI, MultiGpuBarrier) {
 // buffers.
 using StaleSymmetricWindowTest = CollectiveOpsTestFFI;
 
-TEST_F(StaleSymmetricWindowTest, CommandBufferRerecordsAfterCliqueDestroyed) {
+TEST_P(StaleSymmetricWindowTest, CommandBufferRerecordsAfterCliqueDestroyed) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << device_count() << " available)";
@@ -2125,5 +2182,10 @@ TEST_F(StaleSymmetricWindowTest, CommandBufferRerecordsAfterCliqueDestroyed) {
     LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, replay[d]);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(WindowCacheModes, StaleSymmetricWindowTest, Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return WindowCacheModeName(info.param);
+                         });
 
 }  // namespace xla::gpu
