@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -49,8 +48,6 @@ namespace {
 using ::absl_testing::IsOkAndHolds;
 using ::testing::Contains;
 using ::testing::Each;
-using ::testing::ElementsAre;
-using ::testing::FieldsAre;
 using ::testing::Not;
 using ::testing::UnorderedElementsAre;
 
@@ -1213,15 +1210,6 @@ ENTRY e {
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch((m::Fusion(m::Parameter(), m::Parameter()))));
-  ASSERT_OK_AND_ASSIGN(
-      const auto analysis,
-      TritonFusionAnalysis::Execute(*module->entry_computation()
-                                         ->root_instruction()
-                                         ->called_computations()[0]));
-  EXPECT_EQ(analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).size(),
-            1);
-  EXPECT_EQ(analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).size(),
-            1);
 }
 
 TEST_F(GemmFusionTest, ParameterUsedNonElementwiseTwiceIsFusedOnBothPaths) {
@@ -1275,106 +1263,6 @@ ENTRY e {
                                     m::Fusion(m::Parameter(), m::Parameter()),
                                     m::Constant())),
                                 m::Negate())));
-}
-
-TEST_F(GemmFusionTest, NestedSlicingIsAnalyzedCorrectly) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                       ParseAndReturnVerifiedModule(R"(
-triton_gemm_d_computation {
-  p0 = f32[6,24]{1,0} parameter(0)
-  slice1 = f32[5,20]{1,0} slice(p0), slice={[1:6], [3:23]}
-  n1 = f32[5,20]{1,0} negate(slice1)
-  slice2 = f32[3,7]{1,0} slice(n1), slice={[1:4], [13:20]}
-  p1 = f32[7,37]{1,0} parameter(1)
-  ROOT d = f32[3,37]{1,0} dot(slice2, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f32[7,37]{1,0} parameter(0)
-  p1 = f32[6,24]{1,0} parameter(1)
-  ROOT triton_gemm_d = f32[3,37]{1,0} fusion(p1, p0), kind=kCustom,
-    calls=triton_gemm_d_computation
-})"));
-  const HloComputation* computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  ASSERT_OK_AND_ASSIGN(const auto analysis,
-                       TritonFusionAnalysis::Execute(*computation));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS,
-                                 computation->parameter_instruction(0), 0),
-              ElementsAre(FieldsAre(/*stride=*/24, /*count=*/6,
-                                    /*slice_start=*/2, /*sliced_count=*/3,
-                                    /*subfragments=*/ElementsAre(3),
-                                    /*broadcast_multiplier=*/1)));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS,
-                                 computation->parameter_instruction(0), 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24,
-                                    /*slice_start=*/16, /*sliced_count=*/7,
-                                    /*subfragments=*/ElementsAre(7),
-                                    /*broadcast_multiplier=*/1)));
-}
-
-TEST_F(GemmFusionTest, FusedConcatenationIsAnalyzedCorrectly) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                       ParseAndReturnVerifiedModule(R"(
-e {
-  p0 = s8[153,1536] parameter(0)
-  p1 = s8[153,128] parameter(1)
-  p2 = s8[153,256] parameter(2)
-  cat = s8[153,1920] concatenate(p0, p1, p2), dimensions={1}
-  cvt = bf16[153,1920] convert(cat)
-  p3 = bf16[16,153] parameter(3)
-  ROOT d = bf16[16,1920] dot(p3, cvt),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})"));
-  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
-  ASSERT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
-                                    m::Parameter(), m::Parameter()))));
-  const HloComputation* computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  ASSERT_OK_AND_ASSIGN(const auto analysis,
-                       TritonFusionAnalysis::Execute(*computation));
-
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(1), 0),
-              ElementsAre(FieldsAre(/*stride=*/1536, /*count=*/153,
-                                    /*slice_start=*/0, /*sliced_count=*/153,
-                                    /*subfragments=*/ElementsAre(153),
-                                    /*broadcast_multiplier=*/1)));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(1), 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1536,
-                                    /*slice_start=*/0, /*sliced_count=*/1536,
-                                    /*subfragments=*/ElementsAre(1536),
-                                    /*broadcast_multiplier=*/1)));
-
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(2), 0),
-              ElementsAre(FieldsAre(/*stride=*/128, /*count=*/153,
-                                    /*slice_start=*/0, /*sliced_count=*/153,
-                                    /*subfragments=*/ElementsAre(153),
-                                    /*broadcast_multiplier=*/1)));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(2), 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/128,
-                                    /*slice_start=*/-1536, /*sliced_count=*/128,
-                                    /*subfragments=*/ElementsAre(128),
-                                    /*broadcast_multiplier=*/1)));
-
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(3), 0),
-              ElementsAre(FieldsAre(/*stride=*/256, /*count=*/153,
-                                    /*slice_start=*/0, /*sliced_count=*/153,
-                                    /*subfragments=*/ElementsAre(153),
-                                    /*broadcast_multiplier=*/1)));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                 computation->parameter_instruction(3), 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/256,
-                                    /*slice_start=*/-1536 - 128,
-                                    /*sliced_count=*/256,
-                                    /*subfragments=*/ElementsAre(256),
-                                    /*broadcast_multiplier=*/1)));
 }
 
 TEST_F(GemmFusionTest, IndivisibleConcatenationIsNotFused) {

@@ -580,11 +580,9 @@ cc_library(
     name = "support",
     srcs = [
         "support.cc",
-        "support_legacy.cc",
     ],
     hdrs = [
         "support.h",
-        "support_legacy.h",
     ],
     deps = [
         "//xla:shape_util",
@@ -646,44 +644,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:TargetParser",
         "@tsl//tsl/platform:protobuf",
-    ],
-)
-
-xla_test(
-    name = "support_legacy_test",
-    srcs = ["support_legacy_test.cc"],
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        AMD_GPU_ANY_BACKEND,
-    ],
-    tags = ["no_mac"],
-    deps = [
-        ":support",
-        ":support_test_base",
-        ":test_utils",
-        ":xtile_compiler",
-        "//xla:error_spec",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/codegen/xtile:block_level_parameters",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu:triton_fusion_analysis",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tests:hlo_pjrt_test_base",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
