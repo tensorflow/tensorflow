@@ -158,7 +158,7 @@ absl::Status AddRewritesForShape(
   std::vector<std::string> dim_vars;
   std::string dim_sizes, indices;
   int count = 1;
-  if (shape.dimensions().size() == 0 ||
+  if (shape.dimensions().empty() ||
       (shape.dimensions().size() == 1 && shape.dimensions(0) == 1)) {
     dim_sizes = "[1]";
     indices = "[0]";
