@@ -218,6 +218,10 @@ int64_t CalculateTensorSize(const OpInfo::TensorProperties& prop) {
     }
   }
 
+  if (!TensorShape::IsValid(shape)) {
+    VLOG(1) << "Invalid tensor shape when computing tensor size";
+    return -1;
+  }
   int64_t num_elems = TensorShape(shape).num_elements();
   int64_t tensor_size = MultiplyWithoutOverflow(num_elems, size);
   if (tensor_size < 0) {
