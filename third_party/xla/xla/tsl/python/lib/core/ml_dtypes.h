@@ -32,6 +32,7 @@ struct NumpyDtypes {
   int float8_e4m3fnuz;
   int float8_e5m2;
   int float8_e5m2fnuz;
+  int float8_e5m3fnu;
   int float8_e8m0fnu;
   int int4;
   int uint4;

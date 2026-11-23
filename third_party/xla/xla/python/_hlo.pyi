@@ -66,6 +66,8 @@ class PrimitiveType(enum.IntEnum):
 
   F8E5M2FNUZ = 24
 
+  F8E5M3FNU = 37
+
   F8E8M0FNU = 33
 
   BF16 = 16
