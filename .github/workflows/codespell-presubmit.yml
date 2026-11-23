@@ -1,0 +1,52 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+name: Codespell
+on:
+  pull_request:
+    paths:
+      - '**.py'
+      - '**.md'
+
+permissions:
+  contents: read
+
+jobs:
+  codespell:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      with:
+        # Include both parents of the pull request merge commit.
+        fetch-depth: 2
+        persist-credentials: false
+    - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+      with:
+        python-version: '3.10'
+    - run: python -m pip install codespell==2.4.3
+    - name: Check spelling in changed files
+      shell: bash
+      run: |
+        git diff --name-only --no-renames --diff-filter=AMT -z HEAD^1 HEAD -- '*.py' '*.md' |
+          while IFS= read -r -d '' file; do
+            case "/$file" in
+              */generated/*|*/testdata/*|*/test_data/*|*/test-data/*|*/g3doc/api_docs/*) continue ;;
+              *_pb2.py|*_pb2_grpc.py|*_generated.py) continue ;;
+            esac
+            if [[ -f "$file" && ! -L "$file" ]]; then
+              printf '%s\0' "./$file"
+            fi
+          done |
+          xargs -0 -r codespell --ignore-words-list=ans,coo,mape,nd,numer,strat --
