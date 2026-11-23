@@ -46,8 +46,8 @@ class StochasticCastToIntOp : public internal::StochasticCastOpBase {
   void RoundOff(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
                 const Tensor& counter, Tensor* output) override {
     if (alg == RNG_ALG_PHILOX) {
-      random::PhiloxRandom gen(*counter.flat<uint64_t>().data(),
-                               *key.flat<uint64_t>().data());
+      random::PhiloxRandom gen(counter.flat<uint64_t>()(0),
+                               key.flat<uint64_t>()(0));
       output->flat<ToType>() =
           ctx->input(0)
               .flat<FromType>()
