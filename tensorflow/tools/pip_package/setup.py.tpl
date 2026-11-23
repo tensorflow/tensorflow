@@ -152,7 +152,7 @@ REQUIRED_PACKAGES = [
     'keras-nightly >= 3.12.0.dev',
     'numpy >= 1.26.0',
     # h5py 3.15.0 raised the minimum macOS wheel targets; 3.15.1 restored them.
-    'h5py >= 3.11.0, != 3.15.0, < 3.17.0' if sys.version_info.minor <= 13 else 'h5py ~= 3.15.1',
+    'h5py >= 3.11.0, != 3.15.0, < 3.17.0' if sys.version_info < (3, 14) else 'h5py ~= 3.15.1',
     'ml_dtypes >= 0.5.1, < 1.0.0',
 ]
 
