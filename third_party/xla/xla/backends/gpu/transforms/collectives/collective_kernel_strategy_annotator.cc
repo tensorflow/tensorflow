@@ -96,6 +96,13 @@ bool HasCollectivesGroupAttribute(const HloInstruction* instruction) {
 absl::StatusOr<bool> TryAnnotateCollective(HloInstruction* instr,
                                            const GpuTopology& gpu_topology,
                                            bool is_multimem_enabled) {
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr->backend_config<GpuBackendConfig>());
+  if (gpu_config.collective_backend_config().kernel_strategy() !=
+      CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT) {
+    return false;
+  }
+
   const DeviceAssignment* device_assignment = nullptr;
   if (instr->GetModule()->config().has_static_device_assignment()) {
     device_assignment =
@@ -116,8 +123,6 @@ absl::StatusOr<bool> TryAnnotateCollective(HloInstruction* instr,
   CollectiveBackendConfig::CollectiveKernelStrategy proto_strategy =
       ToProtoStrategy(info);
 
-  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                   instr->backend_config<GpuBackendConfig>());
   gpu_config.mutable_collective_backend_config()->set_kernel_strategy(
       proto_strategy);
   ABSL_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));

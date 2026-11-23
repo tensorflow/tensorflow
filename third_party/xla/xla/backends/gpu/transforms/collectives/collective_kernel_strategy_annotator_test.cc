@@ -439,6 +439,41 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
             CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT);
 }
 
+TEST_F(CollectiveKernelStrategyAnnotatorTest,
+       PreservesPreExistingNonDefaultStrategy) {
+  constexpr int kNumReplicas = 8;
+  constexpr absl::string_view kHlo = R"(
+    HloModule preserve_strategy_test
+
+    ENTRY e {
+      p0 = f32[4096] parameter(0)
+      ROOT all-gather = f32[32768] all-gather(p0),
+          dimensions={0},
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          backend_config={"collective_backend_config":{
+            "kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"
+          }}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHlo, kNumReplicas));
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
+  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
+
+  CollectiveKernelStrategyAnnotator annotator(*local_topology,
+                                              /*is_multimem_enabled=*/false);
+  ASSERT_OK_AND_ASSIGN(bool changed, annotator.Run(module.get()));
+  EXPECT_FALSE(changed);
+
+  ASSERT_OK_AND_ASSIGN(auto strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllGather));
+  EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
