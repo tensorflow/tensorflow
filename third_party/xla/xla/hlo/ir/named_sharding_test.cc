@@ -732,6 +732,30 @@ TEST(NamedShardingTest, InvalidSubAxisDivisibility) {
                "Next pre-size: 8, Axis size: 12");
 }
 
+TEST(NamedShardingTest, SubAxisOverflowFromProto) {
+  {
+    // pre_size * size wraps to 0 mod 2^64 (previously SIGFPE in Validate).
+    NamedShardingProto proto = NamedSharding(Mesh({8}, {"a"})).ToProto();
+    auto* sub_axis =
+        proto.add_dim_shardings()->add_axes()->mutable_sub_axis_info();
+    sub_axis->set_pre_size(4611686018427387904);
+    sub_axis->set_size(4);
+    EXPECT_DEATH(NamedSharding::FromProto(proto),
+                 "sub-axis pre_size \\* size overflows int64_t");
+  }
+  {
+    // pre_size * size wraps to 2 mod 2^64 (previously bypassed Validate and
+    // caused OOB write in V3ToV2Sharding).
+    NamedShardingProto proto = NamedSharding(Mesh({4}, {"a"})).ToProto();
+    auto* sub_axis =
+        proto.add_dim_shardings()->add_axes()->mutable_sub_axis_info();
+    sub_axis->set_pre_size(6148914691236517206);
+    sub_axis->set_size(3);
+    EXPECT_DEATH(NamedSharding::FromProto(proto),
+                 "sub-axis pre_size \\* size overflows int64_t");
+  }
+}
+
 TEST(NamedShardingPredicatesTest, IsReplicated) {
   Mesh mesh({2, 2}, {"a", "b"});
   NamedSharding sharding(mesh);

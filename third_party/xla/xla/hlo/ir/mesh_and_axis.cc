@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/overflow_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -283,12 +284,28 @@ AxisRef AxisRef::FromProto(const AxisRefProto& proto) {
   return AxisRef(proto.mesh_axis_index());
 }
 
+absl::Status AxisRef::ValidateSubAxis(int64_t pre_size, int64_t size) {
+  if (pre_size < 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("sub-axis pre-size must be >= 1, got ", pre_size));
+  }
+  if (size <= 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("sub-axis size must be > 1, got ", size));
+  }
+  if (OverflowSafeMultiply(pre_size, size).second) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "sub-axis pre_size * size overflows int64_t: pre_size=", pre_size,
+        ", size=", size));
+  }
+  return absl::OkStatus();
+}
+
 AxisRef::AxisRef(int64_t mesh_axis_index) : mesh_axis_index_(mesh_axis_index) {}
 
 AxisRef::AxisRef(int64_t mesh_axis_index, SubAxis sub_axis_info)
     : mesh_axis_index_(mesh_axis_index), sub_axis_info_(sub_axis_info) {
-  CHECK_GT(sub_axis_info_->pre_size, 0) << "sub-axis pre-size must be >= 1";
-  CHECK_GT(sub_axis_info_->size, 1) << "sub-axis size must be > 1";
+  CHECK_OK(ValidateSubAxis(sub_axis_info_->pre_size, sub_axis_info_->size));
 }
 
 namespace {

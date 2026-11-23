@@ -236,6 +236,7 @@ cc_library(
     deps = [
         ":tile_assignment",
         "//xla:array",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -73,6 +74,7 @@ namespace {
 namespace m = ::xla::match;
 
 using ::absl::string_view;
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::proto_testing::EqualsProto;
@@ -5007,6 +5009,23 @@ TEST_F(HloParserTest, ParseNamedShardingSubAxesOpenDims) {
       "'c', ?}]}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+}
+
+TEST_F(HloParserTest, ParseNamedShardingInvalidSubAxis) {
+  EXPECT_THAT(
+      ParseSharding("{mesh['a'=8], [{'a':(4611686018427387904)4}]}"),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("sub-axis pre_size * size overflows int64_t")));
+  EXPECT_THAT(
+      ParseSharding("{mesh['a'=4], [{'a':(6148914691236517206)3}]}"),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("sub-axis pre_size * size overflows int64_t")));
+  EXPECT_THAT(ParseSharding("{mesh['a'=4], [{'a':(0)2}]}"),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("sub-axis pre-size must be >= 1")));
+  EXPECT_THAT(ParseSharding("{mesh['a'=4], [{'a':(1)1}]}"),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("sub-axis size must be > 1")));
 }
 
 TEST_F(HloParserTest, ParseNamedShardingNonIotaMesh) {

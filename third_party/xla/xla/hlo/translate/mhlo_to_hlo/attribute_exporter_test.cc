@@ -21,7 +21,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -52,6 +54,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 using ::testing::NotNull;
 using ::testing::Optional;
 using ::tsl::proto_testing::EqualsProto;
@@ -411,6 +415,44 @@ TEST_F(AttributeExporterTest, ConvertReplicaGroupsMhloMeshAxesMultipleMeshes) {
   xla::HloPrintOptions options;
   options.set_print_full_replica_group_list(true);
   EXPECT_EQ(device_list->ToString(options), "{{0,1}}");
+}
+
+TEST_F(AttributeExporterTest, ConvertReplicaGroupsMhloMeshAxesSubAxisOverflow) {
+  constexpr absl::string_view mlir_source = R"mlir(
+    module @jit_f {
+      sdy.mesh @mesh = <["seq"=8]>
+
+      func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+        %0 = "mhlo.all_reduce"(%arg0) <{
+          channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+          replica_groups = #mhlo.replica_group_mesh_axes<
+            mesh = @mesh,
+            axes = [#mhlo.axis_ref<name = "seq", sub_axis_info = (4611686018427387904)4>]
+          >,
+          use_global_device_ids
+        }> ({
+        ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+          %1 = "mhlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          "mhlo.return"(%1) : (tensor<f32>) -> ()
+        }) : (tensor<f32>) -> tensor<f32>
+        return %0 : tensor<f32>
+      }
+    }
+  )mlir";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModule(mlir_source));
+
+  mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_THAT(main, NotNull());
+
+  mlir::Operation* op = &main.getBody().front().front();
+  auto replica_groups = op->getAttr("replica_groups");
+  ASSERT_TRUE(replica_groups);
+
+  EXPECT_THAT(
+      xla::ConvertReplicaGroups(replica_groups, op),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("sub-axis pre_size * size overflows int64_t")));
 }
 
 TEST_F(AttributeExporterTest, ConvertOriginalValueNullAttr) {

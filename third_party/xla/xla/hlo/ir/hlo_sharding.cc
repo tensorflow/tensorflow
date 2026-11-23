@@ -1652,9 +1652,12 @@ OpSharding HloSharding::ToProto() const {
 
       auto sharded_pos_it = axis_ref_to_sharded_pos.find(axis_ref);
       if (sharded_pos_it == axis_ref_to_sharded_pos.end()) {
+        CHECK_LT(replicated_pos, static_cast<int64_t>(transpose_perm.size()));
         transpose_perm[replicated_pos++] = i;
         total_replicated_size *= axis_ref.size(mesh);
       } else {
+        CHECK_LT(sharded_pos_it->second,
+                 static_cast<int64_t>(transpose_perm.size()));
         transpose_perm[sharded_pos_it->second] = i;
       }
     }

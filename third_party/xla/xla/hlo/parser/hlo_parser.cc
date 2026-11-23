@@ -4544,6 +4544,10 @@ bool HloParserImpl::ParseAxisRef(
   if (!ParseInt64(&size)) {
     return false;
   }
+  if (absl::Status status = AxisRef::ValidateSubAxis(pre_size, size);
+      !status.ok()) {
+    return TokenError(status.message());
+  }
   axis = AxisRef(axis_index, {pre_size, size});
   return true;
 }

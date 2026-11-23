@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -34,6 +35,7 @@ using ::tsl::proto_testing::EqualsProto;
 
 namespace xla {
 
+using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
@@ -339,6 +341,48 @@ TEST(MeshAndAxisTest, ValidateAxisForMesh) {
   invalid_pre_size_proto.mutable_sub_axis_info()->set_size(2);
   EXPECT_DEATH(AxisRef::FromProto(invalid_pre_size_proto),
                "sub-axis pre-size must be >= 1");
+}
+
+TEST(MeshAndAxisTest, ValidateSubAxis) {
+  EXPECT_THAT(AxisRef::ValidateSubAxis(1, 2), IsOk());
+  EXPECT_THAT(AxisRef::ValidateSubAxis(2, 4), IsOk());
+  EXPECT_THAT(
+      AxisRef::ValidateSubAxis(std::numeric_limits<int64_t>::max() / 2, 2),
+      IsOk());
+
+  EXPECT_THAT(AxisRef::ValidateSubAxis(0, 2),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("sub-axis pre-size must be >= 1")));
+  EXPECT_THAT(AxisRef::ValidateSubAxis(-1, 2),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("sub-axis pre-size must be >= 1")));
+  EXPECT_THAT(AxisRef::ValidateSubAxis(1, 1),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("sub-axis size must be > 1")));
+  EXPECT_THAT(AxisRef::ValidateSubAxis(1, 0),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("sub-axis size must be > 1")));
+  EXPECT_THAT(
+      AxisRef::ValidateSubAxis(int64_t{1} << 62, 4),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("sub-axis pre_size * size overflows int64_t")));
+  EXPECT_THAT(
+      AxisRef::ValidateSubAxis(6148914691236517206, 3),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("sub-axis pre_size * size overflows int64_t")));
+  EXPECT_THAT(
+      AxisRef::ValidateSubAxis(std::numeric_limits<int64_t>::max(), 2),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("sub-axis pre_size * size overflows int64_t")));
+}
+
+TEST(MeshAndAxisTest, SubAxisOverflowDeath) {
+  // pre_size * size wraps to 0 mod 2^64.
+  EXPECT_DEATH(AxisRef(0, {int64_t{1} << 62, 4}),
+               "sub-axis pre_size \\* size overflows int64_t");
+  // pre_size * size wraps to 2 mod 2^64.
+  EXPECT_DEATH(AxisRef(0, {6148914691236517206, 3}),
+               "sub-axis pre_size \\* size overflows int64_t");
 }
 
 TEST(MeshAndAxisTest, AxisRefCanCoexistWithoutOverlap) {

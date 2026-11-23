@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -234,6 +235,10 @@ class AxisRef {
 
   // Validates that the given mesh is compatible for this axis ref.
   absl::Status Validate(const Mesh& mesh) const;
+
+  // Validates that a sub-axis has pre_size >= 1, size > 1, and that
+  // pre_size * size does not overflow int64_t.
+  static absl::Status ValidateSubAxis(int64_t pre_size, int64_t size);
 
   int64_t mesh_axis_index() const { return mesh_axis_index_; }
   std::optional<SubAxis> sub_axis_info() const { return sub_axis_info_; }
