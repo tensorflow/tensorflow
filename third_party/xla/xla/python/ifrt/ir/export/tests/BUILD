@@ -28,6 +28,7 @@ lit_test_suite(
     srcs = glob(["*.mlir"]),
     cfg = "//xla:lit.cfg.py",
     data = [
+        "ifrt_legalize_to_vifrt.0_3_0.mlir.bytes",
         "ifrt_legalize_to_vifrt.0_4_0.mlir.bytes",
     ],
     tools = [
