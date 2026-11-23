@@ -967,6 +967,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_cliques",
         "//xla/backends/gpu/collectives:loopback_collectives",
         "//xla/backends/gpu/runtime:async_thunk",
         "//xla/backends/gpu/runtime:collective_clique_requests",
