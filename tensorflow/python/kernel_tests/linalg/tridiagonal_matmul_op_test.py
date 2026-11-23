@@ -142,6 +142,29 @@ class TridiagonalMulOpTest(test.TestCase):
                            [[1 + 1j, -1 + 1j], [-1 + 2j, -2 - 1j], [1j, -1]],
                            dtype=dtype)
 
+  def testArrayLikeInputs(self):
+    superdiag = np.array([1., 2.])
+    maindiag = np.array([1., 2., 1.])
+    subdiag = np.array([2., 1.])
+    rhs = np.array([[1., 1.], [2., 2.], [3., 3.]])
+    expected = np.array([[3., 3.], [12., 12.], [5., 5.]])
+    compact = np.array([[1., 2., 0.], [1., 2., 1.], [0., 2., 1.]])
+    matrix = np.array([[1., 1., 0.], [2., 2., 2.], [0., 1., 1.]])
+    for convert in (lambda x: x, lambda x: x.tolist()):
+      self.assertAllClose(
+          linalg_impl.tridiagonal_matmul(convert(compact), convert(rhs)),
+          expected)
+      self.assertAllClose(
+          linalg_impl.tridiagonal_matmul(
+              convert(matrix), convert(rhs), diagonals_format="matrix"),
+          expected)
+      self.assertAllClose(
+          linalg_impl.tridiagonal_matmul(
+              (convert(np.append(superdiag, 0.)), convert(maindiag),
+               convert(np.insert(subdiag, 0, 0.))),
+              convert(rhs),
+              diagonals_format="sequence"), expected)
+
   def testBatch(self):
     b = 20
     m = 10
