@@ -36,8 +36,8 @@ def _python_version_repo_impl(repository_ctx):
     wheel_collab = repository_ctx.os.environ.get("WHEEL_COLLAB", False)
     macosx_deployment_target = repository_ctx.os.environ.get("MACOSX_DEPLOYMENT_TARGET", "")
 
-    use_pywrap_rules = bool(
-        repository_ctx.os.environ.get("USE_PYWRAP_RULES", False),
+    use_pywrap_rules = (
+        repository_ctx.os.environ.get("USE_PYWRAP_RULES", "").lower() in ("true", "1")
     )
     repository_ctx.file("BUILD.bazel", "")
     repository_ctx.file(
