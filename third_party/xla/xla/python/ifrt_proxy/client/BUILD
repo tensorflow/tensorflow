@@ -548,6 +548,9 @@ cc_library(
 cc_library(
     name = "grpc_client",
     srcs = ["grpc_client.cc"],
+    visibility = internal_visibility(default_ifrt_proxy_visibility + if_google([
+        "//xla/python/ifrt_proxy/common/google:cc_client_users",
+    ])),
     deps = [
         ":client",
         ":grpc_client_session",
