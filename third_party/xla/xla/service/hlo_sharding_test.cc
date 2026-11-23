@@ -1845,5 +1845,85 @@ TEST_F(HloShardingTest, GetSubShardingNestedAndEmptyTuples) {
   EXPECT_EQ(empty_sharding.GetSubSharding(empty_tuple, {}), empty_sharding);
 }
 
+TEST_F(HloShardingTest, NamedShardingExceedingInt32) {
+  constexpr int64_t kTwoTo32 = int64_t{1} << 32;
+  ASSERT_OK_AND_ASSIGN(
+      HloSharding sharding,
+      HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+        named_sharding {
+          mesh {
+            axes { name: "a" size: 65536 }
+            axes { name: "b" size: 65536 }
+          }
+          dim_shardings {
+            axes { mesh_axis_index: 0 }
+            axes { mesh_axis_index: 1 }
+            is_closed: true
+          }
+        }
+      )pb")));
+  EXPECT_TRUE(sharding.IsTiled());
+  EXPECT_FALSE(sharding.IsReplicated());
+  EXPECT_EQ(sharding.dimension(0), kTwoTo32);
+  EXPECT_EQ(sharding.NumTiles(), kTwoTo32);
+  EXPECT_EQ(sharding.ReplicationFactor(), 1);
+  EXPECT_EQ(sharding.TileShape(ShapeUtil::MakeShape(F32, {int64_t{1} << 33})),
+            ShapeUtil::MakeShape(F32, {2}));
+
+  HloSharding v2 = HloSharding::V3ToV2Sharding(sharding);
+  EXPECT_TRUE(v2.IsTiled());
+  EXPECT_FALSE(v2.IsReplicated());
+  EXPECT_EQ(v2.dimension(0), kTwoTo32);
+
+  constexpr int64_t kTwoTo32PlusOne = kTwoTo32 + 1;
+  ASSERT_OK_AND_ASSIGN(
+      HloSharding sharding_plus_one,
+      HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+        named_sharding {
+          mesh {
+            axes { name: "a" size: 641 }
+            axes { name: "b" size: 6700417 }
+          }
+          dim_shardings {
+            axes { mesh_axis_index: 0 }
+            axes { mesh_axis_index: 1 }
+            is_closed: true
+          }
+        }
+      )pb")));
+  EXPECT_TRUE(sharding_plus_one.IsTiled());
+  EXPECT_FALSE(sharding_plus_one.IsReplicated());
+  EXPECT_EQ(sharding_plus_one.dimension(0), kTwoTo32PlusOne);
+  EXPECT_EQ(sharding_plus_one.NumTiles(), kTwoTo32PlusOne);
+  EXPECT_EQ(sharding_plus_one.TileShape(
+                ShapeUtil::MakeShape(F32, {2 * kTwoTo32PlusOne})),
+            ShapeUtil::MakeShape(F32, {2}));
+
+  HloSharding v2_plus_one = HloSharding::V3ToV2Sharding(sharding_plus_one);
+  EXPECT_TRUE(v2_plus_one.IsTiled());
+  EXPECT_FALSE(v2_plus_one.IsReplicated());
+  EXPECT_EQ(v2_plus_one.dimension(0), kTwoTo32PlusOne);
+
+  ASSERT_OK_AND_ASSIGN(
+      HloSharding partially_replicated,
+      HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+        named_sharding {
+          mesh {
+            axes { name: "a" size: 65536 }
+            axes { name: "b" size: 65536 }
+            axes { name: "c" size: 2 }
+          }
+          dim_shardings {
+            axes { mesh_axis_index: 0 }
+            axes { mesh_axis_index: 1 }
+            is_closed: true
+          }
+        }
+      )pb")));
+  EXPECT_TRUE(partially_replicated.HasPartialReplication());
+  EXPECT_EQ(partially_replicated.ReplicationFactor(), 2);
+  EXPECT_EQ(partially_replicated.NumTiles(), kTwoTo32);
+}
+
 }  // namespace
 }  // namespace xla

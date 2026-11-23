@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/named_sharding.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -528,6 +529,42 @@ TEST(NamedShardingTest, GetShardedSize) {
 
   DimensionSharding ds_empty({}, /*is_closed=*/true);
   EXPECT_EQ(ds_empty.getShardedSize(mesh), 1);
+}
+
+TEST(NamedShardingTest, GetShardedSizeExceedingInt32) {
+  const AxisRef axis_a(0);
+  const AxisRef axis_b(1);
+  const DimensionSharding ds_ab({axis_a, axis_b}, /*is_closed=*/true);
+
+  // 65536 * 65536 == 2^32 (would truncate to 0 in 32-bit int).
+  constexpr int64_t kTwoTo32 = int64_t{1} << 32;
+  const Mesh mesh_2_32({65536, 65536}, {"a", "b"});
+  EXPECT_EQ(ds_ab.getShardedSize(mesh_2_32), kTwoTo32);
+  const NamedSharding sharding_2_32(mesh_2_32, /*dim_shardings=*/{ds_ab});
+  EXPECT_EQ(sharding_2_32.dimension(0), kTwoTo32);
+  EXPECT_THAT(sharding_2_32.dimensions(), ElementsAre(kTwoTo32));
+  EXPECT_FALSE(sharding_2_32.IsReplicated());
+  EXPECT_NE(sharding_2_32, NamedSharding(mesh_2_32));
+
+  // 641 * 6700417 == 2^32 + 1 (would truncate to 1 in 32-bit int).
+  constexpr int64_t kTwoTo32PlusOne = kTwoTo32 + 1;
+  const Mesh mesh_2_32_plus_1({641, 6700417}, {"a", "b"});
+  EXPECT_EQ(ds_ab.getShardedSize(mesh_2_32_plus_1), kTwoTo32PlusOne);
+  const NamedSharding sharding_2_32_plus_1(mesh_2_32_plus_1,
+                                           /*dim_shardings=*/{ds_ab});
+  EXPECT_EQ(sharding_2_32_plus_1.dimension(0), kTwoTo32PlusOne);
+  EXPECT_THAT(sharding_2_32_plus_1.dimensions(), ElementsAre(kTwoTo32PlusOne));
+  EXPECT_FALSE(sharding_2_32_plus_1.IsReplicated());
+  EXPECT_NE(sharding_2_32_plus_1, NamedSharding(mesh_2_32_plus_1));
+
+  // 65536 * 32768 == 2^31 (would wrap negative in signed 32-bit int).
+  constexpr int64_t kTwoTo31 = int64_t{1} << 31;
+  const Mesh mesh_2_31({65536, 32768}, {"a", "b"});
+  EXPECT_EQ(ds_ab.getShardedSize(mesh_2_31), kTwoTo31);
+  const NamedSharding sharding_2_31(mesh_2_31, /*dim_shardings=*/{ds_ab});
+  EXPECT_EQ(sharding_2_31.dimension(0), kTwoTo31);
+  EXPECT_THAT(sharding_2_31.dimensions(), ElementsAre(kTwoTo31));
+  EXPECT_FALSE(sharding_2_31.IsReplicated());
 }
 
 TEST(NamedShardingTest, Dimension) {
