@@ -1890,7 +1890,6 @@ cc_library(
         ":gpu_memory_space_assignment",
         ":gpu_pipeline",
         ":gpu_pipeline_passes",  # keep -- buildcleaner: keep: links HloPassRegistry factories
-        ":hlo_fusion_stats",
         ":ir_emission_utils",
         ":kernel_reuse_cache",
         ":kernel_reuse_cache_proto_cc",
@@ -3393,37 +3392,6 @@ cc_library(
         "//xla/tsl/lib/monitoring:counter",
         "//xla/tsl/lib/monitoring:gauge",
         "//xla/tsl/lib/monitoring:sampler",
-    ],
-)
-
-cc_library(
-    name = "hlo_fusion_stats",
-    srcs = ["hlo_fusion_stats.cc"],
-    hdrs = ["hlo_fusion_stats.h"],
-    deps = [
-        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@tsl//tsl/platform:errors",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_fusion_stats_test",
-    srcs = ["hlo_fusion_stats_test.cc"],
-    tags = [
-        "nomsan",
-    ],
-    deps = [
-        ":hlo_fusion_stats",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
     ],
 )
 
