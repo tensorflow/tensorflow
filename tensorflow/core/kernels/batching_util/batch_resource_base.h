@@ -161,6 +161,17 @@ class BatchResourceBase : public ResourceBase {
       return criticality_val;
     };
 
+    // The latency priority and admission order of the task. See
+    // serving::BatchTask.
+    int32_t latency_priority_val = 0;
+    std::optional<int64_t> admission_order_val;
+
+    int32_t latency_priority() const override { return latency_priority_val; }
+
+    std::optional<int64_t> admission_order() const override {
+      return admission_order_val;
+    }
+
     // If nonzero, make a batch of this size entirely out of padding. This
     // batch is processed, but is not propagated to the kernel outputs.
     int forced_warmup_batch_size = 0;

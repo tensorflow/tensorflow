@@ -183,6 +183,8 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
     task->rpc_deadline =
         fallback_request_state.rpc_deadline_for_batching_task_cancellation();
     task->is_rpc_cancelled = fallback_request_state.is_rpc_cancelled_callback();
+    task->latency_priority_val = fallback_request_state.latency_priority();
+    task->admission_order_val = fallback_request_state.admission_order();
     return task;
   }
 

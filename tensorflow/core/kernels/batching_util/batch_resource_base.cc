@@ -533,6 +533,8 @@ BatchResourceBase::BatchTask::CreateSplitTask(
   task->forced_warmup_batch_size = this->forced_warmup_batch_size;
   task->rpc_deadline = this->rpc_deadline;
   task->is_rpc_cancelled = this->is_rpc_cancelled;
+  task->latency_priority_val = this->latency_priority_val;
+  task->admission_order_val = this->admission_order_val;
 
   return task;
 }
