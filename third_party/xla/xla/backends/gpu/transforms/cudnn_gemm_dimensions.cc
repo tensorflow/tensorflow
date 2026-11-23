@@ -427,14 +427,21 @@ void NormalizeStrides(bool has_batch_dimensions, CudnnTensorLayout& dims) {
 }
 
 // Returns the sizes of the three canonical dimensions of a port with dimensions
-// `port_dims`.
+// `port_dims`. If `virtual_batch_size` is not 1, M is split into
+// [virtual_batch_size, M / virtual_batch_size] and the outer part becomes the
+// batch dimension.
 std::vector<int64_t> CanonicalPortSizes(absl::Span<const int64_t> port_dims,
-                                        const CanonicalDims& canonical) {
+                                        const CanonicalDims& canonical,
+                                        int64_t virtual_batch_size) {
   std::vector<int64_t> sizes(canonical.size(), 1);
   for (int position = 0; position < canonical.size(); ++position) {
     for (int64_t dim : canonical[position]) {
       sizes[position] *= port_dims[dim];
     }
+  }
+  if (virtual_batch_size != 1) {
+    sizes[0] = virtual_batch_size;
+    sizes[1] /= virtual_batch_size;
   }
   return sizes;
 }
@@ -442,11 +449,12 @@ std::vector<int64_t> CanonicalPortSizes(absl::Span<const int64_t> port_dims,
 // Returns how each of the three canonical dimensions of the port that `to_port`
 // leads to iterates over the buffer of a tensor of shape `shape`.
 absl::StatusOr<std::vector<ShapeTracker::BufferView>> CanonicalViews(
-    const Shape& shape, ShapeTracker to_port, const CanonicalDims& canonical) {
+    const Shape& shape, ShapeTracker to_port, const CanonicalDims& canonical,
+    int64_t virtual_batch_size) {
   ABSL_RETURN_IF_ERROR(PrependPhysicalLayout(shape, to_port));
   // Transpose and reshape the port into its canonical rank-3 shape.
-  const std::vector<int64_t> sizes =
-      CanonicalPortSizes(to_port.output_shape().dimensions(), canonical);
+  const std::vector<int64_t> sizes = CanonicalPortSizes(
+      to_port.output_shape().dimensions(), canonical, virtual_batch_size);
   std::vector<int64_t> permutation;
   for (const std::vector<int64_t>& dims : canonical) {
     permutation.insert(permutation.end(), dims.begin(), dims.end());
@@ -462,12 +470,42 @@ absl::StatusOr<std::vector<ShapeTracker::BufferView>> CanonicalViews(
   return *std::move(views);
 }
 
+// Returns the size of the outer part of M of the LHS if it can be used as a
+// virtual batch dimension and 1 otherwise.
+absl::StatusOr<int64_t> FindVirtualBatchSize(
+    const HloComputation& computation, const PortPaths& paths,
+    const CanonicalDims& lhs_canonical) {
+  if (!lhs_canonical[0].empty()) {
+    return 1;
+  }
+  for (const HloInstruction* parameter : computation.parameter_instructions()) {
+    const PortPath& path = paths.at(parameter);
+    if (path.port != DotPort::kLhs) {
+      continue;
+    }
+    ABSL_ASSIGN_OR_RETURN(
+        std::vector<ShapeTracker::BufferView> views,
+        CanonicalViews(parameter->shape(), path.to_port, lhs_canonical,
+                       /*virtual_batch_size=*/1));
+    // Split only if M consists of exactly two strided segments, neither of
+    // which is broadcasted, and the outer one is also outer in memory.
+    absl::Span<const int64_t> m_strides = views[1].strides();
+    if (m_strides.size() == 2 && !absl::c_linear_search(m_strides, 0) &&
+        m_strides[0] > m_strides[1]) {
+      return views[1].extents()[0];
+    }
+  }
+  return 1;
+}
+
 // Computes the layout of a tensor of shape `shape` that relates to a port of
 // the dot via `path`.
 absl::StatusOr<CudnnTensorLayout> ComputeTensorLayout(
-    const Shape& shape, const PortPath& path, const CanonicalDims& canonical) {
-  ABSL_ASSIGN_OR_RETURN(std::vector<ShapeTracker::BufferView> views,
-                   CanonicalViews(shape, path.to_port, canonical));
+    const Shape& shape, const PortPath& path, const CanonicalDims& canonical,
+    int64_t virtual_batch_size) {
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<ShapeTracker::BufferView> views,
+      CanonicalViews(shape, path.to_port, canonical, virtual_batch_size));
   CudnnTensorLayout layout;
   for (const ShapeTracker::BufferView& view : views) {
     if (absl::c_all_of(view.strides(), [](int64_t s) { return s == 0; })) {
@@ -529,6 +567,15 @@ absl::StatusOr<CuDnnGemmDimensions> CuDnnGemmDimensions::Create(
   ABSL_ASSIGN_OR_RETURN(PortPaths paths, TraceDotPortsToFusionEdges(dot, *output));
   ABSL_RETURN_IF_ERROR(ValidateComputation(computation, paths));
 
+  // If the LHS NC dimension has been split, we can treat the outer part as a
+  // batch dimension if there isn't one already. Scaled dots are not split.
+  int64_t virtual_batch_size = 1;
+  if (!canonical.contains(DotPort::kLhsScale)) {
+    ABSL_ASSIGN_OR_RETURN(
+        virtual_batch_size,
+        FindVirtualBatchSize(computation, paths, canonical.at(DotPort::kLhs)));
+  }
+
   // Compute sizes and strides.
   CuDnnGemmDimensions result;
   for (const HloInstruction* hlo : computation.instructions()) {
@@ -538,6 +585,11 @@ absl::StatusOr<CuDnnGemmDimensions> CuDnnGemmDimensions::Create(
     }
     const PortPath& path = it->second;
     const CanonicalDims& port_canonical = canonical.at(path.port);
+    // Virtual batch size is only used for the ports that share M with the LHS.
+    const int64_t port_virtual_batch_size =
+        path.port == DotPort::kLhs || path.port == DotPort::kOutput
+            ? virtual_batch_size
+            : 1;
     result.ports_[hlo] = path.port;
     // The compiler sets the sizes of ops whose operands are broadcasts, which
     // cuDNN cannot infer because broadcasts are not part of the cuDNN graph.
@@ -547,12 +599,13 @@ absl::StatusOr<CuDnnGemmDimensions> CuDnnGemmDimensions::Create(
           path.port == DotPort::kOutput
               ? dot.shape()
               : dot.operand(static_cast<int>(path.port))->shape();
-      sizes->second =
-          CanonicalPortSizes(port_shape.dimensions(), port_canonical);
+      sizes->second = CanonicalPortSizes(
+          port_shape.dimensions(), port_canonical, port_virtual_batch_size);
     }
     if (hlo == output || hlo->opcode() == HloOpcode::kParameter) {
       ABSL_ASSIGN_OR_RETURN(result.tensor_layouts_[hlo],
-                       ComputeTensorLayout(hlo->shape(), path, port_canonical));
+                       ComputeTensorLayout(hlo->shape(), path, port_canonical,
+                                           port_virtual_batch_size));
     }
   }
   return result;
