@@ -24,9 +24,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Replaces entry-computation copies of large scalar-constant fill fusions with
-// independent fills, looking through the same single-user bitcasts as
-// CopyFusion. Copies whose consumer already receives every other use of the
+// Replaces entry-computation copies of large scalar-constant or iota fill
+// fusions with independent fills, looking through the same single-user bitcasts
+// as CopyFusion. Copies whose consumer already receives every other use of the
 // fill are left for CopyFusion to fold into it. Run after CopyInsertion and
 // before CopyFusion so separate writable buffers can be initialized
 // independently by the scheduler.

@@ -111,6 +111,37 @@ TEST_F(ConstantFillCopyRewriterTest, RematerializesFillForItsOwnConsumer) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(ConstantFillCopyRewriterTest, RematerializesIotaFillForItsOwnConsumer) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule test
+
+iota_body {
+  ROOT iota = s32[512,512]{1,0} iota(), iota_dimension=0
+}
+
+ENTRY main {
+  fill = s32[512,512]{1,0} fusion(), kind=kLoop, calls=iota_body
+  copy = s32[512,512]{1,0} copy(fill)
+  early = s32[512,512]{1,0} negate(copy)
+  ROOT late = (s32[512,512]{1,0}, s32[512,512]{1,0}) tuple(early, fill)
+})"));
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* fill = entry->GetInstructionWithName("fill");
+  ConstantFillCopyRewriter pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+  ExpectRematerializedFill(entry->GetInstructionWithName("early")->operand(0),
+                           fill);
+  EXPECT_EQ(entry->root_instruction()->operand(1), fill);
+  EXPECT_EQ(entry->GetInstructionWithName("copy"), nullptr);
+  EXPECT_EQ(module->computation_count(), 3);
+
+  const auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CopyFusion copy_fusion(device);
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&copy_fusion, module.get()));
+  EXPECT_FALSE(changed);
+}
+
 TEST_F(ConstantFillCopyRewriterTest,
        KeepsCopyWhoseConsumerReceivesEveryOtherUse) {
   // copy0 feeds early on its own, while copy1 and the fill both feed late.
@@ -254,6 +285,60 @@ ENTRY main {
   EXPECT_LT(peak, baseline_peak);
 }
 
+TEST_F(ConstantFillCopyRewriterTest, ReducesScheduledPeakMemoryForIotaFill) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule test
+sum {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+iota_body {
+  ROOT iota = s32[512,512]{1,0} iota(), iota_dimension=0
+}
+ENTRY main {
+  update = s32[1,512]{1,0} parameter(0)
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  initial_sum = s32[] constant(0)
+  fill = s32[512,512]{1,0} fusion(), kind=kLoop, calls=iota_body
+  copy = s32[512,512]{1,0} copy(fill)
+  early = s32[512,512]{1,0} dynamic-update-slice(copy, update, zero, zero)
+  early_sum = s32[] reduce(early, initial_sum), dimensions={0,1}, to_apply=sum
+  middle = s32[1024,1024]{1,0} broadcast(early_sum), dimensions={}
+  middle_sum = s32[] reduce(middle, initial_sum), dimensions={0,1}, to_apply=sum
+  late_update = s32[1,512]{1,0} broadcast(middle_sum), dimensions={}
+  ROOT late = s32[512,512]{1,0}
+      dynamic-update-slice(fill, late_update, one, zero)
+})"));
+  auto baseline = module->Clone();
+  const auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  GpuAliasInfo alias_info(device);
+  CopyFusion copy_fusion(device);
+  ASSERT_OK_AND_ASSIGN(bool baseline_changed,
+                       RunHloPass(&copy_fusion, baseline.get()));
+  EXPECT_TRUE(baseline_changed);
+  auto size = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+  int64_t baseline_peak;
+  ASSERT_OK_AND_ASSIGN(
+      auto baseline_schedule,
+      ScheduleModule(baseline.get(), &alias_info, size, {}, &baseline_peak));
+  EXPECT_TRUE(baseline_schedule.Verify().ok());
+
+  ConstantFillCopyRewriter pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&copy_fusion, module.get()));
+  EXPECT_FALSE(changed);
+  int64_t peak;
+  ASSERT_OK_AND_ASSIGN(auto schedule, ScheduleModule(module.get(), &alias_info,
+                                                     size, {}, &peak));
+  EXPECT_TRUE(schedule.Verify().ok());
+  EXPECT_LT(peak, baseline_peak);
+}
+
 TEST_F(ConstantFillCopyRewriterTest, LeavesCopiesInsideWhileBodyAlone) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule test
@@ -316,6 +401,12 @@ INSTANTIATE_TEST_SUITE_P(
                        "negated = f32[] negate(value)\n"
                        "  ROOT broadcast"},
                       {"broadcast(value)", "broadcast(negated)"}}},
+        RejectedCopy{"ComputedIotaFill",
+                     {{"value = f32[] constant(7)\n"
+                       "  ROOT broadcast = f32[512,512]{1,0} broadcast(value), "
+                       "dimensions={}",
+                       "iota = f32[512,512]{1,0} iota(), iota_dimension=0\n"
+                       "  ROOT negated = f32[512,512]{1,0} negate(iota)"}}},
         RejectedCopy{"NonscalarLiteral",
                      {{"f32[] constant(7)", "f32[1] constant({7})"},
                       {"512,512", "1,262144"},

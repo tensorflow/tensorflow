@@ -46,6 +46,16 @@ const HloInstruction* Consumer(const HloInstruction* user) {
   return user;
 }
 
+bool IsConstantOrIotaFillBody(const HloComputation& computation) {
+  const HloInstruction* root = computation.root_instruction();
+  if (computation.instruction_count() == 1 &&
+      root->opcode() == HloOpcode::kIota) {
+    return true;
+  }
+  return computation.instruction_count() == 2 &&
+         hlo_query::IsBroadcastOfScalarConstant(*root);
+}
+
 Decision CanReplaceCopyWithFill(const HloInstruction& copy) {
   const HloInstruction* source = copy.operand(0);
   if (!copy.shape().IsArray() || copy.shape() != source->shape() ||
@@ -70,9 +80,9 @@ Decision CanReplaceCopyWithFill(const HloInstruction& copy) {
       fill->has_sharding()) {
     return Decision::Forbid("Not an independent loop fill");
   }
-  if (fill->fused_instructions_computation()->instruction_count() != 2 ||
-      !hlo_query::IsBroadcastOfScalarConstant(*fill->fused_expression_root())) {
-    return Decision::Forbid("Not a broadcast of a scalar literal");
+  if (!IsConstantOrIotaFillBody(*fill->fused_instructions_computation())) {
+    return Decision::Forbid(
+        "Not a broadcast of a scalar literal or an iota fill");
   }
   if (ShapeUtil::ByteSizeOfElements(copy.shape()) < kMinFillBytes) {
     return Decision::Forbid("Fill is too small to split");
