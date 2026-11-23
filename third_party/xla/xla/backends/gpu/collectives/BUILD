@@ -1435,6 +1435,7 @@ cc_library(
         ":cancellation_token",
         ":gpu_collectives",
         ":gpu_communicator",
+        ":gxl_communicator",
         "//xla:future",
         "//xla:shape_util",
         "//xla:util",
