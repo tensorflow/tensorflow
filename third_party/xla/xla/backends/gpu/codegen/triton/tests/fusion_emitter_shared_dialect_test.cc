@@ -741,7 +741,7 @@ TEST_F(XTileDialectTest, TwoShotAllGatherEmitsSelectBufferOnRootInsert) {
 
   EXPECT_OK(CreateXTileIrAndFileCheck(
       *module->GetComputationWithName("ag_fusion"), block_level_parameters, R"(
-    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<32x16xf32>, %arg1: memref<4xi64>, %arg2: memref<4xi64>, %arg3: memref<4xi64>, %[[RANK:.*]]: index {xla.range = [0 : index, 3 : index]}, %arg5: index {{.*}}) attributes {has_rank, has_signal_buffer, num_scratch_buffers = 1 : i32}
+    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<32x16xf32>, %arg1: memref<4xi64>, %arg2: memref<4xi64>, %[[RANK:.*]]: index {xla.range = [0 : index, 3 : index]}, %arg4: index {{.*}}) attributes {has_rank, has_signal_buffer}
     CHECK-NOT: xtile.select_buffer %arg0
     CHECK: %[[LOCAL_TILE:.*]] = xtile.extract %arg0[{{.*}}] [16, 16] [1, 1] : memref<32x16xf32> -> tensor<16x16xf32>
     CHECK: %[[AG:.*]] = "stablehlo.all_gather"(%[[LOCAL_TILE]]) {{.*}}xtile.collective_strategy = #xtile.collective_strategy<two_shot>

@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_fusion.h"
 #include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -1335,8 +1336,14 @@ void VerifyPeerPointerTableAttrs(const HloFusionInstruction* fusion,
       emitters::KernelArguments kernel_args,
       CreateCollectiveKernelArguments(slice_provider,
                                       GetDefaultBufferAlignment(), *fusion));
-  EXPECT_THAT(kernel_args.PositionOfOperand(0), IsOkAndHolds(0));
-  EXPECT_THAT(kernel_args.PositionOfResult({}), IsOkAndHolds(1));
+  // For two-shot all-gather (`table_indices.front() == 1u`), result arguments
+  // are replaced with peer-pointer tables via
+  // `KernelArguments(std::move(args))`, which does not retain HLO
+  // operand/result position mappings.
+  if (!table_indices.empty() && table_indices.front() != 1u) {
+    EXPECT_THAT(kernel_args.PositionOfOperand(0), IsOkAndHolds(0));
+    EXPECT_THAT(kernel_args.PositionOfResult({}), IsOkAndHolds(1));
+  }
 
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_mod("test", llvm_ctx);
@@ -1389,6 +1396,37 @@ TEST_P(PeerPointerTableAlignmentTest,
       fusion, /*output_bytes=*/262144, /*table_indices=*/{2u, 3u}, tc));
 }
 
+TEST_P(PeerPointerTableAlignmentTest, MarksTwoShotAllGatherOutputPeerTables) {
+  const PeerTableAlignmentTestCase& tc = GetParam();
+  const std::string hlo = absl::StrFormat(
+      R"(
+      HloModule test
+      fused_ag {
+        param_0 = f32[65536] parameter(0)
+        ROOT all-gather = f32[%1$d] all-gather(param_0),
+          replica_groups={%2$s}, dimensions={0},
+          backend_config={"collective_backend_config":{
+            "kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"
+          }}
+      }
+      ENTRY test_computation {
+        p0 = f32[65536] parameter(0)
+        ROOT fusion = f32[%1$d] fusion(p0), kind=kCustom, calls=fused_ag,
+          backend_config={"fusion_backend_config":{
+            "kind":"__triton_collective"
+          }}
+      }
+      )",
+      65536 * tc.num_devices, tc.replica_groups);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo, tc.num_devices));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  ASSERT_NO_FATAL_FAILURE(VerifyPeerPointerTableAttrs(
+      fusion, /*output_bytes=*/262144 * tc.num_devices,
+      /*table_indices=*/{1u, 2u}, tc));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     PeerPointerTableAlignments, PeerPointerTableAlignmentTest,
     ::testing::ValuesIn<PeerTableAlignmentTestCase>({
@@ -1399,6 +1437,70 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<PeerTableAlignmentTestCase>& info) {
       return info.param.name;
     });
+
+TEST_F(CollectiveEmitterTest, MarksVariadicTwoShotAllGatherOutputPeerTables) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    fused_ag {
+      param_0 = f32[64] parameter(0)
+      param_1 = bf16[128] parameter(1)
+      ROOT all-gather = (f32[128], bf16[256]) all-gather(param_0, param_1),
+        replica_groups={{0,1}}, dimensions={0},
+        backend_config={"collective_backend_config":{
+          "kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"
+        }}
+    }
+    ENTRY test_computation {
+      p0 = f32[64] parameter(0)
+      p1 = bf16[128] parameter(1)
+      ROOT fusion = (f32[128], bf16[256]) fusion(p0, p1), kind=kCustom,
+        calls=fused_ag,
+        backend_config={"fusion_backend_config":{"kind":"__triton_collective"}}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo, /*replica_count=*/2));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(xtile::CollectiveEntrySpec spec,
+                       BuildCollectiveEntrySpec(*fusion));
+  EXPECT_EQ(spec.world_size, 2);
+  EXPECT_EQ(spec.num_scratch_buffers, 0);
+  EXPECT_THAT(spec.peer_table_results, ElementsAre(true, true));
+
+  BufferAllocation alloc(/*index=*/0, /*size=*/2048, /*color=*/0);
+  auto slice_provider =
+      [&](const HloInstruction& instr,
+          const ShapeIndex& idx) -> absl::StatusOr<BufferAllocation::Slice> {
+    if (&instr == fusion) {
+      if (idx.empty()) {
+        return BufferAllocation::Slice(&alloc, 1536, 16);
+      }
+      return BufferAllocation::Slice(&alloc, 512 + idx[0] * 512, 512);
+    }
+    return BufferAllocation::Slice(&alloc, instr.parameter_number() * 256, 256);
+  };
+  ASSERT_OK_AND_ASSIGN(
+      emitters::KernelArguments kernel_args,
+      CreateCollectiveKernelArguments(slice_provider,
+                                      GetDefaultBufferAlignment(), *fusion));
+  ASSERT_EQ(kernel_args.args().size(), 6);
+
+  llvm::LLVMContext llvm_ctx;
+  llvm::Module llvm_mod("test", llvm_ctx);
+  llvm::Function* fn = CreateAnnotatedDummyKernel(kernel_args, llvm_mod);
+  for (unsigned idx : {0u, 1u}) {
+    EXPECT_EQ(fn->getParamDereferenceableBytes(idx), 256);
+    EXPECT_EQ(fn->getParamAlign(idx), llvm::MaybeAlign(256));
+  }
+  for (unsigned idx : {2u, 3u, 4u}) {
+    EXPECT_EQ(fn->getParamDereferenceableBytes(idx), 16);
+    EXPECT_EQ(fn->getParamAlign(idx), llvm::MaybeAlign(16));
+    EXPECT_TRUE(fn->hasParamAttribute(idx, llvm::Attribute::NoAlias));
+    EXPECT_TRUE(fn->hasParamAttribute(idx, llvm::Attribute::ReadOnly));
+  }
+}
 
 }  // namespace
 }  // namespace xla::gpu

@@ -67,15 +67,24 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
     const DeviceAssignment* device_assignment);
 
 // Creates a CollectiveKernelSpec describing the resource requirements of a
-// Triton all-gather kernel with N operands. The kernel argument layout matches
-// all-reduce:
+// Triton all-gather kernel with N operands.
+//
+// Kernel argument layout for one-shot (3N + 2 args, matches all-reduce):
 //   [0, N)      local input buffers (kInputBuffer, index i)
-//   [N, 2N)     output buffers (kOutputBuffer, index i)
-//   [2N + i]    remote scratch buffer pointer table of operand i
-//               (kScratchBuffer, index 1 + i)
+//   [N, 2N)     local output buffers (kOutputBuffer, index i)
+//   [2N, 3N)    remote scratch pointer tables (kScratchBuffer, index 1 + i)
 //   [3N]        signal flags (kScratchBuffer, index 0)
 //   [3N + 1]    runtime rank (kRuntimeRank)
-// `symmetric_memory_type` is used for all symmetric scratch buffers.
+//
+// Kernel argument layout for two-shot (2N + 2 args, no scratch buffers):
+//   [0, N)      local input buffers (kInputBuffer, index i)
+//   [N, 2N)     remote output pointer tables (kOutputBuffer, index i)
+//   [2N]        signal flags (kScratchBuffer, index 0)
+//   [2N + 1]    runtime rank (kRuntimeRank)
+//
+// `symmetric_memory_type` is used for collective symmetric buffers (signal
+// flags, plus remote scratch buffers for one-shot or output buffers for
+// two-shot).
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
     SymmetricMemoryType symmetric_memory_type);

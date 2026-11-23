@@ -2051,6 +2051,14 @@ auto FindCollectiveHero(ComputationT* computation)
   return nullptr;
 }
 
+bool RequiresSymmetricOutputBuffers(const HloInstruction& inst) {
+  return IsTritonTwoShotAllGather(inst);
+}
+
+bool RequiresScratchDataBuffers(const HloInstruction& inst) {
+  return !IsTritonTwoShotAllGather(inst);
+}
+
 }  // namespace
 
 llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
@@ -2186,11 +2194,29 @@ absl::StatusOr<emitters::KernelArguments> CreateCollectiveKernelArguments(
     emitters::KernelArguments::SliceProvider slice_provider,
     const emitters::KernelArguments::BufferAlignment& buffer_alignment,
     const HloFusionInstruction& fusion) {
+  ABSL_ASSIGN_OR_RETURN(xtile::CollectiveEntrySpec spec,
+                   BuildCollectiveEntrySpec(fusion));
   ABSL_ASSIGN_OR_RETURN(std::vector<emitters::KernelArgument> unmanaged_arguments,
                    GetCollectiveUnmanagedKernelArguments(&fusion));
-  TF_RET_CHECK(!unmanaged_arguments.empty());
-  return emitters::KernelArguments::Create(slice_provider, buffer_alignment,
-                                           &fusion, unmanaged_arguments);
+  ABSL_ASSIGN_OR_RETURN(
+      emitters::KernelArguments kernel_args,
+      emitters::KernelArguments::Create(slice_provider, buffer_alignment,
+                                        &fusion, unmanaged_arguments));
+  if (spec.peer_table_results.empty()) {
+    return kernel_args;
+  }
+  const std::vector<ShapeUtil::IndexedShape> leaf_shapes =
+      ShapeUtil::GetLeafShapes(fusion.shape());
+  TF_RET_CHECK(spec.peer_table_results.size() == leaf_shapes.size());
+  std::vector<emitters::KernelArgument> args = kernel_args.args();
+  for (const auto& [i, leaf] : llvm::enumerate(leaf_shapes)) {
+    if (!spec.peer_table_results[i]) {
+      continue;
+    }
+    ABSL_ASSIGN_OR_RETURN(int64_t pos, kernel_args.PositionOfResult(leaf.index));
+    args[pos] = CreatePeerPointerTableArgument(spec.world_size);
+  }
+  return emitters::KernelArguments(std::move(args));
 }
 
 absl::StatusOr<emitters::KernelArguments> CreateCollectiveKernelArguments(
@@ -2213,11 +2239,13 @@ absl::StatusOr<xtile::CollectiveEntrySpec> BuildCollectiveEntrySpec(
   TF_RET_CHECK(collective != nullptr)
       << "Collective fusion requires a collective hero instruction.";
   xtile::CollectiveEntrySpec spec;
-  if (IsTritonTwoShotAllGather(*collective)) {
+  if (RequiresSymmetricOutputBuffers(*collective)) {
     spec.peer_table_results.assign(
         ShapeUtil::GetLeafShapes(fusion.shape()).size(), true);
   }
-  spec.num_scratch_buffers = hlo_computation->num_parameters();
+  spec.num_scratch_buffers = RequiresScratchDataBuffers(*collective)
+                                 ? hlo_computation->num_parameters()
+                                 : 0;
   spec.has_signal_and_rank = true;
   spec.world_size = collective->device_list()->num_devices_per_group();
   return spec;

@@ -854,6 +854,7 @@ xla_cc_test(
         "//xla/backends/gpu/transforms/collectives:collective_kernel_strategy_annotator",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/xtile:xtile_config_proto_cc",
+        "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_query",

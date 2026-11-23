@@ -51,6 +51,7 @@ namespace {
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::AllOf;
+using ::testing::ElementsAre;
 using ::testing::Field;
 using ::testing::HasSubstr;
 
@@ -382,6 +383,52 @@ TEST_F(BuildAllGatherInfoTest,
   ASSERT_EQ(spec.scratch_buffers.size(), 2);
   EXPECT_TRUE(spec.scratch_buffers[1].should_double_buffer);
   EXPECT_EQ(spec.scratch_buffers[1].size_bytes, 1024 * sizeof(float));
+}
+
+TEST_F(BuildAllGatherInfoTest,
+       CreateAllGatherKernelSpecTwoShotUsesSymmetricOutputAndNoDataScratch) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = f32[524288] parameter(0)
+    ROOT all-gather = f32[1048576] all-gather(param_0),
+        dimensions={0}, replica_groups={{0,1}},
+        backend_config={"collective_backend_config":{
+          "kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"
+        }}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, 2));
+  const HloInstruction* instr = HloHardwareIndependentTestBase::FindInstruction(
+      module.get(), HloOpcode::kAllGather);
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveKernelSpec spec,
+      CreateAllGatherKernelSpec(instr, LaunchDimensions(64, 512),
+                                SymmetricMemoryType::kLoadStoreAccessible));
+  EXPECT_FALSE(spec.codegen_config.copy_input_to_scratch);
+  EXPECT_EQ(spec.codegen_config.sync_count_increment, 2u);
+  EXPECT_THAT(spec.codegen_config.input_buffer_specs,
+              ElementsAre(Field(&IoBufferSpec::symmetric_memory_type,
+                                SymmetricMemoryType::kNone)));
+  EXPECT_THAT(spec.codegen_config.output_buffer_specs,
+              ElementsAre(Field(&IoBufferSpec::symmetric_memory_type,
+                                SymmetricMemoryType::kLoadStoreAccessible)));
+  EXPECT_THAT(
+      spec.codegen_config.argument_descriptors,
+      ElementsAre(
+          Field(&KernelArgDescriptor::type, KernelArgType::kInputBuffer),
+          Field(&KernelArgDescriptor::type, KernelArgType::kOutputBuffer),
+          AllOf(
+              Field(&KernelArgDescriptor::type, KernelArgType::kScratchBuffer),
+              Field(&KernelArgDescriptor::index, 0)),
+          Field(&KernelArgDescriptor::type, KernelArgType::kRuntimeRank)));
+  EXPECT_EQ(spec.scratch_buffers.size(), 1);
+
+  EXPECT_THAT(CreateAllGatherKernelSpec(instr, LaunchDimensions(64, 512),
+                                        SymmetricMemoryType::kXlaRendezvous),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("load/store accessible")));
 }
 
 }  // namespace
