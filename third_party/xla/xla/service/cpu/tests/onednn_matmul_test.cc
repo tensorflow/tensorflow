@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <optional>
 #include <string>
 
 #include "absl/strings/str_replace.h"
@@ -33,13 +32,8 @@ class MatmulTest : public HloInterpreterReferenceMixin<HloTestBase> {
         HloInterpreterReferenceMixin::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
     debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
-    if (enable_fast_math_.has_value()) {
-      debug_options.set_xla_cpu_enable_fast_math(*enable_fast_math_);
-    }
     return debug_options;
   }
-
-  std::optional<bool> enable_fast_math_;
 
   const char* fused_matmul_bias_ = R"(
     ; CHECK:     custom_call_target="__onednn$matmul",
@@ -1117,7 +1111,6 @@ TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_BF16) {
 }
 
 TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
-  enable_fast_math_ = true;
   const char* matmul_module_str = R"(
   HloModule matmul.divide.test.1
 
@@ -1142,32 +1135,6 @@ TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
   ; CHECK-DAG:     }
   ; CHECK-DAG:   }
   ; CHECK:     }
-  )");
-}
-
-TEST_F(MatmulTest, DivisionByConstantWithoutFastMathNotFusedF32) {
-  enable_fast_math_ = false;
-  const char* matmul_module_str = R"(
-  HloModule matmul.divide.no_fast_math.test
-
-  ENTRY matmul.divide.test.f32 {
-    Arg_4.5 = f32[16,64,128] parameter(0), sharding={replicated}
-    Arg_2.3 = f32[128,4,32] parameter(1), sharding={replicated}
-    onednn.matmul.0 = f32[16,64,4,32] dot(Arg_4.5, Arg_2.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-    constant.8 = f32[] constant(8)
-    broadcast.9 = f32[16,64,4,32] broadcast(constant.8), dimensions={}
-    ROOT divide.16 = f32[16,64,4,32] divide(onednn.matmul.0, broadcast.9)
-  })";
-
-  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec(1e-4, 1e-4)));
-  MatchOptimizedHlo(matmul_module_str,
-                    R"(
-  ; CHECK:     divide(
-  ; CHECK:     ENTRY
-  ; CHECK:     custom_call_target="__onednn$matmul",
-  ; CHECK-NOT: "fusions"
-  ; CHECK-NOT: "LINEAR"
-  ; CHECK:     ROOT {{.*}} fusion(
   )");
 }
 

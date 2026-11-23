@@ -267,13 +267,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
     return true;
   }
 
-  // Backend hook to decide whether floating-point/complex division by a
-  // constant (`A / Const`) may be rewritten to multiplication by the reciprocal
-  // (`A * (1 / Const)`). Defaults to `options_.enable_fast_math()`.
-  virtual bool ShouldRewriteDivideByConstantToMultiply() const {
-    return options_.enable_fast_math();
-  }
-
   // A method that allows various backends to specialize the propagation of
   // various attributes to the new instruction.
   virtual void SetupDerivedInstruction(HloInstruction* old_inst,
