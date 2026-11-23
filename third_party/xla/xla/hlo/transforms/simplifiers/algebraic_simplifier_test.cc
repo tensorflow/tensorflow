@@ -2971,8 +2971,10 @@ TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
 
   auto computation = m->AddEntryComputationWithLayouts(builder.Build());
 
-  AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_THAT(simplifier.Run(m.get()), absl_testing::IsOkAndHolds(true));
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Constant())));
@@ -2989,13 +2991,55 @@ TEST_F(AlgebraicSimplifierTest, DivideByBroadcastedConstant) {
       ROOT d = f32[4] divide(p, b)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  ASSERT_THAT(AlgebraicSimplifier(options).Run(m.get()),
+              absl_testing::IsOkAndHolds(true));
 
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(
                   m::Parameter(0),
                   m::Broadcast(m::Op().IsConstantScalar(1.0f / 256.0f)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DivideByConstantWithoutFastMath) {
+  constexpr absl::string_view kModuleStr = R"hlo(
+    HloModule m
+    ENTRY main {
+      p = f32[] parameter(0)
+      c = f32[] constant(255)
+      ROOT d = f32[] divide(p, c)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(false);
+  ASSERT_THAT(AlgebraicSimplifier(options).Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Divide(m::Parameter(0), m::ConstantScalar(255.0f))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DivideByBroadcastedConstantWithoutFastMath) {
+  constexpr absl::string_view kModuleStr = R"hlo(
+    HloModule m
+    ENTRY main {
+      p = f32[3] parameter(0)
+      c = f32[] constant(255)
+      b = f32[3] broadcast(c), dimensions={}
+      ROOT d = f32[3] divide(p, b)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(false);
+  ASSERT_THAT(AlgebraicSimplifier(options).Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Divide(m::Parameter(0),
+                                   m::Broadcast(m::ConstantScalar(255.0f)))));
 }
 
 // pow(pow(A, X), Y) => pow(A, X*Y)
@@ -11446,6 +11490,7 @@ TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
   module->AddEntryComputationWithLayouts(builder.Build());
 
   AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
   AlgebraicSimplifier simplifier(options);
   ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
   HloInstruction* root = module->entry_computation()->root_instruction();

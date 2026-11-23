@@ -2679,7 +2679,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   //
   // (Backends can do this transformation, but generally only if the constant is
   // a scalar.)
-  if (Match(divide, m::Divide(m::NonConstant(&a), m::Op(&b))) &&
+  // Multiplying by a rounded reciprocal can change subsequent rounding.
+  if (ShouldRewriteDivideByConstantToMultiply() &&
+      Match(divide, m::Divide(m::NonConstant(&a), m::Op(&b))) &&
       (Match(b, m::Constant(&c)) || Match(b, m::Broadcast(m::Constant(&c))))) {
     Shape result_shape = c->literal().shape();
     Literal new_literal(result_shape);
