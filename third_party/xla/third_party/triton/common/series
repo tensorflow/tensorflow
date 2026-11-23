@@ -21,7 +21,6 @@ convert_layout_heuristic.patch
 tmem_scale_padding_second_half.patch
 old_ptxas.patch
 tmemfix.patch
-amd_range_analysis.patch
 fix_load_ops.patch
 llvm_cl996124567.patch
 llvm_cl998243985.patch
@@ -40,3 +39,4 @@ llvm_cl1020994322.patch
 llvm_cl1022503860.patch
 llvm_cl1022888649.patch
 allocate_warp_groups_stable_sort.patch
+amd_range_analysis.patch

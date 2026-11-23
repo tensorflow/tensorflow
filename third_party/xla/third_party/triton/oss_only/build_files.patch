@@ -2284,7 +2284,7 @@ diff --git b/test/BUILD b/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/test/BUILD
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,121 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +# copybara:uncomment_begin
@@ -2316,8 +2316,6 @@ new file mode 100644
 +#         "Conversion/amd/wmma-v2-shortcut.mlir",  # AMD-specific, broken on it's first integeration.
 +#         "TritonGPU/amd/amd-instruction-sched.mlir",  # AMD-specific, broken with -debug-only.
 +#         "TritonGPU/optimize_epilogue.mlir",  # TODO: b/346283526 - AMD-specific, triggering UBSAN
-+#         # TODO(b/478678840): Re-enable when https://github.com/triton-lang/triton/commit/6559dea9d66c20590b4a7aa0cafa850b55269a1e lands.
-+#         "TritonGPU/amd/amd-range-analysis.mlir",
 +#         "TritonGPU/amd/amd-schedule-hint.mlir",
 +#     ],
 +#     size_override = {

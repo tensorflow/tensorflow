@@ -2,14 +2,25 @@ Fix signed integer overflow in AMD RangeAnalysis trip count calculations.
 
 In maybeGetTripCount, (max - min) / step can overflow signed 64-bit integers;
 this patch extends the bitwidth via APInt before division. In getTotalLoopTripCount,
-intermediate trip count multiplication could overflow; this patch bounds checks
-at each step against kDefaultMaxTripCount.
+intermediate trip count multiplication could overflow; this patch checks for signed
+64-bit multiplication overflow with llvm::MulOverflow and returns
+kDefaultMaxTripCount + 1 on overflow.
 
 Lifecycle: Upstream this fix to triton-lang/triton and remove the patch in the next integration.
+# Introduced in cl/977816648
+# BUG=478678840
 
 --- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp
 +++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp
-@@ -314,13 +314,16 @@ TritonIntegerRangeAnalysis::maybeGetTripCount(LoopLikeOpInterface loop) {
+@@ -12,6 +12,7 @@
+ #include "triton/Dialect/TritonGPU/IR/Dialect.h"
+ #include "llvm/ADT/TypeSwitch.h"
+ #include "llvm/Support/Debug.h"
++#include "llvm/Support/MathExtras.h"
+ 
+ #include <algorithm>
+ #include <numeric>
+@@ -314,13 +315,16 @@
    // loop can run. Over-estimating is safe because extra backedges only widen
    // loop carried values; under-estimating is not. Loops which may not run at
    // all are handled by always propagating the init args.
@@ -32,7 +43,7 @@ Lifecycle: Upstream this fix to triton-lang/triton and remove the patch in the n
  }
  
  bool isEmptyInitializedRange(ConstantIntRanges rv) {
-@@ -379,11 +382,16 @@ int64_t
+@@ -379,11 +383,16 @@
  TritonIntegerRangeAnalysis::getTotalLoopTripCount(LoopLikeOpInterface loop) {
    SmallVector<LoopLikeOpInterface> loops{loop};
    getEnclosingLoops(*loop, loops);
@@ -42,15 +53,15 @@ Lifecycle: Upstream this fix to triton-lang/triton and remove the patch in the n
 -                                              kDefaultMaxTripCount + 1);
 -                         });
 +  int64_t total = 1;
++  bool overflowed = false;
 +  for (LoopLikeOpInterface l : loops) {
 +    int64_t tripCount = maybeGetTripCount(l).value_or(kDefaultMaxTripCount + 1);
-+    if (tripCount > kDefaultMaxTripCount)
-+      return kDefaultMaxTripCount + 1;
-+    total *= tripCount;
-+    if (total > kDefaultMaxTripCount)
-+      return kDefaultMaxTripCount + 1;
++    if (tripCount == 0)
++      return 0;
++    if (overflowed || llvm::MulOverflow(total, tripCount, total))
++      overflowed = true;
 +  }
-+  return total;
++  return overflowed ? kDefaultMaxTripCount + 1 : total;
  }
  
  int64_t
