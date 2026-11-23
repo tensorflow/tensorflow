@@ -978,6 +978,57 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideMapBody) {
   ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "mapper"), "map");
 }
 
+TEST_F(InstructionFusionTest, DoesNotFuseInsideControlFlowNestedInMapBody) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  while_cond {
+    s = f32[] parameter(0)
+    abs_s = f32[] abs(s)
+    limit = f32[] constant(10)
+    ROOT cmp = pred[] compare(abs_s, limit), direction=LT
+  }
+  while_body {
+    s = f32[] parameter(0)
+    abs_s = f32[] abs(s)
+    ROOT next = f32[] add(abs_s, s)
+  }
+  true_branch {
+    v = f32[] parameter(0)
+    ROOT loop = f32[] while(v), condition=while_cond, body=while_body
+  }
+  false_branch {
+    v = f32[] parameter(0)
+    neg_v = f32[] negate(v)
+    ROOT twice = f32[] add(neg_v, neg_v)
+  }
+  mapper {
+    x = f32[] parameter(0)
+    zero = f32[] constant(0)
+    is_pos = pred[] compare(x, zero), direction=GT
+    ROOT r = f32[] conditional(is_pos, x, x),
+        true_computation=true_branch, false_computation=false_branch
+  }
+  ENTRY main {
+    input = f32[128]{0} parameter(0)
+    ROOT mapped = f32[128]{0} map(input), dimensions={0}, to_apply=mapper
+  })"));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/true)
+          .Run(module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "mapper"), "map");
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "true_branch"),
+                       "map true_branch");
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "false_branch"),
+                       "map false_branch");
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "while_cond"),
+                       "map while_cond");
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "while_body"),
+                       "map while_body");
+}
+
 TEST_F(InstructionFusionTest, DoesNotFuseInsideReduceReducer) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule test_module

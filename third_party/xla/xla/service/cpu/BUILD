@@ -199,7 +199,6 @@ cc_library(
         "//xla/hlo/transforms:control_dep_rewriter",
         "//xla/hlo/transforms:copy_insertion",
         "//xla/hlo/transforms:dynamic_padder",
-        "//xla/hlo/transforms:instruction_fusion",
         "//xla/hlo/transforms:layout_assignment",
         "//xla/hlo/transforms:literal_canonicalizer",
         "//xla/hlo/transforms:nullary_function_wrap_inliner",

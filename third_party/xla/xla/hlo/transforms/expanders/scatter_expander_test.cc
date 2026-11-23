@@ -480,5 +480,89 @@ TEST_F(ScatterExpanderTest, ExtraFilterRestrictsExpansion) {
   EXPECT_THAT(root->operand(1), op::Scatter());
 }
 
+TEST_F(ScatterExpanderTest,
+       EliminateEmbeddedScattersIncludesNestedControlFlow) {
+  const char* const kModuleStr = R"(
+    HloModule scatter_expander
+
+    overwrite {
+      parameter0 = s32[] parameter(0)
+      ROOT parameter1 = s32[] parameter(1)
+    }
+
+    loop_cond {
+      state = (s32[], s32[5]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      two = s32[] constant(2)
+      ROOT cmp = pred[] compare(i, two), direction=LT
+    }
+
+    embedded_loop_body {
+      state = (s32[], s32[5]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      buf = s32[5] get-tuple-element(state), index=1
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      indices = s32[1,1] constant({{0}})
+      updates = s32[1] constant({9})
+      next_buf = s32[5] scatter(buf, indices, updates),
+        to_apply=overwrite, update_window_dims={},
+        inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+        index_vector_dim=1
+      ROOT next = (s32[], s32[5]) tuple(next_i, next_buf)
+    }
+
+    comparator {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      zero = s32[] constant(0)
+      buf = s32[5] broadcast(a), dimensions={}
+      indices = s32[1,1] constant({{1}})
+      updates = s32[1] broadcast(b), dimensions={}
+      direct = s32[5] scatter(buf, indices, updates),
+        to_apply=overwrite, update_window_dims={},
+        inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+        index_vector_dim=1
+      init = (s32[], s32[5]) tuple(zero, direct)
+      loop = (s32[], s32[5]) while(init),
+        condition=loop_cond, body=embedded_loop_body
+      out = s32[5] get-tuple-element(loop), index=1
+      sl0 = s32[1] slice(out), slice={[0:1]}
+      sl1 = s32[1] slice(out), slice={[1:2]}
+      v0 = s32[] reshape(sl0)
+      v1 = s32[] reshape(sl1)
+      ROOT lt = pred[] compare(v0, v1), direction=LT
+    }
+
+    ENTRY main {
+      operand = s32[5] parameter(0)
+      indices = s32[2,1] parameter(1)
+      updates = s32[2] parameter(2)
+      entry_scatter = s32[5] scatter(operand, indices, updates),
+        to_apply=overwrite, update_window_dims={},
+        inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+        index_vector_dim=1
+      ROOT sorted = s32[5] sort(entry_scatter), dimensions={0},
+        to_apply=comparator
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+
+  ScatterExpander scatter_expander(ScatterExpander::kEliminateEmbeddedScatters);
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
+  EXPECT_TRUE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sort(op::Scatter()));
+  for (const char* name : {"comparator", "embedded_loop_body"}) {
+    for (const HloInstruction* inst :
+         module->GetComputationWithName(name)->instructions()) {
+      EXPECT_NE(inst->opcode(), HloOpcode::kScatter)
+          << "Unexpected scatter in " << name << ": " << inst->ToString();
+    }
+  }
+}
+
 }  // namespace
 }  // namespace xla

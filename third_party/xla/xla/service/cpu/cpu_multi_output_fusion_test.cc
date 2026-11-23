@@ -227,5 +227,54 @@ TEST_F(MultiOutputFusionTest, DoesNotFuseScatterFusions) {
   EXPECT_EQ(num_scatter_fusions, 2);
 }
 
+TEST_F(MultiOutputFusionTest, DoesNotFuseInsideControlFlowNestedInMapBody) {
+  static constexpr absl::string_view kHloModule = R"(
+    HloModule module
+
+    %add_fn {
+      %a = f32[] parameter(0)
+      %b = f32[] parameter(1)
+      ROOT %add = f32[] add(%a, %b)
+    }
+
+    %while_cond {
+      %s = (f32[], f32[]) parameter(0)
+      %a = f32[] get-tuple-element(%s), index=0
+      %limit = f32[] constant(10)
+      ROOT %cmp = pred[] compare(%a, %limit), direction=LT
+    }
+
+    %while_body {
+      %s = (f32[], f32[]) parameter(0)
+      %a = f32[] get-tuple-element(%s), index=0
+      %b = f32[] get-tuple-element(%s), index=1
+      %double = f32[] fusion(%a, %b), kind=kLoop, calls=%add_fn
+      %square = f32[] multiply(%a, %b)
+      ROOT %next = (f32[], f32[]) tuple(%double, %square)
+    }
+
+    %mapper {
+      %x = f32[] parameter(0)
+      %init = (f32[], f32[]) tuple(%x, %x)
+      %loop = (f32[], f32[]) while(%init),
+          condition=%while_cond, body=%while_body
+      %r0 = f32[] get-tuple-element(%loop), index=0
+      %r1 = f32[] get-tuple-element(%loop), index=1
+      ROOT %sum = f32[] add(%r0, %r1)
+    }
+
+    ENTRY %main {
+      %input = f32[128]{0} parameter(0)
+      ROOT %mapped = f32[128]{0} map(%input), dimensions={0}, to_apply=%mapper
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
+  EXPECT_FALSE(changed) << hlo_module->ToString();
+}
+
 }  // namespace
 }  // namespace xla::cpu

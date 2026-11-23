@@ -16,11 +16,14 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/embedded_while_loop_unroller.h"
 
 #include <iterator>
+#include <memory>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -28,24 +31,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/transforms/while_loop_unroller.h"
+#include "xla/service/call_graph.h"
 
 namespace xla::cpu {
 namespace {
 
-std::vector<HloInstruction*> EmbeddedWhileLoops(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+std::vector<HloInstruction*> EmbeddedWhileLoops(const CallGraph& call_graph) {
   std::vector<HloInstruction*> loops;
-  for (HloComputation* computation :
-       module->MakeComputationPostOrder(execution_threads)) {
-    if (!InstructionFusion::IsEmbeddedComputation(computation)) {
-      continue;
+  CHECK_OK(call_graph.VisitNodes([&](const CallGraphNode& node) {
+    if (node.IsEmbedded()) {
+      absl::c_copy_if(node.computation()->instructions(),
+                      std::back_inserter(loops),
+                      HloPredicateIsOp<HloOpcode::kWhile>);
     }
-    absl::c_copy_if(computation->instructions(), std::back_inserter(loops),
-                    HloPredicateIsOp<HloOpcode::kWhile>);
-  }
+    return absl::OkStatus();
+  }));
   return loops;
 }
 
@@ -54,13 +55,16 @@ std::vector<HloInstruction*> EmbeddedWhileLoops(
 absl::StatusOr<bool> EmbeddedWhileLoopUnroller::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  // Unrolling runs DCE on the module and may expose loops nested in the
-  // unrolled body, so re-collect the loops after every successful unroll.
+  // Unrolling runs DCE on the module and may clone called computations or
+  // expose loops nested in the unrolled body, so rebuild the call graph and
+  // re-collect the loops after every successful unroll.
   bool changed = false;
   bool unrolled = true;
   while (unrolled) {
     unrolled = false;
-    for (HloInstruction* loop : EmbeddedWhileLoops(module, execution_threads)) {
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(module, execution_threads);
+    for (HloInstruction* loop : EmbeddedWhileLoops(*call_graph)) {
       // No `prepare`: PrepareModuleForUnrolling would also rewrite loops in
       // the entry computation.
       ABSL_ASSIGN_OR_RETURN(UnrollResult result,

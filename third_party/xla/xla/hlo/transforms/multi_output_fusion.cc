@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -34,9 +35,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
-#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/map_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
@@ -48,6 +49,8 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
+  std::unique_ptr<CallGraph> call_graph =
+      CallGraph::Build(module, execution_threads);
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     // Do not operate over async computations (computations of async
@@ -55,13 +58,13 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
     if (computation->IsAsyncComputation()) {
       continue;
     }
-    // Skip multi-output fusion inside the body of any kEmbedded computation
-    // (e.g. kScan, kSort, kMap, kReduce, kReduceWindow, kScatter,
-    // kSelectAndScatter, kAllReduce, kReduceScatter, kAllReduceStart,
-    // kCustomCall). These bodies are typically scalar-in / scalar-out and do
-    // not materialize tensors, so wrapping their instructions in kFusion ops
-    // is unhelpful and breaks backends that expect them to stay flat.
-    if (InstructionFusion::IsEmbeddedComputation(computation)) {
+    // Skip multi-output fusion inside any computation reachable from a
+    // kEmbedded callsite (kEmbedded or kBoth), including control-flow bodies
+    // (kWhile, kConditional, kCall) nested inside one. These bodies are
+    // typically scalar-in / scalar-out and do not materialize tensors, so
+    // wrapping their instructions in kFusion ops is unhelpful and breaks
+    // backends that expect them to stay flat.
+    if (call_graph->GetNode(computation).IsEmbedded()) {
       continue;
     }
     computation_ = computation;

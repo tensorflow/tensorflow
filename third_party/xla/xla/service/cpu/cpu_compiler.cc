@@ -134,7 +134,6 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/select_and_scatter_expander.h"
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/expanders/triangular_solve_expander.h"
-#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/transforms/layout_assignment.h"
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 #include "xla/hlo/transforms/nullary_function_wrap_inliner.h"
@@ -838,10 +837,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     auto& embedded_pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "embedded_scatter_expansion");
     embedded_pipeline.AddPass<ScatterExpander>(
-        ScatterExpander::kEliminateAllScatters,
-        [](const HloInstruction* instr) {
-          return InstructionFusion::IsEmbeddedComputation(instr->parent());
-        });
+        ScatterExpander::kEliminateEmbeddedScatters);
     embedded_pipeline.AddPass<EmbeddedWhileLoopUnroller>();
   } else {
     pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);

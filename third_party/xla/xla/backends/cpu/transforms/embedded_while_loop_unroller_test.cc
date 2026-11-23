@@ -177,5 +177,52 @@ ENTRY main {
             entry_condition_before);
 }
 
+TEST_F(EmbeddedWhileLoopUnrollerTest,
+       UnrollsLoopInsideConditionalInSortComparator) {
+  constexpr absl::string_view kModule = R"(
+true_branch {
+  v = s32[] parameter(0)
+  zero = s32[] constant(0)
+  v_f = f32[] convert(v)
+  init = f32[3] broadcast(v_f), dimensions={}
+  init_state = (s32[], f32[3]) tuple(zero, init)
+  loop = (s32[], f32[3]) while(init_state), condition=condition, body=body
+  result = f32[3] get-tuple-element(loop), index=1
+  first = f32[1] slice(result), slice={[0:1]}
+  ROOT scalar = f32[] reshape(first)
+}
+
+false_branch {
+  v = s32[] parameter(0)
+  ROOT scalar = f32[] convert(v)
+}
+
+compare {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  zero = s32[] constant(0)
+  is_pos = pred[] compare(p0, zero), direction=GT
+  lhs = f32[] conditional(is_pos, p0, p0),
+      true_computation=true_branch, false_computation=false_branch
+  rhs = f32[] convert(p1)
+  ROOT lt = pred[] compare(lhs, rhs), direction=LT
+}
+
+ENTRY main {
+  x = s32[7] parameter(0)
+  ROOT sorted = s32[7] sort(x), dimensions={0}, to_apply=compare
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(absl::StrCat(
+                           "HloModule test\n", kLoopComputations, kModule)));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       EmbeddedWhileLoopUnroller().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(hlo_query::ContainsInstrWithOpcode(
+      module->GetComputationWithName("true_branch"), {HloOpcode::kWhile}));
+}
+
 }  // namespace
 }  // namespace xla::cpu

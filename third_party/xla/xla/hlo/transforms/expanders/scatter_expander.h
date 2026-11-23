@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_EXPANDERS_SCATTER_EXPANDER_H_
 #define XLA_HLO_TRANSFORMS_EXPANDERS_SCATTER_EXPANDER_H_
 
+#include <memory>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
+#include "xla/service/call_graph.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -29,7 +32,7 @@ namespace xla {
 // This pass rewrites scatter operations into (roughly) while loops of
 // dynamic-update-slices.
 //
-// This pass can be used in three ways:
+// This pass can be used in four ways:
 //
 //   - kEliminateAllScatters: For backends that don't support scatter, this pass
 //     can convert every scatter into a loop.
@@ -44,6 +47,10 @@ namespace xla {
 //     functions. There may be false positives, but no false negatives, i.e.
 //     some scatters are converted even when deterministic in practice.
 //
+//   - kEliminateEmbeddedScatters: Converts scatters inside computations
+//     reachable from a CallContext::kEmbedded callsite (e.g. sort comparators,
+//     reducers, and control-flow bodies nested inside them).
+//
 // Note that even in kEliminateSimpleScatters mode, this pass may still expand a
 // scatter into a loop (with a trip-count of 1).  It's up to other
 // simplification passes to remove the loop.
@@ -53,6 +60,7 @@ class ScatterExpander : public OpExpanderPass {
     kEliminateAllScatters,
     kEliminateSimpleScatters,
     kEliminateIndeterministicScatters,
+    kEliminateEmbeddedScatters,
   };
 
   // extra_filter: optional additional condition an instruction must satisfy
@@ -63,6 +71,10 @@ class ScatterExpander : public OpExpanderPass {
   absl::string_view name() const override { return "scatter_expander"; }
 
  protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
   bool InstructionMatchesPattern(HloInstruction* inst) override;
 
   absl::StatusOr<HloInstruction*> ExpandInstruction(
@@ -73,6 +85,7 @@ class ScatterExpander : public OpExpanderPass {
 
  private:
   Mode mode_;
+  std::unique_ptr<CallGraph> call_graph_;
 };
 
 }  // namespace xla

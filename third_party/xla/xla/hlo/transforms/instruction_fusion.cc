@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/fusion_queue.h"
 #include "xla/map_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
@@ -602,16 +603,18 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
   bool dump_fusion =
       module->config().debug_options().xla_dump_fusion_visualization();
 
+  std::unique_ptr<CallGraph> call_graph =
+      CallGraph::Build(module, execution_threads);
   for (auto* computation :
        GetNonFusionComputations(module, execution_threads)) {
     CHECK(!computation->IsFusionComputation());
-    // Skip fusion inside the body of any kEmbedded computation (e.g. kScan,
-    // kSort, kMap, kReduce, kReduceWindow, kScatter, kSelectAndScatter,
-    // kAllReduce, kReduceScatter, kAllReduceStart, kCustomCall). These bodies
-    // are typically scalar-in / scalar-out and do not materialize tensors, so
-    // wrapping their instructions in kFusion ops is unhelpful and breaks
-    // backends that expect them to stay flat.
-    if (IsEmbeddedComputation(computation)) {
+    // Skip fusion inside any computation reachable from a kEmbedded callsite
+    // (kEmbedded or kBoth), including control-flow bodies (kWhile,
+    // kConditional, kCall) nested inside one. These bodies are typically
+    // scalar-in / scalar-out and do not materialize tensors, so wrapping their
+    // instructions in kFusion ops is unhelpful and breaks backends that expect
+    // them to stay flat.
+    if (call_graph->GetNode(computation).IsEmbedded()) {
       continue;
     }
     std::unique_ptr<HloReachabilityMap> reachability =
@@ -974,21 +977,6 @@ bool SharesArrayBuffer(const HloInstruction* op,
 }
 
 }  // namespace
-
-/*static*/ bool InstructionFusion::IsEmbeddedComputation(
-    const HloComputation* computation) {
-  if (computation == nullptr) {
-    return false;
-  }
-  // All callers of a given computation share the same call context, so it
-  // suffices to inspect the first one.
-  auto callers = computation->caller_instructions();
-  if (callers.empty()) {
-    return false;
-  }
-  return GetInstructionCallContext(callers.front()->opcode()) ==
-         CallContext::kEmbedded;
-}
 
 /*static*/ FusionDecision InstructionFusion::ShouldFuseInPlaceOp(
     const HloInstruction* producer, const HloInstruction* consumer,

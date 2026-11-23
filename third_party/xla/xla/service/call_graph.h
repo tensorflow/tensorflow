@@ -107,6 +107,13 @@ class CallGraphNode {
   // Returns the context in which this computation is called.
   CallContext context() const { return context_; }
 
+  // Returns true if this computation is called in an embedded context
+  // (kEmbedded or kBoth), including transitively through control-flow
+  // computations.
+  bool IsEmbedded() const {
+    return context_ == CallContext::kEmbedded || context_ == CallContext::kBoth;
+  }
+
   // Returns the depth of this node in the call graph. The depth is defined as
   // the length of the longest call chain from a computation with no callers
   // (usually the entry computation node) to this node.

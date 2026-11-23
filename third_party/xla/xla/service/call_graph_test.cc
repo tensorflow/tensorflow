@@ -994,5 +994,53 @@ TEST_F(CallGraphTest, IsFlatOnControlFlowWhileBodyAndCallShared) {
   EXPECT_FALSE(call_graph->IsFlatOnControlFlow());
 }
 
+TEST_F(CallGraphTest, CallGraphNodeIsEmbedded) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+    %control_flow_only (p: f32[]) -> f32[] {
+      %p = f32[] parameter(0)
+      ROOT %neg = f32[] negate(%p)
+    }
+    %both_contexts (p: f32[]) -> f32[] {
+      %p = f32[] parameter(0)
+      ROOT %abs = f32[] abs(%p)
+    }
+    %nested_in_embedded (p: f32[]) -> f32[] {
+      %p = f32[] parameter(0)
+      ROOT %exp = f32[] exponential(%p)
+    }
+    %embedded_body (p: f32[]) -> f32[] {
+      %p = f32[] parameter(0)
+      %c1 = f32[] call(%p), to_apply=%both_contexts
+      ROOT %c2 = f32[] call(%c1), to_apply=%nested_in_embedded
+    }
+    ENTRY %main (p: f32[4]) -> f32[4] {
+      %p = f32[4] parameter(0)
+      %zero = f32[] constant(0)
+      %c1 = f32[] call(%zero), to_apply=%control_flow_only
+      %c2 = f32[] call(%c1), to_apply=%both_contexts
+      %b = f32[4] broadcast(%c2), dimensions={}
+      %sum = f32[4] add(%p, %b)
+      ROOT %mapped = f32[4] map(%sum), dimensions={0}, to_apply=%embedded_body
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_FALSE(call_graph->GetNode(module->entry_computation()).IsEmbedded());
+  EXPECT_FALSE(
+      call_graph->GetNode(module->GetComputationWithName("control_flow_only"))
+          .IsEmbedded());
+  EXPECT_TRUE(
+      call_graph->GetNode(module->GetComputationWithName("embedded_body"))
+          .IsEmbedded());
+  EXPECT_TRUE(
+      call_graph->GetNode(module->GetComputationWithName("nested_in_embedded"))
+          .IsEmbedded());
+  EXPECT_TRUE(
+      call_graph->GetNode(module->GetComputationWithName("both_contexts"))
+          .IsEmbedded());
+}
+
 }  // namespace
 }  // namespace xla

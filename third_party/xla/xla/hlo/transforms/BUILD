@@ -1373,6 +1373,7 @@ cc_library(
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service:call_graph",
         "//xla/service:decision",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_module_config",
@@ -1590,7 +1591,6 @@ cc_library(
     srcs = ["multi_output_fusion.cc"],
     hdrs = ["multi_output_fusion.h"],
     deps = [
-        ":instruction_fusion",
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
@@ -1599,6 +1599,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/service:call_graph",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
