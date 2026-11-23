@@ -677,8 +677,8 @@ int64_t IotaTileAssignment::value_at(absl::Span<const int64_t> index) const {
   auto transpose_perm = this->transpose_perm();
   absl::InlinedVector<int64_t, 6> reshape_index(reshape_ndims_);
   for (int64_t i = reshape_ndims_ - 1; i >= 0; --i) {
-    int dim = transpose_perm[i];
-    int dim_size = reshape_dims[dim];
+    const int dim = transpose_perm[i];
+    const int64_t dim_size = reshape_dims[dim];
     reshape_index[dim] = linear_index % dim_size;
     linear_index /= dim_size;
   }

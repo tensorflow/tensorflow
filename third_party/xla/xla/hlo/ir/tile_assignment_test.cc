@@ -156,6 +156,38 @@ TEST(IotaTileAssignmentTest, ValueAt) {
   EXPECT_EQ(iota2.value_at({2, 1}), 5);
 }
 
+TEST(IotaTileAssignmentTest, ValueAtLargeDims) {
+  constexpr int64_t k2Pow31 = int64_t{1} << 31;
+  constexpr int64_t k2Pow32 = int64_t{1} << 32;
+
+  // A reshape dimension of 2^32 must not be truncated to 0.
+  IotaTileAssignment iota1 = IotaTileAssignment::Create({k2Pow32});
+  EXPECT_EQ(iota1.value_at({5}), 5);
+  EXPECT_EQ(iota1.value_at({k2Pow32 - 1}), k2Pow32 - 1);
+
+  // A reshape dimension of 2^31 must not be truncated to INT_MIN.
+  IotaTileAssignment iota2 =
+      IotaTileAssignment::Create({k2Pow32}, {k2Pow31, 2}, {1, 0});
+  EXPECT_EQ(iota2.value_at({k2Pow31}), 1);
+  EXPECT_EQ(iota2.value_at({k2Pow31 + 7}), 15);
+  EXPECT_EQ(iota2.value_at({k2Pow32 - 1}), k2Pow32 - 1);
+  EXPECT_THAT(iota2.index_for(1), ::testing::ElementsAre(k2Pow31));
+  EXPECT_THAT(iota2.index_for(15), ::testing::ElementsAre(k2Pow31 + 7));
+
+  // A reshape dimension of 2^32 + 1 must not be truncated to 1.
+  IotaTileAssignment iota3 =
+      IotaTileAssignment::Create({2, k2Pow32 + 1}, {k2Pow32 + 1, 2}, {1, 0});
+  EXPECT_EQ(iota3.value_at({1, k2Pow32}), 2 * k2Pow32 + 1);
+  EXPECT_THAT(iota3.index_for(2 * k2Pow32 + 1),
+              ::testing::ElementsAre(1, k2Pow32));
+
+  // A multi-dimensional tile assignment with a reshape dimension of 2^32.
+  IotaTileAssignment iota4 =
+      IotaTileAssignment::Create({2, k2Pow32}, {k2Pow32, 2}, {1, 0});
+  EXPECT_EQ(iota4.value_at({1, 5}), 11);
+  EXPECT_THAT(iota4.index_for(11), ::testing::ElementsAre(1, 5));
+}
+
 TEST(IotaTileAssignmentTest, IndexFor) {
   IotaTileAssignment iota = IotaTileAssignment::Create({2, 3}, {6}, {0});
   EXPECT_THAT(iota.index_for(0), ::testing::ElementsAre(0, 0));
