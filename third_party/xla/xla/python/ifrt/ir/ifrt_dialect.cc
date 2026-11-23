@@ -21,8 +21,10 @@ limitations under the License.
 
 #include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -48,13 +49,20 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/pjrt/layout_mode.h"
+#include "xla/primitive_util.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 // Generated definitions.
 #include "xla/python/ifrt/ir/ifrt_dialect.cc.inc"
@@ -477,18 +485,24 @@ mlir::LogicalResult IfrtArrayType::verify(
              << Shape::kMaxNumElements << "): " << shape;
     }
   }
-  if (llvm::isa<IfrtTokenType>(shape.getElementType())) {
+  const mlir::Type element_type = shape.getElementType();
+  xla::PrimitiveType primitive_type = xla::PRIMITIVE_TYPE_INVALID;
+  if (llvm::isa<IfrtTokenType>(element_type)) {
     if (!shape.getShape().empty()) {
       return emitError() << "Token type cannot have non-empty shape";
     }
-  } else if (!llvm::isa<IfrtStringType>(shape.getElementType()) &&
-             shape.getElementType().getDialect().getNamespace() !=
-                 mlir::BuiltinDialect::getDialectNamespace()) {
-    return emitError() << "Unsupported array element type: "
-                       << shape.getElementType();
+  } else if (!llvm::isa<IfrtStringType>(element_type)) {
+    primitive_type = xla::ConvertMlirTypeToPrimitiveType(element_type);
+    if (!xla::primitive_util::IsArrayType(primitive_type)) {
+      return emitError() << "Unsupported array element type: " << element_type;
+    }
   }
   if (memory_kind_attr != nullptr && memory_kind_attr.getValue().empty()) {
     return emitError() << "Memory kind cannot be empty";
+  }
+  if (mlir::failed(
+          sharding_attr.CanApplyTo(emitError, shape, devices_attr.getIds()))) {
+    return mlir::failure();
   }
   if (layout_attr != nullptr) {
     absl::StatusOr<xla::LayoutMode> layout_mode =
@@ -497,8 +511,49 @@ mlir::LogicalResult IfrtArrayType::verify(
       return emitError() << "Invalid layout mode: "
                          << layout_mode.status().message();
     }
+    if (llvm::isa<IfrtTokenType, IfrtStringType>(element_type)) {
+      if (layout_mode->mode != xla::LayoutMode::Mode::kDefault) {
+        return emitError() << "Array with element type " << element_type
+                           << " only supports default layout mode, got "
+                           << layout_attr;
+      }
+    } else if (layout_mode->mode == xla::LayoutMode::Mode::kUserSpecified) {
+      CHECK(layout_mode->user_layout.has_value());
+      const int64_t layout_rank = static_cast<int64_t>(
+          layout_mode->user_layout->minor_to_major().size());
+      if (layout_rank != shape.getRank()) {
+        return emitError() << "Layout minor_to_major size (" << layout_rank
+                           << ") does not match array rank (" << shape.getRank()
+                           << "): " << layout_attr;
+      }
+      // Validate against the per-shard shape when divisible so shard-local
+      // `split_configs` bounds are checked. Non-divisible shardings and
+      // `#ifrt.sharding_unspecified` validate against the global shape. This
+      // cannot falsely reject a valid layout because `ValidateLayoutForShape`
+      // checks only that `split_index < dim_size` (every other check depends
+      // only on element type, rank, or layout-internal fields), which is
+      // monotone in `dim_size`, and `local_dim <= global_dim` always holds.
+      absl::StatusOr<llvm::SmallVector<int64_t>> local_shape =
+          sharding_attr.LocalShapeFromGlobalShape(shape.getShape());
+      const llvm::ArrayRef<int64_t> validation_dims =
+          local_shape.ok() ? llvm::ArrayRef<int64_t>(*local_shape)
+                           : shape.getShape();
+      absl::StatusOr<xla::Shape> xla_shape = xla::ShapeUtil::MakeValidatedShape(
+          primitive_type,
+          absl::MakeConstSpan(validation_dims.data(), validation_dims.size()));
+      if (!xla_shape.ok()) {
+        return emitError() << "Invalid array shape for layout validation: "
+                           << xla_shape.status().message();
+      }
+      if (const absl::Status status = xla::LayoutUtil::ValidateLayoutForShape(
+              *layout_mode->user_layout, *xla_shape);
+          !status.ok()) {
+        return emitError() << "Invalid layout " << layout_attr << ": "
+                           << status.message();
+      }
+    }
   }
-  return sharding_attr.CanApplyTo(emitError, shape, devices_attr.getIds());
+  return mlir::success();
 }
 
 xla::ifrt::MemoryKind IfrtArrayType::MemoryKind() const {

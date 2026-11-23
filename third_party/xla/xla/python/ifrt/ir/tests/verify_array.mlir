@@ -314,3 +314,303 @@ func.func @array_shape_zero_dim_exceeds_max_num_elements() {
       !ifrt.array<tensor<0x72057594037927936xi8>, #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
   return
 }
+
+// -----
+
+func.func @good_array_with_user_layout() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{1,0}">
+  %1 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{0,1:T(8,128)}">
+  return
+}
+
+// -----
+
+func.func @good_array_scalar_with_empty_user_layout() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<i32>, #ifrt.sharding_param< to [0] on 1>, [0],
+                  layout = "{}">
+  return
+}
+
+// -----
+
+func.func @good_array_token_with_default_layout() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<!ifrt.token>, #ifrt.sharding_param< to [0] on 1>, [0],
+                  layout = "default">
+  return
+}
+
+// -----
+
+func.func @good_array_string_with_default_layout() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2x!ifrt.string>, #ifrt.sharding_param<2 to [0] on 2>,
+                  [0,1], layout = "default">
+  return
+}
+
+// -----
+
+func.func @good_array_with_auto_layout() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2x3x4xi32>,
+                  #ifrt.sharding_param<1x1x1 to [0] on 1>, [0],
+                  layout = "auto">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_rank_too_small() {
+  // expected-error@+5 {{Layout minor_to_major size (2) does not match array rank (3): "{0,1}"}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2x3x4xi32>,
+                  #ifrt.sharding_param<1x1x1 to [0] on 1>, [0],
+                  layout = "{0,1}">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_rank_too_large() {
+  // expected-error@+4 {{Layout minor_to_major size (3) does not match array rank (2): "{0,1,2}"}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{0,1,2}">
+  return
+}
+
+// -----
+
+func.func @array_scalar_with_non_empty_user_layout() {
+  // expected-error@+4 {{Layout minor_to_major size (1) does not match array rank (0): "{0}"}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<i32>, #ifrt.sharding_param< to [0] on 1>, [0],
+                  layout = "{0}">
+  return
+}
+
+// -----
+
+func.func @array_token_with_empty_user_layout() {
+  // expected-error@+4 {{Array with element type '!ifrt.token' only supports default layout mode, got "{}"}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<!ifrt.token>, #ifrt.sharding_param< to [0] on 1>, [0],
+                  layout = "{}">
+  return
+}
+
+// -----
+
+func.func @array_token_with_user_layout_modifiers() {
+  // expected-error@+4 {{Array with element type '!ifrt.token' only supports default layout mode, got "{:T(0)E(-1)S(5)}"}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<!ifrt.token>, #ifrt.sharding_param< to [0] on 1>, [0],
+                  layout = "{:T(0)E(-1)S(5)}">
+  return
+}
+
+// -----
+
+func.func @array_token_with_auto_layout() {
+  // expected-error@+4 {{Array with element type '!ifrt.token' only supports default layout mode, got "auto"}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<!ifrt.token>, #ifrt.sharding_param< to [0] on 1>, [0],
+                  layout = "auto">
+  return
+}
+
+// -----
+
+func.func @array_string_with_user_layout() {
+  // expected-error@+4 {{Array with element type '!ifrt.string' only supports default layout mode, got "{0:T(128)}"}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2x!ifrt.string>, #ifrt.sharding_param<2 to [0] on 2>,
+                  [0,1], layout = "{0:T(128)}">
+  return
+}
+
+// -----
+
+func.func @array_string_with_auto_layout() {
+  // expected-error@+4 {{Array with element type '!ifrt.string' only supports default layout mode, got "auto"}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2x!ifrt.string>, #ifrt.sharding_param<2 to [0] on 2>,
+                  [0,1], layout = "auto">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_empty_minor_to_major_with_memory_space() {
+  // expected-error@+4 {{Layout minor_to_major size (0) does not match array rank (2): "{:S(1)}"}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{:S(1)}">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_out_of_bounds_dim() {
+  // expected-error@+4 {{Invalid layout "{2,0:T(1,128)}": layout minor_to_major field has out-of-bounds value}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{2,0:T(1,128)}">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_negative_dim() {
+  // expected-error@+4 {{Invalid layout "{-1,0}": layout minor_to_major field has out-of-bounds value}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{-1,0}">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_duplicate_dim() {
+  // expected-error@+4 {{Invalid layout "{0,0}": layout minor_to_major field has duplicate values}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{0,0}">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_zero_tile_dim() {
+  // expected-error@+4 {{Invalid layout "{1,0:T(0,128)}": layout has invalid tiles}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{1,0:T(0,128)}">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_empty_tile() {
+  // expected-error@+4 {{Invalid layout "{1,0:T()}": layout has invalid tiles}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{1,0:T()}">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_negative_element_size() {
+  // expected-error@+4 {{Invalid layout "{1,0:E(-8)}": layout element_size_in_bits field is negative}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{1,0:E(-8)}">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_oob_split_config_on_local_shape() {
+  // expected-error@+4 {{Invalid layout "{1,0:SC(0:2)}": split config split index is out of bounds: 2 (dim size 1)}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{1,0:SC(0:2)}">
+  return
+}
+
+// -----
+
+func.func @good_array_user_layout_with_non_divisible_sharding() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<5x6xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                  [0,1], layout = "{1,0}">
+  return
+}
+
+// -----
+
+func.func @good_array_user_layout_with_unspecified_sharding() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_unspecified,
+                  [0,1], layout = "{1,0}">
+  return
+}
+
+// -----
+
+func.func @good_array_string() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2x!ifrt.string>, #ifrt.sharding_param<2 to [0] on 2>,
+                  [0,1]>
+  return
+}
+
+// -----
+
+func.func @good_array_xla_element_types() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xi1>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  %1 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xui32>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  %2 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xbf16>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  %3 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xf8E4M3FN>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  %4 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xcomplex<f32>>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  %5 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xcomplex<f64>>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  return
+}
+
+// -----
+
+func.func @array_unsupported_index_element_type() {
+  // expected-error@+3 {{Unsupported array element type: 'index'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xindex>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  return
+}
+
+// -----
+
+func.func @array_unsupported_vector_element_type() {
+  // expected-error@+3 {{Unsupported array element type: 'vector<2xi32>'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xvector<2xi32>>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  return
+}
+
+// -----
+
+func.func @array_unsupported_i128_element_type() {
+  // expected-error@+3 {{Unsupported array element type: 'i128'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xi128>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  return
+}
+
+// -----
+
+func.func @array_unsupported_f128_element_type() {
+  // expected-error@+3 {{Unsupported array element type: 'f128'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xf128>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  return
+}
+
+// -----
+
+func.func @array_unsupported_complex_i32_element_type() {
+  // expected-error@+3 {{Unsupported array element type: 'complex<i32>'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2xcomplex<i32>>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  return
+}

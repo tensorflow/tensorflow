@@ -26,8 +26,8 @@
 !array_default_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "device">
 !array_pinned_host_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "pinned_host">
 !array_pinned_host_mk_2d = !ifrt.array<tensor<1x2xi32>, #sharding_2d, [0,1], memory_kind = "pinned_host">
-!array_minor_to_major = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{0,1}">
-!array_major_to_minor = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{1,0}">
+!array_minor_to_major = !ifrt.array<tensor<1x2xi32>, #sharding_2d, [0,1], layout = "{0,1}">
+!array_major_to_minor = !ifrt.array<tensor<1x2xi32>, #sharding_2d, [0,1], layout = "{1,0}">
 
 
 // CHECK-LABEL: @merge_copies_of_call_results
