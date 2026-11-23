@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -45,7 +47,9 @@ constexpr int kGateFf1Rows = kHiddenDim * kNumExperts;
 constexpr int kLinearRows = kModelDim * kNumExperts;
 
 std::vector<uint8_t> MoeCustomData(const std::string& weight_type,
-                                   const std::string& activation) {
+                                   const std::string& activation,
+                                   float gate_softcap = 0.0f,
+                                   float up_softcap = 0.0f) {
   flexbuffers::Builder fbb;
   fbb.Map([&]() {
     fbb.Int("num_experts", kNumExperts);
@@ -55,6 +59,12 @@ std::vector<uint8_t> MoeCustomData(const std::string& weight_type,
     fbb.String("weight_type", weight_type);
     fbb.String("activation", activation);
     fbb.Bool("renormalized_top_weights", true);
+    if (gate_softcap != 0.0f) {
+      fbb.Float("gate_softcap", gate_softcap);
+    }
+    if (up_softcap != 0.0f) {
+      fbb.Float("up_softcap", up_softcap);
+    }
   });
   fbb.Finish();
   return fbb.GetBuffer();
@@ -149,7 +159,8 @@ class MoeNodeBuilder {
 // blockwise with n blocks along the input axis.
 void BuildInt8Moe(MoeNodeBuilder& builder, int gate_scales, int ff1_scales,
                   int linear_scales,
-                  const std::string& activation = "gelu_tanh") {
+                  const std::string& activation = "gelu_tanh",
+                  float gate_softcap = 0.0f, float up_softcap = 0.0f) {
   builder.AddInput(kTfLiteFloat32, {1, 1, kNumTokens, kModelDim});
   builder.AddInput(kTfLiteFloat32, {1, 1, kNumTokens, kNumActiveExperts});
   builder.AddInput(kTfLiteInt32, {1, 1, kNumTokens, kNumActiveExperts});
@@ -170,7 +181,8 @@ void BuildInt8Moe(MoeNodeBuilder& builder, int gate_scales, int ff1_scales,
                         kNumExperts * sizeof(float));
 
   builder.AddOutput(kTfLiteFloat32, {1, 1, kNumTokens, kModelDim});
-  builder.SetCustomData(MoeCustomData("int8", activation));
+  builder.SetCustomData(
+      MoeCustomData("int8", activation, gate_softcap, up_softcap));
   builder.Finish();
 }
 
@@ -238,12 +250,53 @@ TEST(MoeDelegateKernelIsSupportedTest, RejectsUnknownActivation) {
   EXPECT_EQ(builder.IsSupported(), kTfLiteError);
 }
 
-TEST(MoeDelegateKernelInvokeTest, ExecutesSiluSingleAndMultiToken) {
-  ASSERT_EQ(xnn_initialize(nullptr), xnn_status_success);
+TEST(MoeDelegateKernelIsSupportedTest, RejectsNegativeSoftcap) {
+  MoeNodeBuilder negative_gate;
+  BuildInt8Moe(negative_gate, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"silu", /*gate_softcap=*/-1.0f);
+  EXPECT_EQ(negative_gate.IsSupported(), kTfLiteError);
 
-  // Test both single-token (token 0 -> expert 0) and multi-token (tokens 1, 2
-  // -> expert 1) routing paths with SiLU activation: silu(x) = x / (1 + e^-x).
+  MoeNodeBuilder negative_up;
+  BuildInt8Moe(negative_up, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"silu", /*gate_softcap=*/0.0f,
+               /*up_softcap=*/-2.0f);
+  EXPECT_EQ(negative_up.IsSupported(), kTfLiteError);
+}
+
+TEST(MoeDelegateKernelIsSupportedTest, RejectsSoftcapWithNonSiluActivation) {
+  MoeNodeBuilder gelu_gate_cap;
+  BuildInt8Moe(gelu_gate_cap, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"gelu_tanh", /*gate_softcap=*/4.0f);
+  EXPECT_EQ(gelu_gate_cap.IsSupported(), kTfLiteError);
+
+  MoeNodeBuilder gelu_up_cap;
+  BuildInt8Moe(gelu_up_cap, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"gelu", /*gate_softcap=*/0.0f,
+               /*up_softcap=*/25.0f);
+  EXPECT_EQ(gelu_up_cap.IsSupported(), kTfLiteError);
+}
+
+struct Fp32MoeInvokeConfig {
+  float gate_weight = 1.0f;
+  float ff1_weight = 2.0f;
+  float gate_softcap = 0.0f;
+  float up_softcap = 0.0f;
+  std::vector<float> token_inputs;
+};
+
+// Runs a 3-token fp32 SiLU MoE delegate kernel (token 0 -> expert 0
+// single-token path; tokens 1, 2 -> expert 1 multi-token path) and returns the
+// output tensor values on success, or std::nullopt on failure.
+std::optional<std::vector<float>> RunFp32MoeKernel(
+    const Fp32MoeInvokeConfig& config) {
+  if (xnn_initialize(nullptr) != xnn_status_success) {
+    return std::nullopt;
+  }
+
   constexpr int kTokens = 3;
+  if (config.token_inputs.size() != kTokens) {
+    return std::nullopt;
+  }
   MoeNodeBuilder builder;
   builder.AddInput(kTfLiteFloat32, {1, 1, kTokens, kModelDim});
   builder.AddInput(kTfLiteFloat32, {1, 1, kTokens, kNumActiveExperts});
@@ -252,10 +305,10 @@ TEST(MoeDelegateKernelInvokeTest, ExecutesSiluSingleAndMultiToken) {
   std::vector<float> gate_w(kGateFf1Rows * kModelDim, 0.0f);
   std::vector<float> ff1_w(kGateFf1Rows * kModelDim, 0.0f);
   std::vector<float> linear_w(kLinearRows * kHiddenDim, 0.0f);
-  // Set row (out=0, expert=e) -> row_idx = 0 * kNumExperts + e = e, col 0 = 1.
+  // Set row (out=0, expert=e) -> row_idx = 0 * kNumExperts + e = e, col 0.
   for (int e = 0; e < kNumExperts; ++e) {
-    gate_w[e * kModelDim + 0] = 1.0f;
-    ff1_w[e * kModelDim + 0] = 2.0f;
+    gate_w[e * kModelDim + 0] = config.gate_weight;
+    ff1_w[e * kModelDim + 0] = config.ff1_weight;
     linear_w[e * kHiddenDim + 0] = 1.0f;
   }
   builder.AddConstFloatInput({kHiddenDim, kNumExperts, 1, kModelDim}, gate_w);
@@ -264,17 +317,20 @@ TEST(MoeDelegateKernelInvokeTest, ExecutesSiluSingleAndMultiToken) {
   builder.AddConstFloatInput({kNumExperts}, {1.0f, 1.5f});
 
   builder.AddOutput(kTfLiteFloat32, {1, 1, kTokens, kModelDim});
-  builder.SetCustomData(MoeCustomData("fp32", "silu"));
+  builder.SetCustomData(
+      MoeCustomData("fp32", "silu", config.gate_softcap, config.up_softcap));
   builder.Finish();
 
   Interpreter* interp = builder.interpreter();
-  ASSERT_EQ(interp->AllocateTensors(), kTfLiteOk);
+  if (interp->AllocateTensors() != kTfLiteOk) {
+    return std::nullopt;
+  }
 
   float* src = interp->typed_input_tensor<float>(0);
   std::fill(src, src + kTokens * kModelDim, 0.0f);
-  src[0 * kModelDim + 0] = -1.0f;  // token 0 -> expert 0 (single-token path)
-  src[1 * kModelDim + 0] = 1.0f;   // token 1 -> expert 1 (multi-token path)
-  src[2 * kModelDim + 0] = -2.0f;  // token 2 -> expert 1 (multi-token path)
+  for (int t = 0; t < kTokens; ++t) {
+    src[t * kModelDim + 0] = config.token_inputs[t];
+  }
 
   float* top_weights = interp->typed_input_tensor<float>(1);
   top_weights[0] = 1.0f;
@@ -303,17 +359,98 @@ TEST(MoeDelegateKernelInvokeTest, ExecutesSiluSingleAndMultiToken) {
   };
   auto kernel = MoeExpertsDelegateKernel::Create(ctx, &params, nullptr);
   TfLiteIntArrayFree(nodes);
-  ASSERT_NE(kernel, nullptr);
-  ASSERT_EQ(kernel->Prepare(ctx), kTfLiteOk);
-  ASSERT_EQ(kernel->Invoke(ctx), kTfLiteOk);
+  if (kernel == nullptr || kernel->Prepare(ctx) != kTfLiteOk ||
+      kernel->Invoke(ctx) != kTfLiteOk) {
+    return std::nullopt;
+  }
+
+  const float* out = interp->typed_output_tensor<float>(0);
+  return std::vector<float>(out, out + kTokens * kModelDim);
+}
+
+TEST(MoeDelegateKernelInvokeTest, ExecutesSiluSingleAndMultiToken) {
+  std::optional<std::vector<float>> out = RunFp32MoeKernel({
+      .gate_weight = 1.0f,
+      .ff1_weight = 2.0f,
+      .token_inputs = {-1.0f, 1.0f, -2.0f},
+  });
+  ASSERT_TRUE(out.has_value());
 
   auto silu = [](float x) { return x / (1.0f + std::exp(-x)); };
-  const float* out = interp->typed_output_tensor<float>(0);
-  EXPECT_NEAR(out[0 * kModelDim + 0], silu(-1.0f) * (-2.0f) * 1.0f * 1.0f,
+  EXPECT_NEAR((*out)[0 * kModelDim + 0], silu(-1.0f) * (-2.0f) * 1.0f * 1.0f,
               1e-5f);
-  EXPECT_NEAR(out[1 * kModelDim + 0], silu(1.0f) * 2.0f * 1.5f * 0.5f, 1e-5f);
-  EXPECT_NEAR(out[2 * kModelDim + 0], silu(-2.0f) * (-4.0f) * 1.5f * 2.0f,
+  EXPECT_NEAR((*out)[1 * kModelDim + 0], silu(1.0f) * 2.0f * 1.5f * 0.5f,
               1e-5f);
+  EXPECT_NEAR((*out)[2 * kModelDim + 0], silu(-2.0f) * (-4.0f) * 1.5f * 2.0f,
+              1e-5f);
+}
+
+TEST(MoeDelegateKernelInvokeTest, ExecutesSoftcappedSwiGLUSingleAndMultiToken) {
+  std::optional<std::vector<float>> out = RunFp32MoeKernel({
+      .gate_weight = 3.0f,
+      .ff1_weight = 10.0f,
+      .gate_softcap = 4.0f,
+      .up_softcap = 25.0f,
+      .token_inputs = {2.0f, -1.5f, 3.0f},
+  });
+  ASSERT_TRUE(out.has_value());
+
+  auto softcapped_swiglu = [](float g, float u) {
+    const float g_cap = std::tanh(g / 4.0f) * 4.0f;
+    const float g_sig = 1.0f / (1.0f + std::exp(-g));
+    const float u_cap = std::tanh(u / 25.0f) * 25.0f;
+    return g_cap * g_sig * u_cap;
+  };
+  EXPECT_NEAR((*out)[0 * kModelDim + 0],
+              softcapped_swiglu(6.0f, 20.0f) * 1.0f * 1.0f, 1e-4f);
+  EXPECT_NEAR((*out)[1 * kModelDim + 0],
+              softcapped_swiglu(-4.5f, -15.0f) * 1.5f * 0.5f, 1e-4f);
+  EXPECT_NEAR((*out)[2 * kModelDim + 0],
+              softcapped_swiglu(9.0f, 30.0f) * 1.5f * 2.0f, 1e-4f);
+}
+
+TEST(MoeDelegateKernelInvokeTest, ExecutesGateSoftcapOnly) {
+  std::optional<std::vector<float>> out = RunFp32MoeKernel({
+      .gate_weight = 3.0f,
+      .ff1_weight = 10.0f,
+      .gate_softcap = 4.0f,
+      .token_inputs = {2.0f, -1.5f, 3.0f},
+  });
+  ASSERT_TRUE(out.has_value());
+
+  auto gate_capped = [](float g, float u) {
+    const float g_cap = std::tanh(g / 4.0f) * 4.0f;
+    const float g_sig = 1.0f / (1.0f + std::exp(-g));
+    return g_cap * g_sig * u;
+  };
+  EXPECT_NEAR((*out)[0 * kModelDim + 0], gate_capped(6.0f, 20.0f) * 1.0f * 1.0f,
+              1e-4f);
+  EXPECT_NEAR((*out)[1 * kModelDim + 0],
+              gate_capped(-4.5f, -15.0f) * 1.5f * 0.5f, 1e-4f);
+  EXPECT_NEAR((*out)[2 * kModelDim + 0], gate_capped(9.0f, 30.0f) * 1.5f * 2.0f,
+              1e-4f);
+}
+
+TEST(MoeDelegateKernelInvokeTest, ExecutesUpSoftcapOnly) {
+  std::optional<std::vector<float>> out = RunFp32MoeKernel({
+      .gate_weight = 3.0f,
+      .ff1_weight = 10.0f,
+      .up_softcap = 25.0f,
+      .token_inputs = {2.0f, -1.5f, 3.0f},
+  });
+  ASSERT_TRUE(out.has_value());
+
+  auto up_capped = [](float g, float u) {
+    const float g_silu = g / (1.0f + std::exp(-g));
+    const float u_cap = std::tanh(u / 25.0f) * 25.0f;
+    return g_silu * u_cap;
+  };
+  EXPECT_NEAR((*out)[0 * kModelDim + 0], up_capped(6.0f, 20.0f) * 1.0f * 1.0f,
+              1e-4f);
+  EXPECT_NEAR((*out)[1 * kModelDim + 0], up_capped(-4.5f, -15.0f) * 1.5f * 0.5f,
+              1e-4f);
+  EXPECT_NEAR((*out)[2 * kModelDim + 0], up_capped(9.0f, 30.0f) * 1.5f * 2.0f,
+              1e-4f);
 }
 
 }  // namespace
