@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/service.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -49,10 +50,15 @@ class LocalService : public Service {
   // produce a result of the given layout.  If device_allocator is non-null,
   // then the compiler may use it to allocate temp space on the device.  The
   // compiler is responsible for freeing any memory it allocates this way.
+  //
+  // If `snapshot_hlos` is not null, it gets one entry per executable: the HLO
+  // to use for HLO snapshots of that executable (see
+  // `Service::BuildExecutable`), or nullptr if there is none.
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> CompileExecutables(
       const XlaComputation& computation,
       const absl::Span<const Shape* const> argument_layouts,
-      const ExecutableBuildOptions& build_options);
+      const ExecutableBuildOptions& build_options,
+      std::vector<std::unique_ptr<HloProto>>* snapshot_hlos = nullptr);
 
   // Same as CompileExecutables() above, but return AotCompilationResult objects
   // (instead of Executable objects), which can be persisted to later load

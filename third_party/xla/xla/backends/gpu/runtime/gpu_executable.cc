@@ -499,6 +499,18 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::CreateImpl(
     }
   }
 
+  // Without the module, the executable keeps the module metadata itself.
+  std::optional<HloModuleConfig> module_config;
+  HloInputOutputAliasConfig input_output_alias_config;
+  HloBufferDonorConfig buffer_donor_config;
+  if (params.debug_module == nullptr) {
+    module_config = std::move(params.module_config);
+    ABSL_ASSIGN_OR_RETURN(input_output_alias_config,
+                     InputOutputAliasConfigFromOutputInfo(
+                         params.program_shape.result(), params.output_info));
+    buffer_donor_config = std::move(params.buffer_donor_config);
+  }
+
   int64_t next_idx = params.allocations.size();
 
   GpuExecutableThunkPassBufferAllocator allocator(next_idx);
@@ -562,9 +574,11 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::CreateImpl(
       std::move(thunk_sequence_proto), std::move(params.executable_abi_version),
       std::move(params.cpu_target_machine_options),
       std::move(params.buffer_assignment_proto),
+      params.expose_buffer_assignment_proto,
       std::move(params.buffer_allocations_debug_summary),
       collective_use_minimal_resource, std::move(params.gpu_topology),
-      *std::move(module_config_metadata)));
+      *std::move(module_config_metadata), std::move(module_config),
+      std::move(input_output_alias_config), std::move(buffer_donor_config)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -583,11 +597,18 @@ GpuExecutable::GpuExecutable(
     se::ExecutableAbiVersion executable_abi_version,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     BufferAssignmentProto buffer_assignment_proto,
+    bool expose_buffer_assignment_proto,
     std::string buffer_allocations_debug_summary,
     bool collective_use_minimal_resource,
     std::optional<GpuTopology> gpu_topology,
-    ModuleConfigMetadata module_config_metadata)
-    : Executable(std::move(debug_module)),
+    ModuleConfigMetadata module_config_metadata,
+    std::optional<HloModuleConfig> module_config,
+    HloInputOutputAliasConfig input_output_alias_config,
+    HloBufferDonorConfig buffer_donor_config)
+    : debug_module_(std::move(debug_module)),
+      module_config_(std::move(module_config)),
+      input_output_alias_config_(std::move(input_output_alias_config)),
+      buffer_donor_config_(std::move(buffer_donor_config)),
       binary_(std::move(binary)),
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
       gpu_version_(device_description.gpu_compute_capability()),
@@ -604,6 +625,8 @@ GpuExecutable::GpuExecutable(
           GatherAllocationPtrs(allocations, thunk_pass_allocations)),
       allocations_(std::move(allocations)),
       buffer_assignment_proto_(std::move(buffer_assignment_proto)),
+      expose_buffer_assignment_proto_(expose_buffer_assignment_proto),
+      module_stats_(std::move(module_stats)),
       thunk_pass_allocations_(std::move(thunk_pass_allocations)),
       alias_info_(std::move(alias_info)),
       runtime_debug_options_(std::move(module_config_metadata.debug_options)),
@@ -639,7 +662,6 @@ GpuExecutable::GpuExecutable(
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_proto_);
   }
-  set_module_stats(std::move(module_stats));
 
   buffer_allocator_ = GpuExecutableBufferAllocator::Create(
       module_name_, allocation_ptrs_, program_shape_.result(),
@@ -652,6 +674,30 @@ GpuExecutable::~GpuExecutable() {
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
   }
+}
+
+const HloModuleConfig& GpuExecutable::module_config() const {
+  if (debug_module_ != nullptr) {
+    return debug_module_->config();
+  }
+  CHECK(module_config_.has_value())
+      << "GpuExecutable " << module_name_ << " has no module config";
+  return *module_config_;
+}
+
+const HloInputOutputAliasConfig& GpuExecutable::input_output_alias_config()
+    const {
+  if (debug_module_ != nullptr) {
+    return debug_module_->input_output_alias_config();
+  }
+  return input_output_alias_config_;
+}
+
+const HloBufferDonorConfig& GpuExecutable::buffer_donor_config() const {
+  if (debug_module_ != nullptr) {
+    return debug_module_->buffer_donor_config();
+  }
+  return buffer_donor_config_;
 }
 
 absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
@@ -1618,9 +1664,15 @@ void GpuExecutable::LogChangedAllocationsInBetweenExecutions(
   }
 }
 
-const BufferAssignmentProto& GpuExecutable::buffer_assignment_proto() const {
+const BufferAssignmentProto& GpuExecutable::owned_buffer_assignment_proto()
+    const {
   return buffer_assignment_proto_;
 }
+
+const BufferAssignmentProto* GpuExecutable::buffer_assignment_proto() const {
+  return expose_buffer_assignment_proto_ ? &buffer_assignment_proto_ : nullptr;
+}
+
 absl::Status GpuExecutable::ExecuteThunks(
     const BufferAllocations& buffer_allocations,
     const ServiceExecutableRunOptions* run_options,
@@ -1870,6 +1922,22 @@ GpuExecutable::ModuleConfigMetadataFromProto(
   }
 
   return metadata;
+}
+
+absl::StatusOr<HloInputOutputAliasConfig>
+GpuExecutable::InputOutputAliasConfigFromOutputInfo(
+    const Shape& result_shape,
+    const absl::flat_hash_map<ShapeIndex, OutputInfo>& output_info) {
+  HloInputOutputAliasConfig config(result_shape);
+  for (const auto& [output_index, info] : output_info) {
+    if (!info.alias_config.has_value()) {
+      continue;
+    }
+    ABSL_RETURN_IF_ERROR(config.SetUpAlias(
+        output_index, info.alias_config->parameter_number,
+        info.alias_config->parameter_index, info.alias_config->kind));
+  }
+  return config;
 }
 
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(

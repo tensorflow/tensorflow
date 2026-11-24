@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
@@ -140,6 +141,14 @@ class GpuExecutable : public Executable {
     BufferAssignmentProto buffer_assignment_proto;
     std::string buffer_allocations_debug_summary;
     std::optional<GpuTopology> gpu_topology;
+    // Whether `buffer_assignment_proto()` returns `buffer_assignment_proto`.
+    // The compiler sets this if it embeds debug info and keeps the HloModule.
+    bool expose_buffer_assignment_proto = false;
+    // The config and the buffer donor config of the module the executable was
+    // compiled from. Only used if `debug_module` is null (e.g. with
+    // `embed_hlo_module=false`), since otherwise they're read from the module.
+    std::optional<HloModuleConfig> module_config;
+    HloBufferDonorConfig buffer_donor_config;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -158,6 +167,25 @@ class GpuExecutable : public Executable {
   ComputationLayout compute_computation_layout() const override {
     return ComputationLayout(program_shape_, /*ignore_layouts=*/false);
   }
+
+  // The HloModule this executable was compiled from, or nullptr if it wasn't
+  // embedded (see `Params::debug_module`).
+  std::shared_ptr<HloModule> shared_module() const override {
+    return debug_module_;
+  }
+
+  // The config of the module this executable was compiled from. If the
+  // executable has the module, this is the module's config. Otherwise it's
+  // `Params::module_config`, and it CHECK-fails if that wasn't set.
+  const HloModuleConfig& module_config() const override;
+
+  // The input/output aliasing of the entry computation. If the executable
+  // doesn't have the module, it's rebuilt from the output info.
+  const HloInputOutputAliasConfig& input_output_alias_config() const override;
+
+  // The buffer donors of the entry computation. If the executable doesn't have
+  // the module, these are `Params::buffer_donor_config`.
+  const HloBufferDonorConfig& buffer_donor_config() const override;
 
   // Returns the binary stored in this GpuExecutable.
   //
@@ -203,8 +231,15 @@ class GpuExecutable : public Executable {
     return buffer_allocations_debug_summary_;
   }
 
-  // Returns the stored buffer assignment proto.
-  const BufferAssignmentProto& buffer_assignment_proto() const;
+  // Returns the stored buffer assignment proto. It is always available, also
+  // for executables loaded from a proto.
+  const BufferAssignmentProto& owned_buffer_assignment_proto() const;
+
+  // Returns the stored buffer assignment proto if the compiler asked to expose
+  // it (see `Params::expose_buffer_assignment_proto`), nullptr otherwise.
+  const BufferAssignmentProto* buffer_assignment_proto() const override;
+
+  const ModuleStats& module_stats() const override { return module_stats_; }
 
   const GpuAliasInfo* alias_info() const { return alias_info_.get(); }
 
@@ -315,6 +350,15 @@ class GpuExecutable : public Executable {
       const HloModuleProtoWithConfig& proto,
       const DebugOptions& load_time_debug_options);
 
+  // Builds the input/output alias config of the entry computation from the
+  // aliasing stored in `output_info`. This gives the same config as the module
+  // the executable was compiled from, because `output_info` has an entry for
+  // every index of the result shape (see `GetOutputInfo`).
+  static absl::StatusOr<HloInputOutputAliasConfig>
+  InputOutputAliasConfigFromOutputInfo(
+      const Shape& result_shape,
+      const absl::flat_hash_map<ShapeIndex, OutputInfo>& output_info);
+
   // Like `Create`, but takes the module config metadata explicitly instead of
   // reading it from `params.debug_module`. If `module_config_metadata` is not
   // set, it's read from `params.debug_module` if available and otherwise
@@ -347,10 +391,16 @@ class GpuExecutable : public Executable {
       se::ExecutableAbiVersion executable_abi_version,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
       BufferAssignmentProto buffer_assignment_proto,
+      bool expose_buffer_assignment_proto,
       std::string buffer_allocations_debug_summary,
       bool collective_use_minimal_resource,
       std::optional<GpuTopology> gpu_topology,
-      ModuleConfigMetadata module_config_metadata);
+      ModuleConfigMetadata module_config_metadata,
+      std::optional<HloModuleConfig> module_config,
+      HloInputOutputAliasConfig input_output_alias_config,
+      HloBufferDonorConfig buffer_donor_config);
+
+  HloModule* module_ptr() const override { return debug_module_.get(); }
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -380,6 +430,18 @@ class GpuExecutable : public Executable {
   void LogChangedAllocationsInBetweenExecutions(
       const BufferAllocations& buffer_allocations,
       const ServiceExecutableRunOptions* run_options);
+
+  // The HloModule this executable was compiled from, if it was embedded. It's
+  // declared first because initializing the other members can read it (through
+  // `has_module()` and `module()`).
+  std::shared_ptr<HloModule> debug_module_;
+
+  // Only used if there is no `debug_module_`. Then they hold what
+  // `module_config()`, `input_output_alias_config()` and
+  // `buffer_donor_config()` return.
+  std::optional<HloModuleConfig> module_config_;
+  HloInputOutputAliasConfig input_output_alias_config_;
+  HloBufferDonorConfig buffer_donor_config_;
 
   // The GPU machine code for the computation, targeting GPUs at
   // compute_capability_.
@@ -439,6 +501,12 @@ class GpuExecutable : public Executable {
   // this executable. The actual BufferAssignment is only available during
   // compilation.
   BufferAssignmentProto buffer_assignment_proto_;
+
+  // Whether `buffer_assignment_proto()` exposes `buffer_assignment_proto_`.
+  bool expose_buffer_assignment_proto_;
+
+  // Statistics about the kernels in the executable.
+  ModuleStats module_stats_;
 
   // Extra allocations added by thunk passes outside of the normal buffer
   // assignment process.
