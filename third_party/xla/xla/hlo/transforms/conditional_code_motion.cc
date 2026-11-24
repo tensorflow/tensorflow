@@ -492,12 +492,11 @@ void CopyOutOfConditional(
   hoisted_boundaries[boundary] = hoisted_boundary;
 }
 
-// Builds the OriginalValue of a conditional whose result was rewritten by
+// Builds the OriginalValue of a conditional whose result was widened by
 // MoveUserInstructionsIn, given its new `shape`.
 //
-// The first `kept_element_count` elements of the new result still hold the
-// values held by the elements of `old_original_value`, with the element at
-// `use_index` (if any) dropped and the elements after it shifted down. The
+// The first `kept_element_count` elements of the new result keep the values
+// held by the elements of `old_original_value` at the same indices. The
 // remaining elements hold the values of the instructions moved into the
 // branches, described in order by `moved_in_original_values`. The clones of a
 // moved instruction inside the branches carry its OriginalValue, so the new
@@ -509,21 +508,19 @@ std::shared_ptr<OriginalValue>
 BuildOriginalValueForConditionalWithMovedInInstructions(
     const Shape& shape,
     const std::shared_ptr<OriginalValue>& old_original_value,
-    int64_t kept_element_count, int64_t use_index,
+    int64_t kept_element_count,
     absl::Span<const std::shared_ptr<OriginalValue>> moved_in_original_values) {
   auto original_value = std::make_shared<OriginalValue>(shape);
   bool has_original_value = false;
   if (old_original_value != nullptr &&
       !old_original_value->is_synthetic_call()) {
     for (int64_t index = 0; index < kept_element_count; ++index) {
-      const int64_t old_index =
-          (use_index >= 0 && index >= use_index) ? index + 1 : index;
-      if (old_original_value->tree().find({old_index}) ==
+      if (old_original_value->tree().find({index}) ==
           old_original_value->tree().end()) {
         continue;
       }
       original_value->mutable_tree()->CopySubtreeFrom(
-          old_original_value->tree(), {old_index}, {index});
+          old_original_value->tree(), {index}, {index});
       has_original_value = true;
     }
   }
@@ -1051,6 +1048,9 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
 }
 
 // Hoist conditional users from outside to inside the branches.
+// Always preserves existing tuple outputs at their original indices and appends
+// moved-in outputs at the end; unused outputs are compacted once dead outside
+// instructions have been removed.
 absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
     HloInstruction* conditional, std::vector<Boundary>& to_move_in) {
   if (to_move_in.empty()) {
@@ -1068,24 +1068,12 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
   int64_t branch_count = conditional->branch_count();
   HloGetTupleElementInstruction* tuple_use =
       DynCast<HloGetTupleElementInstruction>(to_move_in[0][0]);
-  // If use_index is -1, the old conditional root entry used by to_move_in
-  // instructions still need to be included as an entry of the modified
-  // conditional root, and the new result of the to_move_in instructions
-  // need to be added as an extra entry of the modified root; otherwise, the
-  // old root entry will be replaced with the new result in the modified root.
-  // The entry replacement should be allowed only if tuple_use has <=1 users.
-  int64_t use_index = (tuple_use != nullptr && tuple_use->user_count() == 1)
-                          ? tuple_use->tuple_index()
-                          : -1;
-  VLOG(2) << "Tuple use index = " << use_index << "\n";
-  // Number of old conditional entries still to be used outside.
-  // If conditional shape is not tuple, will create a tuple and use subscript
-  // 0 to save the old operand being used.
-  int64_t op_index =
-      conditional->shape().IsTuple()
-          ? ((use_index >= 0) ? conditional->shape().tuple_shapes().size() - 1
-                              : conditional->shape().tuple_shapes().size())
-          : 0;
+  // Number of old conditional entries kept at their original indices.
+  // If conditional shape is not tuple, will create a tuple and append moved-in
+  // results starting at index 0.
+  int64_t op_index = conditional->shape().IsTuple()
+                         ? conditional->shape().tuple_shapes().size()
+                         : 0;
   // The OriginalValue of the conditional and the number of elements of its
   // result that survive the transformation, captured before the result is
   // rewritten below.
@@ -1095,71 +1083,37 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
   // OriginalValue of each element appended to the conditional result, in the
   // order the elements are appended.
   std::vector<std::shared_ptr<OriginalValue>> moved_in_original_values;
-  // Use to map the tuple_use instruction to its operand;
-  Boundary b_opd_use(Boundary::Position::kInsideBranch);
   Boundary b_old_root(Boundary::Position::kInsideBranch);
-  // Create a new root instruction in each branch.
+  // Ensure each branch has a dedicated kTuple root we can append to.
   for (int i = 0; i < branch_count; i++) {
-    auto computation = conditional->branch_computation(i);
-    auto old_root = computation->root_instruction();
+    HloComputation* computation = conditional->branch_computation(i);
+    HloInstruction* old_root = computation->root_instruction();
     b_old_root.push_back(old_root);
+    if (old_root->opcode() == HloOpcode::kTuple &&
+        old_root->user_count() == 0 && !old_root->HasControlDependencies()) {
+      continue;
+    }
     std::vector<HloInstruction*> operands;
     if (old_root->opcode() == HloOpcode::kTuple) {
-      // Use operands of old_root directly, so old_root can be removed later.
-      for (int i = 0; i < old_root->operand_count(); ++i) {
-        if (i != use_index) {
-          operands.push_back(old_root->mutable_operand(i));
-        } else {  // Map conditional use to the tuple operand.
-          b_opd_use.push_back(old_root->mutable_operand(i));
-        }
-      }
+      operands.assign(old_root->operands().begin(), old_root->operands().end());
     } else if (old_root->shape().IsTuple()) {
       // If old_root is not a kTuple but has tuple shape, elements within the
       // tuple must be extracted first to be used by the new instructions.
       const Shape& old_shape = old_root->shape();
-      for (int i = 0; i < old_shape.tuple_shapes().size(); ++i) {
-        auto element =
+      operands.reserve(old_shape.tuple_shapes().size());
+      for (int64_t j = 0; j < old_shape.tuple_shapes().size(); ++j) {
+        operands.push_back(
             computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-                old_shape.tuple_shapes(i), old_root, i));
-        if (i != use_index) {
-          operands.push_back(element);
-        } else {
-          b_opd_use.push_back(element);
-        }
+                old_shape.tuple_shapes(j), old_root, j)));
       }
-    } else {
-      // If old_root is not a tuple and does not have tuple shape, use it
-      // to replace the conditional directly in the new computation.
-      b_opd_use.push_back(conditional);
     }
 
     HloInstruction* new_root =
         computation->AddInstruction(HloInstruction::CreateTuple(operands));
     if (old_root->has_sharding()) {
       if (old_root->sharding().IsTuple()) {
-        std::vector<HloSharding> retained_leaves;
-        int64_t current_leaf = 0;
-        for (int j = 0; j < old_root->shape().tuple_shapes_size(); ++j) {
-          int64_t count =
-              ShapeUtil::GetLeafCount(old_root->shape().tuple_shapes(j));
-          if (j != use_index) {
-            for (int64_t l = 0; l < count; ++l) {
-              if (current_leaf + l <
-                  old_root->sharding().tuple_elements().size()) {
-                retained_leaves.push_back(
-                    old_root->sharding().tuple_elements()[current_leaf + l]);
-              }
-            }
-          }
-          current_leaf += count;
-        }
-        if (retained_leaves.size() ==
-            ShapeUtil::GetLeafCount(new_root->shape())) {
-          HloSharding candidate =
-              HloSharding::Tuple(new_root->shape(), retained_leaves);
-          if (candidate.Validate(new_root->shape()).ok()) {
-            new_root->set_sharding(candidate);
-          }
+        if (old_root->sharding().Validate(new_root->shape()).ok()) {
+          new_root->set_sharding(old_root->sharding());
         }
       } else {
         HloSharding candidate =
@@ -1169,36 +1123,16 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
         }
       }
     }
-    // The new root returns the values the branch still produces, so its
-    // OriginalValue is assembled from its operands.
     new_root->set_original_value(
         OriginalValue::CreateFromInstruction(new_root));
     VLOG(2) << "setting new root: " << new_root->ToString() << "\n";
     computation->set_root_instruction(new_root,
-                                      /*accept_different_shape*/ true);
-    if (old_root->opcode() == HloOpcode::kTuple) {
-      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(old_root));
-    }
+                                      /*accept_different_shape=*/true);
     VLOG(2) << "new branch computation: " << computation->ToString() << "\n";
-  }
-  // Update get tuple element index of the conditional.
-  if (use_index != -1) {
-    for (auto* user : conditional->users()) {
-      if (user->opcode() == HloOpcode::kGetTupleElement &&
-          user->tuple_index() > use_index) {
-        user->set_tuple_index(user->tuple_index() - 1);
-      }
-    }
   }
   Boundary conditional_boundary(Boundary::Position::kOutsideBranchUser);
   conditional_boundary.push_back(conditional);
   hoisted_boundaries[conditional_boundary] = b_old_root;
-  if (use_index >= 0) {
-    VLOG(2) << "Mapping GTE: " << tuple_use->ToString() << "\n";
-    Boundary tuple_use_boundary(Boundary::Position::kOutsideBranchUser);
-    tuple_use_boundary.push_back(tuple_use);
-    hoisted_boundaries[tuple_use_boundary] = b_opd_use;
-  }
   int64_t cp_start = (tuple_use != nullptr) ? 1 : 0;
   for (int64_t to_move_index = cp_start; to_move_index < to_move_in_size;
        to_move_index++) {
@@ -1207,7 +1141,8 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
     CHECK(op != nullptr);
     bool to_be_used_outside = true;
     VLOG(2) << "Mapping new boundary instr: " << op->ToString() << "\n";
-    if (to_move_index < to_move_in_size - 1 && op->user_count() == 1 &&
+    if (!op->IsRoot() && to_move_index < to_move_in_size - 1 &&
+        op->user_count() == 1 &&
         op->users()[0] == to_move_in[to_move_index + 1][0]) {
       to_be_used_outside = false;
       VLOG(2) << "Instruction is not to be used outside the branch\n";
@@ -1216,7 +1151,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
     CopyIntoConditional(b_to_move, conditional, hoisted_boundaries);
     if (to_be_used_outside) {
       for (int i = 0; i < branch_count; ++i) {
-        auto computation = conditional->branch_computation(i);
+        HloComputation* computation = conditional->branch_computation(i);
         HloInstruction* new_op = hoisted_boundaries[b_to_move][i];
         HloInstruction* new_root = computation->root_instruction();
         new_root->AppendOperand(new_op);
@@ -1250,27 +1185,15 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
       conditional->branch_computation(0)->root_instruction();
   *conditional->mutable_shape() = new_root->shape();
   // The conditional now returns the values produced by the instructions moved
-  // into its branches, in addition to the elements of its old result that are
-  // still used outside. Rebuild its OriginalValue from the values its elements
-  // hold.
+  // into its branches, in addition to the elements of its old result. Rebuild
+  // its OriginalValue from the values its elements hold.
   conditional->set_original_value(
       BuildOriginalValueForConditionalWithMovedInInstructions(
           conditional->shape(), old_original_value, kept_element_count,
-          use_index, moved_in_original_values));
+          moved_in_original_values));
   // Keep conditional instruction sharding consistent with the branches. Note
   // that this sharding could be lost after this pass.
   conditional->copy_sharding(new_root);
-  // Reset shapes of user gtes to the new shape.
-  if (use_index != -1) {
-    for (auto* user : conditional->users()) {
-      if (user->opcode() == HloOpcode::kGetTupleElement) {
-        VLOG(2) << "Resetting shape of user: " << user->ToString() << "\n";
-        *user->mutable_shape() =
-            conditional->shape().tuple_shapes(user->tuple_index());
-        user->set_original_value(OriginalValue::CreateFromInstruction(user));
-      }
-    }
-  }
   VLOG(2) << "Done moving user instructions inside branches\n"
           << conditional->parent()->ToString(HloPrintOptions::Fingerprint());
   return true;
@@ -2386,6 +2309,125 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
   return Decision(Decision::Direction::kNoChange, 0);
 }
 
+namespace {
+
+void CompactTupleSharding(const HloInstruction* old_root,
+                          HloInstruction* new_root,
+                          absl::Span<const int64_t> old_to_new) {
+  if (!old_root->has_sharding()) {
+    return;
+  }
+  if (!old_root->sharding().IsTuple()) {
+    HloSharding candidate =
+        HloSharding::Single(new_root->shape(), old_root->sharding());
+    if (candidate.Validate(new_root->shape()).ok()) {
+      new_root->set_sharding(candidate);
+    }
+    return;
+  }
+  const std::vector<HloSharding>& elements =
+      old_root->sharding().tuple_elements();
+  std::vector<HloSharding> retained_leaves;
+  int64_t current_leaf = 0;
+  for (int64_t j = 0; j < old_root->shape().tuple_shapes_size(); ++j) {
+    int64_t count = ShapeUtil::GetLeafCount(old_root->shape().tuple_shapes(j));
+    if (old_to_new[j] >= 0 && current_leaf + count <= elements.size()) {
+      retained_leaves.insert(retained_leaves.end(),
+                             elements.begin() + current_leaf,
+                             elements.begin() + current_leaf + count);
+    }
+    current_leaf += count;
+  }
+  if (retained_leaves.size() == ShapeUtil::GetLeafCount(new_root->shape())) {
+    HloSharding candidate =
+        HloSharding::Tuple(new_root->shape(), retained_leaves);
+    if (candidate.Validate(new_root->shape()).ok()) {
+      new_root->set_sharding(candidate);
+    }
+  }
+}
+
+// Compacts unused tuple elements out of `conditional` and its branch roots
+// after MoveUserInstructionsIn and dead-instruction removal. Computing liveness
+// from the surviving GTE users handles duplicate GTEs, root GTEs, control-dep
+// GTEs, and multi-user GTEs whose consumers were all moved in.
+absl::Status RemoveUnusedBranchOutputs(HloInstruction* conditional) {
+  if (!conditional->shape().IsTuple() || conditional->IsRoot()) {
+    return absl::OkStatus();
+  }
+  HloComputation* parent = conditional->parent();
+  // Drop dead GTEs (e.g. from an earlier move-in group whose result was later
+  // consumed by a subsequent move-in group) before computing live indices.
+  std::vector<HloInstruction*> users(conditional->users().begin(),
+                                     conditional->users().end());
+  for (HloInstruction* user : users) {
+    if (user->opcode() == HloOpcode::kGetTupleElement && user->IsDead() &&
+        parent->IsSafelyRemovable(user)) {
+      ABSL_RETURN_IF_ERROR(parent->RemoveInstruction(user));
+    }
+  }
+
+  int64_t old_tuple_size = conditional->shape().tuple_shapes().size();
+  std::vector<int64_t> old_to_new(old_tuple_size, -1);
+  for (const HloInstruction* user : conditional->users()) {
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      return absl::OkStatus();
+    }
+    old_to_new[user->tuple_index()] = 0;
+  }
+  int64_t kept_count = 0;
+  for (int64_t& new_idx : old_to_new) {
+    if (new_idx >= 0) {
+      new_idx = kept_count++;
+    }
+  }
+  if (kept_count == 0 || kept_count == old_tuple_size) {
+    return absl::OkStatus();
+  }
+  for (const HloComputation* branch : conditional->branch_computations()) {
+    const HloInstruction* root = branch->root_instruction();
+    if (root->opcode() != HloOpcode::kTuple ||
+        root->operand_count() != old_tuple_size) {
+      return absl::OkStatus();
+    }
+  }
+
+  for (HloComputation* branch : conditional->branch_computations()) {
+    HloInstruction* old_root = branch->root_instruction();
+    std::vector<HloInstruction*> operands;
+    operands.reserve(kept_count);
+    for (int64_t i = 0; i < old_tuple_size; ++i) {
+      if (old_to_new[i] >= 0) {
+        operands.push_back(old_root->mutable_operand(i));
+      }
+    }
+    HloInstruction* new_root =
+        branch->AddInstruction(HloInstruction::CreateTuple(operands));
+    CompactTupleSharding(old_root, new_root, old_to_new);
+    new_root->set_original_value(
+        OriginalValue::CreateFromInstruction(new_root));
+    branch->set_root_instruction(new_root, /*accept_different_shape=*/true);
+    if (old_root->IsDead() && branch->IsSafelyRemovable(old_root)) {
+      ABSL_RETURN_IF_ERROR(branch->RemoveInstruction(old_root));
+    }
+  }
+
+  HloInstruction* new_branch0_root =
+      conditional->branch_computation(0)->root_instruction();
+  *conditional->mutable_shape() = new_branch0_root->shape();
+  CopyOriginalValue(conditional, conditional, old_to_new);
+  conditional->copy_sharding(new_branch0_root);
+
+  for (HloInstruction* user : conditional->users()) {
+    int64_t new_index = old_to_new[user->tuple_index()];
+    TF_RET_CHECK(new_index >= 0);
+    user->set_tuple_index(new_index);
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -2593,6 +2635,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
       }
     } else if (final_d == Decision::Direction::kMoveIntoBranch) {
       CHECK(to_move_in.size() == new_boundaries_for_movein.size());
+      bool moved_users_in = false;
       for (int i = 0; i < to_move_in.size(); ++i) {
         if (to_move_in[i].empty()) {
           continue;
@@ -2613,14 +2656,16 @@ absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
           ABSL_ASSIGN_OR_RETURN(bool result,
                            MoveUserInstructionsIn(conditional, to_move_in[i]));
           changed |= result;
+          moved_users_in |= result;
         }
         VLOG(2) << "Before removing instructions:"
                 << conditional->parent()->ToString() << "\n";
-        // Remove hoisted instructions from the branches.
+        // Remove hoisted instructions from the parent computation.
         for (int64_t j = to_move_in[i].size() - 1; j >= 0; j--) {
           Boundary boundary_to_move_in = to_move_in[i][j];
           HloInstruction* op = boundary_to_move_in[0];
-          if (op->user_count() == 0 && op->parent() != nullptr) {
+          if (op->parent() != nullptr && op->IsDead() &&
+              conditional->parent()->IsSafelyRemovable(op)) {
             VLOG(2) << "Removing boundary:" << boundary_to_move_in.ToString()
                     << "\n";
             ABSL_RETURN_IF_ERROR(conditional->parent()->RemoveInstruction(op));
@@ -2640,6 +2685,9 @@ absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
             })) {
           break;
         }
+      }
+      if (moved_users_in) {
+        ABSL_RETURN_IF_ERROR(RemoveUnusedBranchOutputs(conditional));
       }
     } else if (pursue_full_conditional_code_motion_ && !conditional_is_shared) {
       // Invoke special handling for convert rematerialization/hoisting
