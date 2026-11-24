@@ -189,3 +189,31 @@ tf_cuda_cc_test(
         "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
+
+tf_cuda_cc_test(
+    name = "c_api_pjrt_gpu_stream_test",
+    size = "small",
+    srcs = ["c_api_pjrt_gpu_stream_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    tags = [
+        "gpu",
+        "no_cuda_on_cpu_tap",
+        "no_windows",  # TODO(b/207281588)
+    ],
+    deps = [
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime:worker_env",
+        "@xla//xla/tsl/protobuf:coordination_config_proto_cc",
+    ],
+)
