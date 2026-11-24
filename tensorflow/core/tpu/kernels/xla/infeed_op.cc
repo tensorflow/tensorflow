@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -37,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -128,6 +129,10 @@ class InfeedDequeueTupleOp : public XlaOpKernel {
   explicit InfeedDequeueTupleOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
+    OP_REQUIRES(ctx, shapes_.size() == dtypes_.size(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "shapes and dtypes must be the same length. shapes: ",
+                    shapes_.size(), ", dtypes: ", dtypes_.size())));
     for (int i = 0; i < shapes_.size(); i++) {
       xla::Shape xla_shape;
       OP_REQUIRES_OK(ctx,
@@ -140,6 +145,17 @@ class InfeedDequeueTupleOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
+    if (b->sharding() && b->sharding()->type() == xla::OpSharding::TUPLE) {
+      OP_REQUIRES(
+          ctx,
+          static_cast<size_t>(b->sharding()->tuple_shardings_size()) ==
+              xla_shapes_.size(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "The number of tuple shardings must match the number of infeed "
+              "shapes. tuple shardings: ",
+              b->sharding()->tuple_shardings_size(),
+              ", shapes: ", xla_shapes_.size())));
+    }
     for (int64_t i = 0; i < xla_shapes_.size(); ++i) {
       std::optional<xla::OpSharding> sharding;
       if (b->sharding()) {

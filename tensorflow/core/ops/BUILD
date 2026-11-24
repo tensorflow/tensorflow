@@ -225,6 +225,8 @@ tf_gen_op_libs(
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
         "//tensorflow/core/tpu:tpu_embedding_output_layout_utils",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -571,6 +573,7 @@ tf_cc_test(
         "stochastic_cast_op_test.cc",
         "string_ops_test.cc",
         "tpu_cross_replica_ops_test.cc",
+        "tpu_infeed_ops_test.cc",
         "training_ops_test.cc",
         "uniform_quant_ops_test.cc",
     ],
@@ -590,5 +593,6 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:type_inference",
         "@com_google_googletest//:gtest",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
