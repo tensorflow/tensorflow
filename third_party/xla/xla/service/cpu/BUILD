@@ -144,6 +144,7 @@ cc_library(
     ],
     copts = tsl_copts(),
     deps = [
+        ":backend_config_proto_cc",
         ":conv_canonicalization",
         ":cpu_aot_compilation_result",
         ":cpu_aot_loader",
@@ -171,6 +172,7 @@ cc_library(
         "//xla/backends/cpu:alias_info",
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu:constant_allocation",
+        "//xla/backends/cpu:custom_fusion_configs",
         "//xla/backends/cpu:export_hlo",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu:ynn_support",

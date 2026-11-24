@@ -564,5 +564,64 @@ INSTANTIATE_TEST_SUITE_P(
                          DotTestConfig{"bf16", "bf16", "f32"}}),
     YnnDotTest::Name);
 
+class YnnIndividualDotExecutionTest
+    : public HloInterpreterReferenceMixin<HloTestBase> {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
+    debug_options.add_xla_cpu_experimental_ynn_fusion_type(
+        DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(false);
+    return debug_options;
+  }
+};
+
+TEST_F(YnnIndividualDotExecutionTest, ConstantRhsOperandIsMarkedConstant) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule dot_constant_rhs
+
+    ENTRY main {
+      lhs = f32[8,4] parameter(0)
+      rhs = f32[4,2] constant({{1, 2}, {3, 4}, {5, 6}, {7, 8}})
+      ROOT out = f32[8,2] dot(lhs, rhs), lhs_contracting_dims={1},
+                                         rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  MatchOptimizedHlo(kHloText, R"(
+    CHECK-LABEL: ENTRY
+    CHECK: %[[RHS:.*]] = f32[4,2]{1,0} constant({{.*}})
+    CHECK-SAME: frontend_attributes={is_constant="true"}
+    CHECK: fusion({{.*}}, %[[RHS]]), kind=kCustom
+    CHECK-SAME: "__ynn_fusion"
+  )");
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+}
+
+TEST_F(YnnIndividualDotExecutionTest,
+       BitcastOfConstantParameterOperandIsMarkedConstant) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule dot_bitcast_constant_param
+
+    ENTRY main {
+      lhs = f32[8,4] parameter(0)
+      rhs_flat = f32[8] parameter(1), frontend_attributes={is_constant="true"}
+      rhs = f32[4,2] reshape(rhs_flat)
+      ROOT out = f32[8,2] dot(lhs, rhs), lhs_contracting_dims={1},
+                                         rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  MatchOptimizedHlo(kHloText, R"(
+    CHECK-LABEL: ENTRY
+    CHECK: %[[BITCAST:.*]] = f32[4,2]{1,0} bitcast({{.*}})
+    CHECK-SAME: frontend_attributes={is_constant="true"}
+    CHECK: fusion({{.*}}, %[[BITCAST]]), kind=kCustom
+    CHECK-SAME: "__ynn_fusion"
+  )");
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+}
+
 }  // namespace
 }  // namespace xla::cpu

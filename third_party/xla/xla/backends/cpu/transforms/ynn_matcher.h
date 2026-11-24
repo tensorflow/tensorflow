@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/library_matcher.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "tsl/platform/protobuf.h"
@@ -137,6 +138,10 @@ class YnnMatcher : public LibraryMatcher {
 
   // Returns a string for FusionBackendConfig's fusion kind.
   absl::string_view fusion_kind() const override { return kYnnFusionKind; }
+
+  void PostFusion(HloFusionInstruction* fusion) override {
+    MarkConstantYnnFusionOperands(fusion);
+  }
 
  private:
   absl::flat_hash_set<DebugOptions::LibraryFusionType> fusion_types_;

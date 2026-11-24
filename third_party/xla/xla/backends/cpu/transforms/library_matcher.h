@@ -100,6 +100,9 @@ class LibraryMatcher {
   // Return true if the library supports merging fusions.
   virtual bool ShouldMergeFusions() { return true; }
 
+  // Performs library-specific post-processing on a completed fusion.
+  virtual void PostFusion(HloFusionInstruction* fusion) {}
+
   // Returns the direction in which a fusion could grow.
   virtual FusionDirection fusion_direction() const {
     return FusionDirection::kBoth;

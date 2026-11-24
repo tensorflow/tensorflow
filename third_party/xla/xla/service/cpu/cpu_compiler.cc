@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/constant_allocation.h"
+#include "xla/backends/cpu/custom_fusion_configs.h"
 #include "xla/backends/cpu/export_hlo.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -184,6 +185,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/conv_canonicalization.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_aot_loader.h"
@@ -1068,7 +1070,24 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<ApplyXlaTransforms>(
       HloXlaTransform::PipelineStage::kPreScheduler);
   pipeline.AddPass<HloDCE>();
-  return pipeline.Run(module).status();
+  ABSL_RETURN_IF_ERROR(pipeline.Run(module).status());
+
+  if (use_ynnpack) {
+    for (HloComputation* computation : module->MakeNonfusionComputations()) {
+      for (HloInstruction* instr : computation->instructions()) {
+        if (!instr->IsCustomFusion()) {
+          continue;
+        }
+        absl::StatusOr<BackendConfig> backend_config =
+            instr->backend_config<BackendConfig>();
+        if (backend_config.ok() &&
+            backend_config->fusion_config().kind() == kYnnFusionKind) {
+          MarkConstantYnnFusionOperands(Cast<HloFusionInstruction>(instr));
+        }
+      }
+    }
+  }
+  return absl::OkStatus();
 }
 
 absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,

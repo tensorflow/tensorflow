@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "xla/xla.pb.h"
@@ -92,6 +93,11 @@ inline bool IsConstant(const HloInstruction* instruction) {
 inline void SetConstant(HloInstruction* instruction) {
   instruction->set_frontend_attribute("is_constant", "true");
 }
+
+// Propagates `is_constant="true"` onto `fusion` operands that are HLO
+// constants (possibly wrapped in zero-copy bitcasts) or correspond to
+// constant-marked fusion parameters or operands.
+void MarkConstantYnnFusionOperands(HloFusionInstruction* fusion);
 
 // Returns true if the nonconstant elementwise op is supported by YNNPACK.
 bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo);

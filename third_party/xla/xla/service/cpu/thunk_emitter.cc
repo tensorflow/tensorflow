@@ -1543,7 +1543,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
   captured_arguments_ids.reserve(computation->num_parameters());
   for (const HloInstruction* param : computation->parameter_instructions()) {
     const HloInstruction* operand = fusion->operand(param->parameter_number());
-    if (IsConstant(operand)) {
+    if (IsConstant(operand) || IsConstant(param)) {
       captured_arguments_ids.push_back(param->parameter_number());
     }
   }

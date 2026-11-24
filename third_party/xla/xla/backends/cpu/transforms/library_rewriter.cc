@@ -464,6 +464,7 @@ absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
     }
 
     ABSL_RETURN_IF_ERROR(PeelTrailingCopies(fusion));
+    lib->PostFusion(fusion);
   }
   return !fused_.empty();
 }

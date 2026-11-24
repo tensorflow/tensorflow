@@ -726,6 +726,21 @@ bool IsInstructionPreferredByYnn(const HloInstruction* instr) {
   return false;
 }
 
+void MarkConstantYnnFusionOperands(HloFusionInstruction* fusion) {
+  const HloComputation* computation = fusion->fused_instructions_computation();
+  for (const HloInstruction* param : computation->parameter_instructions()) {
+    HloInstruction* operand =
+        fusion->mutable_operand(param->parameter_number());
+    const HloInstruction* root = operand;
+    while (root->opcode() == HloOpcode::kBitcast) {
+      root = root->operand(0);
+    }
+    if (root->IsConstant() || IsConstant(root) || IsConstant(param)) {
+      SetConstant(operand);
+    }
+  }
+}
+
 uint32_t YnnFlags(const DebugOptions& debug_options) {
   uint32_t flags = 0;
   if (!debug_options.xla_cpu_enable_platform_dependent_math()) {
