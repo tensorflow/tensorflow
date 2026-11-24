@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/barrier.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -909,19 +910,31 @@ TEST(NcclCommunicatorTest, AllGatherCopyEngineGuardedByIsRma) {
 }
 
 // Acquires cached symmetric memory for `addrs[i]` on `comms[i]` concurrently.
+// Uses a BlockingCounter instead of MakeFutureOn/JoinFutures so that no worker
+// thread holds a temporary `shared_ptr` copy after this function returns.
 absl::StatusOr<std::vector<std::shared_ptr<SymmetricMemory>>>
 AcquireSymmetricMemory(tsl::Executor& exec,
                        absl::Span<const std::unique_ptr<GpuCommunicator>> comms,
                        absl::Span<const se::DeviceAddressBase> addrs) {
-  std::vector<Future<std::shared_ptr<SymmetricMemory>>> futures;
-  futures.reserve(comms.size());
+  std::vector<absl::StatusOr<std::shared_ptr<SymmetricMemory>>> results(
+      comms.size());
+  absl::BlockingCounter done(static_cast<int>(comms.size()));
   for (size_t i = 0; i < comms.size(); ++i) {
-    futures.push_back(
-        MakeFutureOn(exec, [comm = comms[i].get(), addr = addrs[i]] {
-          return comm->AcquireSymmetricMemory(addr, /*symmetric_window=*/false);
-        }));
+    exec.Execute([&, i] {
+      results[i] = comms[i]->AcquireSymmetricMemory(addrs[i],
+                                                    /*symmetric_window=*/false);
+      done.DecrementCount();
+    });
   }
-  return JoinFutures(absl::MakeSpan(futures)).Await();
+  done.Wait();
+
+  std::vector<std::shared_ptr<SymmetricMemory>> memories;
+  memories.reserve(comms.size());
+  for (absl::StatusOr<std::shared_ptr<SymmetricMemory>>& result : results) {
+    ABSL_RETURN_IF_ERROR(result.status());
+    memories.push_back(*std::move(result));
+  }
+  return memories;
 }
 
 TEST(NcclCommunicatorTest, AcquireSymmetricMemoryCachesByAddress) {
@@ -976,16 +989,23 @@ TEST(NcclCommunicatorTest, AcquireSymmetricMemoryCachesByAddress) {
   hit.clear();
   ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<SymmetricMemory>> bigger,
                        AcquireSymmetricMemory(exec, comms, addrs(2 * kSize)));
+  std::vector<std::weak_ptr<SymmetricMemory>> released;
+  released.reserve(kNumDevices);
   for (int i = 0; i < kNumDevices; ++i) {
     EXPECT_EQ(bigger[i]->addr().size(), 2 * kSize);
+    released.push_back(bigger[i]);
     comms[i]->ReleaseSymmetricMemory(bigger[i]->addr());
-    // The cache dropped its reference, `bigger` is now the only owner.
-    EXPECT_EQ(bigger[i].use_count(), 1);
+  }
+
+  // Once the caller drops `bigger`, the released windows must be destroyed
+  // rather than kept alive by the cache.
+  bigger.clear();
+  for (int i = 0; i < kNumDevices; ++i) {
+    EXPECT_TRUE(released[i].expired());
   }
 
   // Re-populate the cache and verify Abort() clears it and rejects subsequent
   // AcquireSymmetricMemory calls even for a previously cached address.
-  bigger.clear();
   ASSERT_OK(AcquireSymmetricMemory(exec, comms, addrs(2 * kSize)).status());
   for (int i = 0; i < kNumDevices; ++i) {
     ASSERT_OK(comms[i]->Abort());
