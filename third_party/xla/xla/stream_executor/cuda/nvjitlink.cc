@@ -194,9 +194,16 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
   absl::c_transform(cli_args, std::back_inserter(cli_args_ptrs),
                     [](const std::string& s) { return s.c_str(); });
 
+  // TODO(b/589733152): libnvjitlink leaks memory on some failure paths.
+  std::optional<absl::LeakCheckDisabler> leak_check_disabler;
+
+  if (version >= NvJitLinkVersion{13, 2}) {
+    leak_check_disabler.emplace();
+  }
   nvJitLinkHandle link_handle = nullptr;
   nvJitLinkResult create_result =
       nvJitLinkCreate(&link_handle, cli_args_ptrs.size(), cli_args_ptrs.data());
+  leak_check_disabler.reset();
 
   absl::Cleanup link_handle_cleaner = [&link_handle] {
     if (link_handle != nullptr) {
@@ -252,7 +259,12 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
     }
   }
 
+  // TODO(b/589733152): libnvjitlink leaks memory on some failure paths.
+  if (version >= NvJitLinkVersion{13, 1}) {
+    leak_check_disabler.emplace();
+  }
   nvJitLinkResult linking_result = nvJitLinkComplete(link_handle);
+  leak_check_disabler.reset();
   ABSL_ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
 
   // Print the verbose output of ptxas.
