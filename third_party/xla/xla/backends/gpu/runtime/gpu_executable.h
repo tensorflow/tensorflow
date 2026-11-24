@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_GPU_EXECUTABLE_H_
 #define XLA_BACKENDS_GPU_RUNTIME_GPU_EXECUTABLE_H_
 
+#include <atomic>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
@@ -132,7 +135,28 @@ class GpuExecutable : public Executable {
     std::unique_ptr<GpuAliasInfo> alias_info;
     DebugOptions debug_options;
     se::DeviceDescription device_description;
-    std::shared_ptr<HloModule> debug_module = nullptr;
+    // The module the executable was compiled from, if it's available:
+    //
+    // - `std::monostate` (or a null `std::shared_ptr`): There's no module.
+    // - `std::shared_ptr<HloModule>`: The module. The executable keeps it
+    //   alive.
+    // - `HloModuleProtoWithConfig`: The serialized module. The executable
+    //   only builds the module from it when someone needs it (see
+    //   `GetOrCreateHloModule`). `hlo_module().pjrt_id()` must be
+    //   set and non-negative, and it becomes the unique id of the built
+    //   module. Serialized executables (`GpuExecutableProto`) don't carry a
+    //   `pjrt_id`, so a deserializer has to assign a fresh id (e.g.
+    //   `HloModule::GetNextUniqueModuleId()`) to its copy of the module.
+    //   Building the module is expensive, so it's observable on
+    //   purpose: It's logged together with the reason why the module is
+    //   needed, and it increments the counter
+    //   `/xla/gpu/hlo_module_materializations{reason}`. If
+    //   `xla_gpu_experimental_fail_on_lazy_hlo_module_materialization` is set
+    //   in the compile- or load-time options, it fails with
+    //   `FailedPrecondition` instead (and still increments the counter).
+    std::variant<std::monostate, std::shared_ptr<HloModule>,
+                 HloModuleProtoWithConfig>
+        hlo_module;
     bool enable_debug_info_manager = true;
     ModuleStats module_stats;
     se::ExecutableAbiVersion executable_abi_version;
@@ -140,6 +164,15 @@ class GpuExecutable : public Executable {
     BufferAssignmentProto buffer_assignment_proto;
     std::string buffer_allocations_debug_summary;
     std::optional<GpuTopology> gpu_topology;
+    // Whether `buffer_assignment_proto()` returns `buffer_assignment_proto`.
+    // The compiler sets this if it embeds debug info and keeps the HloModule.
+    bool expose_buffer_assignment_proto = false;
+    // The config and the buffer donor config of the module the executable was
+    // compiled from. Only used if `hlo_module` doesn't hold a module (e.g. with
+    // `embed_hlo_module=false`), since otherwise they're read from the module.
+    // With a serialized module both are read from there instead.
+    std::optional<HloModuleConfig> module_config;
+    HloBufferDonorConfig buffer_donor_config;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -158,6 +191,43 @@ class GpuExecutable : public Executable {
   ComputationLayout compute_computation_layout() const override {
     return ComputationLayout(program_shape_, /*ignore_layouts=*/false);
   }
+
+  // The HloModule this executable was compiled from, or nullptr if the
+  // executable doesn't have it. If the executable has a serialized module (see
+  // `Params::hlo_module`), this is nullptr until `GetOrCreateHloModule` built
+  // the module.
+  std::shared_ptr<HloModule> shared_module() const override;
+
+  // Returns the HloModule of the executable. If the executable has a serialized
+  // module and hasn't built it yet, this builds the module, passing `reason`
+  // along (see `Params::hlo_module`).
+  //
+  // The module is built at most once, even if there are concurrent callers.
+  // After a successful build `has_module()` returns true and the module stays
+  // alive as long as the executable. After a failure every call returns the
+  // same error.
+  //
+  // Returns NotFound if there's neither a module nor a serialized module.
+  absl::StatusOr<std::shared_ptr<HloModule>> GetOrCreateHloModule(
+      absl::string_view reason) const;
+
+  // The config of the module this executable was compiled from. If the
+  // executable has the module, this is the module's config. Otherwise it's the
+  // config of the serialized module or `Params::module_config`, and it
+  // CHECK-fails if neither was set.
+  //
+  // The module accessors here are safe to call concurrently with
+  // `GetOrCreateHloModule`: they either see no module or the fully built one.
+  const HloModuleConfig& module_config() const override;
+
+  // The input/output aliasing of the entry computation. If the executable
+  // doesn't have the module, it's rebuilt from the output info.
+  const HloInputOutputAliasConfig& input_output_alias_config() const override;
+
+  // The buffer donors of the entry computation. If the executable doesn't have
+  // the module, these come from the serialized module or
+  // `Params::buffer_donor_config`.
+  const HloBufferDonorConfig& buffer_donor_config() const override;
 
   // Returns the binary stored in this GpuExecutable.
   //
@@ -203,8 +273,15 @@ class GpuExecutable : public Executable {
     return buffer_allocations_debug_summary_;
   }
 
-  // Returns the stored buffer assignment proto.
-  const BufferAssignmentProto& buffer_assignment_proto() const;
+  // Returns the stored buffer assignment proto. It is always available, also
+  // for executables loaded from a proto.
+  const BufferAssignmentProto& owned_buffer_assignment_proto() const;
+
+  // Returns the stored buffer assignment proto if the compiler asked to expose
+  // it (see `Params::expose_buffer_assignment_proto`), nullptr otherwise.
+  const BufferAssignmentProto* buffer_assignment_proto() const override;
+
+  const ModuleStats& module_stats() const override { return module_stats_; }
 
   const GpuAliasInfo* alias_info() const { return alias_info_.get(); }
 
@@ -315,10 +392,19 @@ class GpuExecutable : public Executable {
       const HloModuleProtoWithConfig& proto,
       const DebugOptions& load_time_debug_options);
 
+  // Builds the input/output alias config of the entry computation from the
+  // aliasing stored in `output_info`. This gives the same config as the module
+  // the executable was compiled from, because `output_info` has an entry for
+  // every index of the result shape (see `GetOutputInfo`).
+  static absl::StatusOr<HloInputOutputAliasConfig>
+  InputOutputAliasConfigFromOutputInfo(
+      const Shape& result_shape,
+      const absl::flat_hash_map<ShapeIndex, OutputInfo>& output_info);
+
   // Like `Create`, but takes the module config metadata explicitly instead of
-  // reading it from `params.debug_module`. If `module_config_metadata` is not
-  // set, it's read from `params.debug_module` if available and otherwise
-  // defaults to `params.debug_options`.
+  // reading it from `params.hlo_module`. If `module_config_metadata` is not
+  // set, it's read from the (serialized) module in `params.hlo_module` if
+  // available and otherwise defaults to `params.debug_options`.
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> CreateImpl(
       Params params,
       std::optional<ModuleConfigMetadata> module_config_metadata);
@@ -332,10 +418,42 @@ class GpuExecutable : public Executable {
     static BorrowedStreams Assign(se::Stream* stream, int num_streams);
   };
 
-  // Use GpuExecutable::Create() to create an instance.
-  explicit GpuExecutable(
-      std::shared_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
-      BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
+  // Builds the HloModule on demand. `reason` says why the module is needed.
+  // It's called with a lock held, so it must not call `GetOrCreateHloModule`.
+  using HloModuleFactory =
+      absl::AnyInvocable<absl::StatusOr<std::shared_ptr<HloModule>>(
+          absl::string_view reason)>;
+
+  // The state of an executable that builds its module on demand.
+  struct LazyHloModuleState {
+    explicit LazyHloModuleState(HloModuleFactory factory)
+        : factory(std::move(factory)) {}
+
+    absl::Mutex mutex;
+    // Reset once the module is built, so that it can free what it holds.
+    HloModuleFactory factory ABSL_GUARDED_BY(mutex);
+    // The error of the factory, if it failed.
+    std::optional<absl::Status> error ABSL_GUARDED_BY(mutex);
+    // The built module. It's set (under `mutex`) before `module_ptr` and never
+    // changes afterwards, so it can be read without a lock once `module_ptr`
+    // is non-null.
+    std::shared_ptr<HloModule> module;
+    // Raw pointer to `module`, or nullptr while there's no module. Readers do
+    // an acquire load and `GetOrCreateHloModule` does a release store, so the
+    // read path doesn't need a lock.
+    std::atomic<HloModule*> module_ptr = nullptr;
+  };
+
+  // Use GpuExecutable::Create() to create an instance. At most one of
+  // `debug_module` and `lazy_hlo_module` is set. `serialized_hlo_module` is the
+  // serialized module that `lazy_hlo_module` builds the module from (null if
+  // there's no `lazy_hlo_module`).
+  GpuExecutable(
+      std::shared_ptr<HloModule> debug_module,
+      std::unique_ptr<LazyHloModuleState> lazy_hlo_module,
+      std::shared_ptr<const HloModuleProtoWithConfig> serialized_hlo_module,
+      std::vector<uint8_t> binary, BinaryMap dnn_compiled_graphs,
+      se::DeviceDescription device_description,
       std::unique_ptr<ThunkExecutor> executable, std::string module_name,
       ProgramShape program_shape, std::vector<BufferAllocation> allocations,
       std::deque<BufferAllocation> thunk_pass_allocations,
@@ -347,10 +465,16 @@ class GpuExecutable : public Executable {
       se::ExecutableAbiVersion executable_abi_version,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
       BufferAssignmentProto buffer_assignment_proto,
+      bool expose_buffer_assignment_proto,
       std::string buffer_allocations_debug_summary,
       bool collective_use_minimal_resource,
       std::optional<GpuTopology> gpu_topology,
-      ModuleConfigMetadata module_config_metadata);
+      ModuleConfigMetadata module_config_metadata,
+      std::optional<HloModuleConfig> module_config,
+      HloInputOutputAliasConfig input_output_alias_config,
+      HloBufferDonorConfig buffer_donor_config);
+
+  HloModule* module_ptr() const override;
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -380,6 +504,29 @@ class GpuExecutable : public Executable {
   void LogChangedAllocationsInBetweenExecutions(
       const BufferAllocations& buffer_allocations,
       const ServiceExecutableRunOptions* run_options);
+
+  // The HloModule this executable was compiled from, if it was embedded. It's
+  // declared first because initializing the other members can read it (through
+  // `has_module()` and `module()`).
+  std::shared_ptr<HloModule> debug_module_;
+
+  // Only set if the executable builds its module from a serialized module on
+  // demand (see `GetOrCreateHloModule`). Then `debug_module_` is null. It's
+  // heap allocated, so that executables without a serialized module don't pay
+  // for the mutex.
+  std::unique_ptr<LazyHloModuleState> lazy_hlo_module_;
+
+  // The serialized module that `lazy_hlo_module_` builds the module from,
+  // shared with its factory. Null if the executable was created without a
+  // serialized module. `ToProto` writes it as long as the module hasn't been
+  // built.
+  std::shared_ptr<const HloModuleProtoWithConfig> serialized_hlo_module_;
+
+  // Only used while there is no module. Then they hold what `module_config()`,
+  // `input_output_alias_config()` and `buffer_donor_config()` return.
+  std::optional<HloModuleConfig> module_config_;
+  HloInputOutputAliasConfig input_output_alias_config_;
+  HloBufferDonorConfig buffer_donor_config_;
 
   // The GPU machine code for the computation, targeting GPUs at
   // compute_capability_.
@@ -440,6 +587,12 @@ class GpuExecutable : public Executable {
   // compilation.
   BufferAssignmentProto buffer_assignment_proto_;
 
+  // Whether `buffer_assignment_proto()` exposes `buffer_assignment_proto_`.
+  bool expose_buffer_assignment_proto_;
+
+  // Statistics about the kernels in the executable.
+  ModuleStats module_stats_;
+
   // Extra allocations added by thunk passes outside of the normal buffer
   // assignment process.
   // std::deque is used to ensure pointer stability.
@@ -494,6 +647,10 @@ class GpuExecutable : public Executable {
   std::unique_ptr<GpuModuleGlobals> module_globals_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
   bool enable_debug_info_manager_;
+  // Whether the constructor registered the module with the
+  // XlaDebugInfoManager. A module that `GetOrCreateHloModule` builds later
+  // isn't registered, so the destructor must not rely on `has_module()`.
+  bool registered_with_debug_info_manager_ = false;
 
   std::unique_ptr<GpuExecutableBufferAllocator> buffer_allocator_;
 

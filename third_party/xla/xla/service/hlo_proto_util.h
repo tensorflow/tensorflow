@@ -42,6 +42,11 @@ HloProto MakeHloProto(const HloModule& module,
 void MakeHloProto(const HloModule& module, HloProto* proto,
                   HloProtoOptions options = HloProtoOptions());
 
+// Drops the payloads of all literals in `proto`'s HloModule but keeps their
+// shapes, e.g. to keep debug protos small while memory usage can still be
+// estimated.
+void StripPayloadFromLiteralProto(HloProto& proto);
+
 // Returns the shapes of the parameters of the entry computation. Shape pointers
 // refer to shapes inside of the given HloProto.
 absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(

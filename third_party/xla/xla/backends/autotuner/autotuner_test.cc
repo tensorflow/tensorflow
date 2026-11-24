@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -68,9 +69,9 @@ using ::testing::Return;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 
-class FakeExecutable : public Executable {
+class FakeExecutable : public HloModuleExecutable {
  public:
-  FakeExecutable() : Executable(nullptr) {}
+  FakeExecutable() : HloModuleExecutable(nullptr) {}
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions*,
       std::vector<ExecutionInput>) override {
