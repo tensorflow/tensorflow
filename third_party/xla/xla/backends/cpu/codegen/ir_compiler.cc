@@ -468,18 +468,21 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
 
   auto replaced_functions = intrinsic_lib.DefineIntrinsicFunctions(module);
   RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
+
+  // Must run after the main optimization pipeline (middle-end passes behave
+  // differently on instructions carrying `contract`) and before inlining
+  // CppGen bitcode, so that CppGen functions tagged with `kNoFpContractAttr`
+  // keep their exact rounding boundaries (e.g. `two_prod`).
+  llvm_ir::SetAllowContractOnFpArithmetic(module);
+
   if (!replaced_functions.empty()) {
     codegen::intrinsic::RemoveFromCompilerUsed(
         module, [&](auto n) { return intrinsic_lib.IsIntrinsicFunction(n); });
     codegen::intrinsic::RunInlineAndOptPasses(module);
   }
 
-  // Must run after all optimization passes: middle-end passes behave
-  // differently on instructions that already carry `contract`.
-  llvm_ir::SetAllowContractOnFpArithmetic(module);
-  // Must run after `contract` is set and before sanitizer instrumentation, so
-  // that instrumentation cannot split contractable fmul/fadd pairs into
-  // separate basic blocks.
+  // Must run after post-inline passes and before sanitizer instrumentation, so
+  // that neither can split contractable fmul/fadd pairs into separate blocks.
   llvm_ir::SinkContractableFMulToFAddFSub(module);
 
   // Sanitizer instrumentation must be the last IR transformation.

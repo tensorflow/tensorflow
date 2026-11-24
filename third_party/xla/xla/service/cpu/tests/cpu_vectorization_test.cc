@@ -460,7 +460,7 @@ TEST_F(Avx512JitVectorizationTest, Expm1F32) {
   }
 
   std::string check_lines =
-      absl::StrFormat("CHECK: fmul contract <%d x float>", num_elements);
+      absl::StrFormat("CHECK: fmul <%d x float>", num_elements);
 
   ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
                                std::move(hlo_module), check_lines,

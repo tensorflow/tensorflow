@@ -76,6 +76,46 @@ TEST(CloneModuleToContextTest, ClonesIntoDestinationContext) {
   EXPECT_EQ(DumpToString(*f), DumpToString(*src->getFunction("f")));
 }
 
+TEST(SetAllowContractOnFpArithmeticTest, SkipsFunctionsWithNoFpContractAttr) {
+  llvm::LLVMContext context;
+  llvm::SMDiagnostic diagnostic;
+  std::unique_ptr<llvm::Module> module =
+      llvm::parseAssemblyString(R"(
+    define float @contractable(float %a, float %b, float %c) {
+      %mul = fmul float %a, %b
+      %add = fadd float %mul, %c
+      %sub = fsub float %add, %a
+      %div = fdiv float %sub, %b
+      ret float %div
+    }
+    define float @uncontractable(float %a, float %b, float %c) {
+      %mul = fmul float %a, %b
+      %add = fadd float %mul, %c
+      %sub = fsub float %add, %a
+      ret float %sub
+    }
+  )",
+                                diagnostic, context);
+  ASSERT_NE(module, nullptr) << diagnostic.getMessage().str();
+
+  llvm::Function* contractable = module->getFunction("contractable");
+  llvm::Function* uncontractable = module->getFunction("uncontractable");
+  ASSERT_NE(contractable, nullptr);
+  ASSERT_NE(uncontractable, nullptr);
+  uncontractable->addFnAttr(kNoFpContractAttr);
+
+  SetAllowContractOnFpArithmetic(*module);
+
+  EXPECT_TRUE(FindInstruction(*contractable, "mul")->hasAllowContract());
+  EXPECT_TRUE(FindInstruction(*contractable, "add")->hasAllowContract());
+  EXPECT_TRUE(FindInstruction(*contractable, "sub")->hasAllowContract());
+  EXPECT_FALSE(FindInstruction(*contractable, "div")->hasAllowContract());
+
+  EXPECT_FALSE(FindInstruction(*uncontractable, "mul")->hasAllowContract());
+  EXPECT_FALSE(FindInstruction(*uncontractable, "add")->hasAllowContract());
+  EXPECT_FALSE(FindInstruction(*uncontractable, "sub")->hasAllowContract());
+}
+
 struct SinkFMulTestCase {
   std::string test_name;
   std::string ir;

@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/object_buffer_identifier.h"
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
@@ -482,6 +483,83 @@ TEST(IrCompilerTest, MarksOnlyFpAddSubMulAsContractable) {
   // both expectations above vacuous.
   EXPECT_EQ(num_contractable, 3) << llvm_ir::DumpToString(ir_module.get());
   EXPECT_GE(num_non_contractable, 1) << llvm_ir::DumpToString(ir_module.get());
+}
+
+TEST(IrCompilerTest, DoesNotContractCppGenIntrinsics) {
+  if (!codegen::AreCppGenIntrinsicsAvailable()) {
+    GTEST_SKIP() << "CppGen intrinsics are not available.";
+  }
+  constexpr absl::string_view kIr = R"(
+    declare <2 x double> @xla.exp.v2f64(<2 x double>)
+    declare <4 x float> @xla.log.v4f32(<4 x float>)
+
+    define <4 x float> @caller_fp(<4 x float> %a, <4 x float> %b, <4 x float> %c) {
+      %mul = fmul <4 x float> %a, %b
+      %add = fadd <4 x float> %mul, %c
+      ret <4 x float> %add
+    }
+
+    define <2 x double> @handwritten_intrinsic(<2 x double> %x) {
+      %r = call <2 x double> @xla.exp.v2f64(<2 x double> %x)
+      ret <2 x double> %r
+    }
+
+    define <4 x float> @cppgen_intrinsic(<4 x float> %x) {
+      %r = call <4 x float> @xla.log.v4f32(<4 x float> %x)
+      ret <4 x float> %r
+    }
+  )";
+
+  bool post_opt_called = false;
+  auto check_fp_contract = [](const llvm::Function& fn, bool expected_contract,
+                              int min_ops) {
+    int count = 0;
+    for (const llvm::Instruction& inst : llvm::instructions(fn)) {
+      const unsigned opcode = inst.getOpcode();
+      if (opcode == llvm::Instruction::FAdd ||
+          opcode == llvm::Instruction::FSub ||
+          opcode == llvm::Instruction::FMul) {
+        ++count;
+        EXPECT_EQ(inst.hasAllowContract(), expected_contract)
+            << fn.getName().str() << ": " << llvm_ir::DumpToString(&inst);
+      }
+    }
+    EXPECT_GE(count, min_ops) << llvm_ir::DumpToString(&fn);
+  };
+
+  IrCompiler::CompilationHooks hooks;
+  hooks.post_optimization = [&](const llvm::Module& module) {
+    post_opt_called = true;
+    const llvm::Function* caller = module.getFunction("caller_fp");
+    const llvm::Function* handwritten =
+        module.getFunction("handwritten_intrinsic");
+    const llvm::Function* cppgen = module.getFunction("cppgen_intrinsic");
+    ASSERT_NE(caller, nullptr);
+    ASSERT_NE(handwritten, nullptr);
+    ASSERT_NE(cppgen, nullptr);
+
+    check_fp_contract(*caller, /*expected_contract=*/true, /*min_ops=*/2);
+    check_fp_contract(*handwritten, /*expected_contract=*/true, /*min_ops=*/1);
+    check_fp_contract(*cppgen, /*expected_contract=*/false, /*min_ops=*/1);
+    EXPECT_FALSE(cppgen->hasFnAttribute(llvm_ir::kNoFpContractAttr));
+  };
+
+  llvm::LLVMContext context;
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      hooks);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<llvm::Module> ir_module,
+                       ParseModule(context, kIr, "cppgen_contract_module"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<llvm::TargetMachine> target_machine,
+                       ir_compiler->build_target_machine());
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  cantFail((*ir_compiler)(*ir_module));
+  EXPECT_TRUE(post_opt_called);
 }
 
 class IrCompilerParameterizedTest

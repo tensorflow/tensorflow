@@ -198,6 +198,7 @@ xla_cc_test(
         "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/codegen/intrinsic:simple_jit_runner",
         "//xla/codegen/intrinsic:test_matchers",
+        "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

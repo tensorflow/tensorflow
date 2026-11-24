@@ -99,9 +99,9 @@ JitRunner::JitRunner(std::unique_ptr<llvm::Module> module,
         llvm::Twine(llvm::toString(jit_or_err.takeError())));
   }
   jit_ = std::move(jit_or_err.get());
-  // Match what production XLA:CPU codegen does as the last step of
-  // `IrCompiler::RunIrPasses`, so that accuracy tests measure the contracted
-  // (FMA-fused) code that actually ships rather than an unfused variant.
+  // Match what production XLA:CPU codegen does in `IrCompiler::RunIrPasses`, so
+  // that handwritten-IR accuracy tests measure contracted (FMA-fused) code
+  // while CppGen bitcode functions tagged with `kNoFpContractAttr` are skipped.
   llvm_ir::SetAllowContractOnFpArithmetic(*module);
   llvm::orc::ThreadSafeModule tsm(std::move(module), *tsc_);
   llvm::ExitOnError exit_on_err;

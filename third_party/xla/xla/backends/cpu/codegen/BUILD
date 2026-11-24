@@ -241,6 +241,7 @@ xla_cc_test(
         "//xla:debug_options_flags",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:test_header_helper",
         "//xla/service/llvm_ir:llvm_util",

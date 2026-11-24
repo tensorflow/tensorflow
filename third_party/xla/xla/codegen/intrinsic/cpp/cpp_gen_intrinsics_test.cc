@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
 #include "xla/codegen/intrinsic/simple_jit_runner.h"
 #include "xla/codegen/intrinsic/test_matchers.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "tsl/platform/denormal.h"
 
 namespace xla::codegen {
@@ -75,7 +76,7 @@ void StripHostAttrs(llvm::Module& module) {
 TEST(CppGenIntrinsicsTest, AtanV8F32HasDirectSignature) {
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(context, llvm_ir::kAtanLlIr);
+      ParseEmbeddedBitcode(context, ::llvm_ir::kAtanLlIr);
   llvm::FunctionType* type = UnaryType(VecF32(context, 8));
 
   llvm::Function* fn = GetCppGenFunction(module.get(), "xla.atan.v8f32", type);
@@ -87,7 +88,7 @@ TEST(CppGenIntrinsicsTest, AtanV8F32HasDirectSignature) {
 TEST(CppGenIntrinsicsTest, AtanV8F32IsIdempotent) {
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(context, llvm_ir::kAtanLlIr);
+      ParseEmbeddedBitcode(context, ::llvm_ir::kAtanLlIr);
   llvm::FunctionType* type = UnaryType(VecF32(context, 8));
 
   llvm::Function* first =
@@ -101,7 +102,7 @@ TEST(CppGenIntrinsicsTest, AtanV8F32IsIdempotent) {
 TEST(CppGenIntrinsicsTest, DirectSignaturesAreUntouched) {
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(context, llvm_ir::kAtanLlIr);
+      ParseEmbeddedBitcode(context, ::llvm_ir::kAtanLlIr);
 
   llvm::Function* scalar = GetCppGenFunction(
       module.get(), "xla.atan.f32", UnaryType(llvm::Type::getFloatTy(context)));
@@ -117,7 +118,7 @@ TEST(CppGenIntrinsicsTest, DirectSignaturesAreUntouched) {
 TEST(CppGenIntrinsicsTest, AtanV8F32ComputesThroughJit) {
   auto context = std::make_unique<llvm::LLVMContext>();
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(*context, llvm_ir::kAtanLlIr);
+      ParseEmbeddedBitcode(*context, ::llvm_ir::kAtanLlIr);
   StripHostAttrs(*module);
 
   llvm::Function* fn = GetCppGenFunction(module.get(), "xla.atan.v8f32",
@@ -145,7 +146,7 @@ std::vector<T> AtanFromIr(const std::vector<T>& xs,
                           bool flush_denormals = false) {
   auto context = std::make_unique<llvm::LLVMContext>();
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(*context, llvm_ir::kAtanLlIr);
+      ParseEmbeddedBitcode(*context, ::llvm_ir::kAtanLlIr);
   StripHostAttrs(*module);
   std::string name =
       absl::StrCat("xla.atan.v", N, sizeof(T) == 4 ? "f32" : "f64");
@@ -187,7 +188,7 @@ TEST(CppGenIntrinsicsTest, WideAtanIsAdaptedFromLibraryIr) {
   {
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module =
-        ParseEmbeddedBitcode(context, llvm_ir::kAtanLlIr);
+        ParseEmbeddedBitcode(context, ::llvm_ir::kAtanLlIr);
     if (!module->getTargetTriple().isOSWindows()) {
       for (const char* name : {"xla.atan.v16f32", "xla.atan.v8f64"}) {
         EXPECT_TRUE(
@@ -436,6 +437,206 @@ TEST(CppGenIntrinsicsTest, ByvalAtanV4F64InlinesIntoCaller) {
   std::array<double, 4> y = fn(x);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(y[i], -x[i]) << "lane " << i;
+  }
+}
+
+TEST(CppGenIntrinsicsTest, LinkedFunctionsAreNotContractedAfterInlining) {
+  constexpr absl::string_view kLib = R"(
+    declare <4 x float> @llvm.fma.v4f32(<4 x float>, <4 x float>, <4 x float>)
+
+    define <4 x float> @xla.two_prod.v4f32(<4 x float> %a, <4 x float> %b, <4 x float> %n) {
+      %p = fmul <4 x float> %a, %b
+      %neg_p = fneg <4 x float> %p
+      %err = call <4 x float> @llvm.fma.v4f32(<4 x float> %a, <4 x float> %b, <4 x float> %neg_p)
+      %diff = fsub <4 x float> %n, %p
+      %out = fadd <4 x float> %diff, %err
+      ret <4 x float> %out
+    }
+  )";
+  constexpr absl::string_view kKernel = R"(
+    declare <4 x float> @xla.two_prod.v4f32(<4 x float>, <4 x float>, <4 x float>)
+
+    define <4 x float> @kernel(<4 x float> %a, <4 x float> %b, <4 x float> %c) {
+      %caller_mul = fmul <4 x float> %a, %b
+      %caller_add = fadd <4 x float> %caller_mul, %c
+      %res = call <4 x float> @xla.two_prod.v4f32(<4 x float> %caller_add, <4 x float> %c, <4 x float> %a)
+      ret <4 x float> %res
+    }
+  )";
+
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, std::string(kKernel));
+  CppGenIntrinsicLibrary(std::string(kLib), "lib").LinkIntoModule(*module);
+  EXPECT_FALSE(llvm::verifyModule(*module, &llvm::errs()));
+
+  llvm::Function* linked = module->getFunction("xla.two_prod.v4f32");
+  ASSERT_NE(linked, nullptr);
+  EXPECT_TRUE(linked->hasFnAttribute(xla::llvm_ir::kNoFpContractAttr));
+
+  xla::llvm_ir::SetAllowContractOnFpArithmetic(*module);
+  intrinsic::RunInlineAndOptPasses(*module);
+  EXPECT_FALSE(llvm::verifyModule(*module, &llvm::errs()));
+  EXPECT_EQ(module->getFunction("xla.two_prod.v4f32"), nullptr);
+
+  llvm::Function* kernel = module->getFunction("kernel");
+  ASSERT_NE(kernel, nullptr);
+  EXPECT_FALSE(kernel->hasFnAttribute(xla::llvm_ir::kNoFpContractAttr));
+
+  int caller_fp_ops = 0;
+  int cppgen_fp_ops = 0;
+  for (const llvm::BasicBlock& bb : *kernel) {
+    for (const llvm::Instruction& inst : bb) {
+      const unsigned opcode = inst.getOpcode();
+      if (opcode != llvm::Instruction::FAdd &&
+          opcode != llvm::Instruction::FSub &&
+          opcode != llvm::Instruction::FMul) {
+        continue;
+      }
+      if (inst.getName().starts_with("caller_")) {
+        ++caller_fp_ops;
+        EXPECT_TRUE(inst.hasAllowContract())
+            << xla::llvm_ir::DumpToString(&inst);
+      } else {
+        ++cppgen_fp_ops;
+        EXPECT_FALSE(inst.hasAllowContract())
+            << xla::llvm_ir::DumpToString(&inst);
+      }
+    }
+  }
+  EXPECT_EQ(caller_fp_ops, 2) << xla::llvm_ir::DumpToString(kernel);
+  EXPECT_EQ(cppgen_fp_ops, 3) << xla::llvm_ir::DumpToString(kernel);
+}
+
+TEST(CppGenIntrinsicsTest,
+     AdaptedBodyAndCollidingInternalHelperKeepNoFpContract) {
+  constexpr absl::string_view kLib = R"(
+    define internal <4 x float> @helper(<4 x float> %a, <4 x float> %b) noinline {
+      %lib_mul = fmul <4 x float> %a, %b
+      ret <4 x float> %lib_mul
+    }
+
+    define void @xla.adapted.v4f32(ptr sret(<4 x float>) align 16 %out, ptr %p) {
+      %x = load <4 x float>, ptr %p, align 16
+      %h = call <4 x float> @helper(<4 x float> %x, <4 x float> %x)
+      %lib_sub = fsub <4 x float> %x, %h
+      store <4 x float> %lib_sub, ptr %out, align 16
+      ret void
+    }
+  )";
+  constexpr absl::string_view kKernel = R"(
+    declare <4 x float> @xla.adapted.v4f32(<4 x float>)
+
+    define internal <4 x float> @helper(<4 x float> %a, <4 x float> %b) noinline {
+      %dst_add = fadd <4 x float> %a, %b
+      ret <4 x float> %dst_add
+    }
+
+    define <4 x float> @kernel(<4 x float> %a, <4 x float> %b) {
+      %caller_h = call <4 x float> @helper(<4 x float> %a, <4 x float> %b)
+      %res = call <4 x float> @xla.adapted.v4f32(<4 x float> %caller_h)
+      ret <4 x float> %res
+    }
+  )";
+
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, std::string(kKernel));
+  CppGenIntrinsicLibrary(std::string(kLib), "lib").LinkIntoModule(*module);
+  EXPECT_FALSE(llvm::verifyModule(*module, &llvm::errs()));
+
+  llvm::Function* dst_helper = module->getFunction("helper");
+  ASSERT_NE(dst_helper, nullptr);
+  EXPECT_FALSE(dst_helper->hasFnAttribute(xla::llvm_ir::kNoFpContractAttr));
+
+  llvm::Function* adapted_body = module->getFunction("xla.adapted.v4f32.body");
+  ASSERT_NE(adapted_body, nullptr);
+  EXPECT_TRUE(adapted_body->hasFnAttribute(xla::llvm_ir::kNoFpContractAttr));
+
+  // Find the colliding internal helper renamed by the linker.
+  llvm::Function* lib_helper = nullptr;
+  for (llvm::Function& fn : *module) {
+    if (fn.getName().starts_with("helper.")) {
+      lib_helper = &fn;
+      break;
+    }
+  }
+  ASSERT_NE(lib_helper, nullptr) << xla::llvm_ir::DumpToString(module.get());
+  EXPECT_TRUE(lib_helper->hasFnAttribute(xla::llvm_ir::kNoFpContractAttr));
+
+  xla::llvm_ir::SetAllowContractOnFpArithmetic(*module);
+  intrinsic::RunInlineAndOptPasses(*module);
+  EXPECT_FALSE(llvm::verifyModule(*module, &llvm::errs()));
+
+  for (const llvm::BasicBlock& bb : *dst_helper) {
+    for (const llvm::Instruction& inst : bb) {
+      if (inst.getOpcode() == llvm::Instruction::FAdd) {
+        EXPECT_TRUE(inst.hasAllowContract())
+            << xla::llvm_ir::DumpToString(&inst);
+      }
+    }
+  }
+  for (const llvm::BasicBlock& bb : *lib_helper) {
+    for (const llvm::Instruction& inst : bb) {
+      if (inst.getOpcode() == llvm::Instruction::FMul) {
+        EXPECT_FALSE(inst.hasAllowContract())
+            << xla::llvm_ir::DumpToString(&inst);
+      }
+    }
+  }
+  llvm::Function* kernel = module->getFunction("kernel");
+  ASSERT_NE(kernel, nullptr);
+  int kernel_fsubs = 0;
+  for (const llvm::BasicBlock& bb : *kernel) {
+    for (const llvm::Instruction& inst : bb) {
+      if (inst.getOpcode() == llvm::Instruction::FSub) {
+        ++kernel_fsubs;
+        EXPECT_FALSE(inst.hasAllowContract())
+            << xla::llvm_ir::DumpToString(&inst);
+      }
+    }
+  }
+  EXPECT_EQ(kernel_fsubs, 1) << xla::llvm_ir::DumpToString(kernel);
+}
+
+TEST(CppGenIntrinsicsTest, GetCppGenFunctionTagsReachableInternalCallees) {
+  constexpr absl::string_view kBitcode = R"(
+    define internal <4 x float> @helper(<4 x float> %a, <4 x float> %b, <4 x float> %c) noinline {
+      %p = fmul <4 x float> %a, %b
+      %s = fadd <4 x float> %p, %c
+      ret <4 x float> %s
+    }
+
+    define <4 x float> @xla.fn.v4f32(<4 x float> %a, <4 x float> %b, <4 x float> %c) {
+      %r = call <4 x float> @helper(<4 x float> %a, <4 x float> %b, <4 x float> %c)
+      ret <4 x float> %r
+    }
+  )";
+
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, std::string(kBitcode));
+  llvm::Type* v4f32 = VecF32(context, 4);
+  llvm::FunctionType* fn_type =
+      llvm::FunctionType::get(v4f32, {v4f32, v4f32, v4f32}, /*isVarArg=*/false);
+
+  llvm::Function* fn = GetCppGenFunction(module.get(), "xla.fn.v4f32", fn_type);
+  ASSERT_NE(fn, nullptr);
+  EXPECT_TRUE(fn->hasFnAttribute(xla::llvm_ir::kNoFpContractAttr));
+
+  xla::llvm_ir::SetAllowContractOnFpArithmetic(*module);
+
+  llvm::Function* helper = module->getFunction("helper");
+  ASSERT_NE(helper, nullptr);
+  EXPECT_TRUE(helper->hasFnAttribute(xla::llvm_ir::kNoFpContractAttr));
+  for (const llvm::BasicBlock& bb : *helper) {
+    for (const llvm::Instruction& inst : bb) {
+      if (inst.getOpcode() == llvm::Instruction::FMul ||
+          inst.getOpcode() == llvm::Instruction::FAdd) {
+        EXPECT_FALSE(inst.hasAllowContract())
+            << xla::llvm_ir::DumpToString(&inst);
+      }
+    }
   }
 }
 

@@ -546,6 +546,9 @@ llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
 
 void SetAllowContractOnFpArithmetic(llvm::Module& module) {
   for (llvm::Function& function : module) {
+    if (function.hasFnAttribute(kNoFpContractAttr)) {
+      continue;
+    }
     for (llvm::Instruction& instruction : llvm::instructions(function)) {
       const unsigned opcode = instruction.getOpcode();
       if (opcode == llvm::Instruction::FAdd ||

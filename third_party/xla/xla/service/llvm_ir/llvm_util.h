@@ -219,19 +219,33 @@ void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder);
 // module config.
 llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config);
 
+// Function attribute marking bitcode functions (such as CppGen / YNNPACK
+// intrinsics) whose explicit FMA / non-FMA rounding boundaries must not be
+// altered by `SetAllowContractOnFpArithmetic`.
+inline constexpr absl::string_view kNoFpContractAttr = "xla_no_fp_contract";
+
 // Sets the `contract` fast-math flag on every floating-point add, subtract and
-// multiply in `module`.
+// multiply in `module`, skipping functions carrying `kNoFpContractAttr`.
 //
 // Upstream LLVM is removing `TargetOptions::AllowFPOpFusion` as a global gate
 // on FMA formation, and XLA:CPU depends on that gate for all of its
 // contraction; the per-instruction flag is the replacement.
 //
-// Callers must run this as the last IR mutation before machine-code emission,
-// because middle-end passes read `contract` and change what they do when it is
-// set: InstCombine folds `tan(x) * cos(x)` to `sin(x)` for a contractable fmul
-// (InstCombineMulDivRem.cpp:1116), and Reassociate keeps a contractable
-// fadd/fmul pair together as a leaf instead of linearizing it into the
-// surrounding expression tree (Reassociate.cpp:191).
+// Long term, XLA:CPU emitters and handwritten intrinsics should emit explicit
+// `@llvm.fma` (or opt into `contract` when emitting IR) so that
+// `SetAllowContractOnFpArithmetic` and `kNoFpContractAttr` can be removed; see
+// b/560320144.
+//
+// Callers must run this after the main optimization pipeline (because
+// middle-end passes read `contract` and change what they do when it is set:
+// InstCombine folds `tan(x) * cos(x)` to `sin(x)` for a contractable fmul at
+// InstCombineMulDivRem.cpp:1127, and Reassociate keeps a contractable
+// fadd/fmul pair together as a leaf instead of linearizing it at
+// Reassociate.cpp:191) and before inlining functions tagged with
+// `kNoFpContractAttr`. Post-inline cleanup passes (`InstCombine`, `EarlyCSE`)
+// in `RunInlineAndOptPasses` do see `contract` on caller instructions; this is
+// accepted because `EarlyCSE` intersects flags and inner tagged-callee
+// expressions carry no `contract` flag.
 void SetAllowContractOnFpArithmetic(llvm::Module& module);
 
 // Moves every single-use `fmul contract` to immediately before its

@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Alignment.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/intrinsic/cpp/atan_ll.h"
@@ -108,6 +110,31 @@ void PrepareForInlining(llvm::Function* func) {
   func->setLinkage(llvm::Function::InternalLinkage);
   if (!func->hasFnAttribute(llvm::Attribute::NoInline)) {
     func->addFnAttr(llvm::Attribute::AlwaysInline);
+  }
+}
+
+// Marks `root` and any reachable local-linkage callees (such as `noinline`
+// helpers when bitcode is loaded without `LinkIntoModule`) with
+// `kNoFpContractAttr`.
+void TagWithNoFpContract(llvm::Function* root) {
+  std::vector<llvm::Function*> worklist = {root};
+  while (!worklist.empty()) {
+    llvm::Function* fn = worklist.back();
+    worklist.pop_back();
+    if (fn->isDeclaration() || fn->hasFnAttribute(llvm_ir::kNoFpContractAttr)) {
+      continue;
+    }
+    fn->addFnAttr(llvm_ir::kNoFpContractAttr);
+    for (llvm::BasicBlock& bb : *fn) {
+      for (llvm::Instruction& inst : bb) {
+        if (auto* call = llvm::dyn_cast<llvm::CallBase>(&inst)) {
+          llvm::Function* callee = call->getCalledFunction();
+          if (callee != nullptr && callee->hasLocalLinkage()) {
+            worklist.push_back(callee);
+          }
+        }
+      }
+    }
   }
 }
 
@@ -211,6 +238,7 @@ llvm::Function* GetCppGenFunction(llvm::Module* module, absl::string_view name,
   if (func->isDeclaration()) {
     return func;
   }
+  TagWithNoFpContract(func);
   if (func->getFunctionType() != type) {
     return CreateDirectAdapter(module, func, type);
   }
@@ -307,10 +335,13 @@ void CppGenIntrinsicLibrary::LinkIntoModule(llvm::Module& dst_module) const {
   std::vector<std::string> lib_functions;
   // The linker merges same-named symbols regardless of signature.
   std::vector<std::pair<llvm::Function*, std::string>> mismatched_decls;
-  for (const auto& func : *lib_module) {
+  for (llvm::Function& func : *lib_module) {
     if (func.isDeclaration()) {
       continue;
     }
+    // Tag before linking so colliding internal helpers renamed by the linker
+    // keep the attribute and pre-existing destination functions are untouched.
+    func.addFnAttr(llvm_ir::kNoFpContractAttr);
     lib_functions.push_back(func.getName().str());
     llvm::Function* decl = dst_module.getFunction(func.getName());
     if (decl != nullptr && decl->isDeclaration() &&
