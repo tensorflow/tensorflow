@@ -1,18 +1,6 @@
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp
-@@ -10,10 +10,10 @@
- #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
- #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
- #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
--#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
- #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
- #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
- #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
-+#include "mlir/Dialect/LLVMIR/ROCDLTargetInfo.h"
- #include "mlir/Pass/Pass.h"
- #include "third_party/amd/include/Analysis/AxisInfoExt.h"
- #include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
-@@ -205,16 +205,16 @@ struct ConvertTritonAMDGPUToLLVM
+@@ -206,16 +206,16 @@ struct ConvertTritonAMDGPUToLLVM
      mlir::triton::AMD::populateWarpIdOpToLLVMPattern(typeConverter, targetInfo,
                                                       patterns, commonBenefit);
  
@@ -36,18 +24,7 @@
 
 --- a/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/ConvertProtonGPUToLLVM.cpp
 +++ b/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/ConvertProtonGPUToLLVM.cpp
-@@ -7,9 +7,9 @@
- #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
- #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
- #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
--#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
- #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
- #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
-+#include "mlir/Dialect/LLVMIR/ROCDLTargetInfo.h"
- #include "mlir/Pass/Pass.h"
- #include "third_party/amd/lib/TritonAMDGPUToLLVM/PatternTritonGPUOpToLLVM.h"
- #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
-@@ -65,15 +65,15 @@ struct ConvertProtonAMDGPUToLLVM
+@@ -69,15 +69,15 @@ struct ConvertProtonAMDGPUToLLVM
                                                         tritonTargetInfo);
      mlir::arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
  

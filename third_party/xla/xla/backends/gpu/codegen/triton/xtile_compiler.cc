@@ -562,13 +562,16 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
                                block_level_parameters, std::move(triton_source),
                                mlir_context, is_xla_fusion));
 
-  const int shared_mem_bytes =
-      triton_source.module()
-          ->getAttrOfType<mlir::IntegerAttr>("ttg.shared")
-          .getInt();
-
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   const se::GpuComputeCapability& gpu_cc = device_info.gpu_compute_capability();
+  // On ROCm, Triton allocates all shared memory (LDS) statically via an
+  // internal `global_smem` array in addrspace(3), so dynamic shared memory at
+  // kernel launch must be 0 to avoid double-allocating LDS.
+  const int64_t shared_mem_bytes =
+      gpu_cc.IsRocm() ? 0
+                      : triton_source.module()
+                            ->getAttrOfType<mlir::IntegerAttr>("ttg.shared")
+                            .getInt();
   const HloModuleConfig& hlo_config = hlo_module.config();
 
   bool should_verify =

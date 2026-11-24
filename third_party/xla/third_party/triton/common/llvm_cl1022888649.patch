@@ -1,6 +1,6 @@
 --- a/test/Conversion/warp_specialize_to_llvm.mlir
 +++ b/test/Conversion/warp_specialize_to_llvm.mlir
-@@ -285,7 +285,6 @@
+@@ -285,7 +285,6 @@ llvm.func @generate_switch_loop(%again: i1) attributes {allocation.offset = 32 :
    // CHECK: nvvm.barrier id = [[C1]] aligned = false
    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
    // CHECK-NEXT: "default"
@@ -8,7 +8,7 @@
  
    // AMD: [[WID:%.*]] = rocdl.wave.id : i32
    // AMD-NEXT: [[IS_DEFAULT:%.*]] = llvm.icmp "ult" [[WID]], [[C4]]
-@@ -348,7 +347,6 @@
+@@ -348,7 +347,6 @@ llvm.func @generate_switch_loop(%again: i1) attributes {allocation.offset = 32 :
    // AMD: rocdl.barrier
    // AMD-NEXT: rocdl.barrier
    // AMD-NEXT: "default"
@@ -16,7 +16,7 @@
  
    "before"() : () -> ()
    %false = llvm.mlir.constant(false) : i1
-@@ -371,7 +369,6 @@
+@@ -371,7 +369,6 @@ llvm.func @generate_switch_loop(%again: i1) attributes {allocation.offset = 32 :
      "partition2"() : () -> ()
      ttg.warp_return
    } : () -> ()
@@ -24,7 +24,7 @@
    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
    // CHECK-NEXT: "after"
  
-@@ -393,7 +390,6 @@
+@@ -393,7 +390,6 @@ llvm.func @generate_switch_loop(%again: i1) attributes {allocation.offset = 32 :
    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
    // CHECK-NEXT: llvm.return
  
@@ -32,7 +32,7 @@
    // AMD-NEXT: rocdl.barrier
    // AMD-NEXT: "after"
  
-@@ -991,7 +987,6 @@
+@@ -991,7 +987,6 @@ llvm.func @type_conversion_results() attributes {allocation.offset = 0 : i32} {
    %0 = builtin.unrealized_conversion_cast %cap : !llvm.ptr<1> to !tt.ptr<i32>
    %1 = ttg.warp_specialize(%0) attributes {allocation.offset = 0 : i32, warpGroupStartIds = array<i32: 4>}
    default {
@@ -40,7 +40,7 @@
      ttg.warp_yield %0 : !tt.ptr<i32>
    }
    partition0(%arg1: !tt.ptr<i32>) num_warps(2) {
-@@ -999,9 +994,8 @@
+@@ -999,9 +994,8 @@ llvm.func @type_conversion_results() attributes {allocation.offset = 0 : i32} {
      %4 = llvm.load %3 : !llvm.ptr<1> -> i32
      ttg.warp_return
    } : (!tt.ptr<i32>) -> !tt.ptr<i32>
@@ -51,7 +51,7 @@
    "use"(%2) : (!llvm.ptr<1>) -> ()
    llvm.return
  }
-@@ -1056,12 +1050,16 @@
+@@ -1056,12 +1050,16 @@ llvm.func @trivial_remat() attributes {allocation.offset = 0 : i32} {
      ttg.warp_yield
    }
    partition0(%arg0: i32, %arg1: !llvm.ptr<3>) num_warps(4) {
@@ -71,7 +71,7 @@
      ttg.warp_return
    } : (i32, !llvm.ptr<3>) -> ()
    llvm.return
-@@ -1081,20 +1079,24 @@
+@@ -1081,20 +1079,24 @@ llvm.func @remat_subgraph(%arg0: i32, %arg1: i32) attributes {allocation.offset
      ttg.warp_yield
    }
    partition0(%arg2: !llvm.ptr<3>, %arg3: i32) num_warps(4) {
@@ -99,7 +99,7 @@
      ttg.warp_return
    } : (!llvm.ptr<3>, i32) -> ()
    llvm.return
-@@ -1201,8 +1203,7 @@
+@@ -1201,8 +1203,7 @@ llvm.func @dynamic_register_reallocation_overalloc() attributes {allocation.offs
  
    // CHECK: [[LOW]]:
    // CHECK-NEXT: nvvm.setmaxregister decrease 24
@@ -109,7 +109,7 @@
    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
    // CHECK-NEXT: nvvm.setmaxregister increase 80
  
-@@ -1219,9 +1220,6 @@
+@@ -1219,9 +1220,6 @@ llvm.func @dynamic_register_reallocation_overalloc() attributes {allocation.offs
    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
    // CHECK-NEXT: nvvm.setmaxregister decrease 80
  
@@ -119,3 +119,4 @@
    // CHECK: [[PARTITION1]]:
    // CHECK-NEXT: "partition1"()
    // CHECK-NEXT: llvm.br [[HIGH_DONE]]
+

@@ -89,7 +89,7 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
    std::unique_ptr<llvm::TargetMachine> machine{target->createTargetMachine(
        module->getTargetTriple(), proc, features, opt, llvm::Reloc::PIC_,
        std::nullopt,
-@@ -599,6 +600,7 @@ void init_triton_llvm(py::module_ &m) {
+@@ -598,6 +599,7 @@ void init_triton_llvm(py::module_ &m) {
          }
          llvm::TargetOptions opt;
          opt.MCOptions.ABIName = abi;
@@ -129,3 +129,4 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
    static const llvm::Target &target() {
      static const llvm::Target instance{};
      return instance;
+

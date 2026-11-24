@@ -1,6 +1,6 @@
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -186,17 +186,20 @@ static ConverterT makeNativeFp8Converter(Type srcTy, Type dstTy, bool useFp32) {
+@@ -188,17 +188,20 @@ static ConverterT makeNativeFp8Converter(Type srcTy, Type dstTy, bool useFp32) {
        }
        // The first scalar operand fills the high half of the packed result.
        result = NVVM::ConvertF32x2ToF8x2Op::create(

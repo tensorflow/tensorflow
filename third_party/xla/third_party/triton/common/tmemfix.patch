@@ -3,7 +3,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/lib/Analysis/Utility.cpp
 +++ b/lib/Analysis/Utility.cpp
-@@ -1138,7 +1138,7 @@ bool supportMMA(triton::DotOp op, int version) {
+@@ -1162,7 +1162,7 @@ bool supportMMA(triton::DotOp op, int version) {
      if (k < 256 / aElemTy.getIntOrFloatBitWidth())
        return false;
      if (!(retShapePerCTA[rank - 2] % 64 == 0 &&
@@ -12,7 +12,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
        return false;
      if (aElemTy.isF64() || bElemTy.isF64() ||
          retType.getElementType().isF64()) {
-@@ -1163,7 +1163,7 @@ bool supportMMA(triton::DotOp op, int version) {
+@@ -1187,7 +1187,7 @@ bool supportMMA(triton::DotOp op, int version) {
      if (rank == 3)
        return false;
      if (!(numWarps % 4 == 0 && retShapePerCTA[rank - 2] % 64 == 0 &&
@@ -24,7 +24,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
-@@ -294,10 +294,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -296,10 +296,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
  
    auto nColsTile = tile.getOutDimSize(rowColDims[1]);
    auto nColsLL = ll.getInDimSize(rowColDims[1]);
@@ -36,7 +36,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    auto kReg = StringAttr::get(ctx, "register");
    auto kLane = StringAttr::get(ctx, "lane");
    auto kWarp = StringAttr::get(ctx, "warp");
-@@ -314,7 +311,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -316,7 +313,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
    // basis as that would disallow the resulting layout to be left-divisible by
    // the tile
    auto trivialBlock = LinearLayout::identity1D(1, kBlock, kBlock);
@@ -47,7 +47,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
                    .compose(ll)
                    .sublayout({kReg, kLane}, to_vector(ll.getOutDimNames()));
    if (instr32Rows) {
-@@ -322,7 +321,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -324,7 +323,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
      // basis
      comp = comp.resizeInDim(kLane, comp.getInDimSize(kLane) / 2);
    }
@@ -56,7 +56,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      return std::nullopt;
  
    // Fit the warp bases either tiling on the RHS or in row=16
-@@ -377,9 +376,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -379,9 +378,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
    // Add CTAs as a trivial map
    auto nCTAs = ll.getInDimSize(kBlock);
    tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
@@ -68,7 +68,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    return ret;
  }
  
-@@ -402,6 +400,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
+@@ -404,6 +402,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
    auto *ctx = memType.getContext();
    auto layout = getDistributedLayoutForTmemLdSt(
        memType, TMemAccessAtom::I32x32b, numWarps);
@@ -87,7 +87,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    assert(layout);
    return LinearEncodingAttr::get(ctx, std::move(*layout));
  }
-@@ -475,6 +485,12 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
+@@ -477,6 +487,12 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
  bool isDistributedLayoutTMemCompatible(Operation *op,
                                         RankedTensorType tensorType,
                                         gpu::MemDescType memType) {
@@ -145,7 +145,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/python/test/gluon/test_fpsan.py
 +++ b/python/test/gluon/test_fpsan.py
-@@ -2090,6 +2090,8 @@ _WMMA_DOT_CASES = [
+@@ -2105,6 +2105,8 @@ _WMMA_DOT_CASES = [
  
  
  def _native_mma_k(type_a: str) -> int:
@@ -157,7 +157,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/python/test/unit/language/test_compile_only.py
 +++ b/python/test/unit/language/test_compile_only.py
-@@ -511,7 +511,7 @@ def test_compile_only_dot_mxfp() -> None:
+@@ -535,7 +535,7 @@ def test_compile_only_dot_mxfp() -> None:
      assert re.search(pattern, str(ttgir)), "The TTGIR does not match the expected pattern."
  
      ptx = k.asm["ptx"]
@@ -169,7 +169,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -4555,10 +4555,7 @@ def get_test_small_dots_cases():
+@@ -4627,10 +4627,7 @@ def get_test_small_dots_cases():
      if not is_cuda():
          return []
      return [(2, 4, 32, 1, False, False, 'None', 'ieee', 'float16', 'float32', 1, None),
@@ -184,7 +184,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/python/test/unit/language/test_matmul.py
 +++ b/python/test/unit/language/test_matmul.py
-@@ -544,6 +544,8 @@ def test_mxfp(BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, nonKDim, NUM_WARPS, device)
+@@ -670,6 +670,8 @@ def test_mxfp(BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, nonKDim, NUM_WARPS, device)
              pytest.skip(f"CDNA4 does not support {BLOCK_K=} for scaled mfma {nonKDim=} variants")
          if (BLOCK_M == 256 or BLOCK_N == 256) and BLOCK_K == 256:
              pytest.skip("Config requires too much shared memory")
@@ -193,7 +193,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
  
      if not is_rubin() and BLOCK_N == 256 and BLOCK_K == 256:
          NUM_STAGES = min(NUM_STAGES, 2)
-@@ -1580,6 +1582,8 @@ def test_batched_mxfp(BATCH_SIZE, BLOCK_BATCH_SIZE, BLOCK_M, BLOCK_N, BLOCK_K, N
+@@ -1706,6 +1708,8 @@ def test_batched_mxfp(BATCH_SIZE, BLOCK_BATCH_SIZE, BLOCK_M, BLOCK_N, BLOCK_K, N
      kernel_kwargs = {}
      if is_hip():
          kernel_kwargs["matrix_instr_nonkdim"] = nonKDim
@@ -280,7 +280,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    tt.func @tc_gen5_mma_block_scale_mxfp4(%a: !ttg.memdesc<128x64x!tt.fp4e2m1x2, #shared, #ttg.shared_memory>,
                         %b: !ttg.memdesc<64x256x!tt.fp4e2m1x2, #shared1, #ttg.shared_memory>,
                         %c: !ttg.memdesc<128x256xf32, #tmem, #ttng.tensor_memory, mutable>,
-@@ -1248,7 +1248,7 @@ module attributes {"ttg.num-warps" = 8 : i32} {
+@@ -1258,7 +1258,7 @@ module attributes {"ttg.num-warps" = 8 : i32} {
  // CHECK-LABEL: @load_store_16x32bx1_broadcast
  tt.func private @load_store_16x32bx1_broadcast(%arg0: !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x8xi8, #linear>) {
    %true = arith.constant true
@@ -289,7 +289,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    ttng.tmem_store %arg1, %arg0, %true : tensor<16x8xi8, #linear> -> !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>
    tt.return
  }
-@@ -1263,7 +1263,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
+@@ -1273,7 +1273,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
  // CHECK-LABEL: @load_store_16x2_scales_uses_zero_second_half
  tt.func private @load_store_16x2_scales_uses_zero_second_half(%arg0: !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x2xi8, #linear>) {
    %true = arith.constant true
@@ -298,7 +298,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // CHECK: llvm.return
    ttng.tmem_store %arg1, %arg0, %true : tensor<16x2xi8, #linear> -> !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>
    tt.return
-@@ -1327,22 +1327,22 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+@@ -1337,22 +1337,22 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
        %pred: i1) {
      // CHECK: %[[ACC_BASE:.+]] = llvm.ptrtoint %arg4 : !llvm.ptr<3> to i32
      // CHECK: %[[A_E4M3_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
@@ -329,7 +329,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      // CHECK-SAME: %[[ACC_BASE]], %[[A_E5M2_BASE]]
      ttng.tc_gen5_mma_scaled %a_e4m3, %b_e5m2, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e4m3 rhs = e5m2 :
         !ttg.memdesc<128x128xf8E4M3FN, #tmem_fp8_lhs, #ttng.tensor_memory>,
-@@ -1370,13 +1370,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+@@ -1380,13 +1380,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
        %pred: i1) {
      // CHECK-DAG: %[[ACC_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
      // CHECK-DAG: %[[A_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
@@ -347,7 +347,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
      ttng.tc_gen5_mma_scaled %a, %b, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e2m1 rhs = e5m2 :
         !ttg.memdesc<128x64xi8, #tmem_fp4_padded_lhs, #ttng.tensor_memory>,
-@@ -1406,13 +1406,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+@@ -1416,13 +1416,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
        %pred: i1) {
      // CHECK-DAG: %[[ACC_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
      // CHECK-DAG: %[[A_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
@@ -365,7 +365,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
      ttng.tc_gen5_mma_scaled %a, %b, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e2m1 rhs = e2m1 :
         !ttg.memdesc<128x128xi8, #tmem_fp4_dense_lhs, #ttng.tensor_memory>,
-@@ -1662,13 +1662,13 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
+@@ -1698,13 +1698,13 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
    // SM103-DAG: %[[K96_0:.+]] = llvm.mlir.constant(-1868561280 : i32)
    // SM103-DAG: %[[K96_96:.+]] = llvm.mlir.constant(-257948496 : i32)
    // SM103-DAG: %[[K64_192:.+]] = llvm.mlir.constant(1352664224 : i32)
@@ -383,7 +383,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // SM103-NOT: tcgen05.mma
    // CHECK: llvm.return
    tt.func @tc_gen5_mma_mxfp4_k256(
-@@ -1692,20 +1692,20 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
+@@ -1728,20 +1728,20 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
    // SM103-DAG: %[[K64_192:.+]] = llvm.mlir.constant(272630912 : i32)
    // SM103-DAG: %[[C16:.+]] = llvm.mlir.constant(16 : i32)
    // SM103-DAG: %[[C32:.+]] = llvm.mlir.constant(32 : i32)
@@ -411,7 +411,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // SM103-NOT: tcgen05.mma
    // CHECK: llvm.return
    tt.func @tc_gen5_mma_nvfp4_k512(
-@@ -1727,11 +1727,11 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
+@@ -1763,11 +1763,11 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
    // SM103-DAG: %[[ABS_HIGH:.+]] = llvm.mlir.constant(1074806848 : i32)
    // SM103-DAG: %[[ADDR_MASK:.+]] = llvm.mlir.constant(16383 : i64)
    // SM103-DAG: %[[SHIFT:.+]] = llvm.mlir.constant(16 : i64)
@@ -425,7 +425,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // SM103: %[[ADESC:.+]] = llvm.bitcast
    // SM103: %[[ANEXT:.+]] = llvm.bitcast
    // SM103: %[[AADDR:.+]] = llvm.and %[[ANEXT]], %[[ADDR_MASK]]
-@@ -1743,8 +1743,8 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
+@@ -1779,8 +1779,8 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
    // SM103: %[[BADDR:.+]] = llvm.and %[[BNEXT]], %[[ADDR_MASK]]
    // SM103: %[[BLEAD:.+]] = llvm.shl %[[BADDR]], %[[SHIFT]]
    // SM103: %[[BABS:.+]] = llvm.or %[[BDESC]], %[[BLEAD]]
@@ -439,7 +439,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/test/Conversion/tritongpu_to_llvm_rubin.mlir
 +++ b/test/Conversion/tritongpu_to_llvm_rubin.mlir
-@@ -9,7 +9,7 @@
+@@ -8,7 +8,7 @@
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107"} {
    // CHECK-LABEL: @tc_gen5_mma_block_scale_fp8_sm107
    // CHECK: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
@@ -448,7 +448,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // CHECK-NOT: tcgen05.mma
    tt.func @tc_gen5_mma_block_scale_fp8_sm107(%a: !ttg.memdesc<128x128xf8E4M3FN, #shared, #ttg.shared_memory>,
                         %b: !ttg.memdesc<64x128xi8, #shared1, #ttg.shared_memory>,
-@@ -42,7 +42,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
+@@ -41,7 +41,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107"} {
    // CHECK-LABEL: @tc_gen5_mma_block_scale_nvfp4_sm107_m256
    // CHECK-DAG: %[[DESC:.+]] = llvm.mlir.constant(136316040 : i32) : i32
@@ -457,7 +457,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // CHECK-NOT: tcgen05.mma
    tt.func @tc_gen5_mma_block_scale_nvfp4_sm107_m256(%a: !ttg.memdesc<256x128xi8, #shared, #ttg.shared_memory>,
                         %b: !ttg.memdesc<128x128xi8, #shared1, #ttg.shared_memory>,
-@@ -104,7 +104,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
+@@ -103,7 +103,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
  #tmem_scales1 = #ttng.tensor_memory_scales_encoding<CGALayout = [[1, 0]]>
  module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107", "ttg.threads-per-warp" = 32 : i32, "ttng.two-ctas" = true} {
    // CHECK-LABEL: @tc_gen5_mma_scaled_fp4_padded_shared_linear_a
@@ -466,7 +466,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // CHECK-NOT: tcgen05.mma
    tt.func @tc_gen5_mma_scaled_fp4_padded_shared_linear_a(
        %a: !ttg.memdesc<256x64xi8, #shared_fp4_padded_sl, #smem, mutable>,
-@@ -333,13 +333,13 @@ module attributes {"ttg.num-ctas" = 8 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
+@@ -332,13 +332,13 @@ module attributes {"ttg.num-ctas" = 8 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107"} {
    // CHECK-LABEL: @tc_gen5_mma_block_scale_ab_reuse
    // FP8 A takes twice the bytes of packed FP4 B, despite equal M/N tile sizes.
@@ -484,7 +484,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // CHECK-SAME: "r,l,l,r,r,r,b,b" %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %[[SC_ID]], %[[SC_A1]], %[[SC_B0]],
    // CHECK-NOT: tcgen05.mma
    tt.func @tc_gen5_mma_block_scale_ab_reuse(%a: !ttg.memdesc<256x64xf8E4M3FN, #shared, #ttg.shared_memory>,
-@@ -377,7 +377,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
+@@ -376,7 +376,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
    // UE5M3 uses i8 block16 scales, so split-K lowering must keep the UE5M3
    // scale kind in the descriptor for both K=128 sub-instructions of a
    // logical BLOCK_K=256 tile.
@@ -568,7 +568,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
-@@ -817,14 +817,14 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
+@@ -819,14 +819,14 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
    DotConversion dot;
    switch (mxfpInstKind) {
    case mxfpKind::mxf8f6f4:
@@ -587,7 +587,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      break;
    }
  
-@@ -888,15 +888,18 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
+@@ -890,15 +890,18 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                              int k) -> MMAInstOperands {
      auto [numRepM, numRepN, numRepK] = desc.repShape;
      int numRepKWords = ceil<int>(blockK, dot.mmaSizeK * mmasPerScaleWord);

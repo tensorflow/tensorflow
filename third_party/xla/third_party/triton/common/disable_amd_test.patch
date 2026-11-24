@@ -1,14 +1,21 @@
 We don't build triton's native amd backend in Triton. We could set this up,
-but as it's only one test, I've disabled it for now. Any tests that run on AMD,
+but as it's only a few tests, we've disabled them for now. Any tests that run on AMD
 would not be able to get run on presubmit anyway.
 
 --- a/python/test/unit/language/test_compile_only.py
 +++ b/python/test/unit/language/test_compile_only.py
-@@ -541,6 +541,8 @@ def test_signature_ordering():
+@@ -94,6 +94,7 @@
+     assert k.asm["cubin"] != b""
+ 
+ 
++@pytest.mark.skip("we don't build triton's native amd backend")
+ @pytest.mark.parametrize("arch", ["gfx942", "gfx950"])
+ @pytest.mark.parametrize("transpose", [False, True])
+ def test_compile_only_amd_static_lds_metadata(arch, transpose):
+@@ -565,6 +566,7 @@
      triton.compile(src=src, target=target)
  
  
-+import pytest
 +@pytest.mark.skip("we don't build triton's native amd backend")
  def test_fp8_compiles_for_multiple_architectures_hip():
      """

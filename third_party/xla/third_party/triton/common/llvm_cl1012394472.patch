@@ -2,7 +2,7 @@
 # ahead of LLVM commit 4d787f35aaba (PR #233398 / r643334) for cl/1012394472.
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -27,6 +27,7 @@
+@@ -31,6 +31,7 @@
  #include "mlir/Pass/Pass.h"
  #include "mlir/Pass/PassManager.h"
  #include "mlir/Support/FileUtilities.h"
@@ -10,7 +10,7 @@
  #include "mlir/Support/LLVM.h"
  #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
  #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
-@@ -526,7 +527,7 @@ void init_triton_ir(py::module_ &m) {
+@@ -552,7 +553,7 @@ void init_triton_ir(py::module_ &m) {
                                   Location loc) { self.addArgument(ty, loc); })
        .def("get_num_arguments", &Block::getNumArguments)
        .def("get_argument", &Block::getArgument)
@@ -19,7 +19,7 @@
        .def("move_before",
             [](Block &self, Block &dst) { self.moveBefore(&dst); })
        .def("insert_before", &Block::insertBefore)
-@@ -611,7 +612,7 @@ void init_triton_ir(py::module_ &m) {
+@@ -637,7 +638,7 @@ void init_triton_ir(py::module_ &m) {
              return self.getBody(idx);
            },
            ret::reference)
@@ -28,9 +28,9 @@
        .def("__str__",
             [](OpState &self) -> std::string {
               std::string str;
-@@ -723,7 +724,7 @@ void init_triton_ir(py::module_ &m) {
-   // dynamic_attr is used to transfer ownership of the MLIR context to the
-   // module
+@@ -748,7 +749,7 @@ void init_triton_ir(py::module_ &m) {
+ 
+   // dynamic_attr is used to attach attributes such as module.context in Python
    py::class_<ModuleOp, OpState>(m, "module", py::dynamic_attr())
 -      .def("dump", &ModuleOp::dump)
 +      .def("dump", [](ModuleOp &self) { self.print(llvm::errs()); })

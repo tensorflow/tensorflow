@@ -5,7 +5,7 @@ SM90+ ptxas miscompilation for cp.async with L2::cache_hint.
 
 --- a/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
-@@ -707,6 +707,9 @@ void LayoutRematerialization::rewriteSlice(
+@@ -708,6 +708,9 @@ void LayoutRematerialization::rewriteSlice(
    for (const auto &[value, encoding] : layout) {
      if (Value remat = existingRemats.lookup({value, encoding}))
        mapping.map(value, remat);
@@ -15,7 +15,7 @@ SM90+ ptxas miscompilation for cp.async with L2::cache_hint.
    }
  
    SetVector<Operation *> opsToRewrite;
-@@ -1237,6 +1240,8 @@ bool LayoutRematerialization::hoistConvertDotOperand(
+@@ -1238,6 +1241,8 @@ bool LayoutRematerialization::hoistConvertDotOperand(
      ConvertLayoutOp convertOp) {
    auto targetType = convertOp.getType();
    // The pass is targeted to MMA dot operands
@@ -24,7 +24,7 @@ SM90+ ptxas miscompilation for cp.async with L2::cache_hint.
  
    auto canBePipelined = [&](ConvertLayoutOp convertOp) {
      // FIXME: Check that the parent is a for loop
-@@ -1335,6 +1340,9 @@ bool LayoutRematerialization::hoistConvertDotOperand(
+@@ -1336,6 +1341,9 @@ bool LayoutRematerialization::hoistConvertDotOperand(
      mapping.map(loadOp->getResult(0), newConvertOp.getResult());
    }
  
@@ -37,7 +37,7 @@ SM90+ ptxas miscompilation for cp.async with L2::cache_hint.
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
-@@ -1138,7 +1138,8 @@ struct AsyncCopyGlobalToLocalOpConversion
+@@ -1139,7 +1139,8 @@ struct AsyncCopyGlobalToLocalOpConversion
          !llMask && !l2PolicyReg && !l2PrefetchSize && !threadPred;
  
      auto emitCpAsync = [&b, threadPred, ptrTy, l2PolicyReg, l2PrefetchSize,
@@ -47,7 +47,7 @@ SM90+ ptxas miscompilation for cp.async with L2::cache_hint.
                          hasMask =
                              bool(llMask)](RewriterBase &rewriter, Location loc,
                                            ArrayRef<Value> vals, Value shmemAddr,
-@@ -1175,6 +1176,24 @@ struct AsyncCopyGlobalToLocalOpConversion
+@@ -1176,6 +1177,24 @@ struct AsyncCopyGlobalToLocalOpConversion
          return {};
        }
  

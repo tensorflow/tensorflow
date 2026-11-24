@@ -130,7 +130,6 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mt::gpu::createTritonGPUReorderInstructions());
   pm->addPass(mt::createTritonLoopAwareCSE());
   pm->addPass(mlir::createSymbolDCEPass());
-  pm->addPass(ttng::createTritonGPUFenceInsertion({cuda_cc_as_int}));
   pm->addPass(ttng::createTritonNvidiaGPUMMALoweringPass());
   pm->addPass(
       ttng::createTritonNvidiaGPUHoistMBarrierLifecyclePass({cuda_cc_as_int}));
@@ -174,8 +173,6 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(ttng::createTritonGPUProxyFenceInsertion({cuda_cc_as_int}));
   pm->addPass(
       mt::createTritonNvidiaGPUMembar({cuda_cc_as_int, final_ptx_version}));
-  pm->addPass(ttng::createTritonNvidiaGPUTMemBarrierInsertionPass());
-  pm->addPass(ttng::createTritonNvidiaGPUOptimizeMBarrierArrivalsPass());
   // We could add a flag to XLA to optionally enable the following passes:
   // if "consan" in options.instrumentation_mode
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());

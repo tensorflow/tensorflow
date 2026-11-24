@@ -1,6 +1,6 @@
 --- a/bin/triton-llvm-opt.cpp
 +++ b/bin/triton-llvm-opt.cpp
-@@ -56,7 +56,7 @@ namespace {
+@@ -60,7 +60,7 @@ namespace {
  static std::function<Error(Module *)> makeOptimizingPipeline() {
    return [](Module *m) -> Error {
      PipelineTuningOptions tuningOptions;
@@ -12,7 +12,7 @@
 
 --- a/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
-@@ -370,9 +370,9 @@ static void disableLICM(LLVM::BrOp latchBr) {
+@@ -371,9 +371,9 @@ static void disableLICM(LLVM::BrOp latchBr) {
    Builder b(latchBr.getContext());
    MLIRContext *ctx = b.getContext();
    auto licmMD = LLVM::LoopLICMAttr::get(ctx, b.getBoolAttr(true), {});
@@ -28,7 +28,7 @@
 
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -980,7 +980,7 @@ void init_triton_ir(py::module_ &m) {
+@@ -1008,7 +1008,7 @@ void init_triton_ir(py::module_ &m) {
               mlir::LLVM::LoopAnnotationAttr la =
                   mlir::LLVM::LoopAnnotationAttr::get(
                       self.getBuilder().getContext(), {}, {}, {}, {}, {}, {},
@@ -55,7 +55,7 @@
    }
  };
  
-@@ -678,8 +678,8 @@ void init_triton_llvm(py::module_ &m) {
+@@ -679,8 +679,8 @@ void init_triton_llvm(py::module_ &m) {
          if (!arch.empty())
            targetMachine =
                createTargetMachine(mod, arch, enable_fp_fusion, features);

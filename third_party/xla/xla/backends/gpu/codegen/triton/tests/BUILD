@@ -132,6 +132,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:triton_kernel_source",
+        "//xla/backends/gpu/codegen/triton:triton_wrapper_result",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/analysis:symbolic_map",

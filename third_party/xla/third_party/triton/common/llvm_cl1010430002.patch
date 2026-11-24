@@ -1,35 +1,24 @@
+Updates Triton reciprocal division tests to accept rcp.approx.f32 after LLVM
+r643249 (llvm/llvm-project@0773782cb3ba140f6be8d031a0aaf40eb3fb2081, cl/1010131011,
+integrated in cl/1010605363). Remove once Triton integrates LLVM >= r643249.
+
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -1302,12 +1302,19 @@ def test_math_divide_op(expr, num_ctas, device):
- @pytest.mark.parametrize("enable_fp_fusion", [False, True])
- def test_fdiv_approx(approx, reciprocal, enable_fp_fusion, device):
+@@ -1337,7 +1337,9 @@
+     np.testing.assert_array_max_ulp(to_numpy(z_tri), expected, maxulp=maxulp)
+     if is_cuda() and not is_interpreter():
+         instruction = "rcp.approx.f32" if reciprocal else "div.approx.f32"
+-        assert (instruction if approx else "div.full.f32") in compiled.asm["ptx"]
++        expected_insts = ([instruction] if approx else
++                          (["div.full.f32", "rcp.approx.f32"] if reciprocal else ["div.full.f32"]))
++        assert any(inst in compiled.asm["ptx"] for inst in expected_insts)
+     if approx and is_hip() and not is_interpreter():
+         assert "llvm.amdgcn.fdiv.fast" in compiled.asm["llir"]
  
--    @triton.jit
--    def kernel(X, Y, Z, APPROX: tl.constexpr, RECIPROCAL: tl.constexpr, BLOCK: tl.constexpr):
--        offsets = tl.arange(0, BLOCK)
--        x = 1.0 if RECIPROCAL else tl.load(X + offsets)
--        y = tl.load(Y + offsets)
--        tl.store(Z + offsets, tl.fdiv(x, y, approx=APPROX))
-+  @triton.jit
-+  def kernel(
-+      X,
-+      Y,
-+      Z,
-+      APPROX: tl.constexpr,
-+      RECIPROCAL: tl.constexpr,
-+      BLOCK: tl.constexpr,
-+  ):
-+    offsets = tl.arange(0, BLOCK)
-+    x = 1.0 if RECIPROCAL else tl.load(X + offsets)
-+    y = tl.load(Y + offsets)
-+    tl.store(Z + offsets, tl.fdiv(x, y, approx=APPROX))
- 
-     rng = RandomState(0)
-     # Keep inputs and results normal for both approximate backends.
 
 --- a/test/Conversion/tritongpu_to_ptx.mlir
 +++ b/test/Conversion/tritongpu_to_ptx.mlir
-@@ -55,7 +55,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 2 : i32, "ttg.thr
+@@ -82,7 +82,7 @@
  
    tt.func public @reciprocal_f32(%ptr: !tt.ptr<f32>, %arg: f32) {
      // CHECK-LABEL: reciprocal_f32(

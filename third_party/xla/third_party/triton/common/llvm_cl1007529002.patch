@@ -2,7 +2,7 @@
 # for LLVM commit flipping -nvptx-allow-ftz-atomics default to false (cl/1007529002).
 --- a/test/Conversion/tritongpu_to_llvm.mlir
 +++ b/test/Conversion/tritongpu_to_llvm.mlir
-@@ -4703,9 +4703,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.tar
+@@ -4719,9 +4719,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.tar
    // CHECK-LABEL: @scalar_atomic_float_ops
    // CHECK-NOT: llvm.cond_br
    // CHECK: atom.global.gpu.relaxed.add.noftz.f16
@@ -67,7 +67,7 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/MemoryOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/MemoryOpToLLVM.cpp
-@@ -71,10 +71,12 @@ FailureOr<Value> emitSharedAtomicRMW(ConversionPatternRewriter &rewriter,
+@@ -70,10 +70,12 @@ FailureOr<Value> emitSharedAtomicRMW(ConversionPatternRewriter &rewriter,
      auto binOp = matchAtomicOp(rmwOp);
      if (!binOp)
        return failure();

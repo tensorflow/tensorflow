@@ -1,6 +1,6 @@
 --- a/include/triton/Analysis/AxisInfo.h
 +++ b/include/triton/Analysis/AxisInfo.h
-@@ -223,7 +223,8 @@ protected:
+@@ -227,7 +227,8 @@ protected:
    void visitNonControlFlowArguments(
        Operation *op, const RegionSuccessor & /*successor*/,
        ValueRange /*nonSuccessorInputs*/,
@@ -13,7 +13,7 @@
 
 --- a/lib/Analysis/AxisInfo.cpp
 +++ b/lib/Analysis/AxisInfo.cpp
-@@ -1280,7 +1280,8 @@ void AxisInfoAnalysis::setToEntryState(dataflow::Lattice<AxisInfo> *lattice) {
+@@ -1281,7 +1281,8 @@ void AxisInfoAnalysis::setToEntryState(dataflow::Lattice<AxisInfo> *lattice) {
  void AxisInfoAnalysis::visitNonControlFlowArguments(
      Operation *op, const RegionSuccessor & /*successor*/,
      ValueRange /*nonSuccessorInputs*/,

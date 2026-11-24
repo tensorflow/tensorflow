@@ -9,17 +9,13 @@ verify_nvmma_encoding.patch
 construction_order.patch
 include_functional.patch
 launcher.patch
-disable_amd_test.patch
-wgmma_pipeline_fix.patch
 nvdisasm_bin_path.patch
 assert_fail.patch
 check_null_encoding.patch
 test_cache_determinism_fix.patch
 mig_limits_pytests.patch
-allocator.patch
 convert_layout_heuristic.patch
 tmem_scale_padding_second_half.patch
-old_ptxas.patch
 tmemfix.patch
 fix_load_ops.patch
 llvm_cl996124567.patch
@@ -30,7 +26,6 @@ llvm_cl1004097735.patch
 llvm_cl1005025974.patch
 llvm_cl1007319458.patch
 llvm_cl1009668411.patch
-llvm_cl1010430002.patch
 llvm_cl1010504175.patch
 llvm_cl1012394472.patch
 llvm_cl1007529002.patch
@@ -38,5 +33,9 @@ llvm_cl1018422018.patch
 llvm_cl1020994322.patch
 llvm_cl1022503860.patch
 llvm_cl1022888649.patch
-allocate_warp_groups_stable_sort.patch
 amd_range_analysis.patch
+wgmma_pipeline_fix.patch
+disable_amd_test.patch
+llvm_cl1010430002.patch
+old_ptxas.patch
+allocator.patch

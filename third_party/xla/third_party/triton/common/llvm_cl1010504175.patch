@@ -3,14 +3,7 @@ ahead of LLVM commit 4d787f35aaba (PR #233398 / r643334) for cl/1010504175.
 
 --- a/third_party/nvidia/hopper/lib/Transforms/WarpSpecialization/WSDataPartition.cpp
 +++ b/third_party/nvidia/hopper/lib/Transforms/WarpSpecialization/WSDataPartition.cpp
-@@ -1,4 +1,6 @@
- #include "Utility.h"
-+#include "llvm/Support/raw_ostream.h"
-+#include "mlir/IR/OperationSupport.h"
- #include "mlir/Transforms/Passes.h"
- #include "mlir/Transforms/RegionUtils.h"
- #include "nvidia/hopper/include/Transforms/Passes.h"
-@@ -156,13 +158,15 @@ struct DataPartitionScheme {
+@@ -159,13 +159,15 @@ struct DataPartitionScheme {
        }
        assert(opPartitionDims.contains(op) && "missing partition dim");
        LDBG(" dim " << opPartitionDims.at(op) << " " << operand);
@@ -28,7 +21,7 @@ ahead of LLVM commit 4d787f35aaba (PR #233398 / r643334) for cl/1010504175.
          LDBG(" along dim ");
          for (auto &dim : op.second) {
            LDBG(dim << " ");
-@@ -173,8 +177,10 @@ struct DataPartitionScheme {
+@@ -176,8 +178,10 @@ struct DataPartitionScheme {
  
      if (!opsToSkip.empty()) {
        LDBG(" ops to skip\n");

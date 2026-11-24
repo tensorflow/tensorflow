@@ -1,6 +1,6 @@
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
-@@ -1,12 +1,12 @@
+@@ -1,6 +1,7 @@
  #include "Dialect/NVGPU/IR/Dialect.h"
  #include "PatternTritonGPUOpToLLVM.h"
  #include "TritonNVIDIAGPUToLLVM/Passes.h"
@@ -8,10 +8,4 @@
  #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
  #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
  #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
- #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
- #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
--#include "mlir/Dialect/Arith/Transforms/Passes.h"
- #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
- #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
- #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 

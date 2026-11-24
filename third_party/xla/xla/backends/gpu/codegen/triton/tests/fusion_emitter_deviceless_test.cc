@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,10 +25,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -761,6 +766,81 @@ ENTRY entry {
                                    gpu_backend_config.fusion_backend_config()
                                        .block_level_fusion_config()),
                                mlir_context));
+}
+
+TEST_F(TritonEmitterDevicelessTest, RocmAllocatesSharedMemoryStatically) {
+  constexpr absl::string_view kHloText = R"(
+gemm_fusion_dot_computation {
+  p0 = f16[256,256]{1,0} parameter(0)
+  p1 = f16[256,256]{1,0} parameter(1)
+  ROOT dot = f32[256,256]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={"sizes":["32"]}
+}
+
+ENTRY entry {
+  p0 = f16[256,256]{1,0} parameter(0)
+  p1 = f16[256,256]{1,0} parameter(1)
+  ROOT fusion = f32[256,256]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=gemm_fusion_dot_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "num_warps":"4",
+        "output_tiles":[{"sizes":["64","64"]}],
+        "num_ctas":1,
+        "num_stages":2,
+        "is_tma_allowed":false,
+        "is_warp_specialization_allowed":false}}}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  ASSERT_NE(fusion, nullptr);
+  ASSERT_OK_AND_ASSIGN(const auto gpu_backend_config,
+                       fusion->backend_config<GpuBackendConfig>());
+  const BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          gpu_backend_config.fusion_backend_config()
+              .block_level_fusion_config());
+
+  se::DeviceDescription dev_info = TestGpuDeviceInfo::AMDMI350DeviceInfo();
+  const llvm::Triple triple(amdgpu::TargetTriple());
+  const std::string data_layout = amdgpu::DataLayout();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  ASSERT_OK_AND_ASSIGN(
+      TritonWrapperResult result,
+      TritonWrapper("test_fn", *fusion, dev_info.gpu_compute_capability(),
+                    dev_info, block_level_parameters, triple, data_layout,
+                    mlir_context));
+
+  // Triton allocates LDS statically in `global_smem`, so dynamic shared memory
+  // requested at launch must be 0 to avoid double-allocating LDS.
+  EXPECT_EQ(result.shmem_bytes, 0);
+  auto llvm_module = std::move(result.kernel_source).thread_safe_module();
+  ASSERT_NE(llvm_module.getModuleUnlocked(), nullptr);
+  llvm::GlobalVariable* global_smem =
+      llvm_module.getModuleUnlocked()->getNamedGlobal("global_smem");
+  ASSERT_NE(global_smem, nullptr);
+  EXPECT_TRUE(global_smem->hasInternalLinkage());
+  EXPECT_EQ(global_smem->getAddressSpace(), 3);
+  ASSERT_TRUE(global_smem->getValueType()->isArrayTy());
+  EXPECT_GT(global_smem->getValueType()->getArrayNumElements(), 0);
+
+  // LowerTritonToLlvmDialect must still enforce the device LDS limit against
+  // the static `ttg.shared` allocation.
+  dev_info.set_shared_memory_per_block_optin(1);
+  EXPECT_THAT(
+      TritonWrapper("test_fn", *fusion, dev_info.gpu_compute_capability(),
+                    dev_info, block_level_parameters, triple, data_layout,
+                    mlir_context),
+      absl_testing::StatusIs(
+          absl::StatusCode::kResourceExhausted,
+          ::testing::HasSubstr("Shared memory size limit exceeded")));
 }
 
 }  // namespace

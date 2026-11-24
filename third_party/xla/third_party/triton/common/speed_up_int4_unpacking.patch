@@ -4,7 +4,7 @@ an early stage on the XLA side with further optimizations from nVidia #24 and
 
 --- a/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
-@@ -169,6 +169,19 @@ struct JoinOpConversion : public ConvertOpToLLVMPattern<JoinOp> {
+@@ -171,6 +171,19 @@ struct JoinOpConversion : public ConvertOpToLLVMPattern<JoinOp> {
      assert(lhsVals.size() == rhsVals.size());
      SmallVector<Value> joinedVals;
      joinedVals.resize(lhsVals.size() * 2);
