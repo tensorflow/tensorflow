@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
+#include "xla/pjrt/transpose_plan.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -77,17 +78,8 @@ constexpr int BenchmarkOuterBlockSize() {
   return std::max<int>(1, kMaxOuterBlockSizeBytes / (bs * sizeof(T)));
 }
 
-class TestTransposePlan : public TransposePlan {
- public:
-  using Loop = TransposePlan::Loop;
-  using TransposePlan::ChooseLoopOrder;
-  using TransposePlan::CoalesceLoops;
-  using TransposePlan::RemoveTrivialLoops;
-  using TransposePlan::set_inner_kernel_is_memcpy;
-};
-
 TEST(TransposeTest, ChooseLoopOrderInterleaving) {
-  using Loop = TestTransposePlan::Loop;
+  using Loop = transpose_internal::Loop;
   std::vector<Loop> loops;
   loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false,
                        /*dim_size=*/100,
@@ -100,9 +92,7 @@ TEST(TransposeTest, ChooseLoopOrderInterleaving) {
   loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/true, /*dim_size=*/100,
                        /*tile_size=*/10, /*lda=*/5, /*ldb=*/5});
 
-  TestTransposePlan plan;
-  plan.set_inner_kernel_is_memcpy(false);
-  plan.ChooseLoopOrder(loops);
+  transpose_internal::ChooseLoopOrder(loops, /*is_memcpy=*/false);
 
   // The test verifies that we order tile interiors after tile exteriors.
   ASSERT_EQ(loops.size(), 4);
@@ -117,7 +107,7 @@ TEST(TransposeTest, ChooseLoopOrderInterleaving) {
 }
 
 TEST(TransposeTest, ChooseLoopOrderHardConstraints) {
-  using Loop = TestTransposePlan::Loop;
+  using Loop = transpose_internal::Loop;
   std::vector<Loop> loops;
   // Dim 0: Exterior
   loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false,
@@ -138,9 +128,7 @@ TEST(TransposeTest, ChooseLoopOrderHardConstraints) {
                        /*dim_size=*/100,
                        /*tile_size=*/100, /*lda=*/50, /*ldb=*/50});
 
-  TestTransposePlan plan;
-  plan.set_inner_kernel_is_memcpy(true);
-  plan.ChooseLoopOrder(loops);
+  transpose_internal::ChooseLoopOrder(loops, /*is_memcpy=*/true);
 
   ASSERT_EQ(loops.size(), 4);
 
@@ -157,7 +145,7 @@ TEST(TransposeTest, ChooseLoopOrderHardConstraints) {
 }
 
 TEST(TransposeTest, RemoveTrivialLoops) {
-  using Loop = TestTransposePlan::Loop;
+  using Loop = transpose_internal::Loop;
   std::vector<Loop> loops;
   // Exterior loop, trivial (size 1)
   loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/1,
@@ -180,7 +168,7 @@ TEST(TransposeTest, RemoveTrivialLoops) {
                        /*is_inner_dim_in_a=*/true,
                        /*is_inner_dim_in_b=*/false});
 
-  TestTransposePlan::RemoveTrivialLoops(loops);
+  transpose_internal::RemoveTrivialLoops(loops);
 
   ASSERT_EQ(loops.size(), 3);
   // Expect loop 2 (Exterior non-trivial)
@@ -195,7 +183,7 @@ TEST(TransposeTest, RemoveTrivialLoops) {
 }
 
 TEST(TransposeTest, CoalesceLoops) {
-  using Loop = TestTransposePlan::Loop;
+  using Loop = transpose_internal::Loop;
   std::vector<Loop> loops;
 
   // Case 1: Compatible untiled loops
@@ -206,7 +194,7 @@ TEST(TransposeTest, CoalesceLoops) {
   loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/false, /*dim_size=*/5,
                        /*tile_size=*/1, /*lda=*/4, /*ldb=*/80});
 
-  TestTransposePlan::CoalesceLoops(loops);
+  transpose_internal::CoalesceLoops(loops);
 
   ASSERT_EQ(loops.size(), 1);
   EXPECT_EQ(loops[0].dim_size, 20);
@@ -222,7 +210,7 @@ TEST(TransposeTest, CoalesceLoops) {
   loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/false, /*dim_size=*/5,
                        /*tile_size=*/1, /*lda=*/4, /*ldb=*/80});
 
-  TestTransposePlan::CoalesceLoops(loops);
+  transpose_internal::CoalesceLoops(loops);
   EXPECT_EQ(loops.size(), 2);
 
   // Case 3: Compatible tiled interior
@@ -234,7 +222,7 @@ TEST(TransposeTest, CoalesceLoops) {
   loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/true, /*dim_size=*/100,
                        /*tile_size=*/4, /*lda=*/4, /*ldb=*/80});
 
-  TestTransposePlan::CoalesceLoops(loops);
+  transpose_internal::CoalesceLoops(loops);
   ASSERT_EQ(loops.size(), 1);
   EXPECT_EQ(loops[0].tile_size, 16);
   EXPECT_EQ(loops[0].tile_interior, true);
@@ -875,7 +863,6 @@ void ExecuteTestWithT(const TransposeTestCase& test, int parallelism,
   options.chunk_contiguity = chunk_contiguity;
   options.tile_padding = test.tile_padding;
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
-  VLOG(1) << plan->ToString();
 
   int64_t output_size_bytes =
       SizeOfTiledArray(plan->OutputDims(), test.output_tiling, sizeof(T));
@@ -2063,6 +2050,7 @@ TEST(TransposeTest, MemcpyParallelizationThreshold) {
 }
 
 TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
+  using Kind = transpose_internal::InnerKernelKind;
   struct SelectionCase {
     std::vector<int64_t> dims;
     std::vector<int64_t> permutation;
@@ -2070,114 +2058,105 @@ TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
     std::vector<int64_t> input_striding;
     std::vector<int64_t> input_tiling;
     std::vector<int64_t> output_tiling;
-    std::string expected_kernel;
+    Kind expected_kind;
+    int expected_k = 0;
   };
   const SelectionCase cases[] = {
-      {{3, 8}, {1, 0}, 1, {}, {}, {}, "inner_kernel=interleave(3)"},
-      {{3, 8}, {1, 0}, 2, {}, {}, {}, "inner_kernel=interleave(3)"},
-      {{3, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(3)"},
-      {{3, 8}, {1, 0}, 8, {}, {}, {}, "inner_kernel=interleave(3)"},
-      {{3, 8}, {1, 0}, 16, {}, {}, {}, "inner_kernel=interleave(3)"},
-      {{3, 7}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{8, 3}, {1, 0}, 1, {}, {}, {}, "inner_kernel=deinterleave(3)"},
-      {{8, 3}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(3)"},
-      {{8, 3}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave(3)"},
-      {{8, 3}, {1, 0}, 8, {}, {}, {}, "inner_kernel=deinterleave(3)"},
-      {{8, 3}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
-      {{7, 3}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{2, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(2)"},
-      {{5, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(5)"},
-      {{6, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(6)"},
-      {{7, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(7)"},
-      {{7, 8}, {1, 0}, 16, {}, {}, {}, "inner_kernel=interleave(7)"},
-      {{4, 8}, {1, 0}, 1, {}, {}, {}, "inner_kernel=interleave(4)"},
-      {{4, 8}, {1, 0}, 2, {}, {}, {}, "inner_kernel=interleave(4)"},
-      {{4, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(4)"},
-      {{4, 8}, {1, 0}, 8, {}, {}, {}, "inner_kernel=interleave(4)"},
-      {{4, 8}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
-      {{8, 16}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{8, 2}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave(2)"},
-      {{8, 2}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
-      {{8, 5}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave(5)"},
-      {{8, 6}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(6)"},
-      {{8, 6}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{8, 7}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(7)"},
-      {{8, 7}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{8, 4}, {1, 0}, 1, {}, {}, {}, "inner_kernel=deinterleave(4)"},
-      {{8, 4}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(4)"},
-      {{8, 4}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave(4)"},
-      {{8, 4}, {1, 0}, 8, {}, {}, {}, "inner_kernel=deinterleave(4)"},
-      {{8, 4}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
-      {{8, (int64_t{1} << 32) + 3},
-       {1, 0},
-       1,
-       {},
-       {},
-       {},
-       "inner_kernel=default"},
-      {{16, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{2, 3, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=interleave(6)"},
-      {{8, 2, 3}, {1, 2, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(6)"},
-      {{2, 2, 8}, {2, 0, 1}, 1, {}, {}, {}, "inner_kernel=interleave(4)"},
-      {{2, 2, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=interleave(4)"},
-      {{2, 2, 8}, {2, 0, 1}, 16, {}, {}, {}, "inner_kernel=default"},
-      {{2, 4, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{3, 2, 4}, {1, 2, 0}, 4, {}, {}, {}, "inner_kernel=interleave(3)"},
-      {{3, 256, 4}, {1, 2, 0}, 4, {}, {}, {}, "inner_kernel=interleave(3)"},
-      {{256, 4, 3}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=deinterleave(3)"},
-      {{3, 4, 16}, {2, 1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{16, 4, 3}, {2, 1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{3, 8}, {1, 0}, 4, {32, 4}, {}, {}, "inner_kernel=interleave(3)"},
-      {{3, 8}, {1, 0}, 4, {-32, 4}, {}, {}, "inner_kernel=interleave(3)"},
-      {{8, 3}, {1, 0}, 4, {12, 4}, {}, {}, "inner_kernel=deinterleave(3)"},
-      {{2, 8, 3},
-       {0, 2, 1},
-       4,
-       {-128, 12, 4},
-       {},
-       {},
-       "inner_kernel=deinterleave(3)"},
-      {{8, 3}, {1, 0}, 4, {32, 4}, {}, {}, "inner_kernel=default"},
-      {{8, 3}, {1, 0}, 4, {-32, 4}, {}, {}, "inner_kernel=default"},
+      {{3, 8}, {1, 0}, 1, {}, {}, {}, Kind::kInterleave, 3},
+      {{3, 8}, {1, 0}, 2, {}, {}, {}, Kind::kInterleave, 3},
+      {{3, 8}, {1, 0}, 4, {}, {}, {}, Kind::kInterleave, 3},
+      {{3, 8}, {1, 0}, 8, {}, {}, {}, Kind::kInterleave, 3},
+      {{3, 8}, {1, 0}, 16, {}, {}, {}, Kind::kInterleave, 3},
+      {{3, 7}, {1, 0}, 4, {}, {}, {}, Kind::kDefault, 0},
+      {{8, 3}, {1, 0}, 1, {}, {}, {}, Kind::kDeinterleave, 3},
+      {{8, 3}, {1, 0}, 2, {}, {}, {}, Kind::kDeinterleave, 3},
+      {{8, 3}, {1, 0}, 4, {}, {}, {}, Kind::kDeinterleave, 3},
+      {{8, 3}, {1, 0}, 8, {}, {}, {}, Kind::kDeinterleave, 3},
+      {{8, 3}, {1, 0}, 16, {}, {}, {}, Kind::kDefault, 0},
+      {{7, 3}, {1, 0}, 4, {}, {}, {}, Kind::kDefault, 0},
+      {{2, 8}, {1, 0}, 4, {}, {}, {}, Kind::kInterleave, 2},
+      {{5, 8}, {1, 0}, 4, {}, {}, {}, Kind::kInterleave, 5},
+      {{6, 8}, {1, 0}, 4, {}, {}, {}, Kind::kInterleave, 6},
+      {{7, 8}, {1, 0}, 4, {}, {}, {}, Kind::kInterleave, 7},
+      {{7, 8}, {1, 0}, 16, {}, {}, {}, Kind::kInterleave, 7},
+      {{4, 8}, {1, 0}, 1, {}, {}, {}, Kind::kInterleave, 4},
+      {{4, 8}, {1, 0}, 2, {}, {}, {}, Kind::kInterleave, 4},
+      {{4, 8}, {1, 0}, 4, {}, {}, {}, Kind::kInterleave, 4},
+      {{4, 8}, {1, 0}, 8, {}, {}, {}, Kind::kInterleave, 4},
+      {{4, 8}, {1, 0}, 16, {}, {}, {}, Kind::kDefault, 0},
+      {{8, 16}, {1, 0}, 4, {}, {}, {}, Kind::kDefault, 0},
+      {{8, 2}, {1, 0}, 4, {}, {}, {}, Kind::kDeinterleave, 2},
+      {{8, 2}, {1, 0}, 16, {}, {}, {}, Kind::kDefault, 0},
+      {{8, 5}, {1, 0}, 4, {}, {}, {}, Kind::kDeinterleave, 5},
+      {{8, 6}, {1, 0}, 2, {}, {}, {}, Kind::kDeinterleave, 6},
+      {{8, 6}, {1, 0}, 4, {}, {}, {}, Kind::kDefault, 0},
+      {{8, 7}, {1, 0}, 2, {}, {}, {}, Kind::kDeinterleave, 7},
+      {{8, 7}, {1, 0}, 4, {}, {}, {}, Kind::kDefault, 0},
+      {{8, 4}, {1, 0}, 1, {}, {}, {}, Kind::kDeinterleave, 4},
+      {{8, 4}, {1, 0}, 2, {}, {}, {}, Kind::kDeinterleave, 4},
+      {{8, 4}, {1, 0}, 4, {}, {}, {}, Kind::kDeinterleave, 4},
+      {{8, 4}, {1, 0}, 8, {}, {}, {}, Kind::kDeinterleave, 4},
+      {{8, 4}, {1, 0}, 16, {}, {}, {}, Kind::kDefault, 0},
+      {{8, (int64_t{1} << 32) + 3}, {1, 0}, 1, {}, {}, {}, Kind::kDefault, 0},
+      {{16, 8}, {1, 0}, 4, {}, {}, {}, Kind::kDefault, 0},
+      {{2, 3, 8}, {2, 0, 1}, 4, {}, {}, {}, Kind::kInterleave, 6},
+      {{8, 2, 3}, {1, 2, 0}, 2, {}, {}, {}, Kind::kDeinterleave, 6},
+      {{2, 2, 8}, {2, 0, 1}, 1, {}, {}, {}, Kind::kInterleave, 4},
+      {{2, 2, 8}, {2, 0, 1}, 4, {}, {}, {}, Kind::kInterleave, 4},
+      {{2, 2, 8}, {2, 0, 1}, 16, {}, {}, {}, Kind::kDefault, 0},
+      {{2, 4, 8}, {2, 0, 1}, 4, {}, {}, {}, Kind::kDefault, 0},
+      {{3, 2, 4}, {1, 2, 0}, 4, {}, {}, {}, Kind::kInterleave, 3},
+      {{3, 256, 4}, {1, 2, 0}, 4, {}, {}, {}, Kind::kInterleave, 3},
+      {{256, 4, 3}, {2, 0, 1}, 4, {}, {}, {}, Kind::kDeinterleave, 3},
+      {{3, 4, 16}, {2, 1, 0}, 4, {}, {}, {}, Kind::kDefault, 0},
+      {{16, 4, 3}, {2, 1, 0}, 4, {}, {}, {}, Kind::kDefault, 0},
+      {{3, 8}, {1, 0}, 4, {32, 4}, {}, {}, Kind::kInterleave, 3},
+      {{3, 8}, {1, 0}, 4, {-32, 4}, {}, {}, Kind::kInterleave, 3},
+      {{8, 3}, {1, 0}, 4, {12, 4}, {}, {}, Kind::kDeinterleave, 3},
+      {{2, 8, 3}, {0, 2, 1}, 4, {-128, 12, 4}, {}, {}, Kind::kDeinterleave, 3},
+      {{8, 3}, {1, 0}, 4, {32, 4}, {}, {}, Kind::kDefault, 0},
+      {{8, 3}, {1, 0}, 4, {-32, 4}, {}, {}, Kind::kDefault, 0},
       {{32, 224, 224, 3},
        {0, 3, 1, 2},
        4,
        {},
        {},
        {8, 128},
-       "inner_kernel=deinterleave(3)"},
+       Kind::kDeinterleave,
+       3},
       {{32, 3, 224, 224},
        {0, 2, 3, 1},
        4,
        {},
        {8, 128},
        {},
-       "inner_kernel=interleave(3)"},
-      {{6, 8}, {1, 0}, 4, {}, {}, {3}, "inner_kernel=interleave(6)"},
-      {{8, 6}, {1, 0}, 2, {}, {3}, {}, "inner_kernel=deinterleave(6)"},
-      {{7, 8}, {1, 0}, 4, {}, {}, {3}, "inner_kernel=default"},
-      {{8, 7}, {1, 0}, 4, {}, {3}, {}, "inner_kernel=default"},
+       Kind::kInterleave,
+       3},
+      {{6, 8}, {1, 0}, 4, {}, {}, {3}, Kind::kInterleave, 6},
+      {{8, 6}, {1, 0}, 2, {}, {3}, {}, Kind::kDeinterleave, 6},
+      {{7, 8}, {1, 0}, 4, {}, {}, {3}, Kind::kDefault, 0},
+      {{8, 7}, {1, 0}, 4, {}, {3}, {}, Kind::kDefault, 0},
   };
   for (const auto& tc : cases) {
-    TransposePlan::Options o;
+    transpose_internal::PlanOptions o;
     o.elem_size_in_bytes = tc.elem_size;
     o.dims = tc.dims;
     o.permutation = tc.permutation;
     if (!tc.input_striding.empty()) {
-      o.input_striding = TransposePlan::Striding{tc.input_striding};
+      o.input_striding = tc.input_striding;
     }
     if (!tc.input_tiling.empty()) {
-      o.input_tiling = TransposePlan::Tiling{tc.input_tiling};
+      o.input_tiling = tc.input_tiling;
     }
     if (!tc.output_tiling.empty()) {
-      o.output_tiling = TransposePlan::Tiling{tc.output_tiling};
+      o.output_tiling = tc.output_tiling;
     }
-    auto status_or_plan = TransposePlan::Create(o);
-    if (!status_or_plan.ok()) {
-      FAIL() << status_or_plan.status();
+    ASSERT_OK_AND_ASSIGN(transpose_internal::FlattenedPlan plan,
+                         transpose_internal::BuildTransposePlan(o));
+    EXPECT_EQ(plan.inner_kernel_kind, tc.expected_kind);
+    if (tc.expected_k != 0) {
+      EXPECT_EQ(plan.interleave_size, tc.expected_k);
     }
-    EXPECT_THAT((*status_or_plan)->ToString(),
-                testing::HasSubstr(tc.expected_kernel));
   }
 }
 

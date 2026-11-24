@@ -41,10 +41,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/lru_cache.h"
+#include "xla/pjrt/transpose_kernels.h"
 
 namespace xla {
-
-struct TransposeOp;
 
 class TransposePlan {
  public:
@@ -99,22 +98,6 @@ class TransposePlan {
     kPackSubbyte = 2,
   };
 
-  // The kernel used for the innermost (stride-1) dimensions of the plan.
-  enum class InnerKernelKind {
-    // Blocked transpose using TransposeMicroKernel.
-    kDefault,
-    // A and B have the same stride-1 dimension, so the inner loop is a memcpy.
-    kMemcpy,
-    // B's stride-1 dimension has a small size K and A's is large, each after
-    // being coalesced with any dimensions contiguous with it in both A and B:
-    // K rows of A, `lda` bytes apart, are merged element by element into one
-    // contiguous run of B, i.e. b[K * i + k] = a[k][i].
-    kInterleave,
-    // The reverse of kInterleave: one contiguous run of A is split into K rows
-    // of B, `ldb` bytes apart, i.e. b[k][i] = a[K * i + k].
-    kDeinterleave,
-  };
-
   // Requested contiguity of chunks.
   enum class ChunkContiguity {
     // We don't care about contiguity (default).
@@ -165,12 +148,9 @@ class TransposePlan {
     std::optional<std::variant<Tiling, Striding>> input_layout = std::nullopt;
   };
 
-  struct Plan;
-
   static absl::StatusOr<std::unique_ptr<TransposePlan>> Create(Options options);
 
-  TransposePlan();
-  ~TransposePlan();
+  ~TransposePlan() = default;
 
   // Executes the transposition.
   // `a` is the input array and `b` is the output array. The input and output
@@ -214,15 +194,12 @@ class TransposePlan {
     return max_output_chunk_size_bytes_;
   }
 
-  // Returns a human-readable description of the plan.
-  std::string ToString() const;
-
   size_t ElemSizeInBytes() const { return elem_size_in_bytes_; }
 
   // Input and output size, in number of elements. Ignores any input striding,
   // but accounts for tiling.
-  int64_t InputNumElems() const;
-  int64_t OutputNumElems() const;
+  int64_t InputNumElems() const { return input_num_elems_; }
+  int64_t OutputNumElems() const { return output_num_elems_; }
 
   absl::Span<int64_t const> InputDims() const { return original_a_dims_; }
   absl::Span<int64_t const> OutputDims() const { return original_b_dims_; }
@@ -232,111 +209,10 @@ class TransposePlan {
   // Returns the number of items of parallel work in the plan.
   int Parallelism() const { return chunk_ops_.size(); }
 
-  bool inner_kernel_is_memcpy() const {
-    return inner_kernel_kind_ == InnerKernelKind::kMemcpy;
-  }
-
- protected:
-  // Methods protected so they can be accessed by tests.
-
-  struct Loop {
-    // Dimension number in A from which this loop originated. This is mostly
-    // for debugging the plan.
-    int dim_in_a;
-
-    // If true, the loop iterates over the interior of a tiled dimension that
-    // may have a trailing partial tile.
-    // For an untiled dimension or a tiled dimension whose tile size evenly
-    // divides the dimension size, this is always false. For a tiled dimension
-    // with a trailing partial tile, we will have two loops: one over the tile
-    // exteriors and one over the tile interiors.
-    bool tile_interior;
-
-    // Size of the iteration space.
-    int64_t dim_size;
-
-    // Size of the tiles, if this a tiled dimension with a trailing partial
-    // tile.
-    // We do not set this for tiled dimensions without partial tiles, since in
-    // that case we can just use the dimension size, which affords more
-    // opportunities for loop optimizations.
-    int64_t tile_size;
-
-    int64_t lda;  // Stride in A for this loop.
-    int64_t ldb;  // Stride in B for this loop.
-
-    // Is this the innermost (stride 1) dimension in A or B? These dimensions
-    // are special for the kernels.
-    bool is_inner_dim_in_a;
-    bool is_inner_dim_in_b;
-
-    // Number of parallel threads to use for this loop.
-    int64_t parallelism = -1;
-
-    // The unit of work for this loop. For loops that are not the innermost
-    // dimension in A or B, this is 1. For the innermost dimension of a
-    // transpose kernel, it is the kernel size.
-    int64_t inc = 1;
-
-    // Iteration bounds for this chunk. Initially [0, full_iterations).
-    // After chunk splitting, each chunk's loops have narrowed bounds.
-    int64_t start = 0;  // Inclusive start of iteration range
-    int64_t end = 0;    // Exclusive end of iteration range
-
-    // Is this loop over a tiled dimension where the iteration space touches
-    // the partial tile at the end?
-    bool has_partial_tile = false;
-
-    // Is this loop which should remain contiguous to ensure the requested
-    // chunk contiguity?
-    // 0 = not contiguous
-    // 1 = boundary loop
-    // 2 = deep inner loop
-    int contiguity = 0;
-
-    bool operator==(const Loop& other) const;
-
-    std::string ToString() const;
-  };
-
-  // Exposed for testing.
-  static void RemoveTrivialLoops(std::vector<Loop>& loops);
-  static void CoalesceLoops(std::vector<Loop>& loops);
-
-  // Reorders loops to optimize for locality.
-  void ChooseLoopOrder(std::vector<Loop>& loop_order) const;
-
-  void set_inner_kernel_is_memcpy(bool is_memcpy) {
-    inner_kernel_kind_ =
-        is_memcpy ? InnerKernelKind::kMemcpy : InnerKernelKind::kDefault;
-  }
+  bool inner_kernel_is_memcpy() const { return inner_kernel_is_memcpy_; }
 
  private:
-  struct ChunkPlanBuilder;
-
-  // Performs plan initialization.
-  absl::Status Initialize();
-
-  Plan BuildChunkPlan(int chunk_id) const;
-
-  // Chooses a parallelism for each loop. Returns the number of separate chunks
-  // in the plan, and populates the `parallelism` field of each loop.
-  int ChooseParallelizationStrategy(std::vector<Loop>& loop_order) const;
-
-  // Identifies the innermost loops that should remain contiguous to achieve
-  // the requested chunk contiguity.
-  void IdentifyContiguousLoops(std::vector<Loop>& loop_order) const;
-
-  // Creates per-chunk loop vectors by splitting loop_order_ into per-chunk
-  // loops. Returns a vector of loop vectors, one per chunk. Each chunk's
-  // loops have their start/end bounds narrowed to represent that chunk's work.
-  static void PartitionLoops(
-      int num_dims, int num_chunks, const std::vector<Loop>& loop_order,
-      std::vector<std::vector<TransposePlan::Loop>>& result,
-      std::vector<int64_t>& input_chunk_iteration_offsets,
-      std::vector<int64_t>& output_chunk_iteration_offsets);
-
-  void ComputeChunkSizes();
+  TransposePlan() = default;
 
   void ExecuteChunkInternal(int chunk_id, const void* a, void* b,
                             bool input_is_global, bool output_is_global) const;
@@ -346,51 +222,22 @@ class TransposePlan {
       std::optional<absl::FunctionRef<void(std::function<void()>)>>
           schedule_work) const;
 
-  // Number of chunks requested.
-  int num_chunks_requested_ = 1;
-
   // Size of each element in bytes.
   int64_t elem_size_in_bytes_ = 0;
 
   // Number of elements in the input array.
   int64_t num_elems_ = 0;
 
+  // Input and output size, in number of elements. Ignores any input striding,
+  // but accounts for tiling.
+  int64_t input_num_elems_ = 0;
+  int64_t output_num_elems_ = 0;
+
   // Description of the transpose, before any optimizations such as coalescing
   // dimensions have been applied.
   absl::InlinedVector<int64_t, 4> original_a_dims_;
   absl::InlinedVector<int64_t, 4> original_a_strides_;
   std::vector<int64_t> original_b_dims_;
-
-  // Dimensions of the input array A.
-  absl::InlinedVector<int64_t, 4> a_dims_;
-  absl::InlinedVector<int64_t, 4> a_strides_;
-
-  // Dimensions of the output array B.
-  std::vector<int64_t> b_dims_;
-
-  // Dimension permutation to apply to form B. For each dimension of B, what is
-  // the corresponding dimension of A?
-  absl::InlinedVector<int64_t, 4> permutation_;
-
-  // Leading-dimension sizes (byte strides) of each dimension.
-  absl::InlinedVector<int64_t, 4> lda_;       // Strides for tiles
-  absl::InlinedVector<int64_t, 4> lda_tile_;  // Strides for tile interiors
-  absl::InlinedVector<int64_t, 4> ldb_;       // Strides for tiles
-  absl::InlinedVector<int64_t, 4> ldb_tile_;  // Strides for tile interiors
-
-  // Tile sizes in each dimension. Has size equal to the number of dimensions.
-  // A 1 entry means that dimension is not tiled.
-  absl::InlinedVector<int64_t, 4> a_tiling_;
-  absl::InlinedVector<int64_t, 4> b_tiling_;
-  bool a_is_tiled_ = false;
-  bool b_is_tiled_ = false;
-  bool is_identity_permutation_ = false;
-  // K for kInterleave and kDeinterleave. Placed here to fill padding.
-  int interleave_size_ = 0;
-
-  // Per-chunk loop nests. Each loop nest has its own start/end bounds
-  // representing one chunk of the work.
-  std::vector<std::vector<Loop>> chunk_loops_;
 
   // Per-chunk byte offsets and sizes into the input and output arrays.
   // `offset_bytes` are the physical offsets of the start of each chunk (minimum
@@ -415,41 +262,18 @@ class TransposePlan {
   // Flattened preorder plan ops per chunk (indexed by chunk_id).
   absl::InlinedVector<std::vector<TransposeOp>, 1> chunk_ops_;
 
-  // Which kernel handles the innermost (stride-1) dimensions.
-  InnerKernelKind inner_kernel_kind_ = InnerKernelKind::kDefault;
+  // Maximum per-chunk scratch buffer size in bytes (64-byte aligned). 0 means
+  // no scratch buffer is required.
+  int64_t scratch_size_ = 0;
 
-  // Size of the inner (microkernel) block size. This is the unit of work for
-  // our vectorized kernels.
-  int inner_block_elems_ = 1;
-  // Size of the outer (macrokernel) block size. This is the unit of work for
-  // cache blocking and need not be equal between input and output.
-  int outer_block_elems_a_ = 4;
-  int outer_block_elems_b_ = 4;
-
-  // Strides used by an inner transpose kernel. Unused for memcpy kernels.
-  int64_t sentinel_lda_ = -1;
-  int64_t sentinel_ldb_ = -1;
-
-  // Transformations to apply to the input before transposition.
-  // Currently the only supported transformation is EF57 conversion, which is
-  // a pair-of-floats extended precision representation used on TPU. We
-  // support fusing transformations with the transpose for two reasons:
-  // (a) it makes sense to fuse cheap computations with a memory-bandwidth
-  //     bound transformation, and
-  // (b) it allows us to support non-trivial striding.
-  Transformation transformation_ = Transformation::kNone;
   int bits_per_element_ = 0;
   // If the inner dim is not divisible by the packing ratio, we cannot
   // pack into the destination in parallel, so we fallback to transposing
   // into a temporary buffer and then packing into the destination.
   bool use_fallback_pack_ = false;
+  bool inner_kernel_is_memcpy_ = false;
 
-  ChunkContiguity chunk_contiguity_ = ChunkContiguity::kNone;
-  std::optional<uint8_t> tile_padding_ = std::nullopt;
-
-  // Maximum per-chunk scratch buffer size in bytes (64-byte aligned). 0 means
-  // no scratch buffer is required.
-  int64_t scratch_size_ = 0;
+  std::optional<uint8_t> tile_padding_;
 };
 
 struct TransposePlanCacheKey {
