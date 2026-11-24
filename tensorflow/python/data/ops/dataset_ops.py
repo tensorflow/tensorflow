@@ -1119,6 +1119,16 @@ class DatasetV2(
       TensorSpec(shape=(), dtype=tf.int64, name=None) vs.
       TensorSpec(shape=(), dtype=tf.string, name=None)
 
+    Repeatedly calling `concatenate` for a long list of datasets creates a
+    deeply nested pipeline, which can increase memory use. For a list of
+    datasets with compatible element specs, use `from_tensor_slices` and
+    `flat_map` to read them in list order:
+
+    >>> datasets = [a, b, tf.data.Dataset.range(8, 10)]
+    >>> ds = tf.data.Dataset.from_tensor_slices(datasets).flat_map(lambda ds: ds)
+    >>> list(ds.as_numpy_iterator())
+    [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
     Args:
       dataset: `Dataset` to be concatenated.
       name: (Optional.) A name for the tf.data operation.
