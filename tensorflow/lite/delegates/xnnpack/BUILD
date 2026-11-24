@@ -1742,6 +1742,30 @@ cc_test(
 )
 
 cc_test(
+    name = "odml_rms_norm_test",
+    srcs = ["odml_rms_norm_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
     name = "odml_sdpa_test",
     srcs = ["odml_sdpa_test.cc"],
     data = [

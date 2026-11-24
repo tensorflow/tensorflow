@@ -85,6 +85,7 @@ namespace {
 const float kConstantClampData = 0.f;
 
 constexpr char kOdmlSDPA[] = "odml.scaled_dot_product_attention";
+constexpr char kOdmlRmsNorm[] = "odml.rms_norm";
 
 // Use this to create a maybe unique_ptr that owns its data.
 auto kOwned = [](auto* v) { delete v; };
@@ -3448,6 +3449,12 @@ class Subgraph {
               subgraph, delegate, context, node_index, node, context->tensors,
               composite_params->attributes, composite_params->attributes_size,
               input_output_tensors);
+        } else if (strcmp(composite_params->name, kOdmlRmsNorm) == 0) {
+          return VisitRmsNormCompositeNode(
+              subgraph, logging_context, node_index, node, context->tensors,
+              context->tensors_size, composite_params->attributes,
+              composite_params->attributes_size, input_output_tensors,
+              enable_fp16);
         } else {
 #ifdef XNNPACK_DELEGATE_ENABLE_LOGGING
           TF_LITE_KERNEL_LOG(context,
@@ -6457,6 +6464,277 @@ class Subgraph {
         return kTfLiteError;
       }
     }
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitRmsNormCompositeNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors, size_t tensors_size,
+      const uint8_t* buffer, const size_t buffer_size,
+      const std::unordered_map<int, uint32_t>& input_output_tensors,
+      bool enable_fp16) {
+    TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
+        logging_context, node, 1, 2, 1, BuiltinOperator_STABLEHLO_COMPOSITE,
+        node_index));
+
+    const int input_id = node->inputs->data[0];
+    const int output_id = node->outputs->data[0];
+    if (input_id < 0 || static_cast<size_t>(input_id) >= tensors_size ||
+        output_id < 0 || static_cast<size_t>(output_id) >= tensors_size) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context, "invalid tensor index in odml.rms_norm operator #%d",
+          node_index);
+      return kTfLiteError;
+    }
+    const TfLiteTensor& input_tensor = tensors[input_id];
+    const TfLiteTensor& output_tensor = tensors[output_id];
+
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(logging_context, input_tensor,
+                                               input_id, node_index));
+    if (input_tensor.dims == nullptr || output_tensor.dims == nullptr) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context, "missing tensor shape in odml.rms_norm operator #%d",
+          node_index);
+      return kTfLiteError;
+    }
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorShape(logging_context, input_tensor, /*min_num_dims=*/1,
+                         /*max_num_dims=*/XNN_MAX_TENSOR_DIMS, input_id,
+                         BuiltinOperator_STABLEHLO_COMPOSITE, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(logging_context, output_tensor,
+                                               output_id, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorShape(logging_context, output_tensor, /*min_num_dims=*/1,
+                         /*max_num_dims=*/XNN_MAX_TENSOR_DIMS, output_id,
+                         BuiltinOperator_STABLEHLO_COMPOSITE, node_index));
+    if (input_tensor.type != output_tensor.type) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported mixed types in odml.rms_norm operator #%d", node_index);
+      return kTfLiteError;
+    }
+    if (!HaveSameShapes(&input_tensor, &output_tensor)) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "mismatching input and output shapes in odml.rms_norm operator #%d",
+          node_index);
+      return kTfLiteError;
+    }
+
+    const bool has_weight = node->inputs->size >= 2 &&
+                            node->inputs->data[1] != kTfLiteOptionalTensor;
+    if (has_weight) {
+      const int weight_id = node->inputs->data[1];
+      if (weight_id < 0 || static_cast<size_t>(weight_id) >= tensors_size) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "invalid weight tensor index (%d) in odml.rms_norm operator #%d",
+            weight_id, node_index);
+        return kTfLiteError;
+      }
+      const TfLiteTensor& weight_tensor = tensors[weight_id];
+      TF_LITE_ENSURE_STATUS(CheckTensorFloatType(logging_context, weight_tensor,
+                                                 weight_id, node_index));
+      if (weight_tensor.dims == nullptr) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "missing weight shape in odml.rms_norm operator #%d", node_index);
+        return kTfLiteError;
+      }
+      TF_LITE_ENSURE_STATUS(
+          CheckTensorShape(logging_context, weight_tensor, /*min_num_dims=*/1,
+                           /*max_num_dims=*/XNN_MAX_TENSOR_DIMS, weight_id,
+                           BuiltinOperator_STABLEHLO_COMPOSITE, node_index));
+      if (weight_tensor.type != input_tensor.type) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "unsupported mixed weight type in odml.rms_norm operator #%d",
+            node_index);
+        return kTfLiteError;
+      }
+      const int input_dims = NumDimensions(&input_tensor);
+      const int weight_dims = NumDimensions(&weight_tensor);
+      if (weight_dims > input_dims) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "unsupported weight rank (%d > %d) in odml.rms_norm operator #%d",
+            weight_dims, input_dims, node_index);
+        return kTfLiteError;
+      }
+      for (int i = 0; i < weight_dims; ++i) {
+        const int w_dim = SizeOfDimension(&weight_tensor, weight_dims - 1 - i);
+        const int in_dim = SizeOfDimension(&input_tensor, input_dims - 1 - i);
+        if (w_dim != 1 && w_dim != in_dim) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "incompatible weight shape in odml.rms_norm operator #%d",
+              node_index);
+          return kTfLiteError;
+        }
+      }
+    }
+
+    float epsilon = 1e-6f;
+    if (buffer != nullptr && buffer_size > 0) {
+      if (!flexbuffers::VerifyBuffer(buffer, buffer_size)) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "malformed attributes flexbuffer in odml.rms_norm operator #%d",
+            node_index);
+        return kTfLiteError;
+      }
+      const flexbuffers::Reference root =
+          flexbuffers::GetRoot(buffer, buffer_size);
+      if (!root.IsMap()) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context, "non-map attributes in odml.rms_norm operator #%d",
+            node_index);
+        return kTfLiteError;
+      }
+      const flexbuffers::Map flexbuffer_map = root.AsMap();
+      const flexbuffers::Reference eps_ref = flexbuffer_map["epsilon"];
+      if (!eps_ref.IsNull()) {
+        if (!eps_ref.IsNumeric()) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "non-numeric epsilon attribute in odml.rms_norm operator #%d",
+              node_index);
+          return kTfLiteError;
+        }
+        epsilon = eps_ref.AsFloat();
+        if (!std::isfinite(epsilon)) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "non-finite epsilon attribute in odml.rms_norm operator #%d",
+              node_index);
+          return kTfLiteError;
+        }
+      }
+    }
+
+    if (subgraph != nullptr) {
+      const uint32_t xnn_input_id = input_output_tensors.at(input_id);
+      const uint32_t xnn_output_id = input_output_tensors.at(output_id);
+      const xnn_datatype datatype =
+          (enable_fp16 || input_tensor.type == kTfLiteFloat16)
+              ? xnn_datatype_fp16
+              : xnn_datatype_fp32;
+
+      auto define_temp_tensor = [&](uint32_t* id, xnn_datatype type) {
+        return xnn_define_tensor_value(subgraph, type, /*num_dims=*/0,
+                                       /*dims=*/nullptr, /*data=*/nullptr,
+                                       XNN_INVALID_VALUE_ID, /*flags=*/0, id);
+      };
+
+      // Compute the variance reduction (square -> mean -> +eps -> rsqrt) in
+      // FP32 to preserve epsilon precision and avoid triggering XNNPACK's
+      // FP16->FP32 fallback cascade across the surrounding FP16 partition when
+      // XNNPACK fuses square+mean into static_mean_squared.
+      uint32_t norm_input_f32_id = xnn_input_id;
+      if (datatype == xnn_datatype_fp16) {
+        norm_input_f32_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            define_temp_tensor(&norm_input_f32_id, xnn_datatype_fp32));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_unary(subgraph, xnn_unary_convert, /*params=*/nullptr,
+                             xnn_input_id, norm_input_f32_id, /*flags=*/0));
+      }
+
+      // 1. x_sq = x * x
+      uint32_t x_sq_id = XNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                        define_temp_tensor(&x_sq_id, xnn_datatype_fp32));
+      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                        xnn_define_unary(subgraph, xnn_unary_square,
+                                         /*params=*/nullptr, norm_input_f32_id,
+                                         x_sq_id, /*flags=*/0));
+
+      // 2. mean_sq = mean(x_sq, axis=-1, keep_dims=true)
+      uint32_t mean_sq_id = XNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                        define_temp_tensor(&mean_sq_id, xnn_datatype_fp32));
+      const int64_t last_axis = input_tensor.dims->size - 1;
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_static_reduce_v2(subgraph, xnn_reduce_mean,
+                                      /*num_reduction_axes=*/1, &last_axis,
+                                      x_sq_id, mean_sq_id, XNN_FLAG_KEEP_DIMS));
+
+      // 3. eps = constant(epsilon) via clamp(kConstantClampData, eps, eps)
+      uint32_t eps_orig_id = XNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                        xnn_define_tensor_value(
+                            subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                            /*dims=*/nullptr, &kConstantClampData,
+                            XNN_INVALID_VALUE_ID, /*flags=*/0, &eps_orig_id));
+      uint32_t eps_id = XNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                        define_temp_tensor(&eps_id, xnn_datatype_fp32));
+      xnn_unary_params clamp_params;
+      clamp_params.clamp.min = epsilon;
+      clamp_params.clamp.max = epsilon;
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_unary(subgraph, xnn_unary_clamp, &clamp_params,
+                           eps_orig_id, eps_id, /*flags=*/0));
+
+      // 4. mean_eps = mean_sq + eps
+      uint32_t mean_eps_id = XNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                        define_temp_tensor(&mean_eps_id, xnn_datatype_fp32));
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_binary(subgraph, xnn_binary_add, /*params=*/nullptr,
+                            mean_sq_id, eps_id, mean_eps_id, /*flags=*/0));
+
+      // 5. inv_rms = rsqrt(mean_eps)
+      uint32_t inv_rms_f32_id = XNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                        define_temp_tensor(&inv_rms_f32_id, xnn_datatype_fp32));
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_unary(subgraph, xnn_unary_reciprocal_square_root,
+                           /*params=*/nullptr, mean_eps_id, inv_rms_f32_id,
+                           /*flags=*/0));
+
+      uint32_t inv_rms_id = inv_rms_f32_id;
+      if (datatype == xnn_datatype_fp16) {
+        inv_rms_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          define_temp_tensor(&inv_rms_id, xnn_datatype_fp16));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_unary(subgraph, xnn_unary_convert, /*params=*/nullptr,
+                             inv_rms_f32_id, inv_rms_id, /*flags=*/0));
+      }
+
+      // 6. out = x * inv_rms [* weight]
+      if (!has_weight) {
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_binary(subgraph, xnn_binary_multiply, /*params=*/nullptr,
+                              xnn_input_id, inv_rms_id, xnn_output_id,
+                              /*flags=*/0));
+      } else {
+        uint32_t norm_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          define_temp_tensor(&norm_id, datatype));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_binary(subgraph, xnn_binary_multiply, /*params=*/nullptr,
+                              xnn_input_id, inv_rms_id, norm_id, /*flags=*/0));
+        const uint32_t xnn_weight_id =
+            input_output_tensors.at(node->inputs->data[1]);
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_binary(subgraph, xnn_binary_multiply, /*params=*/nullptr,
+                              norm_id, xnn_weight_id, xnn_output_id,
+                              /*flags=*/0));
+      }
+    }
+
     return kTfLiteOk;
   }
 
