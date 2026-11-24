@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -37,6 +38,13 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+
+// The GPU delegates represent tensors as 4-D BHWC, so an op over a higher-rank
+// tensor is not delegated. There is no shared constant for this; it follows
+// from `ExtractTensorShape` in
+// lite/delegates/gpu/common/model_builder_helper.cc and its ML Drift
+// counterpart.
+constexpr int kMaxGpuRank = 4;
 
 // Helper to squeeze a 1D constant (shape/begin/size) given squeezed indices.
 ElementsAttr SqueezeConstantAttr(ElementsAttr attr,
@@ -428,6 +436,87 @@ struct ReduceBatchMatMulRank : public OpRewritePattern<BatchMatMulOp> {
 
     rewriter.replaceOpWithNewOp<ReshapeOp>(bmm_op, out_ty, new_bmm,
                                            out_shape_const);
+    return success();
+  }
+};
+
+// Runs a FullyConnected over a high-rank input in two dimensions.
+// Pattern: FullyConnected(X[d0, ..., dn-1, K], W[N, K]) -> [d0, ..., dn-1, N]
+// Becomes: Reshape(FullyConnected(Reshape(X, [M, K]), W), [d0, ..., dn-1, N])
+// with M = d0 * ... * dn-1.
+//
+// FullyConnected contracts the trailing K elements of the input (its last
+// dimension with keep_num_dims, possibly several dimensions without), so
+// flattening the rest does not change the computation. The input of such an
+// op is usually a reshape itself (e.g. the window partition of a Swin block),
+// which FuseConsecutiveReshapes then folds with the new one so the high-rank
+// tensor disappears entirely.
+struct ReduceFullyConnectedRank : public OpRewritePattern<FullyConnectedOp> {
+  using OpRewritePattern<FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(FullyConnectedOp fc_op,
+                                PatternRewriter& rewriter) const override {
+    if (fc_op.getNumResults() != 1) return failure();
+    if (fc_op.getWeightsFormat() != "DEFAULT") return failure();
+    auto input_ty = dyn_cast<RankedTensorType>(fc_op.getInput().getType());
+    auto filter_ty = dyn_cast<RankedTensorType>(fc_op.getFilter().getType());
+    auto out_ty = dyn_cast<RankedTensorType>(fc_op.getResult(0).getType());
+    if (!input_ty || !filter_ty || !out_ty || !input_ty.hasStaticShape() ||
+        !filter_ty.hasStaticShape() || !out_ty.hasStaticShape()) {
+      return failure();
+    }
+    if (input_ty.getRank() <= kMaxGpuRank || filter_ty.getRank() != 2) {
+      return failure();
+    }
+
+    // The filter is [N, K]; the sizes come from it rather than from the input
+    // and output, whose last dimensions need not equal K and N.
+    const int64_t n = filter_ty.getDimSize(0);
+    const int64_t k = filter_ty.getDimSize(1);
+    if (n <= 0 || k <= 0 || input_ty.getNumElements() % k != 0) {
+      return failure();
+    }
+    const int64_t m = input_ty.getNumElements() / k;
+    // Compare by division rather than `m * n`, which could overflow int64.
+    if (m <= 0 || out_ty.getNumElements() % n != 0 ||
+        out_ty.getNumElements() / n != m) {
+      return failure();
+    }
+    // The shapes become i32 reshape constants.
+    if (!llvm::isInt<32>(input_ty.getNumElements()) ||
+        !llvm::isInt<32>(out_ty.getNumElements())) {
+      return failure();
+    }
+
+    auto shape_const = [&](ArrayRef<int64_t> shape) -> Value {
+      SmallVector<int32_t, 6> values;
+      for (int64_t d : shape) values.push_back(static_cast<int32_t>(d));
+      auto type = RankedTensorType::get({static_cast<int64_t>(values.size())},
+                                        rewriter.getI32Type());
+      return rewriter.create<ConstOp>(fc_op.getLoc(), type,
+                                      DenseIntElementsAttr::get(type, values));
+    };
+
+    // Run the FullyConnected on the input flattened to [M, K].
+    auto flat_in_ty = RankedTensorType::get({m, k}, input_ty.getElementType());
+    Value flat_in = rewriter.create<ReshapeOp>(
+        fc_op.getLoc(), flat_in_ty, fc_op.getInput(), shape_const({m, k}));
+    auto flat_out_ty = RankedTensorType::get({m, n}, out_ty.getElementType());
+    auto new_fc = rewriter.create<FullyConnectedOp>(
+        fc_op.getLoc(), ArrayRef<Type>{flat_out_ty}, flat_in, fc_op.getFilter(),
+        fc_op.getBias(), fc_op.getFusedActivationFunctionAttr(),
+        fc_op.getWeightsFormatAttr(), fc_op.getKeepNumDimsAttr(),
+        fc_op.getAsymmetricQuantizeInputsAttr());
+    // Keep e.g. `tfl.quant_spec`, which the positional builder does not copy.
+    new_fc->setDiscardableAttrs(fc_op->getDiscardableAttrDictionary());
+
+    // Without keep_num_dims the result was [M, N] already.
+    if (out_ty == flat_out_ty) {
+      rewriter.replaceOp(fc_op, new_fc.getResult(0));
+      return success();
+    }
+    rewriter.replaceOpWithNewOp<ReshapeOp>(fc_op, out_ty, new_fc.getResult(0),
+                                           shape_const(out_ty.getShape()));
     return success();
   }
 };
@@ -1282,6 +1371,7 @@ class RankReductionPass
     // patterns.add<LiftReshapeThroughBroadcastTo>(ctx);
     patterns.add<ReduceTransposeRank>(ctx);
     patterns.add<ReduceBatchMatMulRank>(ctx);
+    patterns.add<ReduceFullyConnectedRank>(ctx);
     patterns.add<ReduceBroadcastToRank>(ctx);
     patterns.add<ReduceReductionRank<MeanOp>>(ctx);
     patterns.add<ReduceReductionRank<SumOp>>(ctx);
