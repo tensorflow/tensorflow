@@ -36,6 +36,10 @@ cc_library(
         "ffi.cc",
         "//xla/ffi/api:all_headers",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//xla/ffi/api:ffi",

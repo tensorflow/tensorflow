@@ -1159,7 +1159,11 @@ cc_library(
         "ptx_compiler.h",
         "ptx_compiler_impl.cc",
     ],
-    tags = ["manual"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "manual",
+    ],
     deps = [
         ":compilation_provider",
         ":cuda_compute_capability",
@@ -1225,6 +1229,7 @@ xla_cc_test(
     srcs = ["ptx_compiler_test.cc"],
     tags = [
         "cuda-only",
+        "gpu",
         "nomsan",
     ],
     deps = [
