@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 struct PLUGIN_Profiler {
@@ -32,6 +33,9 @@ struct PLUGIN_Profiler {
   size_t byte_size;
   std::unique_ptr<tsl::profiler::ProfilerInterface> impl;
   bool stopped;
+  // Held from Start to Stop (or Destroy), so that runtime code linked into
+  // the plugin sees tsl::profiler::ProfilerLock::HasActiveSession().
+  tsl::profiler::ProfilerLock profiler_lock;
 };
 
 struct PLUGIN_Profiler_ConsumeResult {

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/profiler/plugin/plugin_metadata.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/profiler_collection.h"
 #include "tsl/profiler/lib/profiler_factory.h"
+#include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -63,8 +65,18 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_Start(PLUGIN_Profiler_Start_Args* args) {
     VLOG(1) << "Profiler is already started";
     return nullptr;
   }
+  // The plugin binary has its own copy of the profiler lock; hold it while
+  // profiling so that HasActiveSession() is true inside the plugin.
+  absl::StatusOr<tsl::profiler::ProfilerLock> profiler_lock =
+      tsl::profiler::ProfilerLock::Acquire();
+  if (!profiler_lock.ok()) {
+    VLOG(1) << "Did not acquire the profiler lock: " << profiler_lock.status();
+  }
   args->profiler->byte_size = 0;
   PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->Start());
+  if (profiler_lock.ok()) {
+    args->profiler->profiler_lock = *std::move(profiler_lock);
+  }
   AddPluginMetadata();
   args->profiler->stopped = false;
   return nullptr;
@@ -77,6 +89,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_Stop(PLUGIN_Profiler_Stop_Args* args) {
     return nullptr;
   }
   PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->Stop());
+  args->profiler->profiler_lock.ReleaseIfActive();
   args->profiler->stopped = true;
   return nullptr;
 }

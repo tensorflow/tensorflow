@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/profiler/plugin/plugin_tracer.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -84,8 +86,8 @@ static auto register_test_tracer = [] {
   return 0;
 }();
 
-TEST(PluginTracerTest, TestPluginWithPluginTracer) {
-  PLUGIN_Profiler_Api api;
+static PLUGIN_Profiler_Api CreateProfilerApi() {
+  PLUGIN_Profiler_Api api{};
   api.create = &PLUGIN_Profiler_Create;
   api.start = &PLUGIN_Profiler_Start;
   api.stop = &PLUGIN_Profiler_Stop;
@@ -98,6 +100,11 @@ TEST(PluginTracerTest, TestPluginWithPluginTracer) {
   api.error_message = &PLUGIN_Profiler_Error_Message;
   api.error_get_code = &PLUGIN_Profiler_Error_GetCode;
   api.struct_size = PLUGIN_Profiler_Api_STRUCT_SIZE;
+  return api;
+}
+
+TEST(PluginTracerTest, TestPluginWithPluginTracer) {
+  PLUGIN_Profiler_Api api = CreateProfilerApi();
 
   // The options would be emmited by the tracer in the XPlane Stat which can be
   // checked to see if they are the same. This ensures that the tracer is
@@ -130,6 +137,50 @@ TEST(PluginTracerTest, TestPluginWithPluginTracer) {
   ASSERT_TRUE(stat.has_value());
   EXPECT_EQ(stat->Name(), "ProfileOptions");
   EXPECT_EQ(stat->StrOrRefValue(), options.SerializeAsString());
+}
+
+TEST(PluginTracerTest, StartHoldsProfilerLockUntilStop) {
+  PLUGIN_Profiler_Api api = CreateProfilerApi();
+  PluginTracer tracer(&api, ProfileOptions());
+
+  EXPECT_FALSE(tsl::profiler::ProfilerLock::HasActiveSession());
+  ASSERT_TRUE(tracer.Start().ok());
+  EXPECT_TRUE(tsl::profiler::ProfilerLock::HasActiveSession());
+  ASSERT_TRUE(tracer.Stop().ok());
+  EXPECT_FALSE(tsl::profiler::ProfilerLock::HasActiveSession());
+}
+
+TEST(PluginTracerTest, DestroyReleasesProfilerLock) {
+  PLUGIN_Profiler_Api api = CreateProfilerApi();
+  {
+    PluginTracer tracer(&api, ProfileOptions());
+    ASSERT_TRUE(tracer.Start().ok());
+    EXPECT_TRUE(tsl::profiler::ProfilerLock::HasActiveSession());
+  }
+  EXPECT_FALSE(tsl::profiler::ProfilerLock::HasActiveSession());
+}
+
+TEST(PluginTracerTest, StartWorksWhileAnotherSessionHoldsTheLock) {
+  absl::StatusOr<tsl::profiler::ProfilerLock> lock =
+      tsl::profiler::ProfilerLock::Acquire();
+  ASSERT_TRUE(lock.ok());
+  PLUGIN_Profiler_Api api = CreateProfilerApi();
+  PluginTracer tracer(&api, ProfileOptions());
+
+  ASSERT_TRUE(tracer.Start().ok());
+  EXPECT_TRUE(tsl::profiler::ProfilerLock::HasActiveSession());
+  ASSERT_TRUE(tracer.Stop().ok());
+  // Stop must not release a lock the tracer does not own.
+  EXPECT_TRUE(tsl::profiler::ProfilerLock::HasActiveSession());
+
+  // A profiler cannot be restarted (ProfilerController), so use a new one.
+  lock->ReleaseIfActive();
+  EXPECT_FALSE(tsl::profiler::ProfilerLock::HasActiveSession());
+  PluginTracer second_tracer(&api, ProfileOptions());
+  ASSERT_TRUE(second_tracer.Start().ok());
+  EXPECT_TRUE(tsl::profiler::ProfilerLock::HasActiveSession());
+  ASSERT_TRUE(second_tracer.Stop().ok());
+  EXPECT_FALSE(tsl::profiler::ProfilerLock::HasActiveSession());
 }
 
 }  // namespace profiler
