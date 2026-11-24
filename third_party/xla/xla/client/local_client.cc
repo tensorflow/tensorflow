@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -71,8 +72,10 @@ absl::StatusOr<StreamPool::Ptr> BorrowStreamForDevice(int device_ordinal,
 
 LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
                                  Backend* backend,
-                                 ExecutableBuildOptions build_options)
+                                 ExecutableBuildOptions build_options,
+                                 std::shared_ptr<const HloProto> snapshot_hlo)
     : executable_(std::move(executable)),
+      snapshot_hlo_(std::move(snapshot_hlo)),
       backend_(backend),
       build_options_(std::move(build_options)) {
   CHECK_GE(build_options_.device_ordinal(), 0)
@@ -258,10 +261,13 @@ absl::StatusOr<ExecutionOutput> LocalExecutable::Run(
 
 static std::shared_ptr<HloSnapshot> DumpArguments(
     const Backend* backend, const Executable* executable,
+    const HloProto* snapshot_hlo,
     const absl::Span<const ShapedBuffer* const> arguments, se::Stream* stream) {
   auto snapshot = std::make_shared<HloSnapshot>();
   snapshot->set_execution_platform(backend->platform()->Name());
-  *snapshot->mutable_hlo() = *executable->hlo_proto();
+  *snapshot->mutable_hlo() = snapshot_hlo != nullptr
+                                 ? *snapshot_hlo
+                                 : MakeHloProtoForSnapshot(*executable);
   for (const ShapedBuffer* arg : arguments) {
     auto literal = std::make_shared<Literal>(arg->on_host_shape());
     backend->transfer_manager()->TransferLiteralFromDevice(
@@ -310,8 +316,9 @@ absl::StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
   se::Stream* stream = run_options.stream();
 
   std::shared_ptr<HloSnapshot> snapshot;
-  if (executable_->dumping_snapshot()) {
-    snapshot = DumpArguments(backend_, executable_.get(), arguments, stream);
+  if (DumpingHloSnapshots(*executable_)) {
+    snapshot = DumpArguments(backend_, executable_.get(), snapshot_hlo_.get(),
+                             arguments, stream);
   }
 
   ABSL_ASSIGN_OR_RETURN(ScopedShapedBuffer outputs,
@@ -351,7 +358,7 @@ absl::StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
   se::Stream* stream = run_options.stream();
 
   std::shared_ptr<HloSnapshot> snapshot;
-  if (executable_->dumping_snapshot()) {
+  if (DumpingHloSnapshots(*executable_)) {
     std::vector<ShapedBuffer> shaped_buffers;
     std::vector<const ShapedBuffer*> shaped_buffer_ptrs;
     shaped_buffers.reserve(arguments.size());
@@ -362,8 +369,8 @@ absl::StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
       shaped_buffer_ptrs.push_back(&shaped_buffers.back());
     }
 
-    snapshot =
-        DumpArguments(backend_, executable_.get(), shaped_buffer_ptrs, stream);
+    snapshot = DumpArguments(backend_, executable_.get(), snapshot_hlo_.get(),
+                             shaped_buffer_ptrs, stream);
   }
 
   ABSL_ASSIGN_OR_RETURN(ExecutionOutput outputs,
@@ -447,21 +454,24 @@ LocalClient::Compile(const XlaComputation& computation,
                      const ExecutableBuildOptions& options) {
   ABSL_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
                    UpdateBuildOptions(options, default_device_ordinal()));
-  ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
-                   local_service_->CompileExecutables(
-                       computation, argument_layouts, updated_options));
+  std::vector<std::unique_ptr<HloProto>> snapshot_hlos;
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<Executable>> executables,
+      local_service_->CompileExecutables(computation, argument_layouts,
+                                         updated_options, &snapshot_hlos));
 
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
   local_executables.reserve(executables.size());
 
-  for (auto& executable : executables) {
+  for (size_t i = 0; i < executables.size(); ++i) {
+    std::unique_ptr<Executable>& executable = executables[i];
     if (executable->has_module()) {
       ABSL_RETURN_IF_ERROR(executable->DumpExecutableIfEnabled(
           updated_options, executable->module().config().debug_options()));
     }
     local_executables.push_back(std::make_unique<LocalExecutable>(
         std::move(executable), local_service_->mutable_backend(),
-        updated_options));
+        updated_options, std::move(snapshot_hlos[i])));
   }
 
   return std::move(local_executables);

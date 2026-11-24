@@ -145,6 +145,7 @@ cc_library(
         "//xla/service:computation_layout",
         "//xla/service:dump",
         "//xla/service:executable",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:local_service",
         "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
