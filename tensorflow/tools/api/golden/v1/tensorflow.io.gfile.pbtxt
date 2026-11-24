@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "glob"
-    argspec: "args=[\'pattern\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'pattern\', \'recursive\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "isdir"

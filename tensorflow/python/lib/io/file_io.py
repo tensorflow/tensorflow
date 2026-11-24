@@ -25,7 +25,7 @@ before passing them to these functions.
 import binascii
 import io
 import os
-from posixpath import join as urljoin
+import posixpath
 import uuid
 
 import six
@@ -409,11 +409,13 @@ def write_string_to_file(filename, file_content):
 
 
 @tf_export(v1=["gfile.Glob"])
-def get_matching_files(filename):
+def get_matching_files(filename, recursive=False):
   """Returns a list of files that match the given pattern(s).
 
   Args:
     filename: string or iterable of strings. The glob pattern(s).
+    recursive: If True, a complete `**` path component matches zero or more
+      directory levels. See `get_matching_files_v2` for details.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -422,11 +424,11 @@ def get_matching_files(filename):
   *  errors.OpError: If there are filesystem / directory listing errors.
   *  errors.NotFoundError: If pattern to be matched is an invalid directory.
   """
-  return get_matching_files_v2(filename)
+  return get_matching_files_v2(filename, recursive=recursive)
 
 
 @tf_export("io.gfile.glob")
-def get_matching_files_v2(pattern):
+def get_matching_files_v2(pattern, recursive=False):
   r"""Returns a list of files that match the given pattern(s).
 
   The patterns are defined as strings. Supported patterns are defined
@@ -467,8 +469,36 @@ def get_matching_files_v2(pattern):
   (../../../core/platform/file_system.h)
   for implementation details.
 
+  Note: With `recursive=True`, `**` expansion follows the semantics of
+  `glob.glob(..., recursive=True)`:
+
+  * Hidden entries (names starting with `.`) are skipped while expanding `**`,
+    and wildcard components in a pattern containing `**` do not match hidden
+    names unless the component itself starts with `.`.
+  * A terminal `**` matches files as well as directories, and includes the
+    matched directory itself with a trailing separator. A trailing separator
+    (`a/**/`) restricts the results to directories.
+  * Match order is unspecified, and multiple `**` components may yield
+    duplicate results.
+  * Only patterns containing a complete `**` component apply this hidden-name
+    rule. Patterns without one keep the native matcher behavior, where `*` can
+    match names starting with `.`.
+
+  Matching uses the registered filesystem's directory listing API, so remote
+  filesystems such as `ram://` are supported, at the cost of one directory
+  listing per traversed level. Directory symlinks are followed; there is no
+  cycle detection.
+
+  On Windows, local paths accept both `/` and `\` and return native `\`
+  separators; URI patterns keep their own separator semantics, and
+  drive-relative paths such as `C:foo` are preserved.
+
   Args:
     pattern: string or iterable of strings. The glob pattern(s).
+    recursive: If True, a complete `**` path component matches zero or more
+      directory levels (e.g. `a/**/b` matches `a/b`). Patterns without a
+      complete `**` component are matched exactly as with `recursive=False`.
+      Defaults to False.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -477,6 +507,10 @@ def get_matching_files_v2(pattern):
     errors.OpError: If there are filesystem / directory listing errors.
     errors.NotFoundError: If pattern to be matched is an invalid directory.
   """
+  if recursive:
+    patterns = [pattern] if isinstance(pattern, six.string_types) else pattern
+    return [match for single_pattern in patterns
+            for match in _get_matching_files_recursive(single_pattern)]
   if isinstance(pattern, six.string_types):
     return [
         # Convert the filenames to string from bytes.
@@ -492,6 +526,112 @@ def get_matching_files_v2(pattern):
         for matching_filename in _pywrap_file_io.GetMatchingFiles(
             compat.as_bytes(single_filename))
     ]
+
+
+def _get_matching_files_recursive(pattern):
+  """Expands globstars using registered filesystem operations."""
+  windows_paths = os.name == "nt" and "://" not in pattern[1:]
+
+  def normalize(path):
+    return path.replace("\\", "/") if windows_paths else path
+
+  drive, path = os.path.splitdrive(pattern) if windows_paths else ("", pattern)
+  drive = normalize(drive)
+  parts = normalize(path).split("/")
+  if "**" not in parts:
+    return get_matching_files_v2(pattern)
+
+  def join_path(base, name):
+    # A bare drive such as `C:` is drive-relative; a separator would make it
+    # absolute.
+    if windows_paths and base == drive and drive.endswith(":"):
+      return base + name
+    return posixpath.join(base, name)
+
+  def path_parts(path):
+    if windows_paths:
+      _, path = os.path.splitdrive(path)
+    return path.split("/")
+
+  first = parts.index("**")
+  prefix = "/".join(parts[:first])
+  if first and not prefix:
+    prefix = "/"
+  prefix = drive + prefix
+  # Preserve the second slash in a filesystem root such as ram://**.
+  if not windows_paths and prefix.endswith(":/"):
+    prefix += "/"
+  if prefix and not any(char in prefix for char in "*?[\\"):
+    # Check the directory directly: some registered filesystems (e.g. ram://)
+    # return no match for their own root.
+    roots = [prefix] if is_directory_v2(prefix) else []
+  else:
+    roots = get_matching_files_v2(prefix) if prefix else [""]
+  roots = [normalize(root) for root in roots]
+  if not prefix.startswith("./"):
+    roots = [root[2:] if root.startswith("./") else root for root in roots]
+  roots = [root for root in roots
+           if not any(name.startswith(".") and not part.startswith(".")
+                      for part, name in zip(parts[:first], path_parts(root)))]
+
+  def descendants(root):
+    stack = [root]
+    while stack:
+      current = stack.pop()
+      for name in list_directory_v2(current or "."):
+        if name.startswith("."):
+          continue
+        child = join_path(current, name)
+        is_dir = is_directory_v2(child)
+        yield child, is_dir
+        if is_dir:
+          stack.append(child)
+
+  matches = []
+  pending = [(root, parts[first:]) for root in roots
+             if is_directory_v2(root or ".")]
+  while pending:
+    base, remaining = pending.pop()
+    component, tail = remaining[0], remaining[1:]
+    if component == "**":
+      if not tail:
+        # A terminal globstar includes the zero-depth directory with a slash,
+        # matching Python glob.glob(..., recursive=True).
+        if base:
+          matches.append(join_path(base, ""))
+        matches.extend(child for child, _ in descendants(base))
+      else:
+        pending.append((base, tail))
+        pending.extend((child, tail) for child, is_dir in descendants(base)
+                       if is_dir)
+    elif not component:
+      # Ignore repeated separators; a trailing one restricts to directories.
+      if tail:
+        pending.append((base, tail))
+      elif base and is_directory_v2(base):
+        matches.append(join_path(base, ""))
+    else:
+      # `base` is already matched, so escape its metacharacters to keep them
+      # literal. The Windows matcher has no backslash escapes.
+      escaped_base = base
+      if not windows_paths:
+        escaped_base = base.replace("\\", "\\\\")
+        for char in "*?[":
+          escaped_base = escaped_base.replace(char, "\\" + char)
+      for child in get_matching_files_v2(join_path(escaped_base, component)):
+        child = normalize(child)
+        if base != "." and not base.startswith("./") and child.startswith("./"):
+          child = child[2:]
+        if (path_parts(child)[-1].startswith(".") and
+            not component.startswith(".")):
+          continue
+        if not tail:
+          matches.append(child)
+        elif is_directory_v2(child):
+          pending.append((child, tail))
+  if windows_paths:
+    return [match.replace("/", "\\") for match in matches]
+  return matches
 
 
 @tf_export(v1=["gfile.MkDir"])
@@ -863,7 +1003,7 @@ def join(path, *paths):
   # os.path.join won't take mixed bytes/str, so don't overwrite the incoming `path` var
   path_ = compat.as_str_any(compat.path_to_str(path))
   if "://" in path_[1:]:
-    return urljoin(path, *paths)
+    return posixpath.join(path, *paths)
   return os.path.join(path, *paths)
 
 

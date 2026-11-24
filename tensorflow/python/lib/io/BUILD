@@ -133,6 +133,17 @@ py_library(
 )
 
 tf_py_strict_test(
+    name = "file_io_glob_test",
+    size = "small",
+    srcs = ["file_io_glob_test.py"],
+    deps = [
+        ":file_io",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
     name = "file_io_test",
     size = "small",
     srcs = ["file_io_test.py"],

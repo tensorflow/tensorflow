@@ -15,6 +15,7 @@
 # =============================================================================
 """Testing File IO operations in file_io.py."""
 
+import glob
 import os.path
 from unittest import mock
 
@@ -347,6 +348,106 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     glob_pattern = file_io.join(dir_path, "*")
     self.assertItemsEqual(
         file_io.get_matching_files(glob_pattern), expected_match)
+
+  @parameterized.parameters("**", "**/", "**/*.txt", "**/deep.?xt",
+                            "**/**/deep.txt", "missing/**", ".hidden/**")
+  def testGetMatchingFilesRecursive(self, suffix):
+    for name in ("top.txt", "b/middle.txt", "b/c/deep.txt",
+                 ".hidden/secret.txt", "bracket[1]/literal.txt"):
+      path = file_io.join(self._base_dir, name)
+      file_io.recursive_create_dir(os.path.dirname(path))
+      file_io.write_string_to_file(path, "test")
+    pattern = file_io.join(self._base_dir, suffix)
+    self.assertCountEqual(
+        glob.glob(pattern, recursive=True),
+        file_io.get_matching_files_v2(pattern, recursive=True))
+
+  def testGetMatchingFilesRecursiveLiteralMetacharacters(self):
+    # These filenames are valid on POSIX, but not on Windows.
+    if os.name == "nt":
+      self.skipTest("Windows filenames cannot contain '*' or '?'")
+    for dirname in ("star*", "question?"):
+      path = file_io.join(self._base_dir, dirname, "literal.txt")
+      file_io.recursive_create_dir(os.path.dirname(path))
+      file_io.write_string_to_file(path, "test")
+    self.assertCountEqual(
+        [file_io.join(self._base_dir, name, "literal.txt")
+         for name in ("star*", "question?")],
+        file_io.get_matching_files_v2(
+            file_io.join(self._base_dir, "**", "literal.txt"), recursive=True))
+
+  def testGetMatchingFilesRecursiveEscapedPrefix(self):
+    if os.name == "nt":
+      self.skipTest("POSIX backslash escape semantics")
+    for dirname in ("back\\slash", "bracket]end"):
+      path = file_io.join(self._base_dir, dirname, "literal.txt")
+      file_io.recursive_create_dir(os.path.dirname(path))
+      file_io.write_string_to_file(path, "test")
+    for escaped, name in ((r"back\\slash", "back\\slash"),
+                          (r"bracket\]end", "bracket]end")):
+      pattern = file_io.join(self._base_dir, escaped, "**", "*.txt")
+      self.assertEqual(
+          [file_io.join(self._base_dir, name, "literal.txt")],
+          file_io.get_matching_files_v2(pattern, recursive=True))
+    self.assertEmpty(file_io.get_matching_files_v2(
+        file_io.join(self._base_dir, r"back\slash", "**", "*.txt"),
+        recursive=True))
+
+  def testGetMatchingFilesRecursiveRegisteredFilesystem(self):
+    root = "ram://recursive_glob_test"
+    file_io.recursive_create_dir(root + "/a/b")
+    file_io.write_string_to_file(root + "/a/b/data.txt", "test")
+    try:
+      self.assertEqual(
+          [root + "/a/b/data.txt"],
+          file_io.get_matching_files_v2(root + "/**/*.txt", recursive=True))
+      self.assertCountEqual(
+          [root + "/", root + "/a", root + "/a/b", root + "/a/b/data.txt"],
+          file_io.get_matching_files_v2(root + "/**", recursive=True))
+      self.assertIn(root + "/a/b/data.txt",
+                    file_io.get_matching_files_v2("ram://**", recursive=True))
+    finally:
+      file_io.delete_recursively(root)
+
+  def testGetMatchingFilesRecursiveIterableAndDefault(self):
+    file_io.recursive_create_dir(file_io.join(self._base_dir, "b/c"))
+    pattern = file_io.join(self._base_dir, "**")
+    self.assertEqual(
+        [file_io.join(self._base_dir, "b")],
+        file_io.get_matching_files_v2(pattern))
+    self.assertCountEqual(
+        glob.glob(pattern, recursive=True),
+        file_io.get_matching_files(iter([pattern]), recursive=True))
+    self.assertEmpty(file_io.get_matching_files_v2([], recursive=True))
+
+  def testGetMatchingFilesRecursiveExtended(self):
+    paths = [file_io.join(self._base_dir, suffix)
+             for suffix in ("root.txt", "sub/sub.txt", "sub/nested/nested.txt")]
+    for path in paths:
+      file_io.recursive_create_dir(os.path.dirname(path))
+      file_io.write_string_to_file(path, "test")
+    self.assertEqual(
+        [paths[0]], file_io.get_matching_files_v2(
+            file_io.join(self._base_dir, "**", "root.txt"), recursive=True))
+    pattern = file_io.join(self._base_dir, "**", "*.txt")
+    self.assertCountEqual(
+        paths, file_io.get_matching_files_v2([pattern], recursive=True))
+    self.assertEmpty(file_io.get_matching_files_v2(
+        file_io.join(self._base_dir, "**", "nested.txt"), recursive=False))
+
+  def testGetMatchingFilesRecursiveRelativePaths(self):
+    directory = file_io.join(self._base_dir, "sub/nested")
+    file_io.recursive_create_dir(directory)
+    file_io.write_string_to_file(file_io.join(directory, "data.txt"), "test")
+    cwd = os.getcwd()
+    try:
+      os.chdir(self._base_dir)
+      for pattern in ("**/*.txt", "./**/*.txt", "sub/**/data.txt"):
+        self.assertCountEqual(
+            glob.glob(pattern, recursive=True),
+            file_io.get_matching_files_v2(pattern, recursive=True))
+    finally:
+      os.chdir(cwd)
 
   @run_all_path_types
   def testCreateRecursiveDir(self, join):
