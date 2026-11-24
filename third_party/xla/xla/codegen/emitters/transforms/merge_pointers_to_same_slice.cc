@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/codegen/emitters/kernel_api_builder.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 
 namespace xla {
 namespace emitters {

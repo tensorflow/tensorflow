@@ -50,16 +50,16 @@ compare {
   ROOT lt = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
 }
 
-// CHECK:         @shared_1 = private addrspace(3) global [64 x i32] undef{{$}}
-// CHECK:         @shared_0 = private addrspace(3) global [64 x float] undef{{$}}
+// CHECK:         @[[$SHARED_F32:shared_[0-9]+]] = private addrspace(3) global [64 x float] undef{{$}}
+// CHECK:         @[[$SHARED_I32:shared_[0-9]+]] = private addrspace(3) global [64 x i32] undef{{$}}
 // CHECK-LABEL: @sort(
 // CHECK-NOT:     alloca
 // CHECK-PTX:     call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
 // CHECK-GCN:     call i32 @llvm.amdgcn.workitem.id.x()
 // CHECK-PTX:     call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x()
 // CHECK-GCN:     call i32 @llvm.amdgcn.workgroup.id.x()
-// CHECK:         getelementptr inbounds [64 x i32], ptr addrspacecast (ptr addrspace(3) @shared_1 to ptr)
-// CHECK:         getelementptr inbounds [64 x float], ptr addrspacecast (ptr addrspace(3) @shared_0 to ptr)
+// CHECK:         getelementptr inbounds [64 x i32], ptr addrspacecast (ptr addrspace(3) @[[$SHARED_I32]] to ptr)
+// CHECK:         getelementptr inbounds [64 x float], ptr addrspacecast (ptr addrspace(3) @[[$SHARED_F32]] to ptr)
 // CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         call i8 @compare_lt(i32 %{{.*}}, i32 %{{.*}}, float %{{.*}}, float %{{.*}})

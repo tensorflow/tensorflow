@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_dialect.h.inc"

@@ -20,6 +20,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/DestinationStyleOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -45,12 +46,13 @@ def XLAGPU_AllocateSharedOp : XLAGPU_Op<"allocate_shared", [
     ```
   }];
 
-  let results = (outs AnyStaticShapeTensor:$result);
+  let results = (outs Res<AnyStaticShapeTensor, "", [MemAlloc]>:$result);
 
   let assemblyFormat = "attr-dict `:` type($result)";
 }
 
 def XLAGPU_SyncThreadsOp : XLAGPU_Op<"sync_threads", [
+   DestinationStyleOpInterface,
    TypesMatchWith<"result type matches type of dest",
                    "operands", "results", "$_self">,
    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
@@ -64,6 +66,11 @@ def XLAGPU_SyncThreadsOp : XLAGPU_Op<"sync_threads", [
 
   let arguments = (ins Variadic<AnyRankedTensor>:$operands);
   let results = (outs Variadic<AnyRankedTensor>:$results);
+  let extraClassDeclaration = [{
+    mlir::MutableOperandRange getDpsInitsMutable() {
+      return getOperandsMutable();
+    }
+  }];
 
   let assemblyFormat = "operands attr-dict `:` type($operands)";
 }

@@ -21,6 +21,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/DestinationStyleOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -34,6 +35,7 @@ class XLA_Op<string mnemonic, list<Trait> traits = []> :
 
 def XLA_AtomicStoreOp : XLA_Op<"atomic_store",
     [NoMemoryEffect,
+     DestinationStyleOpInterface,
      TypesMatchWith<"result type matches dest type",
                     "dest", "result", "$_self">,
      TypesMatchWith<"value type matches dest element type",
@@ -52,6 +54,10 @@ def XLA_AtomicStoreOp : XLA_Op<"atomic_store",
                        Variadic<Index>:$indices);
   let results = (outs AnyStaticShapeTensor:$result);
 
+  let extraClassDeclaration = [{
+    mlir::MutableOperandRange getDpsInitsMutable() { return getDestMutable(); }
+  }];
+
   let assemblyFormat = [{
     $value `into` $dest `[` $indices `]` attr-dict `:` type($dest)
   }];
@@ -60,6 +66,7 @@ def XLA_AtomicStoreOp : XLA_Op<"atomic_store",
 
 def XLA_AtomicRMWOp : XLA_Op<"atomic_rmw",
     [RecursiveMemoryEffects,
+     DestinationStyleOpInterface,
      TypesMatchWith<"result type matches type of dest",
                     "input", "result", "$_self">,
      DeclareOpInterfaceMethods<LoopLikeOpInterface, ["getLoopRegions"]>,
@@ -86,6 +93,7 @@ def XLA_AtomicRMWOp : XLA_Op<"atomic_rmw",
   ];
 
   let extraClassDeclaration = [{
+    mlir::MutableOperandRange getDpsInitsMutable() { return getInputMutable(); }
     mlir::Block* getBody() { return &getComputation().front(); }
     mlir::OpBuilder getBodyBuilder() {
       mlir::Block* body = getBody();
@@ -202,7 +210,7 @@ def XLA_PredicatedExtractOp : XLA_Op<"predicated_extract",
 }
 
 def XLA_CopySliceOp : XLA_Op<"copy_slice",
-    [Pure, AttrSizedOperandSegments,
+    [Pure, AttrSizedOperandSegments, DestinationStyleOpInterface,
      TypesMatchWith<"result type matches dest type", "dest", "result", "$_self">]> {
   let summary = "Copies a contiguous slice from one tensor to another.";
   let description = [{
@@ -216,6 +224,9 @@ def XLA_CopySliceOp : XLA_Op<"copy_slice",
                        Variadic<Index>:$dest_indices,
                        I64Attr:$num_elements);
   let results = (outs AnyRankedTensor:$result);
+  let extraClassDeclaration = [{
+    mlir::MutableOperandRange getDpsInitsMutable() { return getDestMutable(); }
+  }];
   let assemblyFormat = [{
     $src `[` $src_indices `]` `into` $dest `[` $dest_indices `]`
     `count` `(` $num_elements `)` attr-dict `:` type($src) `into` type($dest)
@@ -419,6 +430,7 @@ def GetDynamicDimSizeOp : XLA_Op<"get_dynamic_dim_size", [
 
 def SetDynamicDimSizeOp : XLA_Op<"set_dynamic_dim_size", [
     Pure,
+    DestinationStyleOpInterface,
     TypesMatchWith<"result type matches tensor type", "tensor", "result",
                    "$_self">
   ]> {
@@ -432,6 +444,11 @@ def SetDynamicDimSizeOp : XLA_Op<"set_dynamic_dim_size", [
   }];
   let arguments = (ins AnyStaticShapeTensor:$tensor, I32:$size, I64Attr:$dim);
   let results = (outs AnyStaticShapeTensor:$result);
+  let extraClassDeclaration = [{
+    mlir::MutableOperandRange getDpsInitsMutable() {
+      return getTensorMutable();
+    }
+  }];
 
   let assemblyFormat = "$size `into` $tensor `[` $dim `]` attr-dict `:` type($tensor)";
   let hasVerifier = 1;
