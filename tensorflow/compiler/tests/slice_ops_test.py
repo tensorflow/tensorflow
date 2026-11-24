@@ -193,6 +193,21 @@ class SliceTest(xla_test.XLATestCase):
 
         self.assertAllEqual([[[6, 5, 4, 3]]], result)
 
+  def testJitSliceKeepsBeginAsRuntimeInput(self):
+    @def_function.function(jit_compile=True)
+    def crop(x, begin):
+      return array_ops.slice(x, begin, [2])
+
+    with self.device_scope():
+      x = constant_op.constant([10, 20, 30, 40])
+      first = constant_op.constant([0])
+      last = constant_op.constant([2])
+      self.assertAllEqual([10, 20], self.evaluate(crop(x, first)))
+      self.assertAllEqual([30, 40], self.evaluate(crop(x, last)))
+      hlo = crop.experimental_get_compiler_ir(x, first)(stage="hlo")
+    # Checking the output alone also passes if every offset specializes.
+    self.assertIn(" dynamic-slice(", hlo)
+
   def test3DWithDynamicBeginAndNegativeSize(self):
     """Tests a slice where `begin` is fed dynamically and `size` contains -1."""
     for dtype in self.numeric_types:

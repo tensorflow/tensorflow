@@ -264,10 +264,8 @@ class SliceOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Slice")
-                    .CompileTimeConstantInput("begin")
-                    .CompileTimeConstantInput("size"),
-                SliceOp);
+// A runtime offset can use DynamicSlice without changing the output shape.
+REGISTER_XLA_OP(Name("Slice").CompileTimeConstantInput("size"), SliceOp);
 
 }  // namespace
 }  // namespace tensorflow
