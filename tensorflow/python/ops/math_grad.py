@@ -2130,7 +2130,13 @@ def _CumulativeLogsumexpGrad(op: ops.Operation, grad, recompute_result=False):
   # Split the incoming gradient by sign for the two log-space scans. Avoid
   # log(0) even on masked entries, since its gradient can contaminate a JVP.
   abs_grad = math_ops.abs(grad)
-  log_abs_grad = math_ops.log(array_ops.where_v2(abs_grad > 0, abs_grad, 1))
+  log_abs_grad = math_ops.log(
+      array_ops.where_v2(
+          math_ops.greater(abs_grad, 0),
+          abs_grad,
+          math_ops.cast(1.0, dtype=abs_grad.dtype),
+      )
+  )
   log_grad_positive = array_ops.where_v2(
       math_ops.greater(grad, 0),
       log_abs_grad,
