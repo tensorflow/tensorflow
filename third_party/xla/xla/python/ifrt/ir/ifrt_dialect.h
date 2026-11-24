@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_IFRT_DIALECT_H_
 #define XLA_PYTHON_IFRT_IR_IFRT_DIALECT_H_
 
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LogicalResult.h"

@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/memory.h"
 
 // Generated definitions.
 
@@ -97,7 +96,7 @@ mlir::LogicalResult VerifyIoAlias(mlir::Operation* op, IoAlias io_alias,
     return emit_alias_error() << " with different devices: " << aliased_input
                               << " vs. " << aliased_output;
   }
-  if (aliased_input.MemoryKind() != aliased_output.MemoryKind()) {
+  if (!aliased_input.HasSameMemoryKind(aliased_output)) {
     return emit_alias_error()
            << " with different memory kinds: " << aliased_input << " vs. "
            << aliased_output;

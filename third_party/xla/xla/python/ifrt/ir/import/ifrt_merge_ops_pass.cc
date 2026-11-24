@@ -16,7 +16,6 @@ limitations under the License.
 #include <queue>
 
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -117,14 +116,11 @@ llvm::hash_code GetBaseMergeKey(IfrtPairwiseArrayOpInterface op) {
 // Groups `CopyArraysOp`s by:
 // - src and dst devices because they require src and dst devices to match.
 // - donated because the donation is all-or-nothing.
-// - src and dst memory kind because we can't CopyArrays ops that change memory
-//   kind.
+// - src and dst memory kind because we can't merge CopyArrays ops that change
+//   memory kind.
 // - src and dst layout mode because we can't merge CopyArrays ops that change
 //   layout mode.
 llvm::hash_code GetMergeKey(CopyArraysOp op) {
-  // TODO(icgog): A CopyArrays with device memory kind will not be merged with a
-  // CopyArrays with default/no memory kind because we don't have device info to
-  // canonicalize the memory kind. Fix this limitation.
   // TODO(icgog): Do not include devices in the key after `CopyArrays` supports
   // MPMD.
   // CopyArrayOps do not support inputs with different src devices nor outputs
@@ -133,11 +129,10 @@ llvm::hash_code GetMergeKey(CopyArraysOp op) {
   llvm::hash_code hash = GetBaseMergeKey(op);
   IfrtArrayType input_type = GetArrayType(op.getInputs().front());
   IfrtArrayType output_type = GetArrayType(op.getOutputs().front());
-  return llvm::hash_combine(hash, op.getReuse(),
-                            absl::StrCat(input_type.MemoryKind()),
-                            input_type.LayoutMode().ToString(),
-                            absl::StrCat(output_type.MemoryKind()),
-                            output_type.LayoutMode().ToString());
+  return llvm::hash_combine(hash, op.getReuse(), input_type.getMemoryKindAttr(),
+                            input_type.getLayoutAttr(),
+                            output_type.getMemoryKindAttr(),
+                            output_type.getLayoutAttr());
 }
 
 // Groups `ReshardOp`s by:

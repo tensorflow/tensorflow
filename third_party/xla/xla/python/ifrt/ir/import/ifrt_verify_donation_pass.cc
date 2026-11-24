@@ -26,7 +26,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -41,7 +40,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"  // IWYU pragma: keep
-#include "xla/python/ifrt/memory.h"
 
 namespace xla {
 namespace ifrt {
@@ -50,19 +48,6 @@ namespace ifrt {
 #include "xla/python/ifrt/ir/import/passes.h.inc"
 
 namespace {
-
-// Returns the effective memory-kind name of `type`.
-llvm::StringRef GetMemoryKind(IfrtArrayType type) {
-  const mlir::StringAttr attr = type.getMemoryKindAttr();
-  return attr != nullptr ? attr.getValue()
-                         : llvm::StringRef(MemoryKind().value());
-}
-
-// Returns true if `lhs` and `rhs` have the same effective `MemoryKind`.
-bool HasSameMemoryKind(IfrtArrayType lhs, IfrtArrayType rhs) {
-  return lhs.getMemoryKindAttr() == rhs.getMemoryKindAttr() ||
-         GetMemoryKind(lhs) == GetMemoryKind(rhs);
-}
 
 // Sentinel `ArrayStateRef::num_shards` indicating that `ArrayStateRef::index`
 // stores a single `ArrayState` ID inline rather than a `shard_arena_` offset.
@@ -578,7 +563,7 @@ mlir::LogicalResult VerifyCopyArraysOp(CopyArraysOp op,
   const llvm::ArrayRef<int> in_devices = first_in_array.getDevices();
   const llvm::ArrayRef<int> out_devices = first_out_array.getDevices();
   const bool same_memory_kind =
-      (donated || reuse) && HasSameMemoryKind(first_in_array, first_out_array);
+      (donated || reuse) && first_in_array.HasSameMemoryKind(first_out_array);
   const bool all_devices_equal =
       same_memory_kind &&
       first_in_array.getDevicesAttr() == first_out_array.getDevicesAttr();

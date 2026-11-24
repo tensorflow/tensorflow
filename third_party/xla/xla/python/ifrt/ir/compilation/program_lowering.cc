@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -197,8 +198,10 @@ absl::StatusOr<bool> CanPropagateLayoutAcrossCopyArrays(
   if (src_device->PlatformName() != dst_device->PlatformName()) {
     return false;
   }
-  if (input_type.MemoryKind().value() == xla::UnpinnedHostMemorySpace::kKind ||
-      output_type.MemoryKind().value() == xla::UnpinnedHostMemorySpace::kKind) {
+  if (absl::string_view(input_type.getMemoryKindAttr().getValue()) ==
+          xla::UnpinnedHostMemorySpace::kKind ||
+      absl::string_view(output_type.getMemoryKindAttr().getValue()) ==
+          xla::UnpinnedHostMemorySpace::kKind) {
     return false;
   }
   return true;

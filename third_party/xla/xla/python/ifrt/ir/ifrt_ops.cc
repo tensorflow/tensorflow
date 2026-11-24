@@ -196,10 +196,7 @@ llvm::SmallVector<IfrtArrayType, 4> CollectArrayTypes(mlir::ValueRange values) {
 
 bool IsAutoLayout(mlir::Type type) {
   auto array = llvm::cast_or_null<IfrtArrayType>(type);
-  if (array != nullptr && array.getLayoutAttr() != nullptr) {
-    return array.getLayoutAttr().str() == "auto";
-  }
-  return false;
+  return array != nullptr && array.getLayoutAttr().getValue() == "auto";
 }
 
 // Verifies that `in_array` (described by `in_desc`) and `out_array` (described
@@ -225,7 +222,7 @@ mlir::LogicalResult VerifySameShardArrayMetadata(mlir::Operation* op,
                              << in_array.getShape().getElementType() << " vs. "
                              << out_array.getShape().getElementType();
   }
-  if (in_array.MemoryKind() != out_array.MemoryKind()) {
+  if (!in_array.HasSameMemoryKind(out_array)) {
     return op->emitOpError()
            << "requires " << in_desc << " and " << out_desc
            << " to have the same memory kind: " << in_array.getMemoryKindAttr()
@@ -347,10 +344,10 @@ mlir::LogicalResult CopyArraysOp::verify() {
   }
   IfrtArrayType first_input = GetArrayType(getInputs().front());
   IfrtDevicesAttr src_devices = first_input.getDevicesAttr();
-  MemoryKind src_memory_kind = first_input.MemoryKind();
+  mlir::StringAttr src_memory_kind = first_input.getMemoryKindAttr();
   IfrtArrayType first_output = GetArrayType(getOutputs().front());
   IfrtDevicesAttr dst_devices = first_output.getDevicesAttr();
-  MemoryKind dst_memory_kind = first_output.MemoryKind();
+  mlir::StringAttr dst_memory_kind = first_output.getMemoryKindAttr();
   for (const auto [idx, pair] :
        llvm::enumerate(llvm::zip(getInputs(), getOutputs()))) {
     const IfrtArrayType input_array = GetArrayType(std::get<0>(pair));
@@ -359,7 +356,7 @@ mlir::LogicalResult CopyArraysOp::verify() {
                               "devices, but input #"
                            << idx << " has different devices";
     }
-    if (src_memory_kind != input_array.MemoryKind()) {
+    if (src_memory_kind != input_array.getMemoryKindAttr()) {
       return emitOpError() << "requires all input arrays to have the same "
                               "memory kind, but input #"
                            << idx << " has a different memory kind";
@@ -373,7 +370,7 @@ mlir::LogicalResult CopyArraysOp::verify() {
                               "devices, but output #"
                            << idx << " has different devices";
     }
-    if (dst_memory_kind != output_array.MemoryKind()) {
+    if (dst_memory_kind != output_array.getMemoryKindAttr()) {
       return emitOpError() << "requires all output arrays to have the same "
                               "memory kind, but output #"
                            << idx << " has a different memory kind";
@@ -548,7 +545,7 @@ mlir::LogicalResult BitcastArraysOp::verify() {
                            << in_array_type.getDevicesAttr() << " vs. "
                            << out_array_type.getDevicesAttr();
     }
-    if (in_array_type.MemoryKind() != out_array_type.MemoryKind()) {
+    if (!in_array_type.HasSameMemoryKind(out_array_type)) {
       return emitOpError() << "requires input array #" << idx
                            << " and output array #" << idx
                            << " to have the same memory kind: "

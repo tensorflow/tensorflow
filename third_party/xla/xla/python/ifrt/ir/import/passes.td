@@ -169,10 +169,10 @@ in a direct child `ModuleOp` and:
   2. adds `ifrt.num_devices` to the callee's parent `ModuleOp`, and copies
      `ifrt.compile_options_key` and `ifrt.local_view` if present on the
      `ifrt.Call`
-  3. attaches `ifrt.sharding` (plus `ifrt.memory_kind` if present, and
-     `ifrt.devices` as a permutation relative to the `ifrt.Call`'s device list
-     only when an array's devices differ from the call's devices) to the inputs
-     and outputs of the callee's `main` `FuncOp`
+  3. attaches `ifrt.sharding` (plus `ifrt.memory_kind` for non-default memory
+     kinds, and `ifrt.devices` as a permutation relative to the `ifrt.Call`'s
+     device list only when an array's devices differ from the call's devices) to
+     the inputs and outputs of the callee's `main` `FuncOp`
   4. attaches `tf.aliasing_output` to the callee `main` `FuncOp`'s inputs
      according to `io_aliases`
   5. attaches `jax.buffer_donor` to the callee `main` `FuncOp`'s inputs
@@ -202,7 +202,7 @@ a private copy instead)
 %0, %ctrl_0 = ifrt.Call @callee::@main(%arg0, %arg1) on devices [0, 1]
     <io_aliases = [array<i32: 1, 0>], donated_input_indices = [0]>
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
-                   [0, 1], memory_kind = "device">,
+                   [0, 1], memory_kind = "pinned_host">,
        !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
                    [1, 0]>)
     -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
@@ -222,7 +222,7 @@ will be replaced by
 %0, %ctrl_0 = ifrt.Call @callee::@main(%arg0, %arg1) on devices [0, 1]
     <io_aliases = [array<i32: 1, 0>], donated_input_indices = [0]>
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
-                   [0, 1], memory_kind = "device">,
+                   [0, 1], memory_kind = "pinned_host">,
        !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
                    [1, 0]>)
     -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
@@ -232,7 +232,7 @@ module @callee <sym_visibility = "private">
     attributes {ifrt.num_devices = 2 : i32} {
   func.func @main(
       %arg0: tensor<2x2xi32> {
-        ifrt.memory_kind = "device",
+        ifrt.memory_kind = "pinned_host",
         ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>,
         jax.buffer_donor = true},
       %arg1: tensor<4x4xi32> {

@@ -28,6 +28,7 @@
 !array_pinned_host_mk_2d = !ifrt.array<tensor<1x2xi32>, #sharding_2d, [0,1], memory_kind = "pinned_host">
 !array_minor_to_major = !ifrt.array<tensor<1x2xi32>, #sharding_2d, [0,1], layout = "{0,1}">
 !array_major_to_minor = !ifrt.array<tensor<1x2xi32>, #sharding_2d, [0,1], layout = "{1,0}">
+!array_explicit_default_layout = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "default">
 
 
 // CHECK-LABEL: @merge_copies_of_call_results
@@ -433,6 +434,19 @@ func.func @dont_merge_different_op_types_on_same_devices(
   %1, %ctrl_1 = ifrt.Reshard(%arg1) <donated = true> : (!array0) -> (!array0)
   %2, %ctrl_2 = ifrt.BitcastArrays(%arg2) <donated = true> : (!array0) -> (!array0_2d)
   return %0, %1, %2 : !array0, !array0, !array0_2d
+}
+
+// CHECK-LABEL: @merge_copies_with_canonicalized_defaults
+func.func @merge_copies_with_canonicalized_defaults(
+    %arg0: !array0, %arg1: !array_default_mk,
+    %arg2: !array_explicit_default_layout)
+  -> (!array1, !array1, !array1) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[MERGED:.*]]:3, %{{.*}} = ifrt.CopyArrays(%arg0, %arg1, %arg2)
+  // CHECK-NEXT: return %[[MERGED]]#0, %[[MERGED]]#1, %[[MERGED]]#2
+  %0, %ctrl_0 = ifrt.CopyArrays(%arg0) : (!array0) -> !array1
+  %1, %ctrl_1 = ifrt.CopyArrays(%arg1) : (!array_default_mk) -> !array1
+  %2, %ctrl_2 = ifrt.CopyArrays(%arg2) : (!array_explicit_default_layout) -> !array1
+  return %0, %1, %2 : !array1, !array1, !array1
 }
 
 func.func @identity1(%arg0: tensor<2xi32>) -> (tensor<2xi32>) {

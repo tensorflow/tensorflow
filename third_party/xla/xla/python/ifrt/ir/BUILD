@@ -117,12 +117,12 @@ cc_library(
         "//xla/mlir/utils:type_util",
         "//xla/pjrt:layout_mode",
         "//xla/python/ifrt",
-        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CallOpInterfaces",  # buildcleaner: keep
@@ -130,6 +130,27 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "ifrt_dialect_test",
+    srcs = ["ifrt_dialect_test.cc"],
+    deps = [
+        ":ifrt_ir_test_base",
+        ":ir",
+        ":sharding_param",
+        "//xla/mlir/utils:error_util",
+        "//xla/pjrt:layout_mode",
+        "//xla/python/ifrt",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 

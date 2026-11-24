@@ -233,18 +233,16 @@ class IfrtToVifrtTypeConverter : public VifrtTypeConverterBuiltin {
       return {};
     });
     addConversion([&](IfrtArrayType array) -> mlir::Type {
-      mlir::StringAttr memory_kind_attr = array.getMemoryKindAttr();
-      if (!memory_kind_attr) {
-        // Use a default string value to indicate that memory kind was not set.
-        memory_kind_attr =
-            mlir::StringAttr::get(array.getContext(), kVifrtDefaultString);
-      };
-      mlir::StringAttr layout_attr = array.getLayoutAttr();
-      if (!layout_attr) {
-        // Use a default string value to indicate that layout was not set.
-        layout_attr =
-            mlir::StringAttr::get(array.getContext(), kVifrtDefaultString);
-      }
+      // Use `kVifrtDefaultString` for default memory kind / layout so VIFRT
+      // does not carry default string values.
+      mlir::StringAttr memory_kind_attr =
+          array.HasDefaultMemoryKind()
+              ? mlir::StringAttr::get(array.getContext(), kVifrtDefaultString)
+              : array.getMemoryKindAttr();
+      mlir::StringAttr layout_attr =
+          array.HasDefaultLayout()
+              ? mlir::StringAttr::get(array.getContext(), kVifrtDefaultString)
+              : array.getLayoutAttr();
       auto sharding_attr = convertGeneric(array.getShardingAttr(), this);
       if (!sharding_attr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to convert sharding: "

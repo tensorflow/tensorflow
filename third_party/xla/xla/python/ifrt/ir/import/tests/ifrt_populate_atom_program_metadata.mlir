@@ -16,7 +16,7 @@
 
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1],
-                     memory_kind = "device">
+                     memory_kind = "pinned_host">
 // CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @populate_arg_metadata
 module @populate_arg_metadata {
@@ -32,7 +32,7 @@ module @populate_arg_metadata {
   // CHECK-SAME: }
   // CHECK: func.func @main
   // CHECK-DAG: ifrt.sharding = #sp
-  // CHECK-DAG: ifrt.memory_kind = "device"
+  // CHECK-DAG: ifrt.memory_kind = "pinned_host"
   // CHECK-NOT: ifrt
   module @callee <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<2x2xi32>) {
@@ -103,9 +103,12 @@ module @populate_compile_options_key_attr {
 module @populate_result_metadata {
   func.func @main() attributes {ifrt.function} {
     // CHECK: ifrt.Call @[[CALLEE:.+]]::@main()
-    %0, %ctrl_0 = ifrt.Call @callee::@main() on devices [0,1]
+    %0, %1, %ctrl_0 = ifrt.Call @callee::@main() on devices [0,1]
         : () -> (!ifrt.array<tensor<2x2xi32>,
                              #ifrt.sharding_param<2x1 to [0] on 2>, [1,0],
+                             memory_kind = "pinned_host">,
+                 !ifrt.array<tensor<2x2xi32>,
+                             #ifrt.sharding_param<2x1 to [0] on 2>, [0,1],
                              memory_kind = "device">)
     return
   }
@@ -114,14 +117,14 @@ module @populate_result_metadata {
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 2
   // CHECK-SAME: }
-  // CHECK: func.func @main
-  // CHECK-DAG: ifrt.sharding = #sp
-  // CHECK-DAG: ifrt.memory_kind = "device"
+  // CHECK: func.func @main() -> (
+  // CHECK-SAME: tensor<2x2xi32> {ifrt.devices = #ifrt<devices[1, 0]>, ifrt.memory_kind = "pinned_host", ifrt.sharding = #sp},
+  // CHECK-SAME: tensor<2x2xi32> {ifrt.sharding = #sp})
   // CHECK-NOT: ifrt
   module @callee <sym_visibility = "private"> {
-    func.func @main() -> tensor<2x2xi32> {
+    func.func @main() -> (tensor<2x2xi32>, tensor<2x2xi32>) {
       %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-      return %0 : tensor<2x2xi32>
+      return %0, %0 : tensor<2x2xi32>, tensor<2x2xi32>
     }
   }
 }
@@ -375,34 +378,15 @@ module @populate_device_attr_permutation {
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 2
   // CHECK-SAME: }
-  // CHECK: func.func @main(%arg0: tensor<2x2xi32>
-  // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #sp
-  // CHECK-DAG:     ifrt.memory_kind = "device"
-  // CHECK-SAME: }
-  // CHECK: %arg1: tensor<2x2xi32>
-  // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #sp
-  // CHECK-DAG:     ifrt.memory_kind = "device"
-  // CHECK-DAG:     ifrt.devices = #ifrt<devices[1, 0]>
-  // CHECK-SAME: }
-
+  // CHECK: func.func @main(%arg0: tensor<2x2xi32> {ifrt.sharding = #sp},
+  // CHECK-SAME: %arg1: tensor<2x2xi32> {ifrt.devices = #ifrt<devices[1, 0]>, ifrt.sharding = #sp})
 
   // CHECK: module @[[CALLEE_1]] <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 2
   // CHECK-SAME: }
-  // CHECK: func.func @main(%arg0: tensor<2x2xi32>
-  // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #sp
-  // CHECK-DAG:     ifrt.memory_kind = "device"
-  // CHECK-DAG:     ifrt.devices = #ifrt<devices[1, 0]>
-  // CHECK-SAME: }
-  // CHECK: %arg1: tensor<2x2xi32>
-  // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #sp
-  // CHECK-DAG:     ifrt.memory_kind = "device"
-  // CHECK-SAME: }
+  // CHECK: func.func @main(%arg0: tensor<2x2xi32> {ifrt.devices = #ifrt<devices[1, 0]>, ifrt.sharding = #sp},
+  // CHECK-SAME: %arg1: tensor<2x2xi32> {ifrt.sharding = #sp})
   // CHECK-NOT: ifrt
   module @callee <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) {

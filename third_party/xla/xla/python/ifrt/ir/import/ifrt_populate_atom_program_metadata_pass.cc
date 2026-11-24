@@ -125,7 +125,7 @@ void PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
       arg_attrs.push_back(builder.getNamedAttr(
           kIfrtDevicesAttrName, get_device_permutation(array_devices_attr)));
     }
-    if (array_type.getMemoryKindAttr()) {
+    if (!array_type.HasDefaultMemoryKind()) {
       arg_attrs.push_back(builder.getNamedAttr(kIfrtMemoryKindAttrName,
                                                array_type.getMemoryKindAttr()));
     }
@@ -150,7 +150,7 @@ void PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
       res_attrs.push_back(builder.getNamedAttr(
           kIfrtDevicesAttrName, get_device_permutation(array_devices_attr)));
     }
-    if (array_type.getMemoryKindAttr()) {
+    if (!array_type.HasDefaultMemoryKind()) {
       res_attrs.push_back(builder.getNamedAttr(kIfrtMemoryKindAttrName,
                                                array_type.getMemoryKindAttr()));
     }

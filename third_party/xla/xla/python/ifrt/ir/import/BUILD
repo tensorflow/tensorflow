@@ -51,7 +51,6 @@ cc_library(
     deps = [
         ":callee_symbol_manager",
         ":passes_inc_gen",
-        "//xla/python/ifrt",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:utils",
         "//xla/tsl/platform:env",

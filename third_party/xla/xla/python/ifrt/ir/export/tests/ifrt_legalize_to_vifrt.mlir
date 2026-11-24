@@ -39,6 +39,45 @@ func.func @type_array_and_control(%arg0: !array_t0) attributes {ifrt.function} {
   return
 }
 
+// Verifies that explicit default `memory_kind` / `layout` legalize to
+// `"vifrt.default"` and round-trip canonically.
+!array_explicit_def0 = !ifrt.array<tensor<2x4xi32>,
+                                   #ifrt.sharding_param<1x1 to [0] on 2>,
+                                   [0, 1], memory_kind = "device",
+                                   layout = "default">
+!array_explicit_def1 = !ifrt.array<tensor<2x4xi32>,
+                                   #ifrt.sharding_param<1x1 to [0] on 2>,
+                                   [2, 3], memory_kind = "device",
+                                   layout = "default">
+// CHECK-LABEL: "type_array_explicit_defaults"
+// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
+func.func @type_array_explicit_defaults(%arg0: !array_explicit_def0)
+    attributes {ifrt.function} {
+  // CHECK: "vifrt.CopyArraysV2"(%[[ARG0]])
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl = ifrt.CopyArrays(%arg0)
+      : (!array_explicit_def0) -> !array_explicit_def1
+  return
+}
+
+// Verifies that non-default `memory_kind` and user `layout` attributes are
+// preserved through VIFRT legalization and round-trip.
+!array_non_def0 = !ifrt.array<tensor<2x4xi32>,
+                              #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1],
+                              memory_kind = "pinned_host", layout = "{0,1}">
+!array_non_def1 = !ifrt.array<tensor<2x4xi32>,
+                              #ifrt.sharding_param<1x1 to [0] on 2>, [2, 3],
+                              memory_kind = "pinned_host", layout = "{1,0}">
+// CHECK-LABEL: "type_array_non_default_memory_kind_and_layout"
+// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
+func.func @type_array_non_default_memory_kind_and_layout(%arg0: !array_non_def0)
+    attributes {ifrt.function} {
+  // CHECK: "vifrt.CopyArraysV2"(%[[ARG0]])
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "pinned_host", layout = "{0,1}">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "pinned_host", layout = "{1,0}">, !vifrt.control_v1)
+  %0, %ctrl = ifrt.CopyArrays(%arg0) : (!array_non_def0) -> !array_non_def1
+  return
+}
+
 !array_us0 = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_unspecified, [0,1]>
 !array_us1 = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_unspecified, [2,3]>
 // CHECK-LABEL: "attr_unspecified_sharding"

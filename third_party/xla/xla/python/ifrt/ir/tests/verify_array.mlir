@@ -54,7 +54,10 @@ func.func @good_array_scalar() {
 func.func @good_array_with_memory_kind_and_layout() {
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
-                  [0,1,2,3], memory_kind = "default", layout = "default">
+                  [0,1,2,3], memory_kind = "device", layout = "default">
+  %1 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], memory_kind = "pinned_host", layout = "{0,1}">
   return
 }
 
@@ -612,5 +615,45 @@ func.func @array_unsupported_complex_i32_element_type() {
   // expected-error@+3 {{Unsupported array element type: 'complex<i32>'}}
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<2xcomplex<i32>>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  return
+}
+
+// -----
+
+func.func @array_typed_memory_kind_rejected() {
+  // expected-error@+4 {{Memory kind must be an untyped string attribute, got "device" : i32}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], memory_kind = "device" : i32>
+  return
+}
+
+// -----
+
+func.func @array_typed_layout_rejected() {
+  // expected-error@+4 {{Layout mode must be an untyped string attribute, got "default" : i32}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "default" : i32>
+  return
+}
+
+// -----
+
+func.func @array_user_layout_non_canonical_whitespace() {
+  // expected-error@+4 {{Non-canonical layout mode: "{0, 1}" (expected "{0,1}")}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{0, 1}">
+  return
+}
+
+// -----
+
+func.func @array_user_layout_positive_dynamic_shape_metadata_prefix_bytes() {
+  // expected-error@+4 {{Invalid layout "{0,1:M(8)}": layout dynamic_shape_metadata_prefix_bytes must be 0, got 8}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<4x1 to [0,1] on 2x2>,
+                  [0,1,2,3], layout = "{0,1:M(8)}">
   return
 }

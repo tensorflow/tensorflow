@@ -168,45 +168,38 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let summary = [{
     An Ifrt array sharded on a set of devices.
 
-    Both memory_kind and layout are optional. When memory_kind is not specified,
-    the device default memory kind is used. The layout has the following
-    semantics:
-    - attribute is not set: the layout is inherited from the input arrays.
-    - set to "default": the device default layout is used.
-    - set to "auto": the layout will be determined by the compiler. It is only
-      allowed on arrays that are input of a `ifrt.Call`,
-      `ifrt.CallLoadedExecutable`, or `ifrt.LoadedExecutableOp` op.
-    - set to user-specified custom layout.
+    Both `memory_kind` and `layout` are optional in assembly syntax and are
+    canonicalized on construction to non-null, untyped `mlir::StringAttr`
+    values:
+    - `memory_kind`: defaults to the IFRT default memory kind (`"device"`) when
+      omitted. Empty strings are rejected.
+    - `layout`: defaults to `"default"` (device default layout) when omitted.
+      Allowed values are:
+      - `"default"`: the device default layout is used.
+      - `"auto"`: the layout will be determined by the compiler. It is only
+        allowed on arrays that are input or output of an `ifrt.Call`,
+        `ifrt.CallLoadedExecutable`, or `ifrt.LoadedExecutable` op.
+      - A canonical user-specified XLA layout string with zero
+        `dynamic_shape_metadata_prefix_bytes` (e.g., `"{0,1}"`; non-canonical
+        spellings such as `"{0, 1}"` or `"{0,1:S(0)}"` are rejected).
   }];
 
   let parameters = (ins
     "::mlir::RankedTensorType":$shape,
     "::xla::ifrt::IfrtShardingAttrInterface":$sharding_attr,
     Ifrt_DevicesAttr:$devices_attr,
-    OptionalParameter<"::mlir::StringAttr">:$memory_kind_attr,
-    OptionalParameter<"::mlir::StringAttr">:$layout_attr);
+    "::mlir::StringAttr":$memory_kind_attr,
+    "::mlir::StringAttr":$layout_attr);
+
+  let skipDefaultBuilders = 1;
 
   let builders = [
-    // Constructs an array with unspecified sharding.
     TypeBuilder<(ins
       "::mlir::RankedTensorType":$shape,
+      "::xla::ifrt::IfrtShardingAttrInterface":$sharding_attr,
       "::xla::ifrt::IfrtDevicesAttr":$devices_attr,
       "::mlir::StringAttr":$memory_kind_attr,
-      "::mlir::StringAttr":$layout_attr), [{
-        return Base::get(
-          $_ctxt, shape, ::xla::ifrt::IfrtUnspecifiedShardingAttr::get($_ctxt),
-          devices_attr, memory_kind_attr, layout_attr);
-      }]>,
-    TypeBuilder<(ins
-      "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::IfrtShardingParamAttr":$sharding_attr,
-      "::xla::ifrt::IfrtDevicesAttr":$devices_attr,
-      "::mlir::StringAttr":$memory_kind_attr,
-      "::mlir::StringAttr":$layout_attr), [{
-        return Base::get(
-          $_ctxt, shape, sharding_attr, devices_attr, memory_kind_attr,
-          layout_attr);
-      }]>
+      "::mlir::StringAttr":$layout_attr)>
   ];
 
   let hasCustomAssemblyFormat = 1;
@@ -214,18 +207,40 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
+    // Forwards `getChecked` calls with convertible argument types (e.g.,
+    // `nullptr` or concrete `IfrtShardingAttrInterface` subclasses) through
+    // canonicalization instead of `Base::getChecked`. Uses
+    // copy-list-initialization so explicit constructors such as
+    // `Interface(mlir::Attribute)` are rejected at compile time.
+    template <typename ShapeT, typename ShardingT, typename DevicesT,
+              typename MemoryKindT, typename LayoutT>
+    static IfrtArrayType getChecked(
+        ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+        ::mlir::MLIRContext* context, ShapeT shape, ShardingT sharding_attr,
+        DevicesT devices_attr, MemoryKindT memory_kind_attr,
+        LayoutT layout_attr) {
+      return getChecked(emitError, context, {shape}, {sharding_attr},
+                        {devices_attr}, {memory_kind_attr}, {layout_attr});
+    }
     // Get logical device ids from `devices_attr`.
     ::llvm::ArrayRef<int> getDevices() const;
     // Get the memory kind from `memory_kind_attr`.
     ::xla::ifrt::MemoryKind MemoryKind() const;
-    // Get the layout mode from `layout_attr`. Returns default layout mode if
-    // the layout attribute is not set.
+    // Get the layout mode from `layout_attr`.
     ::xla::LayoutMode LayoutMode() const;
     // Computes the per-shard local shape from `shape` and `sharding_attr`.
     ::absl::StatusOr<::llvm::SmallVector<int64_t>> LocalShape() const;
-    // Returns true if this array type and `other` resolve to the same
-    // `xla::LayoutMode`.
+    // Returns true if this array type and `other` have the same memory kind.
+    bool HasSameMemoryKind(::xla::ifrt::IfrtArrayType other) const;
+    // Returns true if this array type and `other` have the same canonical
+    // `xla::LayoutMode`. Verified `IfrtArrayType`s reject non-canonical layout
+    // strings and non-zero `dynamic_shape_metadata_prefix_bytes`, so canonical
+    // attribute equality matches `xla::Layout::operator==`.
     bool HasSameLayout(::xla::ifrt::IfrtArrayType other) const;
+    // Returns true if `memory_kind_attr` is the default IFRT memory kind.
+    bool HasDefaultMemoryKind() const;
+    // Returns true if `layout_attr` is the default layout mode (`"default"`).
+    bool HasDefaultLayout() const;
   }];
 }
 

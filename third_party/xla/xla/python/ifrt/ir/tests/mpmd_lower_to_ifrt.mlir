@@ -133,7 +133,7 @@ module @fetch_from_host_to_device {
       attributes {topology = #mpmd.topology<<"mesh1" : <["x"=2]>>>} {
     // CHECK: ifrt.Reshard(%arg0)
     // CHECK-SAME: (!ifrt.array<tensor<2x2xi32>, #sp, [0, 1], memory_kind = "pinned_host">) ->
-    // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1], memory_kind = "device">
+    // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
     %0 = mpmd.transfer %arg0 : (!tensor_on_host) -> (!tensor_on_device)
     return %0 : !tensor_on_device
   }
