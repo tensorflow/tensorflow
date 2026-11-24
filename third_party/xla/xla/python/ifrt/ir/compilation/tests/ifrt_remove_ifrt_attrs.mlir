@@ -25,7 +25,7 @@ module @ifrt_attributes_are_removed attributes {
         ifrt.devices = #ifrt<devices[0]>,
         ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 1>})
       -> (tensor<2x2xi32> {
-        ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 1>,
+        ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 2>,
         ifrt.memory_kind = "device"}) {
     return %arg0 : tensor<2x2xi32>
   }

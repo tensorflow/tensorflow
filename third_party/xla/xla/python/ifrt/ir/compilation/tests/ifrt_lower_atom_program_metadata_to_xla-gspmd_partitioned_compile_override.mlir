@@ -122,7 +122,7 @@ module @result_missing_sharding attributes {ifrt.num_devices = 2 : i32, ifrt.com
 module @module_missing_devices attributes {ifrt.compile_options_key = "test_override"} {
   func.func @main() -> (tensor<2x2xi32>
      {ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>,
-       ifrt.devices=#ifrt<devices[1]>}) {
+       ifrt.devices=#ifrt<devices[0, 1]>}) {
     %0 = mhlo.constant dense<1> : tensor<2x2xi32>
     return %0 : tensor<2x2xi32>
   }
@@ -134,7 +134,8 @@ module @module_missing_devices attributes {ifrt.compile_options_key = "test_over
 module @arg_w_different_num_devices attributes {ifrt.num_devices = 2 : i32, ifrt.compile_options_key = "test_override"} {
   func.func @main(
       %arg0: tensor<2x2xi32> {
-        ifrt.sharding=#ifrt.sharding_param<1x1 to [0] on 1>}) {
+        ifrt.sharding=#ifrt.sharding_param<1x1 to [0] on 1>,
+        ifrt.devices=#ifrt<devices[0]>}) {
     return
   }
 }
@@ -145,7 +146,8 @@ module @arg_w_different_num_devices attributes {ifrt.num_devices = 2 : i32, ifrt
 module @res_w_different_num_devices attributes {ifrt.num_devices = 4 : i32, ifrt.compile_options_key = "test_override"} {
   func.func @main()
       -> (tensor<2x2xi32> {
-        ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>}) {
+        ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>,
+        ifrt.devices=#ifrt<devices[0, 1]>}) {
     %0 = mhlo.constant dense<1> : tensor<2x2xi32>
     return %0 : tensor<2x2xi32>
   }

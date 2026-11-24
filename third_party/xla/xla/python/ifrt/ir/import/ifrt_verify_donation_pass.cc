@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -577,8 +576,8 @@ mlir::LogicalResult VerifyCopyArraysOp(CopyArraysOp op,
 
   bool any_device_equal = all_devices_equal;
   if (same_memory_kind && !any_device_equal) {
-    const size_t min_shards = std::min(in_devices.size(), out_devices.size());
-    for (size_t shard_index = 0; shard_index < min_shards; ++shard_index) {
+    for (size_t shard_index = 0; shard_index < in_devices.size();
+         ++shard_index) {
       if (in_devices[shard_index] == out_devices[shard_index]) {
         any_device_equal = true;
         break;
@@ -612,8 +611,7 @@ mlir::LogicalResult VerifyCopyArraysOp(CopyArraysOp op,
        llvm::zip_equal(in_views, out_shards_list)) {
     for (size_t shard_index = 0; shard_index < out_shards.size();
          ++shard_index) {
-      if (shard_index < in_devices.size() &&
-          in_devices[shard_index] == out_devices[shard_index]) {
+      if (in_devices[shard_index] == out_devices[shard_index]) {
         int32_t dst_array_id = tracker.GetArrayIdForShard(in_view, shard_index);
         if (donated) {
           auto [it, inserted] =

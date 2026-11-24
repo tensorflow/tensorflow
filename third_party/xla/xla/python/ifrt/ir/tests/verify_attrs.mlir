@@ -75,6 +75,9 @@ module @good_module_attrs attributes {
       },
       %arg1: tensor<2x2xi32> {
         ifrt.sharding = #ifrt.sharding_unspecified
+      },
+      %arg2: tensor<2x2xi32> {
+        ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
       })
       -> (tensor<2x2xi32> {
         ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 1>,
@@ -82,8 +85,11 @@ module @good_module_attrs attributes {
         ifrt.memory_kind = "device"
       }, tensor<2x2xi32> {
         ifrt.sharding = #ifrt.sharding_unspecified
+      }, tensor<2x2xi32> {
+        ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
       }) {
-    return %arg0, %arg1 : tensor<2x2xi32>, tensor<2x2xi32>
+    return %arg0, %arg1, %arg2
+        : tensor<2x2xi32>, tensor<2x2xi32>, tensor<2x2xi32>
   }
 }
 
@@ -513,14 +519,14 @@ func.func @donated_attr_not_allowed_on_result(%arg0: !array)
 
 // -----
 
-// expected-error@+1 {{'func.func' op has `ifrt.sharding` arg attr that is not an `IfrtShardingAttrInterface`}}
+// expected-error@+1 {{'func.func' op has `ifrt.sharding` arg attr that is not an `IfrtShardingParamAttr` or `IfrtUnspecifiedShardingAttr`}}
 func.func @sharding_arg_invalid(%arg0: tensor<2x2xi32> {ifrt.sharding = "bad"}) {
   return
 }
 
 // -----
 
-// expected-error@+1 {{'func.func' op has `ifrt.sharding` result attr that is not an `IfrtShardingAttrInterface`}}
+// expected-error@+1 {{'func.func' op has `ifrt.sharding` result attr that is not an `IfrtShardingParamAttr` or `IfrtUnspecifiedShardingAttr`}}
 func.func @sharding_result_invalid(%arg0: tensor<2x2xi32>)
     -> (tensor<2x2xi32> {ifrt.sharding = 1 : i32}) {
   return %arg0 : tensor<2x2xi32>
@@ -570,4 +576,51 @@ func.func @memory_kind_arg_not_string(
 func.func @memory_kind_result_not_string(%arg0: tensor<2x2xi32>)
     -> (tensor<2x2xi32> {ifrt.memory_kind = 1 : i32}) {
   return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+// expected-error@+1 {{'func.func' op has `ifrt.sharding` arg attr on arg #0 using 2 devices, which does not match `ifrt.devices` size 1}}
+func.func @sharding_arg_mismatches_devices(
+    %arg0: tensor<2x2xi32> {
+      ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>,
+      ifrt.devices = #ifrt<devices[0]>
+    }) {
+  return
+}
+
+// -----
+
+// expected-error@+1 {{'func.func' op has `ifrt.sharding` result attr on result #0 using 2 devices, which does not match `ifrt.devices` size 1}}
+func.func @sharding_result_mismatches_devices(%arg0: tensor<2x2xi32>)
+    -> (tensor<2x2xi32> {
+      ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>,
+      ifrt.devices = #ifrt<devices[0]>
+    }) {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+module @sharding_arg_mismatches_num_devices
+    attributes {ifrt.num_devices = 2 : i32} {
+  // expected-error@+1 {{'func.func' op has `ifrt.sharding` arg attr on arg #0 using 1 devices, which does not match enclosing module `ifrt.num_devices` (2)}}
+  func.func @main(%arg0: tensor<2x2xi32> {
+      ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 1>
+  }) {
+    return
+  }
+}
+
+// -----
+
+module @sharding_result_mismatches_num_devices
+    attributes {ifrt.num_devices = 4 : i32} {
+  // expected-error@+1 {{'func.func' op has `ifrt.sharding` result attr on result #0 using 2 devices, which does not match enclosing module `ifrt.num_devices` (4)}}
+  func.func @main(%arg0: tensor<2x2xi32>)
+      -> (tensor<2x2xi32> {
+        ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+      }) {
+    return %arg0 : tensor<2x2xi32>
+  }
 }

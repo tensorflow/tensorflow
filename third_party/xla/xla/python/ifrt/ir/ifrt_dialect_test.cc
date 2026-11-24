@@ -15,27 +15,38 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/pjrt/layout_mode.h"
+#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ir_test_base.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/memory.h"
 
 namespace xla {
@@ -291,6 +302,93 @@ module {
   EXPECT_THAT(LoadFromSource(kInvalidModuleStr),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("physical_shape")));
+}
+
+// External model attaching `IfrtShardingAttrInterface` to a foreign attribute
+// to test closed-sharding enforcement.
+struct ForeignShardingAttrModel
+    : public IfrtShardingAttrInterface::ExternalModel<ForeignShardingAttrModel,
+                                                      mlir::UnitAttr> {
+  mlir::LogicalResult CanApplyTo(mlir::Attribute,
+                                 llvm::function_ref<mlir::InFlightDiagnostic()>,
+                                 mlir::RankedTensorType,
+                                 llvm::ArrayRef<int>) const {
+    return mlir::success();
+  }
+  absl::StatusOr<llvm::SmallVector<int64_t>> GlobalShapeFromLocalShape(
+      mlir::Attribute, llvm::ArrayRef<int64_t> local_shape) const {
+    return llvm::SmallVector<int64_t>(local_shape.begin(), local_shape.end());
+  }
+  absl::StatusOr<llvm::SmallVector<int64_t>> LocalShapeFromGlobalShape(
+      mlir::Attribute, llvm::ArrayRef<int64_t> global_shape) const {
+    return llvm::SmallVector<int64_t>(global_shape.begin(), global_shape.end());
+  }
+  int NumDevices(mlir::Attribute) const { return 1; }
+};
+
+TEST_F(IfrtDialectTest, RejectsForeignShardingAttrInterfaceImplementations) {
+  mlir::MLIRContext isolated_context;
+  support::RegisterMlirDialects(isolated_context);
+  mlir::UnitAttr::attachInterface<ForeignShardingAttrModel>(isolated_context);
+
+  mlir::OpBuilder builder(&isolated_context);
+  mlir::Location loc = builder.getUnknownLoc();
+  auto foreign_sharding =
+      llvm::cast<IfrtShardingAttrInterface>(builder.getUnitAttr());
+  auto shape = mlir::RankedTensorType::get({4, 6}, builder.getF32Type());
+  auto devices = IfrtDevicesAttr::get(&isolated_context,
+                                      /*ids=*/llvm::ArrayRef<int>({0, 1}));
+
+  {
+    mlir::BaseScopedDiagnosticHandler diag(&isolated_context);
+    EXPECT_EQ(
+        IfrtArrayType::getChecked([&]() { return mlir::emitError(loc); },
+                                  &isolated_context, shape, foreign_sharding,
+                                  devices, /*memory_kind_attr=*/nullptr,
+                                  /*layout_attr=*/nullptr),
+        nullptr);
+    EXPECT_THAT(
+        diag.ConsumeStatus(),
+        StatusIs(absl::StatusCode::kUnknown,
+                 HasSubstr("Array sharding must be an `IfrtShardingParamAttr` "
+                           "or `IfrtUnspecifiedShardingAttr`")));
+  }
+
+  {
+    ASSERT_OK_AND_ASSIGN(
+        mlir::OwningOpRef<mlir::ModuleOp> module,
+        support::ParseMlirModuleString(
+            "module { func.func @atom(%arg0: tensor<4x6xf32>) -> "
+            "tensor<4x6xf32> { return %arg0 : tensor<4x6xf32> } }",
+            isolated_context));
+    mlir::func::FuncOp func_op =
+        module->lookupSymbol<mlir::func::FuncOp>("atom");
+    ASSERT_NE(func_op, nullptr);
+
+    func_op.setArgAttr(/*index=*/0, kIfrtShardingAttrName, foreign_sharding);
+    {
+      mlir::BaseScopedDiagnosticHandler diag(&isolated_context);
+      EXPECT_TRUE(mlir::failed(mlir::verify(*module)));
+      EXPECT_THAT(diag.ConsumeStatus(),
+                  StatusIs(absl::StatusCode::kUnknown,
+                           HasSubstr("has `ifrt.sharding` arg attr that is not "
+                                     "an `IfrtShardingParamAttr` or "
+                                     "`IfrtUnspecifiedShardingAttr`")));
+    }
+
+    func_op.removeArgAttr(/*index=*/0, kIfrtShardingAttrName);
+    func_op.setResultAttr(/*index=*/0, kIfrtShardingAttrName, foreign_sharding);
+    {
+      mlir::BaseScopedDiagnosticHandler diag(&isolated_context);
+      EXPECT_TRUE(mlir::failed(mlir::verify(*module)));
+      EXPECT_THAT(
+          diag.ConsumeStatus(),
+          StatusIs(absl::StatusCode::kUnknown,
+                   HasSubstr("has `ifrt.sharding` result attr that is not an "
+                             "`IfrtShardingParamAttr` or "
+                             "`IfrtUnspecifiedShardingAttr`")));
+    }
+  }
 }
 
 }  // namespace

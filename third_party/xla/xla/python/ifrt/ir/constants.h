@@ -54,8 +54,6 @@ inline constexpr llvm::StringLiteral kIfrtNumDevicesAttrName =
 inline constexpr llvm::StringLiteral kIfrtShardingAttrName = "ifrt.sharding";
 inline constexpr llvm::StringLiteral kIfrtMemoryKindAttrName =
     "ifrt.memory_kind";
-inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
-    "ifrt.entry_function";
 
 inline constexpr llvm::StringLiteral kCalleeMainFuncName = "main";
 

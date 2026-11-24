@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -247,6 +248,7 @@ mlir::LogicalResult VerifyNonEmptyStringAttr(mlir::Operation* op,
 // attached to `func.func` region arguments or results. Other `ifrt.*`
 // attributes are allowed, but not verified.
 mlir::LogicalResult VerifyIfrtArgOrResultAttr(mlir::Operation* op,
+                                              unsigned index,
                                               mlir::NamedAttribute attr,
                                               RegionAttrKind kind) {
   const llvm::StringRef attr_name = attr.getName().getValue();
@@ -256,15 +258,59 @@ mlir::LogicalResult VerifyIfrtArgOrResultAttr(mlir::Operation* op,
   }
   const llvm::StringRef attr_kind =
       kind == RegionAttrKind::kArg ? "arg" : "result";
-  if (!llvm::isa<mlir::func::FuncOp>(op)) {
+  mlir::func::FuncOp func_op = llvm::dyn_cast<mlir::func::FuncOp>(op);
+  if (func_op == nullptr) {
     return op->emitOpError() << "has `" << attr_name << "` " << attr_kind
                              << " attr but is not a function";
   }
   if (attr_name == kIfrtShardingAttrName) {
-    if (!mlir::isa<IfrtShardingAttrInterface>(attr.getValue())) {
+    if (!mlir::isa<IfrtShardingParamAttr, IfrtUnspecifiedShardingAttr>(
+            attr.getValue())) {
       return op->emitOpError()
              << "has `" << kIfrtShardingAttrName << "` " << attr_kind
-             << " attr that is not an `IfrtShardingAttrInterface`";
+             << " attr that is not an `IfrtShardingParamAttr` or "
+                "`IfrtUnspecifiedShardingAttr`";
+    }
+    if (auto sharding_param =
+            llvm::dyn_cast<IfrtShardingParamAttr>(attr.getValue());
+        sharding_param != nullptr) {
+      const int sharding_num_devices = sharding_param.NumDevices();
+      mlir::Attribute raw_devices_attr =
+          kind == RegionAttrKind::kArg
+              ? func_op.getArgAttr(index, kIfrtDevicesAttrName)
+              : func_op.getResultAttr(index, kIfrtDevicesAttrName);
+      if (raw_devices_attr != nullptr) {
+        if (auto devices_attr =
+                llvm::dyn_cast<IfrtDevicesAttr>(raw_devices_attr);
+            devices_attr != nullptr &&
+            static_cast<size_t>(sharding_num_devices) !=
+                devices_attr.getIds().size()) {
+          return op->emitOpError()
+                 << "has `" << kIfrtShardingAttrName << "` " << attr_kind
+                 << " attr on " << attr_kind << " #" << index << " using "
+                 << sharding_num_devices << " devices, which does not match `"
+                 << kIfrtDevicesAttrName << "` size "
+                 << devices_attr.getIds().size();
+        }
+      } else if (mlir::ModuleOp parent_module =
+                     llvm::dyn_cast_or_null<mlir::ModuleOp>(op->getParentOp());
+                 parent_module != nullptr) {
+        if (mlir::IntegerAttr num_devices_attr =
+                parent_module->getAttrOfType<mlir::IntegerAttr>(
+                    kIfrtNumDevicesAttrName);
+            num_devices_attr != nullptr &&
+            num_devices_attr.getType().isSignlessInteger(32) &&
+            num_devices_attr.getInt() > 0 &&
+            sharding_num_devices != num_devices_attr.getInt()) {
+          return op->emitOpError()
+                 << "has `" << kIfrtShardingAttrName << "` " << attr_kind
+                 << " attr on " << attr_kind << " #" << index << " using "
+                 << sharding_num_devices
+                 << " devices, which does not match enclosing module `"
+                 << kIfrtNumDevicesAttrName << "` ("
+                 << num_devices_attr.getInt() << ")";
+        }
+      }
     }
     return mlir::success();
   }
@@ -372,7 +418,7 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
     }
     return mlir::success();
   }
-  return VerifyIfrtArgOrResultAttr(op, attr, RegionAttrKind::kArg);
+  return VerifyIfrtArgOrResultAttr(op, argIndex, attr, RegionAttrKind::kArg);
 }
 
 mlir::LogicalResult IfrtDialect::verifyRegionResultAttribute(
@@ -383,7 +429,8 @@ mlir::LogicalResult IfrtDialect::verifyRegionResultAttribute(
            << "has `" << kIfrtDonatedArgAttrName
            << "` result attr, which is only valid on arguments";
   }
-  return VerifyIfrtArgOrResultAttr(op, attr, RegionAttrKind::kResult);
+  return VerifyIfrtArgOrResultAttr(op, resultIndex, attr,
+                                   RegionAttrKind::kResult);
 }
 
 //===----------------------------------------------------------------------===//
@@ -518,6 +565,13 @@ mlir::LogicalResult IfrtArrayType::verify(
   if (shape == nullptr || sharding_attr == nullptr || devices_attr == nullptr ||
       memory_kind_attr == nullptr || layout_attr == nullptr) {
     return emitError() << "expected non-null IfrtArrayType parameters";
+  }
+  if (!llvm::isa<IfrtShardingParamAttr, IfrtUnspecifiedShardingAttr>(
+          sharding_attr)) {
+    return emitError()
+           << "Array sharding must be an `IfrtShardingParamAttr` or "
+              "`IfrtUnspecifiedShardingAttr`, got "
+           << sharding_attr;
   }
   if (shape.getEncoding() != nullptr) {
     return emitError() << "Unexpected tensor encoding on array shape: "

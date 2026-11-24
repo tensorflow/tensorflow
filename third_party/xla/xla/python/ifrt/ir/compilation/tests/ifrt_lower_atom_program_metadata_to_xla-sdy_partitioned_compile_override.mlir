@@ -126,7 +126,7 @@ module @result_missing_sharding_sdy_partitioned attributes {ifrt.num_devices = 2
 module @module_missing_devices_sdy_partitioned attributes {ifrt.compile_options_key = "test_override"} {
   func.func @main() -> (tensor<2x2xi32>
      {ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>,
-       ifrt.devices=#ifrt<devices[1]>}) {
+       ifrt.devices=#ifrt<devices[0, 1]>}) {
     %0 = mhlo.constant dense<1> : tensor<2x2xi32>
     return %0 : tensor<2x2xi32>
   }

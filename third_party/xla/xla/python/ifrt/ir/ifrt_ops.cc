@@ -350,6 +350,13 @@ mlir::LogicalResult CopyArraysOp::verify() {
   IfrtArrayType first_output = GetArrayType(getOutputs().front());
   IfrtDevicesAttr dst_devices = first_output.getDevicesAttr();
   mlir::StringAttr dst_memory_kind = first_output.getMemoryKindAttr();
+  if (src_devices.getIds().size() != dst_devices.getIds().size()) {
+    return emitOpError()
+           << "requires input and output arrays to have the same number of "
+              "devices, got "
+           << src_devices.getIds().size() << " vs. "
+           << dst_devices.getIds().size();
+  }
   for (const auto [idx, pair] :
        llvm::enumerate(llvm::zip(getInputs(), getOutputs()))) {
     const IfrtArrayType input_array = GetArrayType(std::get<0>(pair));

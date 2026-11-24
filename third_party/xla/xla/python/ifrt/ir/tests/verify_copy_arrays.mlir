@@ -265,3 +265,14 @@ func.func @copy_arrays_in_nested_region(%arg0: !array0)
   }) : (tensor<i1>) -> ()
   return
 }
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_unspecified, [0, 1]>
+!array1 = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_unspecified, [2]>
+func.func @requires_same_num_devices_with_unspecified_sharding(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CopyArrays' op requires input and output arrays to have the same number of devices, got 2 vs. 1}}
+  %0, %ctrl = ifrt.CopyArrays(%arg0) : (!array0) -> (!array1)
+  return
+}

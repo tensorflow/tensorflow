@@ -168,6 +168,9 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let summary = [{
     An Ifrt array sharded on a set of devices.
 
+    `sharding_attr` must be an `IfrtShardingParamAttr` or
+    `IfrtUnspecifiedShardingAttr`.
+
     Both `memory_kind` and `layout` are optional in assembly syntax and are
     canonicalized on construction to non-null, untyped `mlir::StringAttr`
     values:
