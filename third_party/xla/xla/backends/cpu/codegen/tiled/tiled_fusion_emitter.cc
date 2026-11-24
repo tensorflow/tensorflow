@@ -55,17 +55,21 @@ limitations under the License.
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
+#include "xla/codegen/xtile/ir/xtile_attrs.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -81,7 +85,6 @@ using ::xla::xtile::BlockLevelParameters;
 namespace ge = ::xla::gpu;
 
 constexpr int64_t kCacheLineSize = 64;
-constexpr int kMaxRank = 8;
 
 // Super simple cost model that calculates the total number of cache line hits
 // for the tiled computation. This doesn't take into account cache re-use
@@ -245,9 +248,8 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
       return true;
     case HloOpcode::kConstant:
       return ShapeUtil::IsEffectiveScalar(inst.shape());
-    case HloOpcode::kDot:
-      return IsSupportedTiledDot(inst);
     case HloOpcode::kBroadcast:
+    case HloOpcode::kDot:
     case HloOpcode::kReduce:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kMap:
@@ -290,6 +292,7 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
 }
 
 absl::Status VerifyTensorRanks(const HloFusionInstruction& fusion) {
+  constexpr int kMaxRank = 8;
   for (const xla::HloInstruction* instruction : fusion.fused_instructions()) {
     if (instruction->shape().dimensions().size() > kMaxRank) {
       return Internal(
@@ -354,96 +357,6 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
       std::move(kernel_spec), MlirKernelSource(std::move(module)));
 }
 
-int64_t GetVectorWidthBits(const DebugOptions& debug_options) {
-  TargetMachineOptions target_machine_options(debug_options);
-  bool has_avx512 = absl::c_any_of(
-      target_machine_options.enabled_features(), [](absl::string_view feature) {
-        return absl::StrContains(feature, "avx512");
-      });
-  int64_t prefer_vector_width = debug_options.xla_cpu_prefer_vector_width();
-  if (prefer_vector_width <= 0) {
-    prefer_vector_width = 256;
-  }
-  return std::min<int64_t>(prefer_vector_width, has_avx512 ? 512 : 256);
-}
-
-const HloInstruction* FindSingleGemvDot(const HloFusionInstruction& fusion) {
-  const HloInstruction* dot = nullptr;
-  for (const HloInstruction* inst : fusion.fused_instructions()) {
-    if (inst->opcode() == HloOpcode::kDot) {
-      if (dot != nullptr || !IsSupportedTiledDot(*inst)) {
-        return nullptr;
-      }
-      dot = inst;
-    }
-  }
-  return dot;
-}
-
-int64_t ComputeFreeDimSize(const Shape& shape,
-                           absl::Span<const int64_t> batch_dims,
-                           absl::Span<const int64_t> contracting_dims) {
-  int64_t free_size = 1;
-  for (int64_t dim : GetNonContractingDims(shape.dimensions().size(),
-                                           contracting_dims, batch_dims)) {
-    free_size *= shape.dimensions(dim);
-  }
-  return free_size;
-}
-
-// Ports the GEMV tile-size selection from `DotOpEmitter::EmitTiledLlvmIrGemv`
-// (`tile_b = 1`, swapping `(8, V)` vs `(V, 8)` by matrix minor-most layout).
-SmallVector<int64_t, 4> GetGemvDotTileSizes(const HloFusionInstruction& fusion,
-                                            const HloInstruction& dot,
-                                            const ge::TilingSpace& tiling_space,
-                                            int64_t vector_width_bits) {
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  const DotDimensionNumbers& dnums = dot.dot_dimension_numbers();
-  int64_t num_batch = dnums.lhs_batch_dimensions_size();
-
-  int64_t lhs_free_size =
-      ComputeFreeDimSize(lhs_shape, dnums.lhs_batch_dimensions(),
-                         dnums.lhs_contracting_dimensions());
-  int64_t rhs_free_size =
-      ComputeFreeDimSize(rhs_shape, dnums.rhs_batch_dimensions(),
-                         dnums.rhs_contracting_dimensions());
-
-  bool is_lhs_vector = lhs_free_size == 1 && rhs_free_size > 1;
-  const Shape& matrix_shape = is_lhs_vector ? rhs_shape : lhs_shape;
-  int64_t matrix_contracting_dim = is_lhs_vector
-                                       ? dnums.rhs_contracting_dimensions(0)
-                                       : dnums.lhs_contracting_dimensions(0);
-  bool is_k_minor =
-      LayoutUtil::Minor(matrix_shape.layout(), 0) == matrix_contracting_dim;
-
-  int64_t bit_width = primitive_util::BitWidth(dot.shape().element_type());
-  // Cap at 16 so `8x16`/`16x8` transposes stay on `LowerVector2DTransposeOp`.
-  int64_t vector_width_elems =
-      std::clamp<int64_t>(vector_width_bits / bit_width, 1, 16);
-  constexpr int64_t kGemvTilingFactor = 8;
-
-  int64_t base_tile_free = is_k_minor ? kGemvTilingFactor : vector_width_elems;
-  int64_t base_tile_k = is_k_minor ? vector_width_elems : kGemvTilingFactor;
-
-  const bool dot_is_root = fusion.fused_expression_root() == &dot;
-  SmallVector<int64_t, 4> tile_sizes;
-  tile_sizes.reserve(tiling_space.num_dimensions());
-  for (const auto& dim : tiling_space.dimensions()) {
-    int64_t dim_pow2 =
-        std::max<int64_t>(1, llvm::PowerOf2Ceil(dim.dimension_size));
-    if (dim.type == ge::TilingSpace::DimensionSemantics::kSequential) {
-      tile_sizes.push_back(std::min<int64_t>(base_tile_k, dim_pow2));
-    } else if (dim.dimension_size == 1 ||
-               (dot_is_root && dim.dim_position < num_batch)) {
-      tile_sizes.push_back(1);
-    } else {
-      tile_sizes.push_back(std::min<int64_t>(base_tile_free, dim_pow2));
-    }
-  }
-  return tile_sizes;
-}
-
 absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     std::optional<BlockLevelParameters> block_level_parameters) {
@@ -456,16 +369,11 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
   using ValidTilings = std::vector<SmallVector<int64_t, 4>>;
   ValidTilings candidates;
 
-  const DebugOptions& debug_options =
-      fusion.GetModule()->config().debug_options();
-  int64_t vector_width = GetVectorWidthBits(debug_options);
-
   const bool enable_same_shape_multi_output_fusion =
-      debug_options
+      fusion.GetModule()
+          ->config()
+          .debug_options()
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
-  const HloInstruction* gemv_dot = FindSingleGemvDot(fusion);
-  const bool bypass_tile_filter =
-      block_level_parameters.has_value() || gemv_dot != nullptr;
   if (block_level_parameters.has_value()) {
     ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
                      xtile::GetTilingSpaceConcreteSizes(
@@ -473,9 +381,6 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
                          enable_same_shape_multi_output_fusion));
     candidates.push_back(
         SmallVector<int64_t, 4>(tile_sizes.begin(), tile_sizes.end()));
-  } else if (gemv_dot != nullptr) {
-    candidates.push_back(
-        GetGemvDotTileSizes(fusion, *gemv_dot, *tiling_space, vector_width));
   } else {
     ABSL_ASSIGN_OR_RETURN(candidates, tiling_space->GetValidTilings());
   }
@@ -491,6 +396,19 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
 
   // 2. Evaluate all candidates by substituting concrete tile sizes into the
   // symbolic tiles of roots and operands.
+  const DebugOptions& debug_options =
+      fusion.GetModule()->config().debug_options();
+  TargetMachineOptions target_machine_options(debug_options);
+  bool has_avx512 = absl::c_any_of(
+      target_machine_options.enabled_features(), [](absl::string_view feature) {
+        return absl::StrContains(feature, "avx512");
+      });
+  int64_t prefer_vector_width = debug_options.xla_cpu_prefer_vector_width();
+  if (prefer_vector_width <= 0) {
+    prefer_vector_width = 256;
+  }
+  int64_t vector_width =
+      std::min<int64_t>(prefer_vector_width, has_avx512 ? 512 : 256);
   int64_t max_vector_tile_size = vector_width / 32;
 
   struct Candidate {
@@ -502,7 +420,7 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
   for (const auto& tile_sizes : candidates) {
     auto padded_tile_sizes = xla::xtile::GetPaddedTileSizes(tile_sizes);
     // Skip large tiles, because we tile to the vector level.
-    if (!bypass_tile_filter &&
+    if (!block_level_parameters.has_value() &&
         (Product(padded_tile_sizes) > 512 ||
          llvm::any_of(padded_tile_sizes, [max_vector_tile_size](int64_t size) {
            return size > max_vector_tile_size;
@@ -598,62 +516,6 @@ bool IsSupportedTilingType(PrimitiveType type) {
     return false;
   }
   return true;
-}
-
-bool IsSupportedTiledDot(const HloInstruction& dot) {
-  if (dot.opcode() != HloOpcode::kDot) {
-    return false;
-  }
-  const Shape& out_shape = dot.shape();
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-
-  if (out_shape.dimensions().size() > kMaxRank ||
-      lhs_shape.dimensions().size() > kMaxRank ||
-      rhs_shape.dimensions().size() > kMaxRank) {
-    return false;
-  }
-
-  PrimitiveType dtype = out_shape.element_type();
-  if (lhs_shape.element_type() != dtype || rhs_shape.element_type() != dtype ||
-      dtype == PRED || primitive_util::IsComplexType(dtype) ||
-      !IsSupportedTilingType(dtype)) {
-    return false;
-  }
-
-  const DotDimensionNumbers& dnums = dot.dot_dimension_numbers();
-  if (dnums.lhs_contracting_dimensions_size() != 1 ||
-      dnums.rhs_contracting_dimensions_size() != 1) {
-    return false;
-  }
-
-  int64_t num_batch = dnums.lhs_batch_dimensions_size();
-  int64_t lhs_free_count = lhs_shape.dimensions().size() - num_batch - 1;
-  int64_t rhs_free_count = rhs_shape.dimensions().size() - num_batch - 1;
-  if (lhs_free_count > 1 || rhs_free_count > 1) {
-    return false;
-  }
-
-  int64_t lhs_free_size =
-      ComputeFreeDimSize(lhs_shape, dnums.lhs_batch_dimensions(),
-                         dnums.lhs_contracting_dimensions());
-  int64_t rhs_free_size =
-      ComputeFreeDimSize(rhs_shape, dnums.rhs_batch_dimensions(),
-                         dnums.rhs_contracting_dimensions());
-  if (lhs_free_size != 1 && rhs_free_size != 1) {
-    return false;
-  }
-
-  for (int operand_precision : dot.precision_config().operand_precision()) {
-    if (operand_precision != PrecisionConfig::DEFAULT) {
-      return false;
-    }
-  }
-
-  PrecisionConfig::Algorithm alg = dot.precision_config().algorithm();
-  return alg == PrecisionConfig::ALG_UNSET ||
-         (alg == PrecisionConfig::ALG_DOT_F32_F32_F32 && dtype == F32) ||
-         (alg == PrecisionConfig::ALG_DOT_F64_F64_F64 && dtype == F64);
 }
 
 TiledEmissionResult EmitTiledFusionKernel(

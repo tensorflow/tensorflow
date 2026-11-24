@@ -70,16 +70,12 @@ TEST_F(YnnE2eTest, DisabledYnnKeepsLargeM1DotUnfused) {
                                                rhs_contracting_dims={0}
   }
   )hlo";
-  // When YNNPACK is disabled, large M=1 dots are not fused by YNNPACK (and
-  // fold the RHS transpose into the dot contracting dimension), though
-  // FusionWrapper wraps the tiled GEMV dot into a kLoop fusion.
+  // When YNNPACK is disabled, large M=1 dots stay unfused (and fold the RHS
+  // transpose into the dot contracting dimension).
   MatchOptimizedHlo(kHloText, R"(
     CHECK-NOT: __ynn_fusion
     CHECK-NOT: transpose(
-    CHECK: %[[DOT_COMP:.+]] ({{.+}}, [[RHS_PARAM:[^:]+]]: f32[1024,1024]) -> f32[1,1024] {
-    CHECK: f32[1,1024]{1,0} dot({{.*}}, %[[RHS_PARAM]]), lhs_contracting_dims={0}, rhs_contracting_dims={1}
-    CHECK: ENTRY
-    CHECK: fusion({{.*}}, %rhs), kind=kLoop, calls=%[[DOT_COMP]]
+    CHECK: f32[1,1024]{1,0} dot({{.*}}, %rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
   )");
 }
 

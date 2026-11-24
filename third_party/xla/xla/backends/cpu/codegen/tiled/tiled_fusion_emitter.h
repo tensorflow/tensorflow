@@ -33,10 +33,6 @@ namespace xla::cpu {
 
 bool IsSupportedTilingType(PrimitiveType type);
 
-// Returns true if `dot` is a non-zero-element GEMV dot supported by the tiled
-// CPU emitter.
-bool IsSupportedTiledDot(const HloInstruction& dot);
-
 struct TiledEmissionResult {
   absl::StatusOr<KernelDefinition<MlirKernelSource>> kernel;
   bool tiling_succeeded = true;
