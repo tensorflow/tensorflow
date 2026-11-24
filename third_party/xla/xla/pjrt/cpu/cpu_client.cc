@@ -289,6 +289,11 @@ absl::StatusOr<MlirCompilationSetup> SetupMlirCompilation(
   xla_computation.mutable_proto()->set_pjrt_id(module_id);
   setup.computation = std::move(xla_computation);
 
+  ABSL_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
+                   GetArgMemoryKinds(module.mlir_module()));
+  ABSL_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+                   GetOutputMemoryKinds(module.mlir_module()));
+
   if (options.argument_layouts) {
     setup.delegate_to_xla_compile = true;
     return setup;
@@ -298,10 +303,6 @@ absl::StatusOr<MlirCompilationSetup> SetupMlirCompilation(
                    GetArgLayoutModes(module.mlir_module()));
   ABSL_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
                    GetOutputLayoutModes(module.mlir_module()));
-  ABSL_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                   GetArgMemoryKinds(module.mlir_module()));
-  ABSL_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                   GetOutputMemoryKinds(module.mlir_module()));
 
   module = MaybeOwningMlirModule();
 

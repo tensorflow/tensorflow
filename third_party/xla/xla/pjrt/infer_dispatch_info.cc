@@ -194,6 +194,8 @@ absl::StatusOr<PjRtLoadedExecutableDispatchInfo> InferDispatchInfo(
     return absl::UnimplementedError(
         "InferAvalFromModule called on module without main function.");
   }
+  ABSL_RETURN_IF_ERROR(GetArgMemoryKinds(mlir_module).status());
+  ABSL_RETURN_IF_ERROR(GetOutputMemoryKinds(mlir_module).status());
   auto sharding_fn = [&](mlir::sdy::TensorShardingAttr sharding) {
     return sharding.getMesh(main);
   };

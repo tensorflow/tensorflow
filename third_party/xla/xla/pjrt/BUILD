@@ -427,6 +427,7 @@ xla_cc_test(
     deps = [
         ":dynamic_pad_to_static",
         ":infer_dispatch_info",
+        ":maybe_owning_mlir_module",
         ":mlir_to_hlo",
         ":pjrt_client",
         ":pjrt_common",

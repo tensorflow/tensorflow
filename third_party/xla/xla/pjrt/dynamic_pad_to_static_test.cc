@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/infer_dispatch_info.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -1842,6 +1843,96 @@ module @should_clear_prefix_direct {
   EXPECT_THAT(
       ShouldClearPadRealToStaticMetadataPrefix(main, 4),
       StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("out of range")));
+}
+
+constexpr absl::string_view kInvalidArgMemoryKindMlir = R"mlir(
+module @invalid_arg_memory_kind {
+  sdy.mesh @mesh = <[]>
+  func.func public @main(
+      %arg0: tensor<4xi32> {mhlo.memory_kind = "invalid_memory_kind",
+                            sdy.sharding = #sdy.sharding<@mesh, [{}]>})
+      -> (tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>}) {
+    return %arg0 : tensor<4xi32>
+  }
+}
+)mlir";
+
+constexpr absl::string_view kInvalidResultMemoryKindMlir = R"mlir(
+module @invalid_result_memory_kind {
+  sdy.mesh @mesh = <[]>
+  func.func public @main(
+      %arg0: tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>})
+      -> (tensor<4xi32> {mhlo.memory_kind = "invalid_memory_kind",
+                         sdy.sharding = #sdy.sharding<@mesh, [{}]>}) {
+    return %arg0 : tensor<4xi32>
+  }
+}
+)mlir";
+
+// Parses `mlir_source` and runs `InferDispatchInfo` against a single-device
+// XLA:CPU topology.
+absl::StatusOr<PjRtLoadedExecutableDispatchInfo> RunSingleCpuInferDispatchInfo(
+    absl::string_view mlir_source) {
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                   GetXlaPjrtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices()[0];
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   client->GetTopologyDescription());
+  auto device_assignment = std::make_shared<DeviceAssignment>(1, 1);
+  (*device_assignment)(0, 0) = device->global_device_id().value();
+
+  mlir::MLIRContext context;
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                   ParseMlirModuleString(mlir_source, context));
+  return InferDispatchInfo(topology, *module, CompileOptions(),
+                           device_assignment,
+                           {PjRtLoadedExecutable::LogicalDeviceIds{0, 0}},
+                           {device}, /*tuple_inputs=*/false);
+}
+
+// Parses `mlir_source` and compiles it on XLA:CPU with explicit
+// `CompileOptions::argument_layouts` set for a single `s32[4]{0}` parameter.
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+CompileSingleCpuWithArgumentLayouts(absl::string_view mlir_source) {
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                   GetXlaPjrtCpuClient(CpuClientOptions()));
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                   ParseMlirModuleString(mlir_source, *context));
+  CompileOptions options;
+  options.argument_layouts = {
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0})};
+  return client->Compile(
+      MaybeOwningMlirModule(std::move(context), std::move(module)),
+      std::move(options));
+}
+
+TEST(MlirMemoryKindValidationTest,
+     InferDispatchInfoRejectsUnknownArgMemoryKind) {
+  EXPECT_THAT(RunSingleCpuInferDispatchInfo(kInvalidArgMemoryKindMlir),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unknown memory kind invalid_memory_kind")));
+}
+
+TEST(MlirMemoryKindValidationTest,
+     InferDispatchInfoRejectsUnknownResultMemoryKind) {
+  EXPECT_THAT(RunSingleCpuInferDispatchInfo(kInvalidResultMemoryKindMlir),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unknown memory kind invalid_memory_kind")));
+}
+
+TEST(MlirMemoryKindValidationTest,
+     CompileWithArgumentLayoutsRejectsUnknownArgMemoryKind) {
+  EXPECT_THAT(CompileSingleCpuWithArgumentLayouts(kInvalidArgMemoryKindMlir),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unknown memory kind invalid_memory_kind")));
+}
+
+TEST(MlirMemoryKindValidationTest,
+     CompileWithArgumentLayoutsRejectsUnknownResultMemoryKind) {
+  EXPECT_THAT(CompileSingleCpuWithArgumentLayouts(kInvalidResultMemoryKindMlir),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unknown memory kind invalid_memory_kind")));
 }
 
 }  // namespace
