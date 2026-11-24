@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -68,7 +69,7 @@ std::optional<xla::HloSharding> InspectShardingReadArgs(
 
 class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {
  public:
-  absl::Status InspectSharding(
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status InspectSharding(
       const HloSharding& sharding,
       absl::string_view backend_config) const override {
     std::string sharding_spec = sharding.ToProto().SerializeAsString();

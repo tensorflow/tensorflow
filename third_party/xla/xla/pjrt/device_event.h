@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -43,6 +44,11 @@ GetBuiltinDeviceEventPromiseCApiFunctionTable();
 
 PJRT_DeviceEvent_State ToPjrtDeviceEventState(tsl::AsyncValue::State state);
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI inline void InvokeDeviceEventAndThen(
+    PJRT_DeviceEvent_AndThen callback, void* user_arg) {
+  callback(user_arg);
+}
+
 template <typename T>
 PJRT_DeviceEvent_FunctionTable BuildBuiltinDeviceEventCApiFunctionTable() {
   return PJRT_DeviceEvent_FunctionTable{
@@ -60,7 +66,9 @@ PJRT_DeviceEvent_FunctionTable BuildBuiltinDeviceEventCApiFunctionTable() {
       +[](void* device_event, PJRT_DeviceEvent_AndThen callback,
           void* user_arg) {
         reinterpret_cast<tsl::AsyncValue*>(device_event)
-            ->AndThen([callback, user_arg]() { callback(user_arg); });
+            ->AndThen([callback, user_arg]() {
+              InvokeDeviceEventAndThen(callback, user_arg);
+            });
       },
       /*get_error_if_present=*/
       +[](void* device_event, PJRT_Error_Code* code, const char** message,
@@ -117,7 +125,7 @@ class PjRtDeviceEventPtr {
 
   // Runs a callback when the event becomes ready.
   template <typename Waiter>
-  void AndThen(Waiter&& cb) const {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI void AndThen(Waiter&& cb) const {
     if (event_.device_event == nullptr || event_.vtable == nullptr) {
       return;
     }
@@ -140,7 +148,8 @@ class PjRtDeviceEventPtr {
   }
 
   template <typename T>
-  void DeleteWhenReady(const tsl::RCReference<T>& ref) {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI void DeleteWhenReady(
+      const tsl::RCReference<T>& ref) {
     if (event_.device_event == nullptr || event_.vtable == nullptr) {
       return;
     }

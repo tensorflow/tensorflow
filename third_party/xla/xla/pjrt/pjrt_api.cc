@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -98,8 +99,8 @@ absl::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
 }
 
 typedef const PJRT_Api* (*PjrtApiInitFn)();
-absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
-                                               absl::string_view library_path) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(
+    absl::string_view device_type, absl::string_view library_path) {
 #ifdef PLATFORM_WINDOWS
   return absl::UnimplementedError(
       "LoadPjrtPlugin is not implemented on windows yet.");
@@ -150,7 +151,8 @@ static bool IsPjRtCompatibilityEnabled() {
   return enabled;
 }
 
-absl::Status InitializePjrtPlugin(absl::string_view device_type) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status InitializePjrtPlugin(
+    absl::string_view device_type) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   auto iter = pjrt_apis->find(canonicalize_device_type);
   if (iter == pjrt_apis->end()) {

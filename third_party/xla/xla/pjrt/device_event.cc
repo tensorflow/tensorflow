@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -48,7 +49,9 @@ const PJRT_DeviceEvent_FunctionTable* GetBuiltinAsyncValueCApiFunctionTable() {
       +[](void* device_event, PJRT_DeviceEvent_AndThen callback,
           void* user_arg) {
         reinterpret_cast<tsl::AsyncValue*>(device_event)
-            ->AndThen([callback, user_arg]() { callback(user_arg); });
+            ->AndThen([callback, user_arg]() {
+              InvokeDeviceEventAndThen(callback, user_arg);
+            });
       },
       /*get_error_if_present=*/
       +[](void* device_event, PJRT_Error_Code* code, const char** message,
@@ -86,13 +89,13 @@ PJRT_DeviceEvent_State ToPjrtDeviceEventState(tsl::AsyncValue::State state) {
 
 }  // namespace internal
 
-void PjRtDeviceEventPtr::IncRef() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void PjRtDeviceEventPtr::IncRef() const {
   if (event_.device_event != nullptr && event_.vtable != nullptr) {
     event_.vtable->inc_ref(event_.device_event);
   }
 }
 
-void PjRtDeviceEventPtr::DecRef() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void PjRtDeviceEventPtr::DecRef() const {
   if (event_.device_event != nullptr && event_.vtable != nullptr) {
     event_.vtable->dec_ref(event_.device_event);
   }
@@ -103,7 +106,8 @@ PjRtDeviceEventRef PjRtDeviceEventPtr::CopyRef() const {
   return PjRtDeviceEventRef::TakeRef(*this);
 }
 
-std::optional<absl::Status> PjRtDeviceEventPtr::GetErrorIfPresent() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI std::optional<absl::Status>
+PjRtDeviceEventPtr::GetErrorIfPresent() const {
   if (event_.device_event == nullptr || event_.vtable == nullptr) {
     return std::nullopt;
   }
@@ -127,13 +131,15 @@ std::optional<absl::Status> PjRtDeviceEventPtr::GetErrorIfPresent() const {
   return std::nullopt;
 }
 
-PJRT_DeviceEvent_State PjRtDeviceEventPtr::state() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI PJRT_DeviceEvent_State
+PjRtDeviceEventPtr::state() const {
   if (event_.device_event == nullptr || event_.vtable == nullptr) {
     LOG(FATAL) << "state() called on invalid PjRtDeviceEventPtr.";
   }
   return event_.vtable->get_state(event_.device_event);
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 std::optional<PjRtDeviceEventPtr::DefinitionStreamInfo>
 PjRtDeviceEventPtr::GetDefinitionStream() const {
   if (event_.device_event == nullptr || event_.vtable == nullptr) {
@@ -222,20 +228,22 @@ PjRtDeviceEventPromiseRef PjRtDeviceEventPromiseRef::TakeRef(
   return PjRtDeviceEventPromiseRef(promise);
 }
 
-PjRtDeviceEventPromiseRef PjRtDeviceEventPromiseRef::FormRef(
-    PJRT_DeviceEventPromise* promise) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI PjRtDeviceEventPromiseRef
+PjRtDeviceEventPromiseRef::FormRef(PJRT_DeviceEventPromise* promise) {
   if (promise != nullptr) {
     promise->vtable->inc_ref(promise);
   }
   return PjRtDeviceEventPromiseRef(promise);
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 PjRtDeviceEventPromiseRef::~PjRtDeviceEventPromiseRef() {
   if (promise_ != nullptr) {
     promise_->vtable->dec_ref(promise_);
   }
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 PjRtDeviceEventPromiseRef::PjRtDeviceEventPromiseRef(
     const PjRtDeviceEventPromiseRef& other)
     : promise_(other.promise_) {
@@ -244,8 +252,8 @@ PjRtDeviceEventPromiseRef::PjRtDeviceEventPromiseRef(
   }
 }
 
-PjRtDeviceEventPromiseRef& PjRtDeviceEventPromiseRef::operator=(
-    const PjRtDeviceEventPromiseRef& other) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI PjRtDeviceEventPromiseRef&
+PjRtDeviceEventPromiseRef::operator=(const PjRtDeviceEventPromiseRef& other) {
   if (this != &other) {
     if (promise_ != nullptr) {
       promise_->vtable->dec_ref(promise_);
@@ -264,7 +272,8 @@ PjRtDeviceEventPromiseRef::PjRtDeviceEventPromiseRef(
   other.promise_ = nullptr;
 }
 
-PjRtDeviceEventPromiseRef& PjRtDeviceEventPromiseRef::operator=(
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI PjRtDeviceEventPromiseRef&
+PjRtDeviceEventPromiseRef::operator=(
     PjRtDeviceEventPromiseRef&& other) noexcept {
   if (this != &other) {
     if (promise_ != nullptr) {
@@ -276,20 +285,24 @@ PjRtDeviceEventPromiseRef& PjRtDeviceEventPromiseRef::operator=(
   return *this;
 }
 
-PjRtDeviceEventPtr PjRtDeviceEventPromiseRef::event() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI PjRtDeviceEventPtr
+PjRtDeviceEventPromiseRef::event() const {
   return PjRtDeviceEventPtr(promise_->vtable->event(promise_));
 }
 
-void PjRtDeviceEventPromiseRef::Set(PjRtDeviceEventRef event) const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void PjRtDeviceEventPromiseRef::Set(
+    PjRtDeviceEventRef event) const {
   promise_->vtable->set(promise_, std::move(event).release().ToC());
 }
 
-void PjRtDeviceEventPromiseRef::SetError(absl::Status s) const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void PjRtDeviceEventPromiseRef::SetError(
+    absl::Status s) const {
   PJRT_Error* error = pjrt::StatusToPjRtError(std::move(s));
   promise_->vtable->set_error(promise_, error);
 }
 
-void PjRtDeviceEventPromiseRef::SetReady() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void PjRtDeviceEventPromiseRef::SetReady()
+    const {
   promise_->vtable->set_ready(promise_);
 }
 
@@ -355,7 +368,8 @@ void PjRtDeviceEventRefVector::push_back(PjRtDeviceEventRef&& value) {
   ++vector_.size;
 }
 
-void PjRtDeviceEventRefVector::reserve(size_t new_cap) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void PjRtDeviceEventRefVector::reserve(
+    size_t new_cap) {
   if (new_cap <= vector_.capacity) {
     return;
   }
@@ -372,7 +386,7 @@ void PjRtDeviceEventRefVector::reserve(size_t new_cap) {
   vector_.destroy = DestroyDeviceEventVectorData;
 }
 
-void PjRtDeviceEventRefVector::Clear() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void PjRtDeviceEventRefVector::Clear() {
   for (size_t i = 0; i < vector_.size; ++i) {
     PjRtDeviceEventPtr(vector_.data[i]).DecRef();
   }

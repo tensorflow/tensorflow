@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -88,13 +89,31 @@ const PJRT_ExternalDmaAccess_FunctionTable kBuiltinExternalDmaAccessVtable = {
     },
 };
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void DestroyCApiExternalDmaAccess(
+    PJRT_ExternalDmaAccess* access) {
+  access->vtable->destroy(access);
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI PJRT_Error* GetCApiExternalDmaAccessInfo(
+    const PJRT_ExternalDmaAccess* access, int* fd, uint64_t* offset,
+    uint64_t* size) {
+  return access->vtable->get_info(access, fd, offset, size);
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void InvokeAllocationEventCallback(
+    void (*callback)(PJRT_Error*, void*), PJRT_Error* status, void* user_data) {
+  callback(status, user_data);
+}
+
 // An external DMA access obtained from a plugin through the C function table.
 class CApiExternalDmaAccess : public PjRtRawBufferInterface::ExternalDmaAccess {
  public:
   CApiExternalDmaAccess(PjRtRawBufferInterface::ExternalDmaInfo info,
                         PJRT_ExternalDmaAccess access)
       : ExternalDmaAccess(info), access_(access) {}
-  ~CApiExternalDmaAccess() override { access_.vtable->destroy(&access_); }
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI ~CApiExternalDmaAccess() override {
+    access_.vtable->destroy(&access_);
+  }
 
  private:
   PJRT_ExternalDmaAccess access_;
@@ -403,8 +422,9 @@ const PJRT_RawBuffer_FunctionTable PjRtRawBuffer::kRawBufferVtable = {
               ? absl::AnyInvocable<void(absl::Status) &&>()
               : [allocation_event_callback,
                  allocation_event_user_data](absl::Status status) {
-                  allocation_event_callback(pjrt::StatusToPjRtError(status),
-                                            allocation_event_user_data);
+                  InvokeAllocationEventCallback(allocation_event_callback,
+                                                pjrt::StatusToPjRtError(status),
+                                                allocation_event_user_data);
                 };
 
       if (transfer_dependency_events != nullptr) {
@@ -440,7 +460,7 @@ PjRtRawBuffer::AcquireExternalDmaAccess() {
       "External DMA is not supported by this PjRtRawBuffer."));
 }
 
-absl::StatusOr<PjRtDeviceEventRef>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<PjRtDeviceEventRef>
 PjRtRawBufferInterface::CopyRawHostToDeviceAndReturnEvent(
     const void* src, int64_t offset, int64_t transfer_size,
     PjRtDeviceEventRefVector dependencies) {
@@ -453,7 +473,7 @@ PjRtRawBufferInterface::CopyRawHostToDeviceAndReturnEvent(
   return PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(device_event));
 }
 
-absl::StatusOr<PjRtDeviceEventRef>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<PjRtDeviceEventRef>
 PjRtRawBufferInterface::CopyRawDeviceToHostAndReturnEvent(
     void* dst, int64_t offset, int64_t transfer_size,
     PjRtDeviceEventRefVector dependencies) {
@@ -466,23 +486,31 @@ PjRtRawBufferInterface::CopyRawDeviceToHostAndReturnEvent(
   return PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(device_event));
 }
 
-void* PjRtRawBufferInterface::OpaqueDeviceMemoryDataPointer() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void*
+PjRtRawBufferInterface::OpaqueDeviceMemoryDataPointer() const {
   return vtable->opaque_device_memory_data_pointer(this);
 }
 
-void PjRtRawBufferInterface::AddRef() { vtable->inc_ref(this); }
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void PjRtRawBufferInterface::AddRef() {
+  vtable->inc_ref(this);
+}
 
-void PjRtRawBufferInterface::DropRef() { vtable->dec_ref(this); }
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void PjRtRawBufferInterface::DropRef() {
+  vtable->dec_ref(this);
+}
 
-PjRtMemorySpace* PjRtRawBufferInterface::memory_space() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI PjRtMemorySpace*
+PjRtRawBufferInterface::memory_space() const {
   return PjRtMemorySpace::FromC(vtable->get_memory_space(this));
 }
 
-void* PjRtRawBufferInterface::GetHostPointer() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void* PjRtRawBufferInterface::GetHostPointer()
+    const {
   return vtable->get_host_pointer(this);
 }
 
-size_t PjRtRawBufferInterface::GetOnDeviceSizeInBytes() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI size_t
+PjRtRawBufferInterface::GetOnDeviceSizeInBytes() const {
   return vtable->get_on_device_size_in_bytes(this);
 }
 
@@ -501,11 +529,11 @@ Future<> PjRtRawBufferInterface::CopyRawDeviceToHost(void* dst, int64_t offset,
   return ConvertEventToFuture(std::move(event));
 }
 
-bool PjRtRawBufferInterface::is_mutable() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI bool PjRtRawBufferInterface::is_mutable() const {
   return vtable->is_mutable(this);
 }
 
-absl::StatusOr<PjRtDeviceEventRef>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<PjRtDeviceEventRef>
 PjRtRawBufferInterface::MakeAllocationReadyEvent() {
   PJRT_DeviceEvent device_event;
   PJRT_Error* error = vtable->make_allocation_ready_event(this, &device_event);
@@ -515,7 +543,8 @@ PjRtRawBufferInterface::MakeAllocationReadyEvent() {
   return PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(device_event));
 }
 
-PjRtDeviceEventPtr PjRtRawBufferInterface::GetRawBufferAsyncValue() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI PjRtDeviceEventPtr
+PjRtRawBufferInterface::GetRawBufferAsyncValue() {
   PJRT_DeviceEvent device_event;
   PJRT_Error* error = vtable->get_raw_buffer_async_value(this, &device_event);
   if (error != nullptr) {
@@ -525,8 +554,8 @@ PjRtDeviceEventPtr PjRtRawBufferInterface::GetRawBufferAsyncValue() {
   return PjRtDeviceEventPtr(device_event);
 }
 
-absl::StatusOr<PjRtRawBufferRef> PjRtRawBufferInterface::Slice(int64_t offset,
-                                                               int64_t size) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<PjRtRawBufferRef>
+PjRtRawBufferInterface::Slice(int64_t offset, int64_t size) {
   PJRT_RawBuffer* sliced_c_buffer;
   PJRT_Error* error = vtable->slice(this, offset, size, &sliced_c_buffer);
   if (error != nullptr) {
@@ -539,6 +568,7 @@ absl::StatusOr<PjRtRawBufferRef> PjRtRawBufferInterface::Slice(int64_t offset,
   return tsl::TakeRef(static_cast<PjRtRawBuffer*>(sliced_c_buffer));
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 tsl::AsyncValueRef<PjRtRawBufferInterface::ExternalDmaAccess>
 PjRtRawBufferInterface::AcquireExternalDmaAccess() {
   // Plugins built before this slot was appended have a shorter table.
@@ -566,15 +596,15 @@ PjRtRawBufferInterface::AcquireExternalDmaAccess() {
   event.AndThen([result, c_access, event]() mutable {
     if (auto error = event.GetErrorIfPresent();
         error.has_value() && !error->ok()) {
-      c_access.vtable->destroy(&c_access);
+      DestroyCApiExternalDmaAccess(&c_access);
       result.SetError(*error);
       return;
     }
     ExternalDmaInfo info;
-    if (PJRT_Error* error = c_access.vtable->get_info(&c_access, &info.fd,
-                                                      &info.offset, &info.size);
+    if (PJRT_Error* error = GetCApiExternalDmaAccessInfo(
+            &c_access, &info.fd, &info.offset, &info.size);
         error != nullptr) {
-      c_access.vtable->destroy(&c_access);
+      DestroyCApiExternalDmaAccess(&c_access);
       result.SetError(pjrt::PjrtErrorToStatus(error));
       return;
     }
@@ -597,7 +627,8 @@ PjRtRawBufferInterface::MultiSlice(absl::Span<const SliceInfo> slices) {
   return results;
 }
 
-static void RawBufferInterfaceScheduleCopyToHelper(
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI static void
+RawBufferInterfaceScheduleCopyToHelper(
     PjRtRawBufferInterface* src, PJRT_DeviceEventVector* c_deps,
     PjRtRawBufferRef dst_raw_buffer,
     PjRtDeviceEventPromiseRef definition_event_promise,

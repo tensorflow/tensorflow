@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
@@ -55,7 +56,9 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
   void DropRef();
 
   PjRtMemorySpace* memory_space() const;
-  PJRT_Memory* c_memory_space() const { return vtable->get_memory_space(this); }
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI PJRT_Memory* c_memory_space() const {
+    return vtable->get_memory_space(this);
+  }
   void* GetHostPointer() const;
   size_t GetOnDeviceSizeInBytes() const;
 

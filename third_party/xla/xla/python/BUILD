@@ -195,6 +195,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
     ],
