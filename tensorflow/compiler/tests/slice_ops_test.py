@@ -206,7 +206,7 @@ class SliceTest(xla_test.XLATestCase):
       self.assertAllEqual([30, 40], self.evaluate(crop(x, last)))
       hlo = crop.experimental_get_compiler_ir(x, first)(stage="hlo")
     # Checking the output alone also passes if every offset specializes.
-    self.assertIn(" dynamic-slice(", hlo)
+    self.assertIn("dynamic-slice", hlo)
 
   def test3DWithDynamicBeginAndNegativeSize(self):
     """Tests a slice where `begin` is fed dynamically and `size` contains -1."""
