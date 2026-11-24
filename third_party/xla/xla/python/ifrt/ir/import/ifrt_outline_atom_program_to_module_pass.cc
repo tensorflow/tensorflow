@@ -66,9 +66,16 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
 
     // Find the callee.
     mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-    if (callee.getSymName() == kCalleeMainFuncName &&
-        llvm::isa<mlir::ModuleOp>(callee->getParentOp())) {
-      // Atom program is already outlined in module. Do nothing.
+    if (callee->getParentOp() != module_op.getOperation()) {
+      if (callee.getSymName() != kCalleeMainFuncName) {
+        call_op.emitOpError()
+            << "requires already-outlined callee to be named `"
+            << kCalleeMainFuncName << "`, but got `" << callee.getSymName()
+            << "`";
+        signalPassFailure();
+        return;
+      }
+      // Atom program is already outlined as `@main` in a child module.
       continue;
     }
 

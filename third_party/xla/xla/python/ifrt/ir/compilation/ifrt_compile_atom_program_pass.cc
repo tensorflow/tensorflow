@@ -53,6 +53,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
@@ -431,19 +432,21 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
       // dispatched.
       if (!call_to_compile_results.contains(call_op)) {
         mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-        auto callee_module =
-            llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
-        if (callee.getSymName() != kCalleeMainFuncName ||
-            callee_module == nullptr) {
+        auto callee_module = llvm::cast<mlir::ModuleOp>(callee->getParentOp());
+        if (callee_module == module_op ||
+            callee.getSymName() != kCalleeMainFuncName) {
           // No need to clone the call op because it won't be modified if
           // any error is encountered.
           call_op_to_error.try_emplace(
               call_op,
-              absl::StrCat(
-                  "requires callee outlined as `", kCalleeMainFuncName.str(),
-                  "` function in a ModuleOp. Actual callee name: ",
-                  callee.getSymName().str(), ". Actual callee parent: ",
-                  callee->getParentOp()->getName().getStringRef().str()));
+              absl::StrCat("requires callee outlined as `",
+                           kCalleeMainFuncName.str(),
+                           "` function in a child ModuleOp. Actual callee: `",
+                           mlir::debugString(call_op.getCalleeAttr()), "` (",
+                           callee_module == module_op
+                               ? "in enclosing ModuleOp, not outlined"
+                               : "in child ModuleOp",
+                           ")"));
           continue;
         }
 
@@ -483,7 +486,7 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
         } else {
           AtomProgramCompileResult& compile_result =
               call_to_compile_results[call_op];
-          auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(
+          auto callee_module = llvm::cast<mlir::ModuleOp>(
               call_op.getCalleeOp(symbol_table)->getParentOp());
           absl::StatusOr<mlir::SymbolRefAttr> symbol_ref =
               GenerateLoadedExecutableOp(callee_module, compile_result.name,

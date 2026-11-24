@@ -688,30 +688,6 @@ module @unused_duplicate_argument_avoids_cloning {
 !array = !ifrt.array<tensor<4x8xf32>,
                      #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
 
-module @deeply_nested_callee_emits_error {
-  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
-    // expected-error @+1 {{'ifrt.Call' op cannot resolve callee @outer::@inner::@main because only top-level functions and functions nested one module deep are supported}}
-    %0, %ctrl_0 = ifrt.Call @outer::@inner::@main(%arg0, %arg0)
-        on devices [0, 1] : (!array, !array) -> !array
-    return %0 : !array
-  }
-
-  module @outer <sym_visibility = "private"> {
-    module @inner {
-      func.func @main(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>)
-          -> tensor<4x8xf32> {
-        %0 = stablehlo.add %arg0, %arg1 : tensor<4x8xf32>
-        return %0 : tensor<4x8xf32>
-      }
-    }
-  }
-}
-
-// -----
-
-!array = !ifrt.array<tensor<4x8xf32>,
-                     #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
-
 // CHECK-LABEL: module @all_calls_redirected_to_cloned_variant_erases_unused_original
 module @all_calls_redirected_to_cloned_variant_erases_unused_original {
   func.func @main(%arg0: !array, %arg1: !array)

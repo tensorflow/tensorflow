@@ -288,19 +288,19 @@ mlir::Operation* GetCalleeRootSymbolOp(mlir::func::FuncOp callee,
 mlir::FailureOr<mlir::ModuleOp> GetOutlinedAtomProgramModule(
     CallOp call_op, mlir::SymbolTableCollection& symbol_table) {
   mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-  mlir::ModuleOp callee_module =
-      llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
+  auto callee_module = llvm::cast<mlir::ModuleOp>(callee->getParentOp());
   mlir::ModuleOp call_parent_module =
       call_op->getParentOfType<mlir::ModuleOp>();
-  if (callee.getSymName() != kCalleeMainFuncName || callee_module == nullptr ||
-      call_parent_module == nullptr ||
-      callee_module->getParentOp() != call_parent_module.getOperation()) {
+  if (callee_module == call_parent_module ||
+      callee.getSymName() != kCalleeMainFuncName) {
     call_op.emitOpError() << "requires callee outlined as `"
                           << kCalleeMainFuncName
-                          << "` function in a child ModuleOp. Actual callee "
-                             "name: "
-                          << callee.getSymName() << ". Actual callee parent: "
-                          << callee->getParentOp()->getName();
+                          << "` function in a child ModuleOp. Actual callee: `"
+                          << call_op.getCalleeAttr() << "` ("
+                          << (callee_module == call_parent_module
+                                  ? "in enclosing ModuleOp, not outlined"
+                                  : "in child ModuleOp")
+                          << ")";
     return mlir::failure();
   }
   return callee_module;

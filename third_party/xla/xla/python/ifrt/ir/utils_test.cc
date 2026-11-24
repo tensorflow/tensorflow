@@ -73,6 +73,7 @@ namespace {
 
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::AllOf;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::NiceMock;
@@ -306,6 +307,9 @@ module @root {
     func.func @main(%a: tensor<2x2xi32>) -> tensor<2x2xi32> {
       return %a : tensor<2x2xi32>
     }
+    func.func @other(%a: tensor<2x2xi32>) -> tensor<2x2xi32> {
+      return %a : tensor<2x2xi32>
+    }
   }
   module @outer_mod <sym_visibility = "private"> {
     module @inner_mod {
@@ -318,7 +322,7 @@ module @root {
     %0, %c0 = ifrt.Call @flat_callee(%x) on devices [0, 1] : (!arr) -> !arr
     %1, %c1 = ifrt.Call @outlined_mod::@main(%x) on devices [0, 1]
         : (!arr) -> !arr
-    %2, %c2 = ifrt.Call @outer_mod::@inner_mod::@main(%x) on devices [0, 1]
+    %2, %c2 = ifrt.Call @outlined_mod::@other(%x) on devices [0, 1]
         : (!arr) -> !arr
     return
   }
@@ -359,7 +363,8 @@ module @root {
         mlir::failed(GetOutlinedAtomProgramModule(calls[0], symbol_table)));
     EXPECT_THAT(diag.ConsumeStatus(),
                 StatusIs(absl::StatusCode::kUnknown,
-                         HasSubstr("requires callee outlined")));
+                         AllOf(HasSubstr("requires callee outlined"),
+                               HasSubstr("in enclosing ModuleOp"))));
   }
   {
     mlir::BaseScopedDiagnosticHandler diag(&context);
@@ -367,7 +372,8 @@ module @root {
         mlir::failed(GetOutlinedAtomProgramModule(calls[2], symbol_table)));
     EXPECT_THAT(diag.ConsumeStatus(),
                 StatusIs(absl::StatusCode::kUnknown,
-                         HasSubstr("requires callee outlined")));
+                         AllOf(HasSubstr("requires callee outlined"),
+                               HasSubstr("in child ModuleOp"))));
   }
 
   mlir::FailureOr<mlir::ModuleOp> resolved_mod =

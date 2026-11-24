@@ -227,9 +227,10 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call some function on a set of devices";
   let description = [{
-    The callee is a defined (non-external) global FuncOp to be sharded onto the
-    given set of devices. It's up to the IFRT implementation to define which
-    dialects are legal in the callee.
+    The callee is a defined (non-external) `func.func` either directly in the
+    enclosing `builtin.module` or in a named direct child `builtin.module`, to
+    be sharded onto the given set of devices. It's up to the IFRT
+    implementation to define which dialects are legal in the callee.
 
     The callee's inputs/outputs should be regular tensors, the shape of which
     are the same as inputs/outputs' global shape, correspondingly. Every

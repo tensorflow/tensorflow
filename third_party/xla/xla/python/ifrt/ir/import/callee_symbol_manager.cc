@@ -93,22 +93,13 @@ CalleeSymbolManager::CalleeSymbolManager(
 mlir::FailureOr<mlir::func::FuncOp> CalleeSymbolManager::GetCallee(
     CallOp call_op) {
   CHECK_NE(call_op, nullptr);
-  mlir::SymbolRefAttr callee_ref = call_op.getCalleeAttr();
   if (!IsInRootSymbolScope(call_op)) {
     call_op.emitOpError()
-        << "cannot resolve callee " << callee_ref
+        << "cannot resolve callee " << call_op.getCalleeAttr()
         << " because the call is not in the root module's symbol scope";
     return mlir::failure();
   }
-  mlir::func::FuncOp callee = call_op.getCalleeOp(*symbol_table_);
-  if (GetCalleeRootSymbolOp(callee, root_module_) == nullptr) {
-    call_op.emitOpError()
-        << "cannot resolve callee " << callee_ref
-        << " because only top-level functions and functions nested one module "
-           "deep are supported";
-    return mlir::failure();
-  }
-  return callee;
+  return call_op.getCalleeOp(*symbol_table_);
 }
 
 mlir::FailureOr<mlir::func::FuncOp>
@@ -135,11 +126,7 @@ CalleeSymbolManager::GetOrCloneCalleeForMutation(
     }
   }
 
-  mlir::FailureOr<mlir::func::FuncOp> resolved_callee = GetCallee(first_call);
-  if (mlir::failed(resolved_callee)) {
-    return mlir::failure();
-  }
-  mlir::func::FuncOp callee = *resolved_callee;
+  mlir::func::FuncOp callee = first_call.getCalleeOp(*symbol_table_);
   mlir::Operation* root_sym_op = GetCalleeRootSymbolOp(callee, root_module_);
   CHECK_NE(root_sym_op, nullptr);
   if (IsIfrtFunction(root_sym_op)) {

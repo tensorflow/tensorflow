@@ -314,3 +314,44 @@ module @modules_with_sdy_mesh_are_shared {
     return %1 : tensor<2x2xi32>
   }
 }
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+// CHECK-LABEL: @already_outlined_module_is_skipped
+module @already_outlined_module_is_skipped {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    // CHECK: ifrt.Call @existing::@main(%arg0)
+    %0, %ctrl_0 = ifrt.Call @existing::@main(%arg0) on devices [0,1]
+        : (!array) -> !array
+    return %0 : !array
+  }
+
+  // CHECK: module @existing <sym_visibility = "private">
+  // CHECK-NEXT: func.func @main
+  module @existing <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+      return %arg0 : tensor<2x2xi32>
+    }
+  }
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module @already_outlined_non_main_fails {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    // expected-error @+1 {{'ifrt.Call' op requires already-outlined callee to be named `main`, but got `other`}}
+    %0, %ctrl_0 = ifrt.Call @existing::@other(%arg0) on devices [0,1]
+        : (!array) -> !array
+    return %0 : !array
+  }
+
+  module @existing <sym_visibility = "private"> {
+    func.func @other(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+      return %arg0 : tensor<2x2xi32>
+    }
+  }
+}

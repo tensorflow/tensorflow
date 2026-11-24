@@ -214,6 +214,83 @@ func.func private @external_callee(tensor<2x2xi32>) -> tensor<2x2xi32>
 
 // -----
 
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+func.func @good_outlined_callees(%arg0: !array) attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.Call @outlined_mod::@main(%arg0) on devices [0,1]
+    : (!array) -> !array
+  %1, %ctrl_1 = ifrt.Call @outlined_mod::@other(%0) on devices [0,1]
+    : (!array) -> !array
+  return
+}
+
+module @outlined_mod <sym_visibility = "private"> {
+  func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %arg0 : tensor<2x2xi32>
+  }
+  func.func @other(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %arg0 : tensor<2x2xi32>
+  }
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+func.func @call_rejects_deeply_nested_callee(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires '@outer::@inner::@main' to reference a `func.func` directly in the enclosing `builtin.module` or in a named direct child `builtin.module`}}
+  %0, %ctrl_0 = ifrt.Call @outer::@inner::@main(%arg0) on devices [0,1]
+    : (!array) -> !array
+  return
+}
+
+module @outer <sym_visibility = "private"> {
+  module @inner {
+    func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+      return %arg0 : tensor<2x2xi32>
+    }
+  }
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+func.func @call_rejects_deeply_nested_private_external_callee(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires '@outer::@inner::@main' to reference a `func.func` directly in the enclosing `builtin.module` or in a named direct child `builtin.module`}}
+  %0, %ctrl_0 = ifrt.Call @outer::@inner::@main(%arg0) on devices [0,1]
+    : (!array) -> !array
+  return
+}
+
+module @outer <sym_visibility = "private"> {
+  module @inner {
+    func.func private @main(tensor<2x2xi32>) -> tensor<2x2xi32>
+  }
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+func.func @call_rejects_non_module_symbol_table_callee(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires '@lib::@callee' to reference a `func.func` directly in the enclosing `builtin.module` or in a named direct child `builtin.module`}}
+  %0, %ctrl_0 = ifrt.Call @lib::@callee(%arg0) on devices [0,1]
+    : (!array) -> !array
+  return
+}
+
+shape.function_library @lib {
+  func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %arg0 : tensor<2x2xi32>
+  }
+} mapping {}
+
+// -----
+
 func.func @call_requires_same_input_size(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)

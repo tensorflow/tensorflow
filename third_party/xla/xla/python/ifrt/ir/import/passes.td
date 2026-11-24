@@ -36,7 +36,9 @@ as the callee, clones the callee into the ModuleOp, and redirects all the
 CallOps calling it to the new callee.
 
 This pass must be run if the compiler (e.g., the XLA compiler) expects each atom
-program to be outlined in a ModuleOp with a @main FuncOp.
+program to be outlined in a ModuleOp with a @main FuncOp. Callees already
+outlined as `@main` in a child `ModuleOp` are left unchanged; already-outlined
+callees with a different name fail the pass.
 
 For example, the following code
 
@@ -344,10 +346,8 @@ unmutated body is split into a private helper so internal callers are
 unaffected.
 
 The pass fails with an op error if root-scope symbol uses cannot be determined
-(e.g., an unregistered region-bearing op in the root module), if any
-non-`ifrt.local_view` `ifrt.Call` in a single-block IFRT function cannot
-resolve a callee nested at most one `ModuleOp` deep, or if internal symbol uses
-cannot be determined inside a mutated outlined `ModuleOp`.
+(e.g., an unregistered region-bearing op in the root module), or if internal
+symbol uses cannot be determined inside a mutated outlined `ModuleOp`.
 
 Note: this pass does not clean up dead arguments, results, or transfers left
 behind after copying constants.
@@ -382,10 +382,8 @@ redirected to specialized clones are erased (transitively) at pass exit. Dead
 arguments and results are left to be erased by `IfrtDcePass`.
 
 The pass fails with an op error if root-scope symbol uses cannot be determined
-(e.g., an unregistered region-bearing op in the root module), or if a callee
-with used duplicate arguments cannot be prepared for mutation (e.g., nested
-more than one `ModuleOp` deep or inside an outlined `ModuleOp` with an
-unregistered region-bearing op).
+(e.g., an unregistered region-bearing op in the root module), or if internal
+symbol uses cannot be determined inside a mutated outlined `ModuleOp`.
   }];
 }
 
@@ -418,10 +416,8 @@ order to:
    a call is erased or redirected.
 
 The pass fails with an op error if root-scope symbol uses cannot be determined
-(e.g., an unregistered region-bearing op in the root module), if any `ifrt.Call`
-in an IFRT function cannot resolve a callee nested at most one `ModuleOp` deep,
-or if internal symbol uses cannot be determined inside a mutated outlined
-`ModuleOp`.
+(e.g., an unregistered region-bearing op in the root module), or if internal
+symbol uses cannot be determined inside a mutated outlined `ModuleOp`.
   }];
 }
 

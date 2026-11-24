@@ -105,31 +105,18 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
 
   // Walk the module and convert each atom program to VHLO.
   auto result = module.walk([&](CallOp call_op) -> mlir::WalkResult {
+    if (call_op->getParentOfType<mlir::ModuleOp>() != module) {
+      call_op->emitOpError()
+          << "callee `" << call_op.getCalleeAttr()
+          << "` cannot be serialized because the call is not in the root "
+             "module's symbol scope";
+      return mlir::WalkResult::interrupt();
+    }
     mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
     auto stablehlo_module = llvm::cast<mlir::ModuleOp>(callee->getParentOp());
     if (stablehlo_module == module) {
       call_op->emitOpError() << "callee `" << call_op.getCalleeAttr()
                              << "` has not been outlined to a module";
-      return mlir::WalkResult::interrupt();
-    }
-    // Verify that the atom program is a top-level IFRT IR module. Nested atom
-    // programs are not supported in IFRT IR. Moreover, it would difficult
-    // to exactly reconstruct the IFRT IR program post atom program DCE.
-    // For example, in the example below, DCE would remove the entire module
-    // @outer, which would not be possible to reconstruct on deserialization.
-    // module @outer {
-    //  module @atom_program1 {}
-    //  module @atom_program2 {}
-    // }
-    if (call_op.getCalleeAttr().getNestedReferences().size() > 1) {
-      call_op->emitOpError() << "nested atom programs are not supported "
-                             << call_op.getCalleeAttr();
-      return mlir::WalkResult::interrupt();
-    }
-    if (!stablehlo_module.getSymNameAttr()) {
-      call_op->emitOpError()
-          << "callee `" << call_op.getCalleeAttr()
-          << "` has not been outlined to a module with a `sym_name`";
       return mlir::WalkResult::interrupt();
     }
     std::string atom_program_name = stablehlo_module.getSymNameAttr().str();

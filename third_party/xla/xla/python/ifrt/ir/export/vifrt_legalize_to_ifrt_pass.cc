@@ -327,7 +327,7 @@ mlir::LogicalResult removeDefaultAttrs(
 // Returns a `SymbolRefAttr` for the given `CallOpV1`.
 // The call op contains the symbol as a string, and this method converts it
 // into a `SymbolRefAttr`. It handles the case where the symbol is a nested
-// symbol, e.g., `@foo::@bar::@baz`.
+// symbol, e.g., `@foo::@bar`.
 mlir::FailureOr<mlir::SymbolRefAttr> getCalleeSymbolRef(CallOpV1 call_op) {
   mlir::StringAttr callee_symbol_ref_str_attr =
       llvm::dyn_cast_or_null<mlir::StringAttr>(call_op.getCalleeAttr());

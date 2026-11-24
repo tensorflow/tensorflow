@@ -470,6 +470,91 @@ module {
                              HasSubstr("Failed to version IFRT IR program")));
 }
 
+TEST_P(IfrtIRProgramSerDesTest, VersioningOfCallInsideNestedModuleShouldFail) {
+  struct TestCase {
+    absl::string_view name;
+    absl::string_view mlir;
+  };
+  static constexpr TestCase kCases[] = {
+      {
+          /*name=*/"unnamed_nested_flat_callee",
+          /*mlir=*/R"mlir(
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+module {
+  module {
+    func.func @nested(%arg0: !array) -> !array attributes {ifrt.function} {
+      %0, %ctrl = ifrt.Call @flat(%arg0) on devices [0] : (!array) -> !array
+      return %0 : !array
+    }
+    func.func private @flat(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+      return %arg0 : tensor<2xi32>
+    }
+  }
+}
+          )mlir",
+      },
+      {
+          /*name=*/"named_nested_flat_callee",
+          /*mlir=*/R"mlir(
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+module {
+  module @nested_mod {
+    func.func @nested(%arg0: !array) -> !array attributes {ifrt.function} {
+      %0, %ctrl = ifrt.Call @flat(%arg0) on devices [0] : (!array) -> !array
+      return %0 : !array
+    }
+    func.func private @flat(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+      return %arg0 : tensor<2xi32>
+    }
+  }
+}
+          )mlir",
+      },
+      {
+          /*name=*/"named_nested_outlined_callee",
+          /*mlir=*/R"mlir(
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+module {
+  module @nested_mod {
+    func.func @nested(%arg0: !array) -> !array attributes {ifrt.function} {
+      %0, %ctrl = ifrt.Call @atom::@main(%arg0) on devices [0]
+          : (!array) -> !array
+      return %0 : !array
+    }
+    module @atom <sym_visibility = "private"> {
+      func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+        return %arg0 : tensor<2xi32>
+      }
+    }
+  }
+}
+          )mlir",
+      },
+  };
+
+  for (const TestCase& test_case : kCases) {
+    SCOPED_TRACE(test_case.name);
+    auto context = std::make_unique<mlir::MLIRContext>();
+    ASSERT_OK_AND_ASSIGN(
+        mlir::OwningOpRef<mlir::ModuleOp> module,
+        support::ParseMlirModuleString(test_case.mlir, *context));
+    IfrtIRProgram program(std::move(context), std::move(module));
+
+    auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
+        Version::getCurrentVersion().toString(),
+        /*atom_program_version=*/
+        mlir::vhlo::Version::getCurrentVersion().toString(),
+        /*atom_program_sdy_version=*/
+        mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
+        /*version_in_place=*/false);
+    EXPECT_THAT(Serialize(program, std::move(options)),
+                absl_testing::StatusIs(
+                    absl::StatusCode::kInvalidArgument,
+                    AllOf(HasSubstr("Failed to version IFRT IR program"),
+                          HasSubstr("not in the root module's symbol scope"))));
+  }
+}
+
 TEST_P(IfrtIRProgramSerDesTest, DeserializationError) {
   static constexpr absl::string_view kMlirModuleStr = R"mlir(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>

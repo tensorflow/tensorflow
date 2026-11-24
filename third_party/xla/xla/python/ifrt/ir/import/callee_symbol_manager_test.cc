@@ -196,30 +196,15 @@ class CalleeSymbolManagerTest : public test_util::IfrtIrTestBase {
   llvm::SmallVector<CallOp> calls_;
 };
 
-TEST_F(CalleeSymbolManagerTest, ValidatesCalleeNestingAndScope) {
+TEST_F(CalleeSymbolManagerTest, ValidatesCalleeScope) {
   ASSERT_OK(InitModuleWithCalls(
-      absl::StrCat(kPrivateF0, kMultiFuncMod, kNestedCallMod, R"mlir(
-  module @outer <sym_visibility = "private"> {
-    module @inner {
-      func.func @main() { return }
-    }
-  }
-)mlir"),
-      {"@f0", "@multi_mod::@main", "@outer::@inner::@main"}));
+      absl::StrCat(kPrivateF0, kMultiFuncMod, kNestedCallMod),
+      {"@f0", "@multi_mod::@main"}));
 
   EXPECT_OK(GetCallee(calls_[0]));
   EXPECT_OK(GetCallee(calls_[1]));
 
-  // Both `GetCallee` and `GetOrClone` reject functions nested more than one
-  // module deep and calls outside root symbol scope.
-  constexpr absl::string_view kNestingError =
-      "only top-level functions and functions nested one module deep are "
-      "supported";
-  EXPECT_THAT(GetCallee(calls_[2]),
-              StatusIs(absl::StatusCode::kUnknown, HasSubstr(kNestingError)));
-  EXPECT_THAT(GetOrClone({calls_[2]}),
-              StatusIs(absl::StatusCode::kUnknown, HasSubstr(kNestingError)));
-
+  // Both `GetCallee` and `GetOrClone` reject calls outside root symbol scope.
   CallOp nested_call = FindNestedCall();
   ASSERT_NE(nested_call, nullptr);
   constexpr absl::string_view kScopeError =

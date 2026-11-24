@@ -87,6 +87,10 @@ mlir::Operation* GetCalleeRootSymbolOp(mlir::func::FuncOp callee,
 // outlined as `@main` inside a child `ModuleOp` of `call_op`'s enclosing
 // `ModuleOp`. Emits an op error on `call_op` and returns `mlir::failure()`
 // otherwise.
+//
+// REQUIRES: `call_op` satisfies verified two-tier `ifrt.Call` IR (its callee
+// resolves in `symbol_table` to a `mlir::func::FuncOp` directly in `call_op`'s
+// enclosing `ModuleOp` or in a named direct child `ModuleOp`).
 mlir::FailureOr<mlir::ModuleOp> GetOutlinedAtomProgramModule(
     CallOp call_op, mlir::SymbolTableCollection& symbol_table);
 
