@@ -936,6 +936,7 @@ cc_library(
         ":device_assignment",
         ":executable",
         ":hlo_module_config",
+        ":hlo_proto_cc",
         ":local_service_utils",
         ":platform_util",
         ":service",
@@ -1179,6 +1180,7 @@ cc_library(
         ":computation_layout",
         ":hlo_module_config",
         ":hlo_proto_cc",
+        ":hlo_proto_util",
         ":maybe_owning_device_address",
         ":service_executable_run_options",
         ":shaped_buffer",
@@ -1215,16 +1217,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_module_executable",
+    srcs = ["hlo_module_executable.cc"],
+    hdrs = ["hlo_module_executable.h"],
+    deps = [
+        ":computation_layout",
+        ":executable",
+        ":hlo_module_config",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:kernel_stats",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 xla_cc_test(
     name = "executable_test",
     srcs = ["executable_test.cc"],
     deps = [
         ":executable",
         ":hlo_execution_profile",
+        ":hlo_module_executable",
+        ":hlo_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:test",
@@ -2555,6 +2575,7 @@ cc_library(
     hdrs = ["compilation_cache.h"],
     deps = [
         ":executable",
+        ":hlo_proto_cc",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/base:core_headers",
@@ -2967,6 +2988,7 @@ cc_library(
         ":buffer_assignment",
         ":hlo_proto_cc",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

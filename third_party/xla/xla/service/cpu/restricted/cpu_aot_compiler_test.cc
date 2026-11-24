@@ -365,12 +365,14 @@ TEST_F(CpuAotLoadExecutableTest, DoesNotEmbedHloProtoByDefault) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                        std::move(*loaded).LoadExecutable());
   EXPECT_EQ(executable->hlo_proto(), nullptr);
+  EXPECT_EQ(executable->buffer_assignment_proto(), nullptr);
 }
 
 TEST_F(CpuAotLoadExecutableTest, DoesNotEmbedHloProtoWhenEmbedIrDisabled) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                        LoadWithEmbedIr(/*embed_ir_in_executable=*/false));
   EXPECT_EQ(executable->hlo_proto(), nullptr);
+  EXPECT_EQ(executable->buffer_assignment_proto(), nullptr);
 }
 
 TEST_F(CpuAotLoadExecutableTest, EmbedsStrippedHloProtoWhenEmbedIrEnabled) {
@@ -381,6 +383,7 @@ TEST_F(CpuAotLoadExecutableTest, EmbedsStrippedHloProtoWhenEmbedIrEnabled) {
   ASSERT_NE(hlo_proto, nullptr);
   EXPECT_TRUE(hlo_proto->has_hlo_module());
   EXPECT_TRUE(hlo_proto->has_buffer_assignment());
+  EXPECT_NE(executable->buffer_assignment_proto(), nullptr);
 
   int num_literals = 0;
   for (const auto& computation : hlo_proto->hlo_module().computations()) {
@@ -432,7 +435,8 @@ TEST_F(CpuAotLoadExecutableTest, EmbedsHloProtoWhenModuleCompiledWithEmbedIr) {
   EXPECT_NE(executable->hlo_proto(), nullptr);
 }
 
-TEST_F(CpuAotLoadExecutableTest, EmbedsFullHloProtoWhenDumpingSnapshots) {
+TEST_F(CpuAotLoadExecutableTest,
+       SnapshotHloKeepsLiteralPayloadsWhenDumpingSnapshots) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                        se::PlatformManager::PlatformWithName("host"));
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
@@ -462,13 +466,15 @@ TEST_F(CpuAotLoadExecutableTest, EmbedsFullHloProtoWhenDumpingSnapshots) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                        std::move(*loaded).LoadExecutable());
 
-  ASSERT_TRUE(executable->dumping_snapshot());
-  const HloProto* hlo_proto = executable->hlo_proto();
-  ASSERT_NE(hlo_proto, nullptr);
+  ASSERT_TRUE(DumpingHloSnapshots(*executable));
+  EXPECT_EQ(executable->hlo_proto(), nullptr);
+  EXPECT_NE(executable->buffer_assignment_proto(), nullptr);
+  const HloProto hlo_proto = MakeHloProtoForSnapshot(*executable);
+  EXPECT_TRUE(hlo_proto.has_buffer_assignment());
 
   // Literal payloads must be kept so the snapshot can be replayed.
   bool found_payload = false;
-  for (const auto& computation : hlo_proto->hlo_module().computations()) {
+  for (const auto& computation : hlo_proto.hlo_module().computations()) {
     for (const auto& instruction : computation.instructions()) {
       if (instruction.has_literal() && instruction.literal().f32s_size() > 0) {
         found_payload = true;
