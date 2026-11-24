@@ -1669,15 +1669,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "fusion_pipeline",
-    hdrs = ["fusion_pipeline.h"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/transforms/fusion:fusion_pipeline",
-    ],
-)
-
-cc_library(
     name = "pre_scheduling_copy_insertion_pipeline",
     srcs = ["pre_scheduling_copy_insertion_pipeline.cc"],
     hdrs = ["pre_scheduling_copy_insertion_pipeline.h"],
@@ -3174,16 +3165,6 @@ cc_library(
 )
 
 cc_library(
-    name = "nvptx_alias_info",
-    hdrs = ["nvptx_alias_info.h"],
-    compatible_with = get_compatible_with_portable(),
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/hlo/analysis:nvptx_alias_info",
-    ],
-)
-
-cc_library(
     name = "gpu_fusible",
     srcs = ["gpu_fusible.cc"],
     hdrs = ["gpu_fusible.h"],
@@ -3609,15 +3590,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",  # fixdeps: keep
         "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "fusion_deduplication_cache",
-    hdrs = ["fusion_deduplication_cache.h"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/transforms/fusion:fusion_deduplication_cache",
     ],
 )
 

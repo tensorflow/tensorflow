@@ -360,39 +360,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "partition_assignment",
-    srcs = [
-        "partition_assignment.cc",
-    ],
-    hdrs = [
-        "partition_assignment.h",
-    ],
-    deps = [
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "partition_assignment_test",
-    srcs = ["partition_assignment_test.cc"],
-    deps = [
-        ":partition_assignment",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
     name = "whole_graph_manual_pass",
     srcs = [
         "whole_graph_manual_pass.cc",

@@ -19,7 +19,7 @@ load(
     "xla_internal",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility", "tsl_copts")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "if_include_google_deps")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "if_onednn")
 load("//xla/tsl/mkl:graph.bzl", "onednn_cc_library")
@@ -388,14 +388,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
-)
-
-cc_library(
-    name = "export_hlo",
-    hdrs = ["export_hlo.h"],
-    compatible_with = get_compatible_with_portable(),
-    tags = if_google(["avoid_dep"]),
-    deps = ["//xla/backends/cpu:export_hlo"],
 )
 
 cc_library(
