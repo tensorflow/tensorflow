@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -259,6 +261,21 @@ void Executable::MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
       }
     }
   }
+}
+
+bool DumpingHloSnapshots(const Executable& executable) {
+  return executable.has_module() &&
+         executable.module_config().debug_options().xla_dump_hlo_snapshots();
+}
+
+HloProto MakeHloProtoForSnapshot(const Executable& executable) {
+  HloProto hlo_proto = MakeHloProto(executable.module());
+  if (const BufferAssignmentProto* buffer_assignment =
+          executable.buffer_assignment_proto();
+      buffer_assignment != nullptr) {
+    *hlo_proto.mutable_buffer_assignment() = *buffer_assignment;
+  }
+  return hlo_proto;
 }
 
 }  // namespace xla

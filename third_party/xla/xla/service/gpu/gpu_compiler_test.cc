@@ -330,6 +330,107 @@ ENTRY main {
               absl_testing::IsOkAndHolds(false));
 }
 
+// `buffer_assignment_proto()` only exposes the buffer assignment if the
+// compiler embeds debug info and keeps the HloModule, while
+// `owned_buffer_assignment_proto()` is always available.
+TEST_F(GpuCompilerTest, ExposesBufferAssignmentProtoOnlyWithDebugInfo) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+)";
+  auto compile = [&](bool embed_debug_info, bool embed_hlo_module)
+      -> absl::StatusOr<std::unique_ptr<Executable>> {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_text));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_gpu_executable_embed_debug_info(embed_debug_info);
+    Compiler::CompileOptions compile_options;
+    compile_options.gpu_topology = GetSingleDeviceGpuTopology(
+        /*platform_version=*/"", gpu_target_config());
+    compile_options.embed_hlo_module = embed_hlo_module;
+    return compiler()->RunBackend(std::move(module), /*executor=*/nullptr,
+                                  compile_options);
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compile(/*embed_debug_info=*/true, /*embed_hlo_module=*/true));
+  const auto* gpu_executable =
+      absl::down_cast<const GpuExecutable*>(executable.get());
+  ASSERT_NE(executable->buffer_assignment_proto(), nullptr);
+  EXPECT_THAT(*executable->buffer_assignment_proto(),
+              EqualsProto(gpu_executable->owned_buffer_assignment_proto()));
+
+  ASSERT_OK_AND_ASSIGN(executable, compile(/*embed_debug_info=*/false,
+                                           /*embed_hlo_module=*/true));
+  EXPECT_EQ(executable->buffer_assignment_proto(), nullptr);
+
+  ASSERT_OK_AND_ASSIGN(executable, compile(/*embed_debug_info=*/true,
+                                           /*embed_hlo_module=*/false));
+  EXPECT_EQ(executable->buffer_assignment_proto(), nullptr);
+}
+
+TEST_F(GpuCompilerTest, ExecutableMetadataWithoutEmbeddedModule) {
+  // `p2` doesn't match any output, so it stays a buffer donor during
+  // optimization.
+  constexpr absl::string_view kHloText = R"(
+HloModule test, input_output_alias={ {0}: (0, {}, must-alias) }, buffer_donor={ (2, {}) }
+
+ENTRY main {
+  p0 = f32[16]{0} parameter(0)
+  p1 = f32[16]{0} parameter(1)
+  p2 = s32[4]{0} parameter(2)
+  add = f32[16]{0} add(p0, p1)
+  neg = f32[16]{0} negate(p1)
+  ROOT result = (f32[16]{0}, f32[16]{0}) tuple(add, neg)
+}
+)";
+  HloModuleConfig config = GetModuleConfigForTest();
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/1);
+  device_assignment(0, 0) = 0;
+  config.set_static_device_assignment(device_assignment);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module),
+                               /*executor=*/nullptr, compile_options));
+  ASSERT_TRUE(
+      optimized_module->input_output_alias_config().OutputHasAlias({0}));
+  ASSERT_FALSE(optimized_module->buffer_donor_config().buffer_donor().empty());
+
+  compile_options.embed_hlo_module = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(optimized_module->Clone(), /*executor=*/nullptr,
+                             compile_options));
+  ASSERT_FALSE(executable->has_module());
+
+  // The executable knows the module's metadata without having the module.
+  EXPECT_EQ(executable->input_output_alias_config().ToShortString(),
+            optimized_module->input_output_alias_config().ToShortString());
+  EXPECT_EQ(executable->buffer_donor_config().ToShortString(),
+            optimized_module->buffer_donor_config().ToShortString());
+  const HloModuleConfig& executable_config = executable->module_config();
+  ASSERT_TRUE(executable_config.has_static_device_assignment());
+  EXPECT_EQ(executable_config.static_device_assignment().ToString(),
+            device_assignment.ToString());
+  EXPECT_EQ(executable_config.entry_computation_layout().ToString(),
+            optimized_module->config().entry_computation_layout().ToString());
+  EXPECT_THAT(executable_config.debug_options(),
+              EqualsProto(optimized_module->config().debug_options()));
+}
+
 // Non-scalar constants are not emitted as initializers in the LLVM IR. Instead
 // the executable keeps their content around and copies it to the device on the
 // first execution. This test makes sure that the content stays valid when the
@@ -2024,10 +2125,10 @@ ENTRY main {
     auto* gpu_executable = absl::down_cast<GpuExecutable*>(executable.get());
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
-        BufferAssignment::FromProto(gpu_executable->buffer_assignment_proto(),
-                                    &gpu_executable->module(),
-                                    compiler()->BufferSizeBytesFunction(),
-                                    gpu_executable->alias_info()));
+        BufferAssignment::FromProto(
+            gpu_executable->owned_buffer_assignment_proto(),
+            &gpu_executable->module(), compiler()->BufferSizeBytesFunction(),
+            gpu_executable->alias_info()));
     const HloInstruction* ar = FindInstruction(&gpu_executable->module(), "ar");
     if (ar == nullptr) {
       return absl::NotFoundError("all-reduce `ar` not in the compiled module");
@@ -3745,8 +3846,9 @@ TEST_P(DynamicSliceFusionMemorySpaceTest, PreservesSymmetricResultAlias) {
   ASSERT_OK_AND_ASSIGN(
       auto assignment,
       BufferAssignment::FromProto(
-          gpu_executable->buffer_assignment_proto(), &gpu_executable->module(),
-          compiler()->BufferSizeBytesFunction(), gpu_executable->alias_info()));
+          gpu_executable->owned_buffer_assignment_proto(),
+          &gpu_executable->module(), compiler()->BufferSizeBytesFunction(),
+          gpu_executable->alias_info()));
   ASSERT_OK_AND_ASSIGN(auto result_slice,
                        assignment->GetUniqueSlice(fusion, {}));
   ASSERT_OK_AND_ASSIGN(auto input_slice, assignment->GetUniqueSlice(input, {}));
@@ -3803,10 +3905,10 @@ TEST_P(DynamicSliceFusionMemorySpaceTest,
 
     ASSERT_OK_AND_ASSIGN(
         auto assignment,
-        BufferAssignment::FromProto(gpu_executable->buffer_assignment_proto(),
-                                    &gpu_executable->module(),
-                                    compiler()->BufferSizeBytesFunction(),
-                                    gpu_executable->alias_info()));
+        BufferAssignment::FromProto(
+            gpu_executable->owned_buffer_assignment_proto(),
+            &gpu_executable->module(), compiler()->BufferSizeBytesFunction(),
+            gpu_executable->alias_info()));
     ASSERT_OK_AND_ASSIGN(auto result_slice,
                          assignment->GetUniqueSlice(fusion, {}));
     ASSERT_OK_AND_ASSIGN(auto input_slice,
@@ -4812,7 +4914,7 @@ ENTRY main {
   const auto* gpu_executable =
       absl::down_cast<const GpuExecutable*>(executable.get());
   EXPECT_THAT(uploader_ptr->optimized_protos()[0].buffer_assignment(),
-              EqualsProto(gpu_executable->buffer_assignment_proto()));
+              EqualsProto(gpu_executable->owned_buffer_assignment_proto()));
   EXPECT_NE(uploader_ptr->optimized_fingerprints()[0],
             post_hlo_passes_fingerprint);
   EXPECT_THAT(uploader_ptr->symbol_mappings(),
