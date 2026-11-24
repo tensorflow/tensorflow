@@ -1792,6 +1792,9 @@ CopyInsertion::ComputeSpecialCaseCopies(
                     << other_index.ToString() << " are both aliased to "
                     << alias->parameter_number << " copying " << other_index;
             add_index_to_copy(root, other_index);
+            // `index` now owns the buffer, so a later repeat of the buffer must
+            // copy `index` rather than `other_index` again.
+            seen[buffers_at_index[0]] = index;
             return;
           }
 

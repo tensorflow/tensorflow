@@ -4599,6 +4599,93 @@ ENTRY test {
   EXPECT_TRUE(copy_instr->control_predecessors()[0] == add_instr);
 }
 
+TEST_F(CopyInsertionTest, SpecialCaseCopiesValueAtAliasedAndUnaliasedOutput) {
+  // The same value is live out at index {0} and at the aliased index {1}. The
+  // aliased index keeps the value and the other index is copied.
+  const char* const kModuleString = R"hlo(
+HloModule test, input_output_alias={ {1}: (0, {}, may-alias) }
+
+ENTRY test {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  sub = f32[] subtract(p1, p1)
+  ROOT root = (f32[], f32[]) tuple(sub, sub)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_);
+  ASSERT_OK(copy_insertion.AddSpecialCaseCopies(module.get()));
+  EXPECT_EQ(CountCopies(*module), 1);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::Copy(op::GetTupleElement()), op::GetTupleElement()));
+}
+
+TEST_F(CopyInsertionTest, SpecialCaseCopiesValueAtTwoAliasedOutputs) {
+  // The same value is live out at indices {0} and {1}, which are aliased to
+  // different parameters. Index {0} is copied and index {1} keeps the value.
+  const char* const kModuleString = R"hlo(
+HloModule test, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias) }
+
+ENTRY test {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = f32[] parameter(2)
+  sub = f32[] subtract(p2, p2)
+  ROOT root = (f32[], f32[]) tuple(sub, sub)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_);
+  ASSERT_OK(copy_insertion.AddSpecialCaseCopies(module.get()));
+  EXPECT_EQ(CountCopies(*module), 1);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::Copy(op::GetTupleElement()), op::GetTupleElement()));
+}
+
+TEST_F(CopyInsertionTest, SpecialCaseCopiesValueAtThreeAliasedOutputs) {
+  // The same value is live out at index {0} and at indices {1} and {2}, which
+  // are aliased to different parameters. Each aliased index owns its
+  // parameter's buffer, so at most one index may keep the value.
+  const char* const kModuleString = R"hlo(
+HloModule test, input_output_alias={ {1}: (0, {}, may-alias), {2}: (1, {}, may-alias) }
+
+ENTRY test {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = f32[] parameter(2)
+  sub = f32[] subtract(p2, p2)
+  ROOT root = (f32[], f32[], f32[]) tuple(sub, sub, sub)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_);
+  ASSERT_OK(copy_insertion.AddSpecialCaseCopies(module.get()));
+  EXPECT_EQ(CountCopies(*module), 2);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::Copy(op::GetTupleElement()),
+                op::Copy(op::GetTupleElement()), op::GetTupleElement()));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  std::vector<const HloBuffer*> buffers;
+  for (int64_t i = 0; i < 3; ++i) {
+    std::vector<const HloBuffer*> buffers_at_index =
+        alias_analysis->ComputeBuffersAt(root, {i});
+    ASSERT_EQ(buffers_at_index.size(), 1);
+    buffers.push_back(buffers_at_index[0]);
+  }
+  EXPECT_NE(buffers[0], buffers[1]);
+  EXPECT_NE(buffers[0], buffers[2]);
+  EXPECT_NE(buffers[1], buffers[2]);
+}
+
 TEST_F(CopyInsertionTest, AsyncCallDUSNoCopy) {
   const char* const kModuleString = R"(
 HloModule async_call
