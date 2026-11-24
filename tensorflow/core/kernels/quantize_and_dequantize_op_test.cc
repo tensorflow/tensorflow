@@ -667,6 +667,28 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_per_channel_range_given) {
                   MatchesRegex("Invalid range: input_min 2 > input_max 1")));
 }
 
+TEST_F(QuantizeAndDequantizeTest, Invalid_per_channel_range_given_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("range_given", true)
+          .Attr("axis", 0)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2, 2}), {-0.5, 0.0, 0.3, 0.8});
+  AddInputFromArray<float>(TensorShape({2}), {-1.0, 2.0});  // Slice 1 min > max
+  AddInputFromArray<float>(TensorShape({2}), {1.0, 1.0});
+  AddInputFromArray<int32_t>(TensorShape({}), {8});  // num_bits
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  MatchesRegex("Invalid range: input_min 2 > input_max 1")));
+}
+
 // Convert a 2D tensor with signed 8 bits, given range and round_mode half_up.
 TEST_F(QuantizeAndDequantizeTest,
        Convert_2D_tensor_with_int8_range_given_round_half_up) {
