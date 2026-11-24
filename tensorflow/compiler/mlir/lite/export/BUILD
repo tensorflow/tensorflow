@@ -181,6 +181,7 @@ tf_cc_test(
     deps = [
         ":types",
         "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@llvm-project//mlir:IR",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
