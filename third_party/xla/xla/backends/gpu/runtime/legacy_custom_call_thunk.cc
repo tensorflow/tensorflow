@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -74,9 +73,9 @@ ResolveLegacyCustomCall(const CustomCallTargetRegistry& registry,
         LOG(FATAL) << kErrorMessage;
       }
 
-      return [call_target] ABSL_ATTRIBUTE_NO_SANITIZE_CFI(
-                 stream_executor::Stream* stream, void** buffers,
-                 const char* opaque, size_t opaque_len, XlaCustomCallStatus*) {
+      return [call_target](stream_executor::Stream* stream, void** buffers,
+                           const char* opaque, size_t opaque_len,
+                           XlaCustomCallStatus*) {
         reinterpret_cast<CustomCallWithOpaqueStreamHandle>(call_target)(
             stream->platform_specific_handle().stream, buffers, opaque,
             opaque_len);
@@ -85,10 +84,9 @@ ResolveLegacyCustomCall(const CustomCallTargetRegistry& registry,
     }
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
-      return [call_target] ABSL_ATTRIBUTE_NO_SANITIZE_CFI(
-                 stream_executor::Stream* stream, void** buffers,
-                 const char* opaque, size_t opaque_len,
-                 XlaCustomCallStatus* status) {
+      return [call_target](stream_executor::Stream* stream, void** buffers,
+                           const char* opaque, size_t opaque_len,
+                           XlaCustomCallStatus* status) {
         reinterpret_cast<CustomCallWithStatusAndOpaqueStreamHandle>(
             call_target)(stream->platform_specific_handle().stream, buffers,
                          opaque, opaque_len, status);
