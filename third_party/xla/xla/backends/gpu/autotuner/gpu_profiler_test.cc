@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -68,7 +69,7 @@ using absl_testing::StatusIs;
 constexpr absl::string_view kGemmBackendConfig =
     R"(backend_config={"gemm_backend_config":{"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"]}}})";
 
-class MockExecutable : public Executable {
+class MockExecutable : public HloModuleExecutable {
  public:
   explicit MockExecutable(std::shared_ptr<HloModule> module, int duration_ns,
                           bool should_fail = false,
@@ -81,7 +82,7 @@ class MockExecutable : public Executable {
   MockExecutable(std::shared_ptr<HloModule> module,
                  std::vector<int> durations_ns, bool should_fail = false,
                  bool write_past_allocated_buffer = false)
-      : Executable(std::move(module)),
+      : HloModuleExecutable(std::move(module)),
         durations_ns_(std::move(durations_ns)),
         should_fail_(should_fail),
         write_past_allocated_buffer_(write_past_allocated_buffer) {}
