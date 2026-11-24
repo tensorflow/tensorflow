@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -53,12 +54,14 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
                                    PJRT_XlaTransform_Callbacks* callbacks)
       : HloXlaTransform(std::move(name)), callbacks_(callbacks) {}
 
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI
   ~CApiXlaTransformAdapter() override {
     if (callbacks_ != nullptr && callbacks_->dtor != nullptr) {
       callbacks_->dtor(callbacks_);
     }
   }
 
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI
   absl::StatusOr<bool> Transform(xla::HloModule* module) override {
     xla::HloModuleProto proto = module->ToProto();
     std::string serialized_proto;

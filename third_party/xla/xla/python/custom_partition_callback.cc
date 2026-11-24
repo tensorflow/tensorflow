@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -117,6 +118,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
  public:
   explicit CApiCustomCallPartitioner(JAX_CustomCallPartitioner_Callbacks* c_fns)
       : c_fns_(c_fns) {}
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI
   ~CApiCustomCallPartitioner() override { c_fns_->dtor(c_fns_); }
 
   bool SupportsMlirPartitioning() const override { return true; }
@@ -208,6 +210,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
     partitioner->SetPartitionedHlo(instruction, std::move(result_partitioned));
     return absl::OkStatus();
   }
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI
   HloSharding PropagateUserSharding(
       const HloInstruction* instruction, const HloInstruction* user,
       const HloSharding& sharding) const override {
@@ -218,6 +221,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
     CHECK_OK(status_or_result.status());
     return *status_or_result;
   }
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI
   std::optional<HloSharding> InferShardingFromOperands(
       const HloInstruction* instruction) const override {
     JAX_CustomCallPartitioner_InferShardingFromOperands_Args args{};
@@ -391,11 +395,15 @@ void PopulateResults(
 absl::StatusOr<
     std::tuple<std::string, std::vector<xla::HloSharding>, xla::HloSharding>>
 ConsumeResults(JAX_CustomCallPartitioner_Partition_Args* args) {
-  absl::Cleanup cleanup = [args] {
-    if (args->header.cleanup_fn != nullptr) {
-      args->header.cleanup_fn(args->header.data);
+  struct Cleanup {
+    JAX_CustomCallPartitioner_version_and_error* header;
+    ABSL_ATTRIBUTE_NO_SANITIZE_CFI void operator()() const {
+      if (header->cleanup_fn != nullptr) {
+        header->cleanup_fn(header->data);
+      }
     }
   };
+  absl::Cleanup cleanup = Cleanup{&args->header};
   ABSL_RETURN_IF_ERROR(ConsumeHeader(args->header));
   ABSL_ASSIGN_OR_RETURN(auto result_sharding,
                    ReadHloSharding(args->result_sharding));
@@ -520,11 +528,15 @@ void PopulateResults(
 }
 absl::StatusOr<std::optional<xla::HloSharding>> ConsumeResults(
     JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) {
-  absl::Cleanup cleanup = [args] {
-    if (args->header.cleanup_fn != nullptr) {
-      args->header.cleanup_fn(args->header.data);
+  struct Cleanup {
+    JAX_CustomCallPartitioner_version_and_error* header;
+    ABSL_ATTRIBUTE_NO_SANITIZE_CFI void operator()() const {
+      if (header->cleanup_fn != nullptr) {
+        header->cleanup_fn(header->data);
+      }
     }
   };
+  absl::Cleanup cleanup = Cleanup{&args->header};
   ABSL_RETURN_IF_ERROR(ConsumeHeader(args->header));
   if (!args->has_result_sharding) {
     return std::nullopt;
@@ -576,11 +588,15 @@ void PopulateResults(
 }
 absl::StatusOr<xla::HloSharding> ConsumeResults(
     JAX_CustomCallPartitioner_PropagateUserSharding_Args* args) {
-  absl::Cleanup cleanup = [args] {
-    if (args->header.cleanup_fn != nullptr) {
-      args->header.cleanup_fn(args->header.data);
+  struct Cleanup {
+    JAX_CustomCallPartitioner_version_and_error* header;
+    ABSL_ATTRIBUTE_NO_SANITIZE_CFI void operator()() const {
+      if (header->cleanup_fn != nullptr) {
+        header->cleanup_fn(header->data);
+      }
     }
   };
+  absl::Cleanup cleanup = Cleanup{&args->header};
   ABSL_RETURN_IF_ERROR(ConsumeHeader(args->header));
   return ReadHloSharding(args->result_sharding);
 }
@@ -594,6 +610,7 @@ std::unique_ptr<xla::CustomCallPartitioner> CreateCApiCustomCallPartitioner(
 
 namespace xla {
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 absl::StatusOr<std::optional<CustomCallPartitionResult>>
 CApiCustomCallPartitioner::PartitionToMlir(
     absl::Span<const Shape> arg_shapes,

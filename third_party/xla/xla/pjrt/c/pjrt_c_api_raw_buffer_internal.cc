@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -40,6 +41,7 @@ PJRT_Error* PJRT_RawBuffer_CreateRawAliasOfBuffer(
   return nullptr;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 PJRT_Error* PJRT_RawBuffer_Destroy(PJRT_RawBuffer_Destroy_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_Destroy_Args", PJRT_RawBuffer_Destroy_Args_STRUCT_SIZE,
@@ -48,6 +50,7 @@ PJRT_Error* PJRT_RawBuffer_Destroy(PJRT_RawBuffer_Destroy_Args* args) {
   return nullptr;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 PJRT_Error* PJRT_RawBuffer_GetHostPointer(
     PJRT_RawBuffer_GetHostPointer_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -57,6 +60,7 @@ PJRT_Error* PJRT_RawBuffer_GetHostPointer(
   return nullptr;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 PJRT_Error* PJRT_RawBuffer_GetOnDeviceSizeInBytes(
     PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -68,6 +72,7 @@ PJRT_Error* PJRT_RawBuffer_GetOnDeviceSizeInBytes(
   return nullptr;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 PJRT_Error* PJRT_RawBuffer_GetMemorySpace(
     PJRT_RawBuffer_GetMemorySpace_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(

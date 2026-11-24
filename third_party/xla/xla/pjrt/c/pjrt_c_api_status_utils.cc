@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -188,18 +189,23 @@ struct PJRT_Error_Impl : public PJRT_Error {
                              PJRT_Error_PayloadVisitor visitor,
                              void* user_arg) {
     const PJRT_Error_Impl* impl = static_cast<const PJRT_Error_Impl*>(error);
-    impl->status.ForEachPayload(
-        [&](absl::string_view key, const absl::Cord& value) {
-          std::optional<absl::string_view> value_view = value.TryFlat();
-          if (value_view.has_value()) {
-            visitor(key.data(), key.size(), value_view->data(),
-                    value_view->size(), user_arg);
-          } else {
-            std::string value_str(value);
-            visitor(key.data(), key.size(), value_str.data(), value_str.size(),
-                    user_arg);
-          }
-        });
+    struct PayloadVisitor {
+      PJRT_Error_PayloadVisitor visitor;
+      void* user_arg;
+      ABSL_ATTRIBUTE_NO_SANITIZE_CFI void operator()(
+          absl::string_view key, const absl::Cord& value) const {
+        std::optional<absl::string_view> value_view = value.TryFlat();
+        if (value_view.has_value()) {
+          visitor(key.data(), key.size(), value_view->data(),
+                  value_view->size(), user_arg);
+        } else {
+          std::string value_str(value);
+          visitor(key.data(), key.size(), value_str.data(), value_str.size(),
+                  user_arg);
+        }
+      }
+    };
+    impl->status.ForEachPayload(PayloadVisitor{visitor, user_arg});
   }
 };
 
@@ -213,6 +219,7 @@ static constexpr PJRT_Error_FunctionTable kBuiltinErrorVTable = {
     /*for_each_payload=*/PJRT_Error_Impl::ForEachPayload,
 };
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 absl::Status PjrtErrorToStatus(PJRT_Error* error) {
   if (error == nullptr) {
     return absl::OkStatus();
@@ -256,6 +263,7 @@ PJRT_Error* StatusToPjRtError(absl::Status s) {
   return impl;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 void DestroyPjRtError(PJRT_Error* error) {
   if (error == nullptr) {
     return;

@@ -109,6 +109,7 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
 }
 static char kLocalStateKey = 0;
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 static PJRT_Memory_LocalState* GetLocalState(PJRT_Memory* memory) {
   if (!memory || !memory->vtable || !memory->vtable->get_user_data) {
     return nullptr;
@@ -443,6 +444,7 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
         c_put_callback_(c_put_callback),
         put_user_arg_(put_user_arg) {}
 
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI
   absl::StatusOr<std::string> Get(absl::string_view key,
                                   absl::Duration timeout) override {
     PJRT_CallbackError callback_error =
@@ -466,6 +468,7 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
     return result;
   }
 
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI
   absl::StatusOr<std::string> TryGet(absl::string_view key) override {
     PJRT_CallbackError callback_error =
         [](PJRT_Error_Code code, const char* message, size_t message_size) {
@@ -496,6 +499,7 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
     return nullptr;
   }
 
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI
   absl::Status Set(absl::string_view key, absl::string_view value) override {
     PJRT_CallbackError callback_error =
         [](PJRT_Error_Code code, const char* message, size_t message_size) {
@@ -546,6 +550,7 @@ std::shared_ptr<xla::KeyValueStoreInterface> ToCppKeyValueStore(
 
 // ---------------------------------- Errors -----------------------------------
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args) {
   absl::Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
       "PJRT_Error_Destroy_Args", PJRT_Error_Destroy_Args_STRUCT_SIZE,
@@ -559,6 +564,7 @@ void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args) {
   }
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
   absl::Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
       "PJRT_Error_Message_Args", PJRT_Error_Message_Args_STRUCT_SIZE,
@@ -572,6 +578,7 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
   }
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Error_GetCode_Args", PJRT_Error_GetCode_Args_STRUCT_SIZE,
@@ -580,6 +587,7 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   return nullptr;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 PJRT_Error* PJRT_Error_ForEachPayload(PJRT_Error_ForEachPayload_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Error_ForEachPayload_Args",
@@ -1550,11 +1558,17 @@ PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
                                                  args->num_dims, args->layout));
   std::function<void()> on_delete_callback;
   if (args->on_delete_callback != nullptr) {
-    on_delete_callback = [on_delete_callback = args->on_delete_callback,
-                          user_arg = args->on_delete_callback_arg,
-                          device_buffer_ptr = args->device_buffer_ptr]() {
-      on_delete_callback(device_buffer_ptr, user_arg);
+    struct OnDeleteCallback {
+      decltype(args->on_delete_callback) callback;
+      void* user_arg;
+      void* device_buffer_ptr;
+      ABSL_ATTRIBUTE_NO_SANITIZE_CFI void operator()() const {
+        callback(device_buffer_ptr, user_arg);
+      }
     };
+    on_delete_callback =
+        OnDeleteCallback{args->on_delete_callback, args->on_delete_callback_arg,
+                         args->device_buffer_ptr};
   }
   std::optional<std::intptr_t> stream = std::nullopt;
   if (reinterpret_cast<void*>(args->stream) != nullptr) {
@@ -2182,29 +2196,33 @@ PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
 
 static xla::SendCallback CSendCallbackToCpp(
     const PJRT_SendCallbackInfo& c_callback) {
+  struct SendCallback {
+    void* user_arg;
+    decltype(c_callback.send_callback) callback;
+    ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status operator()(
+        const xla::PjRtTransferMetadata& unused_metadata, xla::PjRtChunk input,
+        size_t total_size_in_bytes, bool done) const {
+      PJRT_Chunk c_chunk = ConvertFromCppChunk(std::move(input));
+      // PJRT_CallbackError creates PJRT_Error in the implementation, but
+      // using the caller's callback status code & message. This way, the
+      // caller avoids creating PJRT_Error itself, and the PJRT_Error is
+      // fully managed in the implementation layer.
+      PJRT_CallbackError c_callback_error =
+          [](PJRT_Error_Code code, const char* message, size_t message_size) {
+            return StatusToPjRtError(
+                absl::Status(static_cast<absl::StatusCode>(code),
+                             std::string(message, message_size)));
+          };
+
+      return PjrtErrorToStatus(callback(&c_chunk, &c_callback_error,
+                                        total_size_in_bytes, done, user_arg));
+    }
+  };
   return xla::SendCallback{
       c_callback.channel_id,
       // Transfer metadata is unused because PJRT C API doesn't support
       // use_major_to_minor_data_layout_for_callbacks = false
-      [user_arg = c_callback.user_arg, callback = c_callback.send_callback](
-          const xla::PjRtTransferMetadata& unused_metadata,
-          xla::PjRtChunk input, size_t total_size_in_bytes,
-          bool done) -> absl::Status {
-        PJRT_Chunk c_chunk = ConvertFromCppChunk(std::move(input));
-        // PJRT_CallbackError creates PJRT_Error in the implementation, but
-        // using the caller's callback status code & message. This way, the
-        // caller avoids creating PJRT_Error itself, and the PJRT_Error is
-        // fully managed in the implementation layer.
-        PJRT_CallbackError c_callback_error =
-            [](PJRT_Error_Code code, const char* message, size_t message_size) {
-              return StatusToPjRtError(
-                  absl::Status(static_cast<absl::StatusCode>(code),
-                               std::string(message, message_size)));
-            };
-
-        return PjrtErrorToStatus(callback(&c_chunk, &c_callback_error,
-                                          total_size_in_bytes, done, user_arg));
-      }};
+      SendCallback{c_callback.user_arg, c_callback.send_callback}};
 }
 
 // Create new libtpu C++ callbacks that calls C API callback with converted
@@ -2224,19 +2242,24 @@ static void CSendCallbackListsToCpp(
 
 static xla::RecvCallback CRecvCallbackToCpp(
     const PJRT_RecvCallbackInfo& c_callback) {
+  struct RecvCallback {
+    void* user_arg;
+    decltype(c_callback.recv_callback) callback;
+    ABSL_ATTRIBUTE_NO_SANITIZE_CFI void operator()(
+        const xla::PjRtTransferMetadata& unused_metadata,
+        std::unique_ptr<xla::CopyToDeviceStream> stream) const {
+      auto c_stream = std::make_unique<PJRT_CopyToDeviceStream>();
+      c_stream->stream = std::move(stream);
+      // The callback takes the ownership of the stream and will be
+      // responsible for calling its deleter.
+      callback(c_stream.release(), user_arg);
+    }
+  };
   return xla::RecvCallback{
       c_callback.channel_id,
       // Transfer metadata is unused because PJRT C API doesn't support
       // use_major_to_minor_data_layout_for_callbacks = false
-      [user_arg = c_callback.user_arg, callback = c_callback.recv_callback](
-          const xla::PjRtTransferMetadata& unused_metadata,
-          std::unique_ptr<xla::CopyToDeviceStream> stream) {
-        auto c_stream = std::make_unique<PJRT_CopyToDeviceStream>();
-        c_stream->stream = std::move(stream);
-        // The callback takes the ownership of the stream and will be
-        // responsible for calling its deleter.
-        callback(c_stream.release(), user_arg);
-      }};
+      RecvCallback{c_callback.user_arg, c_callback.recv_callback}};
 }
 
 static void CRecvCallbackListsToCpp(
@@ -2254,27 +2277,31 @@ static void CRecvCallbackListsToCpp(
 
 static xla::HloOutputCallback CHloOutputCallbackToCpp(
     const PJRT_HloOutputCallbackInfo& c_callback) {
+  struct HloOutputCallback {
+    void* user_arg;
+    decltype(c_callback.callback) callback;
+    ABSL_ATTRIBUTE_NO_SANITIZE_CFI void operator()(
+        int64_t replica_id, int64_t partition_id,
+        absl::Span<std::shared_ptr<const xla::Literal> const> literals) const {
+      for (int i = 0; i < literals.size(); ++i) {
+        const auto lit = literals[i];
+        if (lit != nullptr) {
+          absl::Span<const int64_t> dims = lit->shape().dimensions();
+          callback(replica_id, partition_id, lit->untyped_data(), dims.data(),
+                   dims.size(),
+                   pjrt::ConvertToPjRtBufferType(lit->shape().element_type()),
+                   i, user_arg);
+        } else {
+          callback(replica_id, partition_id, nullptr, nullptr, 0,
+                   PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID, i, user_arg);
+        }
+      }
+    }
+  };
   xla::HloOutputCallback cb;
   cb.callback_id = c_callback.callback_id;
   cb.num_operands = c_callback.num_operands;
-  cb.callback =
-      [user_arg = c_callback.user_arg, callback = c_callback.callback](
-          int64_t replica_id, int64_t partition_id,
-          absl::Span<std::shared_ptr<const xla::Literal> const> literals) {
-        for (int i = 0; i < literals.size(); ++i) {
-          const auto lit = literals[i];
-          if (lit != nullptr) {
-            absl::Span<const int64_t> dims = lit->shape().dimensions();
-            callback(replica_id, partition_id, lit->untyped_data(), dims.data(),
-                     dims.size(),
-                     pjrt::ConvertToPjRtBufferType(lit->shape().element_type()),
-                     i, user_arg);
-          } else {
-            callback(replica_id, partition_id, nullptr, nullptr, 0,
-                     PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID, i, user_arg);
-          }
-        }
-      };
+  cb.callback = HloOutputCallback{c_callback.user_arg, c_callback.callback};
   return cb;
 }
 
@@ -3196,16 +3223,18 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
       "PJRT_Event_OnReady", PJRT_Event_OnReady_Args_STRUCT_SIZE,
       args->struct_size));
 
-  PJRT_Event_OnReadyCallback callback = args->callback;
-  void* user_arg = args->user_arg;
-  auto impl_callback = [callback, user_arg](absl::Status status) -> void {
-    PJRT_Error* error = nullptr;
-    if (!status.ok()) {
-      error = StatusToPjRtError(status);
+  struct OnReadyCallback {
+    PJRT_Event_OnReadyCallback callback;
+    void* user_arg;
+    ABSL_ATTRIBUTE_NO_SANITIZE_CFI void operator()(absl::Status status) const {
+      PJRT_Error* error = nullptr;
+      if (!status.ok()) {
+        error = StatusToPjRtError(status);
+      }
+      callback(error, user_arg);
     }
-    callback(error, user_arg);
   };
-  args->event->future.OnReady(impl_callback);
+  args->event->future.OnReady(OnReadyCallback{args->callback, args->user_arg});
   return nullptr;
 }
 
@@ -3650,6 +3679,7 @@ static void PopulatePjrtClientDevices(PJRT_Client* c_client) {
            c_client->client->addressable_device_count());
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 static void PopulatePjrtClientMemories(PJRT_Client* c_client) {
   absl::Span<xla::PjRtMemorySpace* const> memory_spaces =
       c_client->client->memory_spaces();

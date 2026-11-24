@@ -675,11 +675,15 @@ PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk) {
 }
 
 xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk) {
-  return xla::PjRtChunk(
-      chunk.data, chunk.size,
-      [deleter_arg = chunk.deleter_arg, deleter = chunk.deleter](void* data) {
-        deleter(data, deleter_arg);
-      });
+  struct Deleter {
+    void* deleter_arg;
+    decltype(chunk.deleter) deleter;
+    ABSL_ATTRIBUTE_NO_SANITIZE_CFI void operator()(void* data) const {
+      deleter(data, deleter_arg);
+    }
+  };
+  return xla::PjRtChunk(chunk.data, chunk.size,
+                        Deleter{chunk.deleter_arg, chunk.deleter});
 }
 
 PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
