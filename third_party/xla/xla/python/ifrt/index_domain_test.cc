@@ -34,6 +34,11 @@ namespace {
 
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
+
+constexpr int64_t kSqrtMaxNumElements = int64_t{1} << 28;
+static_assert(kSqrtMaxNumElements * kSqrtMaxNumElements ==
+              Shape::kMaxNumElements + 1);
 
 TEST(IndexDomainTest, Construction) {
   IndexDomain a(Index({1, 2}), Shape({3, 4}));
@@ -43,6 +48,88 @@ TEST(IndexDomainTest, Construction) {
   IndexDomain b(Shape({3, 4}));
   EXPECT_EQ(b.origin(), Index({0, 0}));
   EXPECT_EQ(b.shape(), Shape({3, 4}));
+
+  EXPECT_THAT(IndexDomain::Create(Index({1, 2}), Shape({3, 4})),
+              IsOkAndHolds(a));
+
+  EXPECT_OK(IndexDomain::Create(Index({}), Shape({})));
+  EXPECT_OK(
+      IndexDomain::Create(Index({Shape::kMaxNumElements, 0}), Shape({0, 0})));
+  EXPECT_OK(
+      IndexDomain::Create(Index({0, 0}), Shape({0, Shape::kMaxNumElements})));
+  EXPECT_OK(
+      IndexDomain::Create(Index({Shape::kMaxNumElements - 5}), Shape({5})));
+  EXPECT_OK(IndexDomain::Create(Index({kSqrtMaxNumElements - 1, 0}),
+                                Shape({0, kSqrtMaxNumElements})));
+  EXPECT_OK(IndexDomain::Create(Index({kSqrtMaxNumElements - 2, 0}),
+                                Shape({1, kSqrtMaxNumElements})));
+  EXPECT_THAT(IndexDomain::Create(Index({1}), Shape({3, 4})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("same number of dimensions")));
+  EXPECT_THAT(IndexDomain::Create(Index({1, 2}), Shape({3})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("same number of dimensions")));
+  EXPECT_THAT(IndexDomain::Create(Index({}), Shape({1})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("same number of dimensions")));
+  EXPECT_THAT(IndexDomain::Create(Index({1}), Shape({})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("same number of dimensions")));
+  EXPECT_THAT(
+      IndexDomain::Create(Index({Shape::kMaxNumElements, 0}), Shape({1, 2})),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("exceeds Shape::kMaxNumElements")));
+  EXPECT_THAT(
+      IndexDomain::Create(Index({Shape::kMaxNumElements - 5}), Shape({6})),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("exceeds Shape::kMaxNumElements")));
+  EXPECT_THAT(IndexDomain::Create(Index({Shape::kMaxNumElements, 0}),
+                                  Shape({0, Shape::kMaxNumElements})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("exceeds Shape::kMaxNumElements")));
+  EXPECT_THAT(IndexDomain::Create(Index({kSqrtMaxNumElements, 0}),
+                                  Shape({0, kSqrtMaxNumElements})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("exceeds Shape::kMaxNumElements")));
+  EXPECT_THAT(IndexDomain::Create(Index({kSqrtMaxNumElements - 1, 0}),
+                                  Shape({1, kSqrtMaxNumElements})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("exceeds Shape::kMaxNumElements")));
+  EXPECT_THAT(IndexDomain::Create(Index({kSqrtMaxNumElements, 0, 0}),
+                                  Shape({0, 0, kSqrtMaxNumElements})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("exceeds Shape::kMaxNumElements")));
+}
+
+TEST(IndexDomainDeathTest, InvalidConstructionAndOffsetOverflow) {
+  EXPECT_DEATH((void)IndexDomain(Index({1}), Shape({3, 4})),
+               "same number of dimensions");
+  EXPECT_DEATH((void)IndexDomain(Index({1, 2}), Shape({3})),
+               "same number of dimensions");
+  EXPECT_DEATH((void)IndexDomain(Index({Shape::kMaxNumElements}), Shape({1})),
+               "exceeds Shape::kMaxNumElements");
+  EXPECT_DEATH(
+      (void)IndexDomain(Index({Shape::kMaxNumElements - 5}), Shape({6})),
+      "exceeds Shape::kMaxNumElements");
+  EXPECT_DEATH((void)IndexDomain(Index({kSqrtMaxNumElements, 0}),
+                                 Shape({0, kSqrtMaxNumElements})),
+               "exceeds Shape::kMaxNumElements");
+  IndexDomain domain(Index({10}), Shape({5}));
+  EXPECT_DEATH((void)(domain + Index({Shape::kMaxNumElements - 12})),
+               "exceeds Shape::kMaxNumElements");
+  EXPECT_DEATH((void)(domain += Index({Shape::kMaxNumElements - 12})),
+               "exceeds Shape::kMaxNumElements");
+  IndexDomain multi_dim_domain(Index({0, 0}), Shape({0, kSqrtMaxNumElements}));
+  EXPECT_DEATH((void)(multi_dim_domain + Index({kSqrtMaxNumElements, 0})),
+               "exceeds Shape::kMaxNumElements");
+  EXPECT_DEATH((void)(multi_dim_domain += Index({kSqrtMaxNumElements, 0})),
+               "exceeds Shape::kMaxNumElements");
+  EXPECT_DEATH((void)(domain + Index({1, 2})), "");
+  EXPECT_DEATH((void)(domain += Index({1, 2})), "");
+  EXPECT_DEATH((void)(domain - Index({1, 2})), "");
+  EXPECT_DEATH((void)(domain -= Index({1, 2})), "");
+  EXPECT_DEATH((void)(domain - Index({11})), "");
+  EXPECT_DEATH((void)(domain -= Index({11})), "");
 }
 
 TEST(IndexDomainTest, Operations) {
@@ -126,15 +213,20 @@ TEST(IndexDomainTest, Intersect) {
     EXPECT_THAT(a.Intersect(b), StatusIs(absl::StatusCode::kInvalidArgument));
   }
 
-  // Intersection origin whose non-zero element product exceeds
-  // `Shape::kMaxNumElements`.
+  // Domains at the `Shape::kMaxNumElements` upper-bound boundary.
   {
-    constexpr int64_t kSqrtMaxNumElements = int64_t{1} << 28;
-    IndexDomain a(Index({kSqrtMaxNumElements, 0}),
-                  Shape({1, kSqrtMaxNumElements + 1}));
-    IndexDomain b(Index({0, kSqrtMaxNumElements}),
-                  Shape({kSqrtMaxNumElements + 1, 1}));
-    EXPECT_THAT(a.Intersect(b), StatusIs(absl::StatusCode::kInvalidArgument));
+    IndexDomain a(Index({Shape::kMaxNumElements - 10}), Shape({10}));
+    IndexDomain b(Index({Shape::kMaxNumElements - 5}), Shape({5}));
+    EXPECT_THAT(a.Intersect(b), IsOkAndHolds(b));
+    EXPECT_THAT(b.Intersect(a), IsOkAndHolds(b));
+  }
+  {
+    IndexDomain a(Index({kSqrtMaxNumElements - 2, 0}),
+                  Shape({1, kSqrtMaxNumElements}));
+    IndexDomain b(Index({kSqrtMaxNumElements - 2, 10}),
+                  Shape({1, kSqrtMaxNumElements - 10}));
+    EXPECT_THAT(a.Intersect(b), IsOkAndHolds(b));
+    EXPECT_THAT(b.Intersect(a), IsOkAndHolds(b));
   }
 }
 
@@ -185,11 +277,27 @@ TEST(IndexDomainTest, Contains) {
     EXPECT_THAT(a.Contains(zero), IsOkAndHolds(true));
   }
 
-  // Mismatched rank.
+  // Mismatched numbers of dimensions.
   {
     IndexDomain a(Index({1, 2}), Shape({3, 4}));
     IndexDomain b(Index({1}), Shape({3}));
     EXPECT_THAT(a.Contains(b), StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Domains at the `Shape::kMaxNumElements` upper-bound boundary.
+  {
+    IndexDomain a(Index({Shape::kMaxNumElements - 10}), Shape({10}));
+    IndexDomain b(Index({Shape::kMaxNumElements - 5}), Shape({5}));
+    EXPECT_THAT(a.Contains(b), IsOkAndHolds(true));
+    EXPECT_THAT(b.Contains(a), IsOkAndHolds(false));
+  }
+  {
+    IndexDomain a(Index({kSqrtMaxNumElements - 2, 0}),
+                  Shape({1, kSqrtMaxNumElements}));
+    IndexDomain b(Index({kSqrtMaxNumElements - 2, 10}),
+                  Shape({1, kSqrtMaxNumElements - 10}));
+    EXPECT_THAT(a.Contains(b), IsOkAndHolds(true));
+    EXPECT_THAT(b.Contains(a), IsOkAndHolds(false));
   }
 }
 
@@ -225,6 +333,64 @@ TEST_P(IndexDomainSerDesTest, ToFromProto) {
     ASSERT_OK_AND_ASSIGN(IndexDomain index_domain_copy,
                          IndexDomain::FromProto(proto));
     EXPECT_EQ(index_domain_copy, index_domain);
+  }
+}
+
+TEST(IndexDomainTest,
+     FromProtoRejectsMismatchedNumDimensionsAndUpperBoundOverflow) {
+  {
+    IndexDomainProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    *proto.mutable_origin() = Index({1}).ToProto();
+    *proto.mutable_shape() = Shape({3, 4}).ToProto();
+    EXPECT_THAT(IndexDomain::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("same number of dimensions")));
+  }
+  {
+    IndexDomainProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    *proto.mutable_origin() = Index({1, 2}).ToProto();
+    *proto.mutable_shape() = Shape({3}).ToProto();
+    EXPECT_THAT(IndexDomain::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("same number of dimensions")));
+  }
+  {
+    IndexDomainProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    *proto.mutable_origin() = Index({Shape::kMaxNumElements}).ToProto();
+    *proto.mutable_shape() = Shape({1}).ToProto();
+    EXPECT_THAT(IndexDomain::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("exceeds Shape::kMaxNumElements")));
+  }
+  {
+    IndexDomainProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    *proto.mutable_origin() = Index({Shape::kMaxNumElements - 5}).ToProto();
+    *proto.mutable_shape() = Shape({6}).ToProto();
+    EXPECT_THAT(IndexDomain::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("exceeds Shape::kMaxNumElements")));
+  }
+  {
+    IndexDomainProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    *proto.mutable_origin() = Index({Shape::kMaxNumElements, 0}).ToProto();
+    *proto.mutable_shape() = Shape({0, Shape::kMaxNumElements}).ToProto();
+    EXPECT_THAT(IndexDomain::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("exceeds Shape::kMaxNumElements")));
+  }
+  {
+    IndexDomainProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    *proto.mutable_origin() = Index({kSqrtMaxNumElements, 0}).ToProto();
+    *proto.mutable_shape() = Shape({0, kSqrtMaxNumElements}).ToProto();
+    EXPECT_THAT(IndexDomain::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("exceeds Shape::kMaxNumElements")));
   }
 }
 
