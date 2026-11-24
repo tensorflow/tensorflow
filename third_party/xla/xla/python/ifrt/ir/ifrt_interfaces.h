@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
@@ -123,27 +124,31 @@ class IfrtCallLikeTrait {
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, Impl> {
    public:
-    // Verifies getCallee() is a valid SymbolRefAttr to CalleeOpType.
-    static LogicalResult verifyTrait(Operation* op) {
-      mlir::SymbolTableCollection symbol_table;
-      ConcreteType concrete = llvm::cast<ConcreteType>(op);
-      CalleeOpType callee = concrete.getCalleeOp(symbol_table);
+    // Resolves `callee` as `CalleeOpType` using `symbol_table`, returning
+    // `nullptr` if not found or not of `CalleeOpType`.
+    CalleeOpType getCalleeOp(mlir::SymbolTableCollection& symbol_table) {
+      SymbolRefAttr callee_attr = static_cast<ConcreteType*>(this)->getCallee();
+      return symbol_table.lookupNearestSymbolFrom<CalleeOpType>(
+          this->getOperation(), callee_attr);
+    }
+
+    // Verifies `callee` references a valid `CalleeOpType` without the
+    // `ifrt.function` attribute, returning the resolved callee on success.
+    FailureOr<CalleeOpType> verifyCalleeSymbol(
+        mlir::SymbolTableCollection& symbol_table) {
+      Operation* op = this->getOperation();
+      CalleeOpType callee = this->getCalleeOp(symbol_table);
       if (callee == nullptr) {
-        return op->emitOpError() << "requires '" << concrete.getCallee()
-                                 << "' to reference a valid `"
-                                 << CalleeOpType::getOperationName() << "`";
+        return op->emitOpError()
+               << "requires '" << static_cast<ConcreteType*>(this)->getCallee()
+               << "' to reference a valid `" << CalleeOpType::getOperationName()
+               << "`";
       }
       if (callee->hasAttr(::xla::ifrt::kIfrtFunctionAttrName)) {
         return op->emitOpError() << "requires callee not with attr `"
                                  << ::xla::ifrt::kIfrtFunctionAttrName << "`";
       }
-      return success();
-    }
-
-    CalleeOpType getCalleeOp(mlir::SymbolTableCollection& symbol_table) {
-      SymbolRefAttr callee_attr = static_cast<ConcreteType*>(this)->getCallee();
-      return symbol_table.lookupNearestSymbolFrom<CalleeOpType>(
-          this->getOperation(), callee_attr);
+      return callee;
     }
   };
 };

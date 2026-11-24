@@ -199,33 +199,25 @@ class CalleeSymbolManagerTest : public test_util::IfrtIrTestBase {
 TEST_F(CalleeSymbolManagerTest, ValidatesCalleeNestingAndScope) {
   ASSERT_OK(InitModuleWithCalls(
       absl::StrCat(kPrivateF0, kMultiFuncMod, kNestedCallMod, R"mlir(
-  func.func private @ext_decl()
   module @outer <sym_visibility = "private"> {
     module @inner {
       func.func @main() { return }
     }
   }
 )mlir"),
-      {"@f0", "@multi_mod::@main", "@ext_decl", "@outer::@inner::@main"}));
+      {"@f0", "@multi_mod::@main", "@outer::@inner::@main"}));
 
   EXPECT_OK(GetCallee(calls_[0]));
   EXPECT_OK(GetCallee(calls_[1]));
 
-  // Both `GetCallee` and `GetOrClone` reject external declarations, functions
-  // nested more than one module deep, and calls outside root symbol scope.
-  constexpr absl::string_view kExtDeclError =
-      "failed to resolve defined callee";
-  EXPECT_THAT(GetCallee(calls_[2]),
-              StatusIs(absl::StatusCode::kUnknown, HasSubstr(kExtDeclError)));
-  EXPECT_THAT(GetOrClone({calls_[2]}),
-              StatusIs(absl::StatusCode::kUnknown, HasSubstr(kExtDeclError)));
-
+  // Both `GetCallee` and `GetOrClone` reject functions nested more than one
+  // module deep and calls outside root symbol scope.
   constexpr absl::string_view kNestingError =
       "only top-level functions and functions nested one module deep are "
       "supported";
-  EXPECT_THAT(GetCallee(calls_[3]),
+  EXPECT_THAT(GetCallee(calls_[2]),
               StatusIs(absl::StatusCode::kUnknown, HasSubstr(kNestingError)));
-  EXPECT_THAT(GetOrClone({calls_[3]}),
+  EXPECT_THAT(GetOrClone({calls_[2]}),
               StatusIs(absl::StatusCode::kUnknown, HasSubstr(kNestingError)));
 
   CallOp nested_call = FindNestedCall();

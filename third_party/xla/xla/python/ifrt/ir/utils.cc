@@ -288,11 +288,6 @@ mlir::Operation* GetCalleeRootSymbolOp(mlir::func::FuncOp callee,
 mlir::FailureOr<mlir::ModuleOp> GetOutlinedAtomProgramModule(
     CallOp call_op, mlir::SymbolTableCollection& symbol_table) {
   mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-  if (callee == nullptr) {
-    call_op->emitOpError() << "can't find callee `" << call_op.getCalleeAttr()
-                           << "`";
-    return mlir::failure();
-  }
   mlir::ModuleOp callee_module =
       llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
   mlir::ModuleOp call_parent_module =

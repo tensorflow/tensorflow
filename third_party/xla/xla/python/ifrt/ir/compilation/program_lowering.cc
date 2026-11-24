@@ -119,11 +119,6 @@ GetLayoutFromAtomExecutable(
     ifrt::CallLoadedExecutableOp call_op, AtomLayoutDirection direction,
     int index) {
   LoadedExecutableOp loaded_executable_op = call_op.getCalleeOp(symbol_table);
-  if (loaded_executable_op == nullptr) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Could not find LoadedExecutableOp `%s`",
-                        call_op.getCallee().getRootReference().str()));
-  }
   std::string atom_program_name = loaded_executable_op.getSymName().str();
   const LoadedExecutable* loaded_atom_executable = nullptr;
   const Executable* compiled_atom_executable = nullptr;
@@ -321,11 +316,6 @@ absl::Status ValidateMainFunctionOps(
     }
     if (auto call_op = mlir::dyn_cast<CallLoadedExecutableOp>(op)) {
       LoadedExecutableOp loaded_exec_op = call_op.getCalleeOp(symbol_table);
-      if (loaded_exec_op == nullptr) {
-        return absl::InvalidArgumentError(
-            absl::StrFormat("Could not find LoadedExecutableOp `%s`",
-                            call_op.getCallee().getRootReference().str()));
-      }
       absl::string_view atom_name = loaded_exec_op.getSymName();
       const bool has_bound_or_compiled =
           bound_executables.contains(atom_name) ||

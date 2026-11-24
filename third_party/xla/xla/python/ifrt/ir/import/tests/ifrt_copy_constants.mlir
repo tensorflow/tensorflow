@@ -285,53 +285,33 @@ module @passthrough_call_reverse_order {
 !array_m1 = !ifrt.array<tensor<4x8xf32>,
                         #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 
-// `signalPassFailure()` suppresses printing the failing module to stdout.
-// CHECK-NOT: module @external_producer_fails
-module @external_producer_fails {
+// CHECK-LABEL: module @multi_block_producer_skipped
+module @multi_block_producer_skipped {
   func.func @main() -> !array_m1 attributes {ifrt.function} {
-    // Processed in reverse order: `@defined_consumer` runs first
-    // (`FindHloProducer` skips `@external_producer`), then `GetCallee` rejects
-    // the external declaration on this call.
-    // expected-error @+1 {{'ifrt.Call' op failed to resolve defined callee @external_producer}}
-    %0, %ctrl_0 = ifrt.Call @external_producer() on devices [0, 1]
+    %0, %ctrl_0 = ifrt.Call @multi_block_producer() on devices [0, 1]
         : () -> !array_m1
-    %1, %ctrl_1 = ifrt.Call @defined_consumer(%0) on devices [0, 1]
+    // CHECK: ifrt.Call @consumer
+    %1, %ctrl_1 = ifrt.Call @consumer(%0) on devices [0, 1]
         : (!array_m1) -> !array_m1
     return %1 : !array_m1
   }
 
-  func.func private @external_producer() -> tensor<4x8xf32>
+  func.func private @multi_block_producer() -> tensor<4x8xf32> {
+    %c0 = stablehlo.constant dense<6.000000e+00> : tensor<4x8xf32>
+    return %c0 : tensor<4x8xf32>
+  ^bb1:
+    %c1 = stablehlo.constant dense<7.000000e+00> : tensor<4x8xf32>
+    return %c1 : tensor<4x8xf32>
+  }
 
-  func.func private @defined_consumer(%arg0: tensor<4x8xf32>)
-      -> tensor<4x8xf32> {
+  // CHECK-LABEL: func.func private @consumer(%arg0: tensor<4x8xf32>)
+  // CHECK-NOT:     stablehlo.constant
+  // CHECK-NEXT:    %[[ADD:.+]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT:    return %[[ADD]]
+  func.func private @consumer(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
     %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
     return %add : tensor<4x8xf32>
   }
-}
-
-// -----
-
-!array_m1 = !ifrt.array<tensor<4x8xf32>,
-                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
-
-// `signalPassFailure()` suppresses printing the failing module to stdout.
-// CHECK-NOT: module @external_consumer_fails
-module @external_consumer_fails {
-  func.func @main() -> !array_m1 attributes {ifrt.function} {
-    %0, %ctrl_0 = ifrt.Call @const_producer() on devices [0, 1]
-        : () -> !array_m1
-    // expected-error @+1 {{'ifrt.Call' op failed to resolve defined callee @external_consumer}}
-    %1, %ctrl_1 = ifrt.Call @external_consumer(%0) on devices [0, 1]
-        : (!array_m1) -> !array_m1
-    return %1 : !array_m1
-  }
-
-  func.func private @const_producer() -> tensor<4x8xf32> {
-    %c = stablehlo.constant dense<7.000000e+00> : tensor<4x8xf32>
-    return %c : tensor<4x8xf32>
-  }
-
-  func.func private @external_consumer(tensor<4x8xf32>) -> tensor<4x8xf32>
 }
 
 // -----

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -91,7 +90,6 @@ class IfrtDumpAtomProgramsPass
     mlir::func::FuncOp main_func = GetMainFunction(getOperation());
     for (CallOp call_op : main_func.getOps<CallOp>()) {
       mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-      CHECK(callee != nullptr);
       auto atom_program_module =
           llvm::cast<mlir::ModuleOp>(callee->getParentOp());
       std::string atom_program_name =

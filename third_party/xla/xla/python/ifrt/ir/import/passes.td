@@ -346,9 +346,8 @@ unaffected.
 The pass fails with an op error if root-scope symbol uses cannot be determined
 (e.g., an unregistered region-bearing op in the root module), if any
 non-`ifrt.local_view` `ifrt.Call` in a single-block IFRT function cannot
-resolve a defined callee nested at most one `ModuleOp` deep (including external
-declarations), or if internal symbol uses cannot be determined inside a mutated
-outlined `ModuleOp`.
+resolve a callee nested at most one `ModuleOp` deep, or if internal symbol uses
+cannot be determined inside a mutated outlined `ModuleOp`.
 
 Note: this pass does not clean up dead arguments, results, or transfers left
 behind after copying constants.
@@ -420,9 +419,9 @@ order to:
 
 The pass fails with an op error if root-scope symbol uses cannot be determined
 (e.g., an unregistered region-bearing op in the root module), if any `ifrt.Call`
-in an IFRT function cannot resolve a defined callee nested at most one
-`ModuleOp` deep (including external declarations), or if internal symbol uses
-cannot be determined inside a mutated outlined `ModuleOp`.
+in an IFRT function cannot resolve a callee nested at most one `ModuleOp` deep,
+or if internal symbol uses cannot be determined inside a mutated outlined
+`ModuleOp`.
   }];
 }
 

@@ -101,10 +101,6 @@ mlir::FailureOr<mlir::func::FuncOp> CalleeSymbolManager::GetCallee(
     return mlir::failure();
   }
   mlir::func::FuncOp callee = call_op.getCalleeOp(*symbol_table_);
-  if (callee == nullptr || callee.isExternal()) {
-    call_op.emitOpError() << "failed to resolve defined callee " << callee_ref;
-    return mlir::failure();
-  }
   if (GetCalleeRootSymbolOp(callee, root_module_) == nullptr) {
     call_op.emitOpError()
         << "cannot resolve callee " << callee_ref

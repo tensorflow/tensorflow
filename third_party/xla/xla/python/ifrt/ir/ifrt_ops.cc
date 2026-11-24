@@ -578,8 +578,16 @@ mlir::MutableOperandRange CallOp::getArgOperandsMutable() {
 
 mlir::LogicalResult CallOp::verifySymbolUses(
     mlir::SymbolTableCollection& symbolTable) {
-  mlir::func::FuncOp callee = getCalleeOp(symbolTable);
-  mlir::FunctionType callee_type = callee.getFunctionType();
+  mlir::FailureOr<mlir::func::FuncOp> callee = verifyCalleeSymbol(symbolTable);
+  if (mlir::failed(callee)) {
+    return mlir::failure();
+  }
+  if (callee->isExternal()) {
+    return emitOpError()
+           << "requires '" << getCallee()
+           << "' to reference a defined (non-external) `func.func`";
+  }
+  mlir::FunctionType callee_type = callee->getFunctionType();
   const bool is_local_view = (*this)->hasAttr(kIfrtLocalViewAttrName);
   // Verify inputs.
   if (callee_type.getNumInputs() != getInputs().size()) {
@@ -661,6 +669,20 @@ mlir::MutableOperandRange CallLoadedExecutableOp::getArgOperandsMutable() {
 
 mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
     mlir::SymbolTableCollection& symbolTable) {
+  if (!getCallee().getNestedReferences().empty()) {
+    return emitOpError()
+           << "requires '" << getCallee()
+           << "' to reference an `ifrt.LoadedExecutable` directly in the "
+              "enclosing `builtin.module`";
+  }
+  // Because `getCallee()` is flat, `verifyCalleeSymbol` resolves it only in the
+  // nearest enclosing `SymbolTable`, and `LoadedExecutableOp` has
+  // `HasParent<"::mlir::ModuleOp">`, so any resolved callee is guaranteed to be
+  // a direct child of the enclosing `builtin.module`.
+  mlir::FailureOr<LoadedExecutableOp> callee = verifyCalleeSymbol(symbolTable);
+  if (mlir::failed(callee)) {
+    return mlir::failure();
+  }
   llvm::SmallVector<mlir::Type, 4> input_types;
   input_types.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
@@ -673,10 +695,9 @@ mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
   }
   auto func_type =
       mlir::FunctionType::get(getContext(), input_types, output_types);
-  LoadedExecutableOp callee = getCalleeOp(symbolTable);
-  if (callee.getFunctionType() != func_type) {
+  if (callee->getFunctionType() != func_type) {
     return emitOpError() << "requires callee signature matching " << func_type
-                         << ". Actual " << callee.getFunctionType();
+                         << ". Actual " << callee->getFunctionType();
   }
   return mlir::success();
 }

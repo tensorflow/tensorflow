@@ -227,9 +227,9 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call some function on a set of devices";
   let description = [{
-    The callee is a global FuncOp to be sharded onto the given set of devices.
-    It's up to the IFRT implementation to define which dialects are legal in the
-    callee.
+    The callee is a defined (non-external) global FuncOp to be sharded onto the
+    given set of devices. It's up to the IFRT implementation to define which
+    dialects are legal in the callee.
 
     The callee's inputs/outputs should be regular tensors, the shape of which
     are the same as inputs/outputs' global shape, correspondingly. Every
@@ -280,9 +280,9 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call some loaded executable";
   let description = [{
-    The callee is a LoadedExecutableOp that declares the signature of the
-    LoadedExecutable. The actual LoadedExecutable instance is bound through
-    CompileOptions.
+    The callee is a `LoadedExecutableOp` directly in the enclosing
+    `builtin.module` that declares the signature of the `LoadedExecutable`.
+    The actual `LoadedExecutable` instance is bound through `CompileOptions`.
 
     The callee is placed on devices because it's loaded. Every input/output must
     be placed on a subset of these devices.
@@ -317,11 +317,12 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
 }
 
 def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
-    [SymbolName, SymbolVisibility, Symbol]> {
+    [HasParent<"::mlir::ModuleOp">, SymbolName, SymbolVisibility, Symbol]> {
   let summary = "Declare a loaded executable";
   let description = [{
-    The inputs/outputs of `function_type` should be IFRT arrays. They should be
-    placed on a subset of the `devices`.
+    Must be nested directly in a `builtin.module` op. The inputs/outputs of
+    `function_type` should be IFRT arrays. They should be placed on a subset of
+    the `devices`.
   }];
 
   let arguments = (ins

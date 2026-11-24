@@ -63,13 +63,14 @@ class CalleeSymbolManager {
   CalleeSymbolManager(CalleeSymbolManager&&) = default;
   CalleeSymbolManager& operator=(CalleeSymbolManager&&) = default;
 
-  // Returns `call_op`'s defined (non-external) `FuncOp` callee from
-  // `symbol_table_` if it is either a top-level function in `root_module_` or
-  // nested one `ModuleOp` deep and `call_op` resides in `root_module_`'s
-  // symbol scope. Emits an op error on `call_op` and returns `mlir::failure()`
-  // otherwise.
+  // Returns `call_op`'s `FuncOp` callee from `symbol_table_` if it is either a
+  // top-level function in `root_module_` or nested one `ModuleOp` deep and
+  // `call_op` resides in `root_module_`'s symbol scope. Emits an op error on
+  // `call_op` and returns `mlir::failure()` otherwise.
   //
-  // REQUIRES: `call_op` is non-null.
+  // REQUIRES: `call_op` is non-null, and its callee resolves to a defined
+  // (non-external) `mlir::func::FuncOp` in `symbol_table_` (as guaranteed on
+  // verified IFRT IR).
   mlir::FailureOr<mlir::func::FuncOp> GetCallee(CallOp call_op);
 
   // Returns a `FuncOp` that can be safely mutated for `calls` together: returns
@@ -84,13 +85,14 @@ class CalleeSymbolManager {
   // any `CallOp` is outside `root_module_`'s symbol scope, if the callee's root
   // symbol is a top-level IFRT function (`ifrt.function` or
   // `ifrt.reshard_function`, matching the non-erasure rule in
-  // `EraseCallAndMaybeEraseCallee`), or if the callee is null/external or
-  // cannot be prepared for mutation (for example, nested more than one
-  // `ModuleOp` deep or inside an outlined module with unregistered
-  // region-bearing ops).
+  // `EraseCallAndMaybeEraseCallee`), or if the callee cannot be prepared for
+  // mutation (for example, nested more than one `ModuleOp` deep or inside an
+  // outlined module with unregistered region-bearing ops).
   //
   // REQUIRES: `calls` is non-empty, and all `CallOp`s in `calls` are non-null,
-  // distinct, and share the same callee `SymbolRefAttr`.
+  // distinct, and share the same callee `SymbolRefAttr`, which resolves to a
+  // defined (non-external) `mlir::func::FuncOp` in `symbol_table_` (as
+  // guaranteed on verified IFRT IR).
   mlir::FailureOr<mlir::func::FuncOp> GetOrCloneCalleeForMutation(
       absl::Span<const CallOp> calls);
 
@@ -98,7 +100,8 @@ class CalleeSymbolManager {
   // updates tracked symbol use counts.
   //
   // REQUIRES: `call_op` is non-null and resides in `root_module_`'s symbol
-  // scope, and `new_callee_ref` is non-null.
+  // scope, and `new_callee_ref` is non-null and resolves to a valid callee
+  // `mlir::func::FuncOp` in `symbol_table_`.
   void RedirectCallToCallee(CallOp call_op, mlir::SymbolRefAttr new_callee_ref);
 
   // Increments tracked root symbol use counts for any `SymbolRefAttr`s in `op`

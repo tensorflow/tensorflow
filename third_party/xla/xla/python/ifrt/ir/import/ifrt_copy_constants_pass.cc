@@ -67,9 +67,9 @@ mlir::Operation* FindHloProducer(mlir::Value value,
         return nullptr;
       }
       mlir::func::FuncOp callee = call.getCalleeOp(symbol_table);
-      // Skip external declarations and multi-block CFGs (which can have
-      // multiple `func.return` terminators).
-      if (callee == nullptr || !llvm::hasSingleElement(callee.getBody())) {
+      // Skip multi-block CFGs (which can have multiple `func.return`
+      // terminators).
+      if (!llvm::hasSingleElement(callee.getBody())) {
         return nullptr;
       }
       mlir::func::ReturnOp return_op = llvm::dyn_cast<mlir::func::ReturnOp>(
@@ -114,9 +114,8 @@ class IfrtCopyConstantsPass
         if (call_op->hasAttr(kIfrtLocalViewAttrName)) {
           continue;
         }
-        // External declarations have no body blocks, whereas any defined
-        // (single or multi block) SSACFG function has a unique dominating
-        // entry block `callee.getBody().front()`.
+        // Any defined (single- or multi-block) SSACFG callee has a unique
+        // dominating entry block `callee.getBody().front()`.
         mlir::FailureOr<mlir::func::FuncOp> resolved_callee =
             symbol_manager->GetCallee(call_op);
         if (mlir::failed(resolved_callee)) {

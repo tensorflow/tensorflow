@@ -90,6 +90,44 @@ func.func @wrong_reference() {
 
 // -----
 
+func.func @requires_direct_module_child_callee() attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op requires '@nested::@callee' to reference an `ifrt.LoadedExecutable` directly in the enclosing `builtin.module`}}
+  %ctrl_0 = ifrt.CallLoadedExecutable @nested::@callee() : () -> ()
+  return
+}
+
+module @nested {
+  ifrt.LoadedExecutable @callee on devices [0,1] : () -> ()
+}
+
+// -----
+
+func.func @requires_direct_module_child_even_for_private_nested_callee()
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op requires '@nested::@callee' to reference an `ifrt.LoadedExecutable` directly in the enclosing `builtin.module`}}
+  %ctrl_0 = ifrt.CallLoadedExecutable @nested::@callee() : () -> ()
+  return
+}
+
+module @nested {
+  ifrt.LoadedExecutable "private" @callee on devices [0,1] : () -> ()
+}
+
+// -----
+
+module @outer_module_callee_not_visible {
+  module @nested {
+    func.func @main() attributes {ifrt.function} {
+      // expected-error@+1 {{'ifrt.CallLoadedExecutable' op requires '@callee' to reference a valid `ifrt.LoadedExecutable`}}
+      %ctrl_0 = ifrt.CallLoadedExecutable @callee() : () -> ()
+      return
+    }
+  }
+  ifrt.LoadedExecutable @callee on devices [0,1] : () -> ()
+}
+
+// -----
+
 func.func @requires_matching_signature(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)

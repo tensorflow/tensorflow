@@ -106,11 +106,6 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
   // Walk the module and convert each atom program to VHLO.
   auto result = module.walk([&](CallOp call_op) -> mlir::WalkResult {
     mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-    if (callee == nullptr) {
-      call_op->emitOpError()
-          << "can't find callee `" << call_op.getCalleeAttr() << "`";
-      return mlir::WalkResult::interrupt();
-    }
     auto stablehlo_module = llvm::cast<mlir::ModuleOp>(callee->getParentOp());
     if (stablehlo_module == module) {
       call_op->emitOpError() << "callee `" << call_op.getCalleeAttr()

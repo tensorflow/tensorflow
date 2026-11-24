@@ -209,7 +209,7 @@ class IfrtCallDedupPass
     for (mlir::func::FuncOp func_op : GetIfrtFunctions(module_op)) {
       for (CallOp call_op : func_op.getOps<CallOp>()) {
         if (mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-            callee != nullptr && callee.getBody().hasOneBlock()) {
+            callee.getBody().hasOneBlock()) {
           calls.push_back({call_op, callee});
         }
       }

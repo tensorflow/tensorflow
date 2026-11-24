@@ -26,9 +26,12 @@ include "mlir/IR/OpBase.td"
 // `ifrt.reshard_function` attr.
 def NestedInIfrtFunc : NativeOpTrait<"xla::ifrt::NestedInIfrtFuncTrait">;
 
-// Verifies callee is a valid symbol ref to callee_op_type.
-// Provides `callee_op_type getCalleeOp(SymbolTableCollection)`.
-// Concrete type must have a SymbolRefAttr named `callee`.
+// Provides `callee_op_type getCalleeOp(SymbolTableCollection&)` and
+// `FailureOr<callee_op_type> verifyCalleeSymbol(SymbolTableCollection&)`.
+// Concrete ops must have a `SymbolRefAttr` named `callee`, declare
+// `SymbolUserOpInterface`, and call `verifyCalleeSymbol` from
+// `verifySymbolUses` (`IfrtCallLike` does not verify callees automatically via
+// `verifyTrait`).
 class IfrtCallLike<string callee_op_type>
     : ParamNativeOpTrait<"xla::ifrt::IfrtCallLikeTrait", callee_op_type>;
 

@@ -82,7 +82,9 @@ func.func @returned_non_block_arg(%arg0: !array) -> !array attributes {ifrt.func
 
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 
-func.func private @foo(%arg0: !array) -> !array
+func.func private @foo(%arg0: !array) -> !array {
+  return %arg0 : !array
+}
 
 // CHECK-LABEL: func.func @returned_input_used_by_other_op(
 // CHECK-SAME:   %[[ARG0:.*]]: !ifrt.array<

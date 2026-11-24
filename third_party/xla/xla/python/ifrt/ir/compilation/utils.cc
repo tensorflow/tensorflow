@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -191,16 +190,12 @@ absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleCompileOverrides(
 xla::CompileOptions GetDefaultCompileOptions(CallOp call_op,
                                              bool enable_sharding_propagation,
                                              bool enable_parameter_tupling) {
-  mlir::SymbolTableCollection symbol_table;
-
   xla::CompileOptions compile_options;
   auto& exec_build_options = compile_options.executable_build_options;
   // Executable build options are constructed using logical ids, which are
   // later converted into real Device ids by using the logical ids as
   // indices into the device list given at compilation invocation time.
   llvm::ArrayRef<int> logical_device_ids = call_op.getDevices();
-  mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-  CHECK(callee != nullptr) << "Callee function not found for CallOp";
   if (call_op->hasAttr(kIfrtLocalViewAttrName)) {
     exec_build_options.set_num_replicas(logical_device_ids.size());
     exec_build_options.set_num_partitions(1);
@@ -219,6 +214,8 @@ xla::CompileOptions GetDefaultCompileOptions(CallOp call_op,
     }
     exec_build_options.set_device_assignment(device_assignment);
     exec_build_options.set_use_spmd_partitioning(true);
+    mlir::SymbolTableCollection symbol_table;
+    mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
     mlir::ModuleOp callee_module = callee->getParentOfType<mlir::ModuleOp>();
     if (xla::sdy::hasShardyMesh(callee_module)) {
       exec_build_options.set_use_shardy_partitioner(true);

@@ -1087,21 +1087,3 @@ module @transitive_erasure_preserves_private_ifrt_functions {
     return %arg0 : !array0
   }
 }
-
-// -----
-
-#sharding = #ifrt.sharding_param<2x2 to [0] on 4>
-!array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
-
-// `signalPassFailure()` suppresses printing the failing module to stdout.
-// CHECK-NOT: module @external_declaration_fails
-module @external_declaration_fails {
-  func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
-    // expected-error @+1 {{'ifrt.Call' op failed to resolve defined callee @ext_decl}}
-    %0, %ctrl_0 = ifrt.Call @ext_decl(%arg0) on devices [0, 1, 2, 3]
-        : (!array0) -> !array0
-    return %0 : !array0
-  }
-
-  func.func private @ext_decl(tensor<4x8xf32>) -> tensor<4x8xf32>
-}

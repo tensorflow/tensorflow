@@ -65,3 +65,11 @@ ifrt.LoadedExecutable @requires_output_place_on_devices on devices [0,1]
                    [0,1]>)
     -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
                    [0,2]>
+
+// -----
+
+func.func @requires_module_parent() {
+  // expected-error@+1 {{'ifrt.LoadedExecutable' op expects parent op 'builtin.module'}}
+  ifrt.LoadedExecutable @nested_in_func on devices [0,1] : () -> ()
+  return
+}

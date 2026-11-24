@@ -170,6 +170,50 @@ func.func @call_requires_valid_reference(
 
 // -----
 
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+func.func @call_rejects_non_func_callee(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires '@loaded_exec' to reference a valid `func.func`}}
+  %0, %ctrl_0 = ifrt.Call @loaded_exec(%arg0) on devices [0,1]
+    : (!array) -> !array
+  return
+}
+
+ifrt.LoadedExecutable @loaded_exec on devices [0,1] : (!array) -> !array
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+func.func @call_rejects_ifrt_function_callee(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires callee not with attr `ifrt.function`}}
+  %0, %ctrl_0 = ifrt.Call @ifrt_callee(%arg0) on devices [0,1]
+    : (!array) -> !array
+  return
+}
+
+func.func @ifrt_callee(%arg0: !array) -> !array attributes {ifrt.function} {
+  return %arg0 : !array
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [0,1]>
+func.func @call_rejects_external_callee(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires '@external_callee' to reference a defined (non-external) `func.func`}}
+  %0, %ctrl_0 = ifrt.Call @external_callee(%arg0) on devices [0,1]
+    : (!array) -> !array
+  return
+}
+
+func.func private @external_callee(tensor<2x2xi32>) -> tensor<2x2xi32>
+
+// -----
+
 func.func @call_requires_same_input_size(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
@@ -696,8 +740,13 @@ func.func @io_aliases_unspec_sharding_rejects_different_devices(
   return
 }
 
-func.func private @callee(tensor<2x2xi32>) -> tensor<2x2xi32>
-func.func private @callee_1x2(tensor<1x2xi32>) -> tensor<2x2xi32>
+func.func private @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+func.func private @callee_1x2(%arg0: tensor<1x2xi32>) -> tensor<2x2xi32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
 
 // -----
 
@@ -749,7 +798,9 @@ func.func @io_aliases_unspec_sharding_rejects_different_memory_kinds(
   return
 }
 
-func.func private @callee(tensor<2x2xi32>) -> tensor<2x2xi32>
+func.func private @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
 
 // -----
 
@@ -805,11 +856,24 @@ func.func @io_aliases_rejects_string_with_user_layout(%arg0: !string_arr)
   return
 }
 
-func.func private @callee_tok(!stablehlo.token) -> !stablehlo.token
-func.func private @callee_zero_tok(tensor<0xf32>) -> !stablehlo.token
-func.func private @callee_tok_f32(!stablehlo.token) -> tensor<4x4xf32>
-func.func private @callee_str(tensor<2x!ifrt.string>) -> tensor<2x!ifrt.string>
-func.func private @callee_str_f32(tensor<2x!ifrt.string>) -> tensor<4x4xf32>
+func.func private @callee_tok(%arg0: !stablehlo.token) -> !stablehlo.token {
+  return %arg0 : !stablehlo.token
+}
+func.func private @callee_zero_tok(%arg0: tensor<0xf32>) -> !stablehlo.token {
+  %0 = builtin.unrealized_conversion_cast to !stablehlo.token
+  return %0 : !stablehlo.token
+}
+func.func private @callee_tok_f32(%arg0: !stablehlo.token) -> tensor<4x4xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+func.func private @callee_str(%arg0: tensor<2x!ifrt.string>) -> tensor<2x!ifrt.string> {
+  return %arg0 : tensor<2x!ifrt.string>
+}
+func.func private @callee_str_f32(%arg0: tensor<2x!ifrt.string>) -> tensor<4x4xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
 
 // -----
 
@@ -875,11 +939,33 @@ func.func @io_aliases_allows_compatible_pairs(
   return
 }
 
-func.func private @callee_same(tensor<2x2xi32>) -> tensor<2x2xi32>
-func.func private @callee_i16(tensor<2x2xi32>) -> tensor<2x2xi16>
-func.func private @callee_rank(tensor<2x2xi32>) -> tensor<4xf32>
-func.func private @callee_zero(tensor<0x4xf32>) -> tensor<0x8xi16>
-func.func private @callee_tiled(tensor<12x16xf32>) -> tensor<12x6xi32>
-func.func private @callee_auto(tensor<2x2xi32>) -> tensor<4x4xf32>
-func.func private @callee_i4(tensor<8xi4>) -> tensor<4xi8>
-func.func private @callee_non_div(tensor<3x2xi32>) -> tensor<3x2xi32>
+func.func private @callee_same(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+func.func private @callee_i16(%arg0: tensor<2x2xi32>) -> tensor<2x2xi16> {
+  %0 = builtin.unrealized_conversion_cast to tensor<2x2xi16>
+  return %0 : tensor<2x2xi16>
+}
+func.func private @callee_rank(%arg0: tensor<2x2xi32>) -> tensor<4xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+func.func private @callee_zero(%arg0: tensor<0x4xf32>) -> tensor<0x8xi16> {
+  %0 = builtin.unrealized_conversion_cast to tensor<0x8xi16>
+  return %0 : tensor<0x8xi16>
+}
+func.func private @callee_tiled(%arg0: tensor<12x16xf32>) -> tensor<12x6xi32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<12x6xi32>
+  return %0 : tensor<12x6xi32>
+}
+func.func private @callee_auto(%arg0: tensor<2x2xi32>) -> tensor<4x4xf32> {
+  %0 = builtin.unrealized_conversion_cast to tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+func.func private @callee_i4(%arg0: tensor<8xi4>) -> tensor<4xi8> {
+  %0 = builtin.unrealized_conversion_cast to tensor<4xi8>
+  return %0 : tensor<4xi8>
+}
+func.func private @callee_non_div(%arg0: tensor<3x2xi32>) -> tensor<3x2xi32> {
+  return %arg0 : tensor<3x2xi32>
+}
