@@ -1016,6 +1016,10 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 absl::UnimplementedError(
                     "Pooling is not yet supported on the batch dimension."));
+    const int32_t channel_stride = GetTensorDim(stride_, FORMAT_NHWC, 'C');
+    OP_REQUIRES(context, channel_stride > 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Channel stride must be positive, got: ", channel_stride)));
     OP_REQUIRES_OK(context, context->GetAttr("include_batch_in_index",
                                              &include_batch_in_index_));
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,

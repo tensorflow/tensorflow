@@ -1132,6 +1132,17 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
         self.assertAllEqual(argmax.ravel(), config.argmax)
 
+  @parameterized.parameters(0, -1)
+  def testMaxPoolingWithArgmaxInvalidChannelStride(self, stride):
+    with context.eager_mode(), ops.device("/CPU:0"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Channel stride must be positive"):
+        gen_nn_ops.max_pool_with_argmax(
+            constant_op.constant([[[[1.0]]]]),
+            ksize=[1, 1, 1, 1],
+            strides=[1, 1, 1, stride],
+            padding="SAME")
+
   def testDepthwiseMaxPoolingWithArgmax(self):
     tensor_input = [89, 73, -109]
     Config = collections.namedtuple("Config", ["use_gpu", "padding"])
