@@ -4693,8 +4693,9 @@ def ssim_multiscale(img1,
     img1: First image batch with only Positive Pixel Values.
     img2: Second image batch with only Positive Pixel Values. Must have the
     same rank as img1.
-    max_val: The dynamic range of the images (i.e., the difference between the
-      maximum the and minimum allowed values).
+    max_val: The positive dynamic range of the images (i.e., the difference
+      between the maximum and minimum allowed values). It must remain positive
+      when converted to the image dtype.
     power_factors: Iterable of weights for each of the scales. The number of
       scales used is the length of the list. Index 0 is the unscaled
       resolution's weight and each increasing scale corresponds to the image
@@ -4724,6 +4725,10 @@ def ssim_multiscale(img1,
     # SSIM is computed correctly.
     max_val = math_ops.cast(max_val, img1.dtype)
     max_val = convert_image_dtype(max_val, dtypes.float32)
+    with ops.control_dependencies([
+        check_ops.assert_positive(max_val, message='max_val must be positive')
+    ]):
+      max_val = array_ops.identity(max_val)
     img1 = convert_image_dtype(img1, dtypes.float32)
     img2 = convert_image_dtype(img2, dtypes.float32)
 

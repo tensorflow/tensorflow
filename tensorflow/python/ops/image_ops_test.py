@@ -6620,6 +6620,31 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     """Returns an image or image batch with given shape."""
     return np.random.rand(*shape).astype(np.float32) * max_val
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRejectsNonpositiveMaxVal(self):
+    img1 = constant_op.constant([[[[1.0]]]])
+    img2 = constant_op.constant([[[[0.5]]]])
+    for max_val in (0.0, -1.0):
+      with self.subTest(max_val=max_val):
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "max_val must be positive"):
+          self.evaluate(
+              image_ops.ssim_multiscale(img1, img2, max_val, filter_size=1))
+
+  def testRejectsNonpositiveTensorMaxVal(self):
+    img1 = constant_op.constant([[[[1.0]]]])
+    img2 = constant_op.constant([[[[0.5]]]])
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
+    def compute_score(max_val):
+      return image_ops.ssim_multiscale(img1, img2, max_val, filter_size=1)
+
+    self.assertAllInRange(self.evaluate(compute_score(1.0)), 0.0, 1.0)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "max_val must be positive"):
+      self.evaluate(compute_score(0.0))
+
   def testAgainstMatlab(self):
     """Tests against MS-SSIM computed with Matlab implementation.
 
