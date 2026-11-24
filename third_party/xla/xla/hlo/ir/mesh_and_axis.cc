@@ -221,16 +221,11 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   CHECK(!proto.has_iota_transform())
       << "Mesh must not have an iota transform and a device ID list";
 
-  // Otherwise, create a mesh with the specific device id ordering.
-  std::vector<int64_t> device_ids(proto.device_ids().begin(),
-                                  proto.device_ids().end());
-  Array<int64_t> device_ids_array(mesh_axis_sizes);
-  CHECK_EQ(device_ids.size(), device_ids_array.num_elements())
-      << "Number of device ids must match the product of mesh axis sizes.";
-  absl::c_copy(device_ids, device_ids_array.begin());
-
-  TileAssignment tile_assignment =
-      TileAssignment(std::make_shared<Array<int64_t>>(device_ids_array));
+  // Otherwise, create a mesh with the specific device id ordering. The `Array`
+  // constructor checks that the number of device ids matches the product of
+  // the mesh axis sizes before allocating.
+  TileAssignment tile_assignment = TileAssignment(
+      std::make_shared<Array<int64_t>>(mesh_axis_sizes, proto.device_ids()));
   return Mesh(tile_assignment, mesh_axis_names_span);
 }
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
+#include <tuple>
 #include <type_traits>
 
 #include "absl/container/inlined_vector.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/overflow_util.h"
 #include "xla/permutation_util.h"
 #include "xla/types.h"
 
@@ -104,10 +106,12 @@ class Array {
   }
 
   // Creates a new array with the specified dimensions and initialize
-  // every cell with values from the list of flattened_values.
+  // every cell with values from the list of flattened_values. The number of
+  // values is checked against the dimensions before allocating the array.
   Array(absl::Span<const int64_t> sizes, absl::Span<const T> flattened_values)
-      : Array(sizes, no_default_init_t{}) {
-    CHECK_EQ(flattened_values.size(), num_elements());
+      : Array(sizes,
+              calculate_and_check_elements(sizes, flattened_values.size()),
+              no_default_init_t{}) {
     std::copy(flattened_values.begin(), flattened_values.end(), begin());
   }
 
@@ -537,9 +541,7 @@ class Array {
   // Performs an in-place reshape, modifying the dimensions but not the
   // underlying data.
   void Reshape(absl::Span<const int64_t> new_dimensions) {
-    const int64_t new_num_elements =
-        std::accumulate(new_dimensions.begin(), new_dimensions.end(), 1LL,
-                        std::multiplies<int64_t>());
+    const int64_t new_num_elements = calculate_elements(new_dimensions);
     CHECK_EQ(new_num_elements, num_elements());
     if (sizes_.size != new_dimensions.size()) {
       OwnedBuffer<int64_t> new_sizes(new_dimensions.size());
@@ -681,7 +683,11 @@ class Array {
   };
 
   explicit Array(absl::Span<const int64_t> sizes, no_default_init_t)
-      : sizes_(sizes.size()), values_(calculate_elements(sizes)) {
+      : Array(sizes, calculate_elements(sizes), no_default_init_t{}) {}
+
+  // `num_elements` must be the product of `sizes`.
+  Array(absl::Span<const int64_t> sizes, size_t num_elements, no_default_init_t)
+      : sizes_(sizes.size()), values_(num_elements) {
     std::memcpy(sizes_.data.get(), sizes.data(),
                 sizeof(int64_t) * sizes.size());
   }
@@ -828,9 +834,42 @@ class Array {
     }
   }
 
+  // Returns the number of elements of an array with the given dimensions.
+  // CHECK-fails if any dimension is negative or if the product of the nonzero
+  // dimensions overflows, since a wrapped-around product would allocate a
+  // buffer smaller than the dimensions describe. As for iota tile assignments,
+  // zero dimensions are skipped so that the check does not depend on the order
+  // of the dimensions.
   static size_t calculate_elements(absl::Span<const int64_t> sizes) {
-    return std::accumulate(sizes.begin(), sizes.end(), 1LL,
-                           std::multiplies<int64_t>());
+    bool has_zero = false;
+    int64_t nonzero_product = 1;
+    for (const int64_t size : sizes) {
+      CHECK_GE(size, 0) << "Array dimensions must be non-negative.";
+      if (size == 0) {
+        has_zero = true;
+        continue;
+      }
+      bool overflow;
+      std::tie(nonzero_product, overflow) =
+          OverflowSafeMultiply(nonzero_product, size);
+      CHECK(!overflow) << "Product of array dimensions overflows.";
+    }
+    if constexpr (sizeof(size_t) < sizeof(int64_t)) {
+      CHECK_LE(static_cast<uint64_t>(nonzero_product),
+               std::numeric_limits<size_t>::max())
+          << "Product of array dimensions overflows.";
+    }
+    return has_zero ? 0 : static_cast<size_t>(nonzero_product);
+  }
+
+  // Returns the number of elements of an array with the given dimensions, and
+  // CHECK-fails if it differs from `expected_elements`.
+  static size_t calculate_and_check_elements(absl::Span<const int64_t> sizes,
+                                             size_t expected_elements) {
+    const size_t num_elements = calculate_elements(sizes);
+    CHECK_EQ(expected_elements, num_elements)
+        << "Number of elements must match the product of array dimensions.";
+    return num_elements;
   }
 
   OwnedBuffer<int64_t> sizes_;

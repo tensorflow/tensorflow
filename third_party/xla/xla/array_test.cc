@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -477,6 +478,50 @@ TEST(ArrayTest, ReshapeWithLowerRank) {
   EXPECT_EQ(arr.num_dimensions(), 1);
   EXPECT_EQ(arr.dim(0), 24);
   EXPECT_EQ(arr.num_elements(), 24);
+}
+
+// 3 * 6148914691236517206 == 2^64 + 2, which wraps around to 2 in int64_t.
+constexpr int64_t kWrapsToTwo = 6148914691236517206;
+
+TEST(ArrayDeathTest, CtorRejectsOverflowingDims) {
+  const std::vector<int64_t> dims = {3, kWrapsToTwo};
+  EXPECT_DEATH(Array<int64_t> arr(dims),
+               "Product of array dimensions overflows");
+  EXPECT_DEATH(Array<int64_t> arr(dims, int64_t{0}),
+               "Product of array dimensions overflows");
+}
+
+TEST(ArrayDeathTest, CtorRejectsOverflowingDimsWithZeroDim) {
+  const std::vector<int64_t> dims = {0, 3, kWrapsToTwo};
+  EXPECT_DEATH(Array<int64_t> arr(dims),
+               "Product of array dimensions overflows");
+}
+
+TEST(ArrayDeathTest, CtorRejectsNegativeDims) {
+  const std::vector<int64_t> dims = {-2, -3};
+  EXPECT_DEATH(Array<int64_t> arr(dims),
+               "Array dimensions must be non-negative");
+}
+
+TEST(ArrayDeathTest, ReshapeRejectsOverflowingDims) {
+  Array<int64_t> arr({2});
+  const std::vector<int64_t> new_dims = {3, kWrapsToTwo};
+  EXPECT_DEATH(arr.Reshape(new_dims), "Product of array dimensions overflows");
+}
+
+TEST(ArrayDeathTest, FlattenedValuesCtorChecksCountBeforeAllocating) {
+  // A mismatch must be detected without attempting an 8 EB allocation.
+  const std::vector<int64_t> dims = {1000000000, 1000000000};
+  const std::vector<int64_t> values = {0, 1};
+  EXPECT_DEATH(Array<int64_t> arr(dims, absl::MakeConstSpan(values)),
+               "Number of elements must match the product of array dimensions");
+}
+
+TEST(ArrayTest, CtorAcceptsZeroDimWithLargeDims) {
+  const std::vector<int64_t> dims = {0, std::numeric_limits<int64_t>::max()};
+  Array<int64_t> arr(dims);
+  EXPECT_EQ(arr.num_elements(), 0);
+  EXPECT_EQ(arr.dim(1), std::numeric_limits<int64_t>::max());
 }
 
 }  // namespace

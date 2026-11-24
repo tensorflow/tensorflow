@@ -235,7 +235,7 @@ TEST(MeshAndAxisTest, FromProtoValidation) {
 
     EXPECT_DEATH(
         Mesh::FromProto(proto),
-        "Number of device ids must match the product of mesh axis sizes");
+        "Number of elements must match the product of array dimensions");
   }
 
   {
@@ -255,6 +255,39 @@ TEST(MeshAndAxisTest, FromProtoValidation) {
     proto.add_device_ids(1);
     EXPECT_DEATH(Mesh::FromProto(proto),
                  "Maximal mesh must have exactly 1 device id");
+  }
+
+  {
+    // 3 * 6148914691236517206 == 2^64 + 2, which wraps around to 2 in int64_t
+    // and would otherwise match the 2 device ids.
+    MeshProto proto;
+    auto* axis_a = proto.add_axes();
+    axis_a->set_name("a");
+    axis_a->set_size(3);
+    auto* axis_b = proto.add_axes();
+    axis_b->set_name("b");
+    axis_b->set_size(6148914691236517206);
+    proto.add_device_ids(1);
+    proto.add_device_ids(0);
+    EXPECT_DEATH(Mesh::FromProto(proto),
+                 "Product of array dimensions overflows");
+  }
+
+  {
+    // Huge (non-overflowing) mesh with too few device ids must be rejected
+    // before allocating the device id array.
+    MeshProto proto;
+    auto* axis_a = proto.add_axes();
+    axis_a->set_name("a");
+    axis_a->set_size(1000000000);
+    auto* axis_b = proto.add_axes();
+    axis_b->set_name("b");
+    axis_b->set_size(1000000000);
+    proto.add_device_ids(1);
+    proto.add_device_ids(0);
+    EXPECT_DEATH(
+        Mesh::FromProto(proto),
+        "Number of elements must match the product of array dimensions");
   }
 }
 

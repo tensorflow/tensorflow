@@ -921,6 +921,7 @@ cc_library(
     deps = [
         ":permutation_util",
         ":types",
+        ":util",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
