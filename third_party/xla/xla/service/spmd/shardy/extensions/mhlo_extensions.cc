@@ -134,6 +134,9 @@ struct RaggedDotShardingRuleOpInterface
     mlir::RankedTensorType lhsType = raggedDot.getLhs().getType();
     mlir::RankedTensorType rhsType = raggedDot.getRhs().getType();
     mlir::RankedTensorType groupSizesType = raggedDot.getGroupSizes().getType();
+    // group_sizes may be 1D [g] (broadcast across all prefix dimensions) or
+    // [prefix..., g].
+    bool hasGroupSizesPrefix = groupSizesType.getRank() > 1;
 
     int64_t groupSizesDim = 0;
     int64_t outputDim = (mode == RaggedDotMode::kContracting) ? 1 : 0;
@@ -141,15 +144,16 @@ struct RaggedDotShardingRuleOpInterface
     // batching dimensions
     for (auto [lhsDim, rhsDim] :
          llvm::zip_equal(lhsBatchingDims, rhsBatchingDims)) {
-      builder.addFactor(
-          {lhsDim, rhsDim,
-           mode != RaggedDotMode::kBatch ? groupSizesDim++ : kNullDim},
-          outputDim++, lhsType.getDimSize(lhsDim));
+      builder.addFactor({lhsDim, rhsDim,
+                         (hasGroupSizesPrefix && mode != RaggedDotMode::kBatch)
+                             ? groupSizesDim++
+                             : kNullDim},
+                        outputDim++, lhsType.getDimSize(lhsDim));
     }
 
     // lhs non-contracting dimensions
     bool addLhsNonContractingDimsInGroupSizes =
-        mode == RaggedDotMode::kNonContracting;
+        hasGroupSizesPrefix && mode == RaggedDotMode::kNonContracting;
     for (int64_t i = 0; i < lhsType.getRank(); i++) {
       if (!llvm::is_contained(lhsContractingDims, i) &&
           !llvm::is_contained(lhsBatchingDims, i)) {
@@ -178,7 +182,8 @@ struct RaggedDotShardingRuleOpInterface
     }
 
     // contracting dimensions
-    bool addContractingDimsInGroupSizes = mode == RaggedDotMode::kContracting;
+    bool addContractingDimsInGroupSizes =
+        hasGroupSizesPrefix && mode == RaggedDotMode::kContracting;
     for (auto [lhsDim, rhsDim] :
          llvm::zip_equal(lhsContractingDims, rhsContractingDims)) {
       FactorType factorType = FactorType::kReduction;
