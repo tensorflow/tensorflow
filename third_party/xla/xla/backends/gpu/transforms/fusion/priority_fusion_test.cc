@@ -56,6 +56,7 @@ limitations under the License.
 
 namespace m = ::xla::match;
 
+using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
 namespace xla {
@@ -1496,9 +1497,43 @@ class HerolessPriorityFusionTest : public PriorityFusionTest {
     DebugOptions debug_options = PriorityFusionTest::GetDebugOptionsForTest();
     debug_options
         .set_xla_gpu_experimental_enable_triton_heroless_priority_fusion(true);
+    debug_options.set_xla_gpu_experimental_enable_reduction_dimension_tiling(
+        true);
     return debug_options;
   }
 };
+
+TEST_F(HerolessPriorityFusionTest, SequentialTileSizesMatchFusedReductions) {
+  // Guards the order of `sequential_tile_sizes` when reductions are fused one
+  // after the other: the size of `strided`, which is tiled, must not end up on
+  // `row`, which is not (its 48 elements are padded to 64).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+ENTRY main {
+  p0 = f32[126,65536] parameter(0)
+  p1 = f32[65536,48] parameter(1)
+  c0 = f32[] constant(0)
+  strided = f32[65536] reduce(p0, c0), dimensions={0}, to_apply=add
+  row = f32[65536] reduce(p1, c0), dimensions={1}, to_apply=add
+  ROOT sum = f32[65536] add(row, strided)
+})"));
+  ASSERT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig config,
+                       module->entry_computation()
+                           ->root_instruction()
+                           ->backend_config<GpuBackendConfig>());
+  EXPECT_THAT(config.fusion_backend_config()
+                  .block_level_fusion_config()
+                  .sequential_tile_sizes(),
+              ElementsAre(4, 64));
+}
 
 TEST_F(HerolessPriorityFusionTest, TwoElementwiseOpsAreFusedWithTriton) {
   auto module = *ParseAndReturnVerifiedModule(R"(

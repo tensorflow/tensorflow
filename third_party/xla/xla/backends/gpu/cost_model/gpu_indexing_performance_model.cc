@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -1222,8 +1223,6 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
       /*memory_utilization=*/memory_utilization};
 }
 
-// TODO(b/534676634): Support multi-reduction and multi-dimension reduction
-// fusions.
 std::vector<int64_t> GetSequentialTileSizes(
     const TiledHloComputation& tiled_hlo_computation) {
   const TilingSpace& tiling_space = tiled_hlo_computation.tiling_space();
@@ -1240,7 +1239,7 @@ std::vector<int64_t> GetSequentialTileSizes(
   // An empty result means that the sequential dimensions are not tiled. Keep it
   // empty when every sequential dimension is covered by a single tile, so that
   // the config of such tilings is the same as before reduction tiling.
-  if (all_dimensions_untiled || sequential_tile_sizes.size() != 1) {
+  if (all_dimensions_untiled) {
     return {};
   }
   return sequential_tile_sizes;
@@ -1316,10 +1315,9 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
   return TiledRunTimeData{estimate_run_time_data, block_level_parameters};
 }
 
-// Returns the tile sizes to consider for the reduction dimension `dim`. This is
-// an opt-in strategy: the dimension stays untiled unless tiling it is expected
-// to pay off.
-absl::StatusOr<std::vector<int64_t>> SelectReductionTileSizes(
+// Returns the tile sizes to consider for the reduction dimension `dim`: its
+// full size (untiled), plus one smaller size if tiling is expected to pay off.
+std::vector<int64_t> SelectReductionTileSizes(
     const TilingSpace::DimensionInfo& dim) {
   const Shape& operand_shape = dim.hlo->operand(0)->shape();
   const int64_t reduction_size = dim.dimension_size;
@@ -1332,9 +1330,9 @@ absl::StatusOr<std::vector<int64_t>> SelectReductionTileSizes(
   }
   // Strided reductions can trade a smaller sequential reduction tile for a
   // wider coalesced parallel tile; contiguous reductions remain untiled. The
-  // `> 64`, `>= 32`, and `[2, 256]` cut-offs are empirical heuristics.
+  // `> 64` and `>= 32` cut-offs are empirical heuristics.
   if (reduction_size <= 64 || minor_parallel_elements < 32) {
-    return std::vector<int64_t>{reduction_size};
+    return {reduction_size};
   }
   // Tiled reduction loops accumulate across iterations in the output element
   // type, which below 32 bits is only exact for min/max. Other reducers produce
@@ -1346,11 +1344,15 @@ absl::StatusOr<std::vector<int64_t>> SelectReductionTileSizes(
     const std::optional<ReductionKind> kind =
         MatchReductionComputation(dim.hlo->to_apply());
     if (kind != ReductionKind::MIN && kind != ReductionKind::MAX) {
-      return std::vector<int64_t>{reduction_size};
+      return {reduction_size};
     }
   }
-  return GetPowerOf2TileSizesInRange(reduction_size, /*min_tile_size=*/2,
-                                     /*max_tile_size=*/256);
+  // A loop of 16 to 31 iterations for any dimension size: the tile that has to
+  // fit in registers is at least 16 times smaller than the untiled one, so the
+  // parallel tile can be that much wider. 16 is an empirical heuristic.
+  const int64_t tiled_size =
+      absl::bit_floor(static_cast<uint64_t>(reduction_size / 16));
+  return {reduction_size, tiled_size};
 }
 
 // Whether the tiling search for `fusion_adaptor` should enumerate tile sizes
@@ -1537,11 +1539,18 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
   ABSL_ASSIGN_OR_RETURN(base->tiling_space,
                    TilingSpace::Create(fusion_adaptor, base->context.get()));
 
-  // TODO(b/534676634): Lift the single reduction dimension limit once
-  // multi-reduction and multi-dimension reduction fusions are supported.
+  // `sequential_tile_sizes` has one entry per sequential dimension, and
+  // `SelectReductionTileSizes` only handles reductions over one dimension.
+  // TODO(b/534676634): Support multi-dimension reductions.
   const bool tile_reduction_dims =
       ShouldTileReductionDimensions(fusion_adaptor) &&
-      NumReductionDimensions(*base->tiling_space) == 1;
+      absl::c_all_of(
+          base->tiling_space->dimensions(),
+          [](const TilingSpace::DimensionInfo& dim) {
+            return dim.type != TilingSpace::DimensionSemantics::kSequential ||
+                   (dim.hlo->opcode() == HloOpcode::kReduce &&
+                    dim.hlo->dimensions().size() == 1);
+          });
   ABSL_ASSIGN_OR_RETURN(
       auto tilings,
       base->tiling_space->GetValidTilings(

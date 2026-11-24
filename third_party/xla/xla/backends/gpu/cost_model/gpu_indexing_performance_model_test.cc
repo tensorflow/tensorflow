@@ -74,12 +74,12 @@ namespace {
 
 namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model;
 
+using ::testing::AnyOf;
 using ::testing::Contains;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::Field;
 using ::testing::IsEmpty;
-using ::testing::Le;
 using ::testing::Not;
 using ::xla::xtile::BlockLevelParameters;
 
@@ -2959,8 +2959,9 @@ ENTRY main {
               Each(seq_tiles_are(IsEmpty())));
 
   // Strided reduction with reduction_size > 64 and minor_parallel >= 32 is
-  // tiled in [2, 256]. All the dimensions that are more minor than the
-  // reduction dimension count towards minor_parallel.
+  // tiled at 1/16 of the reduction size or left untiled. All the dimensions
+  // that are more minor than the reduction dimension count towards
+  // minor_parallel.
   auto strided = get_top_k_for_hlo(R"(
 HloModule m
 add {
@@ -2977,8 +2978,8 @@ ENTRY main {
   p0 = f32[1024,16,16]{2,1,0} parameter(0)
   ROOT fusion = f32[16,16]{1,0} fusion(p0), kind=kCustom, calls=fused
 })");
-  EXPECT_THAT(strided, Contains(seq_tiles_are(ElementsAre(2))));
-  EXPECT_THAT(strided, Each(seq_tiles_are(Each(Le(256)))));
+  EXPECT_THAT(strided, Contains(seq_tiles_are(ElementsAre(64))));
+  EXPECT_THAT(strided, Each(seq_tiles_are(AnyOf(IsEmpty(), ElementsAre(64)))));
 
   // Tiled loops accumulate in the output type, so sub-32-bit float reductions
   // are only tiled for exact reducers such as `maximum`. Other reducers produce
@@ -2987,7 +2988,7 @@ ENTRY main {
   EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/0, "bf16", "add"),
               Each(seq_tiles_are(IsEmpty())));
   EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/0, "bf16", "maximum"),
-              Contains(seq_tiles_are(ElementsAre(2))));
+              Contains(seq_tiles_are(ElementsAre(8))));
 
   // Strided reductions with reduction_size <= 64 or minor_parallel < 32 are
   // kept untiled.
@@ -3000,8 +3001,7 @@ ENTRY main {
   EXPECT_THAT(get_top_k(128, 0, /*reduce_dim=*/1),
               Each(seq_tiles_are(IsEmpty())));
 
-  // Multi-dimension reductions and fusions with multiple reductions keep all
-  // reduction dimensions untiled.
+  // Multi-dimension reductions are kept untiled.
   EXPECT_THAT(get_top_k_for_hlo(R"(
 HloModule m
 add {
@@ -3020,7 +3020,10 @@ ENTRY main {
 })"),
               Each(seq_tiles_are(IsEmpty())));
 
-  EXPECT_THAT(get_top_k_for_hlo(R"(
+  // Each strided reduction of a fusion is tiled at its own size or left
+  // untiled, independently of the others. Contiguous reductions are kept
+  // untiled.
+  auto multiple = get_top_k_for_hlo(R"(
 HloModule m
 add {
   p0 = f32[] parameter(0)
@@ -3028,16 +3031,26 @@ add {
   ROOT add = f32[] add(p0, p1)
 }
 fused {
-  p0 = f32[8,16,512]{2,1,0} parameter(0)
+  p0 = f32[128,256]{1,0} parameter(0)
+  p1 = f32[256,256]{1,0} parameter(1)
+  p2 = f32[256,128]{1,0} parameter(2)
   c0 = f32[] constant(0)
-  r0 = f32[8,16]{1,0} reduce(p0, c0), dimensions={2}, to_apply=add
-  ROOT r1 = f32[8]{0} reduce(r0, c0), dimensions={1}, to_apply=add
+  r0 = f32[256]{0} reduce(p0, c0), dimensions={0}, to_apply=add
+  r1 = f32[256]{0} reduce(p1, c0), dimensions={0}, to_apply=add
+  r2 = f32[256]{0} reduce(p2, c0), dimensions={1}, to_apply=add
+  sum = f32[256]{0} add(r0, r1)
+  ROOT root = f32[256]{0} add(sum, r2)
 }
 ENTRY main {
-  p0 = f32[8,16,512]{2,1,0} parameter(0)
-  ROOT fusion = f32[8]{0} fusion(p0), kind=kCustom, calls=fused
-})"),
-              Each(seq_tiles_are(IsEmpty())));
+  p0 = f32[128,256]{1,0} parameter(0)
+  p1 = f32[256,256]{1,0} parameter(1)
+  p2 = f32[256,128]{1,0} parameter(2)
+  ROOT fusion = f32[256]{0} fusion(p0, p1, p2), kind=kCustom, calls=fused
+})");
+  EXPECT_THAT(multiple, Contains(seq_tiles_are(ElementsAre(128, 16, 8))));
+  EXPECT_THAT(multiple, Contains(seq_tiles_are(ElementsAre(128, 16, 128))));
+  EXPECT_THAT(multiple, Contains(seq_tiles_are(ElementsAre(128, 256, 8))));
+  EXPECT_THAT(multiple, Contains(seq_tiles_are(IsEmpty())));
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
