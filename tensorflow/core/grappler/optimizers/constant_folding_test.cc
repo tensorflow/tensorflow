@@ -1787,6 +1787,41 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN_MultipleOutputs) {
     test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
 }
 
+TEST_F(ConstantFoldingTest, SwitchBranchDoesNotDeterminePredicate) {
+  Scope scope = Scope::NewRootScope();
+  auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32,
+                            ops::Placeholder::Shape(PartialTensorShape({-1})));
+  auto size = ops::Size(scope.WithOpName("size"), x);
+  auto predicate = ops::Equal(scope.WithOpName("predicate"), size, 1);
+  auto branch = ops::Switch(scope.WithOpName("branch"), x, predicate);
+  // The true branch can reshape to a scalar because it only runs for size 1.
+  auto scalar = ops::Reshape(scope, branch.output_true,
+                             ops::Const(scope, 0, TensorShape({0})));
+  auto negated = ops::Fill(scope, ops::Shape(scope, branch.output_true),
+                           ops::Neg(scope, scalar));
+  ops::Merge(scope.WithOpName("result"), {branch.output_false, negated.output});
+
+  GrapplerItem item;
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"result"};
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+  NodeMap nodes(&output);
+  const NodeDef* optimized_predicate = nodes.GetNode("predicate");
+  ASSERT_NE(optimized_predicate, nullptr);
+  ASSERT_EQ(optimized_predicate->op(), "Equal");
+
+  const Tensor singleton = test::AsTensor<int32>({3});
+  const Tensor vector = test::AsTensor<int32>({2, 4});
+  test::ExpectTensorEqual<int32>(
+      test::AsTensor<int32>({-3}),
+      EvaluateNodes(output, item.fetch, {{"x", singleton}}).at(0));
+  test::ExpectTensorEqual<int32>(
+      vector, EvaluateNodes(output, item.fetch, {{"x", vector}}).at(0));
+}
+
 TEST_F(ConstantFoldingTest, SwitchNodesEmptyFetch) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);

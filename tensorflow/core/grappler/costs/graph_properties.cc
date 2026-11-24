@@ -1962,6 +1962,28 @@ class SymbolicShapeRefiner {
 
     // Update NodeContext output fields after shape inference function runs.
     status.Update(MaybeUpdateNodeContextOutput(node, is_fed, c));
+    if (status.ok() && IsSwitch(node)) {
+      // Each output is live only in its own branch. Keep known dimensions,
+      // but don't let downstream shape constraints refine the input or a
+      // sibling output through a shared symbolic handle.
+      InferenceContext* ic = c->inference_context.get();
+      for (int i = 0; i < ic->num_outputs(); ++i) {
+        ShapeHandle shape = ic->output(i);
+        if (!ic->RankKnown(shape)) {
+          ic->set_output(i, GetUnknownOutputShape(&node, i));
+        } else if (!ic->FullyDefined(shape)) {
+          std::vector<DimensionHandle> dims;
+          const int rank = ic->Rank(shape);
+          dims.reserve(rank);
+          for (int d = 0; d < rank; ++d) {
+            DimensionHandle dim = ic->Dim(shape, d);
+            dims.push_back(
+                ic->ValueKnown(dim) ? dim : GetUnknownOutputDim(&node, i, d));
+          }
+          ic->set_output(i, ic->MakeShape(dims));
+        }
+      }
+    }
 
     return status;
   }
