@@ -15,17 +15,28 @@ limitations under the License.
 
 #include "xla/pjrt/utils.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/layout_mode.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 TEST(UtilsTest, LayoutModeToXlaShape_AutoHostMemorySpace) {
   Shape unsharded_shape = ShapeUtil::MakeShape(F32, {8});
@@ -71,6 +82,35 @@ TEST(UtilsTest, LayoutModeToXlaShape_AutoDeviceMemorySpace) {
 
   // The result should NOT have a layout set (because it's AUTO and not host).
   EXPECT_FALSE(result.has_layout());
+}
+
+TEST(UtilsTest, SwapMemorySpaceRejectedByMlirMemoryKinds) {
+  EXPECT_EQ(SwapMemorySpace::kKind, "swap");
+  EXPECT_NE(SwapMemorySpace::kKindId, PinnedHostMemorySpace::kKindId);
+  EXPECT_NE(SwapMemorySpace::kKindId, UnpinnedHostMemorySpace::kKindId);
+
+  mlir::MLIRContext context;
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> arg_mod,
+      ParseMlirModuleString("module { func.func @main(%arg0: tensor<4xi32> "
+                            "{mhlo.memory_kind = \"swap\"}) -> tensor<4xi32> { "
+                            "return %arg0 : tensor<4xi32> } }",
+                            context));
+  EXPECT_THAT(
+      GetArgMemoryKinds(*arg_mod),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("cannot be used for compilation or execution")));
+
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> out_mod,
+      ParseMlirModuleString("module { func.func @main(%arg0: tensor<4xi32>) -> "
+                            "(tensor<4xi32> {mhlo.memory_kind = \"swap\"}) { "
+                            "return %arg0 : tensor<4xi32> } }",
+                            context));
+  EXPECT_THAT(
+      GetOutputMemoryKinds(*out_mod),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("cannot be used for compilation or execution")));
 }
 
 }  // namespace

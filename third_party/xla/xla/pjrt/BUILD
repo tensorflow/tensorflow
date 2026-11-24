@@ -1002,13 +1002,18 @@ xla_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
     deps = [
+        ":host_memory_spaces",
         ":layout_mode",
+        ":mlir_to_hlo",
         ":utils",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 

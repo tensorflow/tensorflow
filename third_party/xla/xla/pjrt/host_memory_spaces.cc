@@ -69,4 +69,19 @@ const int CpuDeviceMemorySpace::kKindId = []() {
   return static_cast<int>(kind_id);
 }();
 
+SwapMemorySpace::SwapMemorySpace(int id, PjRtDevice* device)
+    : id_(id), device_(device), capi_delegator_(this, device, kKindId) {
+  DCHECK(device_ != nullptr && device_->client() != nullptr);
+  PjRtClient* client = device_->client();
+  debug_string_ =
+      absl::StrFormat("SwapMemorySpace(id=%i, process_index=%i, client=%s)",
+                      id_, client->process_index(), client->platform_name());
+  to_string_ = absl::StrFormat("SWAP_%i", id_);
+}
+
+const int SwapMemorySpace::kKindId = []() {
+  uint32_t kind_id = tsl::Fingerprint32(SwapMemorySpace::kKind);
+  return static_cast<int>(kind_id);
+}();
+
 }  // namespace xla

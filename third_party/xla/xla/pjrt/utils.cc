@@ -231,6 +231,11 @@ absl::StatusOr<MemorySpaceColor> GetMemorySpaceColor(
   if (memory_kind == "device") {
     return xla::Layout::kDefaultMemorySpace;
   }
+  if (memory_kind == "swap") {
+    return InvalidArgument(
+        "Memory kind '%s' cannot be used for compilation or execution",
+        memory_kind);
+  }
   return InvalidArgument("Unknown memory kind %s", memory_kind);
 }
 

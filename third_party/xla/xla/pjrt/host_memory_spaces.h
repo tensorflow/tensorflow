@@ -135,6 +135,43 @@ class CpuDeviceMemorySpace : public PjRtMemorySpace {
   PjRtMemorySpaceCApiDelegator capi_delegator_;
 };
 
+// Represents a chunked pinned host memory space accessible to a `PjRtDevice`
+// and used solely for transfers (cannot be used for execution).
+class SwapMemorySpace : public PjRtMemorySpace {
+ public:
+  static constexpr absl::string_view kKind = "swap";
+  static const int kKindId;
+
+  SwapMemorySpace(int id, PjRtDevice* device);
+  SwapMemorySpace(const SwapMemorySpace&) = delete;
+  SwapMemorySpace& operator=(const SwapMemorySpace&) = delete;
+
+  PjRtClient* client() const override { return device_->client(); }
+
+  absl::Span<PjRtDevice* const> devices() const override {
+    return absl::Span<PjRtDevice* const>(&device_, 1);
+  }
+
+  int id() const override { return id_; }
+
+  absl::string_view kind() const override { return kKind; }
+
+  int kind_id() const override { return kKindId; }
+
+  absl::string_view DebugString() const override { return debug_string_; }
+
+  absl::string_view ToString() const override { return to_string_; }
+
+  PJRT_Memory* ToCApiPtr() override { return capi_delegator_.ToCApiPtr(); }
+
+ private:
+  int id_;
+  PjRtDevice* device_;
+  std::string debug_string_;
+  std::string to_string_;
+  PjRtMemorySpaceCApiDelegator capi_delegator_;
+};
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_HOST_MEMORY_SPACES_H_
