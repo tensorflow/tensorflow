@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -467,12 +468,20 @@ TEST(AllToAllThunkTest, RunAllToAllSetsIsRmaFromBufferMemorySpace) {
   se::StreamExecutor* executor = GpuExecutor();
   ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
-  auto make_pair = [](int64_t src_space, int64_t dst_space) {
+  constexpr int64_t kElementCount = 4;
+  se::DeviceAddressHandle src_buffer(
+      executor, executor->AllocateArray<float>(kElementCount));
+  se::DeviceAddressHandle dst_buffer(
+      executor, executor->AllocateArray<float>(kElementCount));
+  ASSERT_FALSE(src_buffer.address().is_null());
+  ASSERT_FALSE(dst_buffer.address().is_null());
+
+  auto make_pair = [&](int64_t src_space, int64_t dst_space) {
     return DeviceBufferPair{
         /*element_type=*/F32,
-        /*element_count=*/4,
-        /*source_buffer=*/se::DeviceAddressBase(),
-        /*destination_buffer=*/se::DeviceAddressBase(),
+        /*element_count=*/kElementCount,
+        /*source_buffer=*/src_buffer.address(),
+        /*destination_buffer=*/dst_buffer.address(),
         /*source_memory_space=*/src_space,
         /*destination_memory_space=*/dst_space,
     };
@@ -483,7 +492,7 @@ TEST(AllToAllThunkTest, RunAllToAllSetsIsRmaFromBufferMemorySpace) {
   // Default memory space buffers must pass `is_rma = false`.
   std::vector<DeviceBufferPair> default_space_buffers = {
       make_pair(Layout::kDefaultMemorySpace, Layout::kDefaultMemorySpace)};
-  ASSERT_OK(RunAllToAll(/*has_split_dimension=*/true, default_space_buffers,
+  EXPECT_OK(RunAllToAll(/*has_split_dimension=*/true, default_space_buffers,
                         *stream, comm));
   EXPECT_EQ(comm.last_is_rma(), false);
 
@@ -492,7 +501,7 @@ TEST(AllToAllThunkTest, RunAllToAllSetsIsRmaFromBufferMemorySpace) {
       make_pair(Layout::kCollectiveMemorySpace, Layout::kCollectiveMemorySpace),
       make_pair(Layout::kCollectiveMemorySpace, Layout::kDefaultMemorySpace),
   };
-  ASSERT_OK(
+  EXPECT_OK(
       RunAllToAll(/*has_split_dimension=*/false, mixed_buffers, *stream, comm));
   EXPECT_EQ(comm.last_is_rma(), false);
 
@@ -500,10 +509,10 @@ TEST(AllToAllThunkTest, RunAllToAllSetsIsRmaFromBufferMemorySpace) {
   // `is_rma` be `true`.
   std::vector<DeviceBufferPair> collective_space_buffers = {make_pair(
       Layout::kCollectiveMemorySpace, Layout::kCollectiveMemorySpace)};
-  ASSERT_OK(RunAllToAll(/*has_split_dimension=*/true, collective_space_buffers,
+  EXPECT_OK(RunAllToAll(/*has_split_dimension=*/true, collective_space_buffers,
                         *stream, comm));
   EXPECT_EQ(comm.last_is_rma(), true);
-  ASSERT_OK(RunAllToAll(/*has_split_dimension=*/false, collective_space_buffers,
+  EXPECT_OK(RunAllToAll(/*has_split_dimension=*/false, collective_space_buffers,
                         *stream, comm));
   EXPECT_EQ(comm.last_is_rma(), true);
 }

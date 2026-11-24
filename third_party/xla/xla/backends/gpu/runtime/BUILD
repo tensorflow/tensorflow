@@ -2451,6 +2451,7 @@ xla_test(
         "//xla/service/gpu:buffer_allocations",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_handle",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
