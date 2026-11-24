@@ -263,6 +263,26 @@ class OriginInfoTest(test.TestCase):
     self.assertEqual(ret2_origin.source_code_line, '  return 2')
     self.assertIsNone(ret2_origin.comment)
 
+  def test_resolve_entity_getsourcefile_returns_none(self):
+    test_fn = basic_definitions.simple_function
+    node, source = parser.parse_entity(
+        test_fn, inspect_utils.getfutureimports(test_fn))
+    expected_filepath = tf_inspect.getfile(test_fn)
+    fn_start = inspect.getsourcelines(test_fn)[1]
+
+    with test.mock.patch.object(
+        tf_inspect, 'getsourcefile', return_value=None):
+      origin_info.resolve_entity(node, source, test_fn)
+
+    def_origin = anno.getanno(node, anno.Basic.ORIGIN)
+    self.assertEqual(def_origin.loc.filename, expected_filepath)
+    self.assertEqual(def_origin.loc.lineno, fn_start)
+
+    source_map = origin_info.create_source_map(node, source, 'test_filename')
+    definition_loc = origin_info.LineLocation('test_filename', 1)
+    self.assertIn(definition_loc, source_map)
+    self.assertEqual(source_map[definition_loc].loc.filename, expected_filepath)
+
 
 if __name__ == '__main__':
   test.main()

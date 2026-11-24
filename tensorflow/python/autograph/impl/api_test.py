@@ -17,6 +17,7 @@
 import abc
 import collections
 import contextlib
+import doctest
 import functools
 import gc
 import inspect
@@ -36,6 +37,7 @@ from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
@@ -1315,6 +1317,66 @@ class ApiTest(test.TestCase):
         test_func2(2)
     self.assertLen(logs.output, 1)
     self.assertRegex(logs.output[0], r'^.+:AutoGraph could not transform.+')
+
+  def test_stack_trace_mapper_none_filename(self):
+    converted_fn = types.SimpleNamespace(
+        ag_source_map={
+            origin_info.LineLocation('gen.py', 1): origin_info.OriginInfo(
+                origin_info.Location(None, 10, 0),
+                'my_fn',
+                'return x',
+                None,
+            ),
+            origin_info.LineLocation('gen.py', 2): origin_info.OriginInfo(
+                origin_info.Location('mid.py', 5, 0),
+                'mid_fn',
+                'return y',
+                None,
+            ),
+        }
+    )
+    nested_fn = types.SimpleNamespace(
+        ag_source_map={
+            origin_info.LineLocation('mid.py', 5): origin_info.OriginInfo(
+                origin_info.Location(None, 20, 0),
+                'inner_fn',
+                'return x + 1',
+                None,
+            )
+        }
+    )
+    with api.StackTraceMapper(converted_fn) as outer_mapper:
+      outer_effective = outer_mapper.get_effective_source_map()
+      self.assertEqual(outer_effective[('gen.py', 1)], ('', 10, 'my_fn'))
+      self.assertEqual(outer_effective[('gen.py', 2)], ('mid.py', 5, 'mid_fn'))
+      with api.StackTraceMapper(nested_fn) as inner_mapper:
+        effective = inner_mapper.get_effective_source_map()
+        self.assertEqual(effective[('gen.py', 1)], ('', 10, 'my_fn'))
+        self.assertEqual(effective[('gen.py', 2)], ('', 20, 'inner_fn'))
+        self.assertEqual(effective[('mid.py', 5)], ('', 20, 'inner_fn'))
+
+  def test_tf_function_in_doctest_synthetic_frame(self):
+    src = textwrap.dedent("""
+        >>> @def_function.function
+        ... def my_func(x):
+        ...   if math_ops.reduce_sum(x) > 0:
+        ...     return math_ops.reduce_sum(x)
+        ...   return constant_op.constant(0)
+        >>> out_pos = my_func(constant_op.constant([1, 2, 3]))
+        >>> out_neg = my_func(constant_op.constant([-1, -2]))
+    """)
+    globs = {
+        'constant_op': constant_op,
+        'def_function': def_function,
+        'math_ops': math_ops,
+    }
+    dt = doctest.DocTestParser().get_doctest(
+        src, globs, 'test_synthetic', 'test_synthetic.py', 0
+    )
+    result = doctest.DocTestRunner(verbose=False).run(dt, clear_globs=False)
+    self.assertEqual(result.failed, 0)
+    self.assertAllEqual(dt.globs['out_pos'], 6)
+    self.assertAllEqual(dt.globs['out_neg'], 0)
 
 
 if __name__ == '__main__':

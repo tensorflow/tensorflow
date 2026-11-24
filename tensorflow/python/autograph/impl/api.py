@@ -160,17 +160,22 @@ class StackTraceMapper(tf_stack.StackTraceMapper):
 
     effective_source_map = {}
     for loc, origin in self._source_map.items():
-      effective_source_map[(loc.filename, loc.lineno)] = (origin.loc.filename,
-                                                          origin.loc.lineno,
-                                                          origin.function_name)
+      effective_source_map[(loc.filename, loc.lineno)] = (
+          origin.loc.filename or '',
+          origin.loc.lineno,
+          origin.function_name,
+      )
 
     for key, value in parent_map.items():
       filename, lineno, _ = value
       value_loc = origin_info.LineLocation(filename=filename, lineno=lineno)
       if value_loc in self._source_map:
         origin = self._source_map[value_loc]
-        effective_source_map[key] = (origin.loc.filename, origin.loc.lineno,
-                                     origin.function_name)
+        effective_source_map[key] = (
+            origin.loc.filename or '',
+            origin.loc.lineno,
+            origin.function_name,
+        )
       else:
         effective_source_map[key] = value
 
