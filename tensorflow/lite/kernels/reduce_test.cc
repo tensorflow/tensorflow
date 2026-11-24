@@ -16,10 +16,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <initializer_list>
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -34,8 +36,20 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace builtin {
+TfLiteRegistration* Register_MEAN_OPT();
 TfLiteRegistration* Register_MEAN_REF();
+TfLiteRegistration* Register_SUM_OPT();
 TfLiteRegistration* Register_SUM_REF();
+TfLiteRegistration* Register_REDUCE_PROD_OPT();
+TfLiteRegistration* Register_REDUCE_PROD_REF();
+TfLiteRegistration* Register_REDUCE_MAX_OPT();
+TfLiteRegistration* Register_REDUCE_MAX_REF();
+TfLiteRegistration* Register_REDUCE_MIN_OPT();
+TfLiteRegistration* Register_REDUCE_MIN_REF();
+TfLiteRegistration* Register_REDUCE_ANY_OPT();
+TfLiteRegistration* Register_REDUCE_ANY_REF();
+TfLiteRegistration* Register_REDUCE_ALL_OPT();
+TfLiteRegistration* Register_REDUCE_ALL_REF();
 }  // namespace builtin
 }  // namespace ops
 
@@ -2229,6 +2243,321 @@ TEST(ConstInt8MeanOpTest, AxisCountExceedsMaxLimitNoCrash) {
                      false);
   m.QuantizeAndPopulate<int8_t>(m.Input(), data);
   EXPECT_EQ(m.Invoke(), kTfLiteOk);
+}
+
+enum class ReduceInputMode {
+  kRuntime,
+  kConstFloat16,
+};
+
+enum class ReduceAxisMode {
+  kConstInt32,
+  kDynamicInt32,
+  kConstInt64,
+};
+
+// Builds a single reduction op without calling AllocateTensors(), allowing
+// direct assertions on prepare-time type checks and subgraph tensor counts.
+class DeferredAllocationReduceOpModel : public SingleOpModel {
+ public:
+  DeferredAllocationReduceOpModel(
+      BuiltinOperator op_code, TfLiteRegistration* registration,
+      TensorType input_type, TensorType output_type, ReduceAxisMode axis_mode,
+      ReduceInputMode input_mode = ReduceInputMode::kRuntime) {
+    std::vector<std::vector<int>> input_shapes;
+    if (input_mode == ReduceInputMode::kConstFloat16) {
+      // 0x3c00 is IEEE-754 float16 1.0.
+      AddConstInput<uint16_t>({input_type, {2, 3}},
+                              std::vector<uint16_t>(6, 0x3c00));
+      input_shapes.push_back({});
+    } else {
+      const int input = AddInput({input_type, {2, 3}});
+      input_shapes.push_back(GetShape(input));
+    }
+
+    switch (axis_mode) {
+      case ReduceAxisMode::kConstInt32:
+        AddConstInput(TensorType_INT32, /*data=*/{1}, /*shape=*/{1});
+        break;
+      case ReduceAxisMode::kDynamicInt32: {
+        const int axis = AddInput({TensorType_INT32, {1}});
+        input_shapes.push_back(GetShape(axis));
+        break;
+      }
+      case ReduceAxisMode::kConstInt64:
+        AddConstInput<int64_t>(TensorType_INT64, /*data=*/{1}, /*shape=*/{1});
+        break;
+    }
+
+    AddOutput({output_type, {}});
+    SetBuiltinOp(op_code, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, /*keep_dims=*/false).Union());
+    SetResolver(std::make_unique<SingleOpResolver>(op_code, registration));
+    BuildInterpreter(input_shapes, /*num_threads=*/1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+  size_t NumTensors() const { return interpreter_->tensors_size(); }
+};
+
+struct ReduceRegistrationVariant {
+  std::string op_name;
+  std::string variant_name;
+  BuiltinOperator op_code;
+  TfLiteRegistration* (*registration_fn)();
+};
+
+struct ReduceInputTypeValidationParam {
+  std::string op_name;
+  std::string variant_name;
+  BuiltinOperator op_code;
+  TfLiteRegistration* (*registration_fn)();
+  TensorType input_type;
+  TensorType output_type;
+  ReduceAxisMode axis_mode;
+  ReduceInputMode input_mode = ReduceInputMode::kRuntime;
+};
+
+std::string TensorTypeParamName(TensorType type) {
+  switch (type) {
+    case TensorType_FLOAT32:
+      return "Float32";
+    case TensorType_FLOAT16:
+      return "Float16";
+    case TensorType_FLOAT64:
+      return "Float64";
+    case TensorType_BOOL:
+      return "Bool";
+    default:
+      return "OtherType";
+  }
+}
+
+std::string AxisModeParamName(ReduceAxisMode axis_mode) {
+  switch (axis_mode) {
+    case ReduceAxisMode::kConstInt32:
+      return "ConstInt32Axis";
+    case ReduceAxisMode::kDynamicInt32:
+      return "DynamicInt32Axis";
+    case ReduceAxisMode::kConstInt64:
+      return "ConstInt64Axis";
+  }
+  return "UnknownAxis";
+}
+
+std::string ReduceInputTypeValidationParamName(
+    const testing::TestParamInfo<ReduceInputTypeValidationParam>& info) {
+  std::string name = info.param.op_name + "_" + info.param.variant_name + "_" +
+                     TensorTypeParamName(info.param.input_type) + "_" +
+                     AxisModeParamName(info.param.axis_mode);
+  if (info.param.input_mode == ReduceInputMode::kConstFloat16) {
+    name += "_ConstInput";
+  }
+  return name;
+}
+
+std::vector<ReduceRegistrationVariant> BasicReduceRegistrations() {
+  return {
+      {"Mean", "Opt", BuiltinOperator_MEAN, ops::builtin::Register_MEAN_OPT},
+      {"Mean", "Ref", BuiltinOperator_MEAN, ops::builtin::Register_MEAN_REF},
+      {"Sum", "Opt", BuiltinOperator_SUM, ops::builtin::Register_SUM_OPT},
+      {"Sum", "Ref", BuiltinOperator_SUM, ops::builtin::Register_SUM_REF},
+      {"ReduceProd", "Opt", BuiltinOperator_REDUCE_PROD,
+       ops::builtin::Register_REDUCE_PROD_OPT},
+      {"ReduceProd", "Ref", BuiltinOperator_REDUCE_PROD,
+       ops::builtin::Register_REDUCE_PROD_REF},
+      {"ReduceMax", "Opt", BuiltinOperator_REDUCE_MAX,
+       ops::builtin::Register_REDUCE_MAX_OPT},
+      {"ReduceMax", "Ref", BuiltinOperator_REDUCE_MAX,
+       ops::builtin::Register_REDUCE_MAX_REF},
+      {"ReduceMin", "Opt", BuiltinOperator_REDUCE_MIN,
+       ops::builtin::Register_REDUCE_MIN_OPT},
+      {"ReduceMin", "Ref", BuiltinOperator_REDUCE_MIN,
+       ops::builtin::Register_REDUCE_MIN_REF},
+  };
+}
+
+std::vector<ReduceRegistrationVariant> LogicalReduceRegistrations() {
+  return {
+      {"ReduceAny", "Opt", BuiltinOperator_REDUCE_ANY,
+       ops::builtin::Register_REDUCE_ANY_OPT},
+      {"ReduceAny", "Ref", BuiltinOperator_REDUCE_ANY,
+       ops::builtin::Register_REDUCE_ANY_REF},
+      {"ReduceAll", "Opt", BuiltinOperator_REDUCE_ALL,
+       ops::builtin::Register_REDUCE_ALL_OPT},
+      {"ReduceAll", "Ref", BuiltinOperator_REDUCE_ALL,
+       ops::builtin::Register_REDUCE_ALL_REF},
+  };
+}
+
+std::vector<ReduceInputTypeValidationParam> BuildRejectionParams() {
+  std::vector<ReduceInputTypeValidationParam> params;
+  for (const ReduceRegistrationVariant& registration :
+       BasicReduceRegistrations()) {
+    // Reject FLOAT16 on both constant and dynamic INT32 axes.
+    params.push_back({registration.op_name, registration.variant_name,
+                      registration.op_code, registration.registration_fn,
+                      TensorType_FLOAT16, TensorType_FLOAT16,
+                      ReduceAxisMode::kConstInt32});
+    params.push_back({registration.op_name, registration.variant_name,
+                      registration.op_code, registration.registration_fn,
+                      TensorType_FLOAT16, TensorType_FLOAT16,
+                      ReduceAxisMode::kDynamicInt32});
+  }
+  for (const ReduceRegistrationVariant& registration :
+       LogicalReduceRegistrations()) {
+    // Reject non-BOOL inputs on both constant and dynamic INT32 axes.
+    params.push_back({registration.op_name, registration.variant_name,
+                      registration.op_code, registration.registration_fn,
+                      TensorType_FLOAT32, TensorType_FLOAT32,
+                      ReduceAxisMode::kConstInt32});
+    params.push_back({registration.op_name, registration.variant_name,
+                      registration.op_code, registration.registration_fn,
+                      TensorType_FLOAT16, TensorType_FLOAT16,
+                      ReduceAxisMode::kConstInt32});
+    params.push_back({registration.op_name, registration.variant_name,
+                      registration.op_code, registration.registration_fn,
+                      TensorType_FLOAT32, TensorType_FLOAT32,
+                      ReduceAxisMode::kDynamicInt32});
+  }
+  // Reject additional unsupported input type (FLOAT64).
+  params.push_back({"Sum", "Opt", BuiltinOperator_SUM,
+                    ops::builtin::Register_SUM_OPT, TensorType_FLOAT64,
+                    TensorType_FLOAT64, ReduceAxisMode::kConstInt32});
+  params.push_back({"Sum", "Ref", BuiltinOperator_SUM,
+                    ops::builtin::Register_SUM_REF, TensorType_FLOAT64,
+                    TensorType_FLOAT64, ReduceAxisMode::kConstInt32});
+  params.push_back({"ReduceAny", "Opt", BuiltinOperator_REDUCE_ANY,
+                    ops::builtin::Register_REDUCE_ANY_OPT, TensorType_FLOAT64,
+                    TensorType_FLOAT64, ReduceAxisMode::kConstInt32});
+  params.push_back({"ReduceAny", "Ref", BuiltinOperator_REDUCE_ANY,
+                    ops::builtin::Register_REDUCE_ANY_REF, TensorType_FLOAT64,
+                    TensorType_FLOAT64, ReduceAxisMode::kConstInt32});
+  // Reject constant FLOAT16 REDUCE_PROD before constant folding (`data->noop`).
+  params.push_back({"ReduceProd", "Opt", BuiltinOperator_REDUCE_PROD,
+                    ops::builtin::Register_REDUCE_PROD_OPT, TensorType_FLOAT16,
+                    TensorType_FLOAT16, ReduceAxisMode::kConstInt32,
+                    ReduceInputMode::kConstFloat16});
+  params.push_back({"ReduceProd", "Ref", BuiltinOperator_REDUCE_PROD,
+                    ops::builtin::Register_REDUCE_PROD_REF, TensorType_FLOAT16,
+                    TensorType_FLOAT16, ReduceAxisMode::kConstInt32,
+                    ReduceInputMode::kConstFloat16});
+  // Reject non-INT32 axis before allocating scratch tensors.
+  params.push_back({"Sum", "Opt", BuiltinOperator_SUM,
+                    ops::builtin::Register_SUM_OPT, TensorType_FLOAT32,
+                    TensorType_FLOAT32, ReduceAxisMode::kConstInt64});
+  params.push_back({"ReduceProd", "Opt", BuiltinOperator_REDUCE_PROD,
+                    ops::builtin::Register_REDUCE_PROD_OPT, TensorType_FLOAT32,
+                    TensorType_FLOAT32, ReduceAxisMode::kConstInt64});
+  params.push_back({"ReduceMax", "Opt", BuiltinOperator_REDUCE_MAX,
+                    ops::builtin::Register_REDUCE_MAX_OPT, TensorType_FLOAT32,
+                    TensorType_FLOAT32, ReduceAxisMode::kConstInt64});
+  params.push_back({"ReduceAny", "Opt", BuiltinOperator_REDUCE_ANY,
+                    ops::builtin::Register_REDUCE_ANY_OPT, TensorType_BOOL,
+                    TensorType_BOOL, ReduceAxisMode::kConstInt64});
+  return params;
+}
+
+std::vector<ReduceInputTypeValidationParam> BuildAdmissionParams() {
+  std::vector<ReduceInputTypeValidationParam> params;
+  for (const ReduceRegistrationVariant& registration :
+       BasicReduceRegistrations()) {
+    params.push_back({registration.op_name, registration.variant_name,
+                      registration.op_code, registration.registration_fn,
+                      TensorType_FLOAT32, TensorType_FLOAT32,
+                      ReduceAxisMode::kConstInt32});
+  }
+  for (const ReduceRegistrationVariant& registration :
+       LogicalReduceRegistrations()) {
+    params.push_back({registration.op_name, registration.variant_name,
+                      registration.op_code, registration.registration_fn,
+                      TensorType_BOOL, TensorType_BOOL,
+                      ReduceAxisMode::kConstInt32});
+  }
+  // Preserve historical prepare-time BOOL admission for MEAN.
+  params.push_back({"Mean", "Opt", BuiltinOperator_MEAN,
+                    ops::builtin::Register_MEAN_OPT, TensorType_BOOL,
+                    TensorType_BOOL, ReduceAxisMode::kConstInt32});
+  params.push_back({"Mean", "Ref", BuiltinOperator_MEAN,
+                    ops::builtin::Register_MEAN_REF, TensorType_BOOL,
+                    TensorType_BOOL, ReduceAxisMode::kConstInt32});
+  return params;
+}
+
+class ReduceInputTypeRejectionTest
+    : public testing::TestWithParam<ReduceInputTypeValidationParam> {};
+
+TEST_P(ReduceInputTypeRejectionTest,
+       RejectsUnsupportedInputOrAxisWithoutAddingScratchTensors) {
+  const ReduceInputTypeValidationParam& param = GetParam();
+  DeferredAllocationReduceOpModel model(param.op_code, param.registration_fn(),
+                                        param.input_type, param.output_type,
+                                        param.axis_mode, param.input_mode);
+  const size_t initial_num_tensors = model.NumTensors();
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(model.NumTensors(), initial_num_tensors);
+}
+
+INSTANTIATE_TEST_SUITE_P(ReduceInputTypeValidation,
+                         ReduceInputTypeRejectionTest,
+                         testing::ValuesIn(BuildRejectionParams()),
+                         ReduceInputTypeValidationParamName);
+
+class ReduceInputTypeAdmissionTest
+    : public testing::TestWithParam<ReduceInputTypeValidationParam> {};
+
+TEST_P(ReduceInputTypeAdmissionTest, AdmitsSupportedInputType) {
+  const ReduceInputTypeValidationParam& param = GetParam();
+  DeferredAllocationReduceOpModel model(param.op_code, param.registration_fn(),
+                                        param.input_type, param.output_type,
+                                        param.axis_mode, param.input_mode);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteOk);
+}
+
+INSTANTIATE_TEST_SUITE_P(ReduceInputTypeValidation,
+                         ReduceInputTypeAdmissionTest,
+                         testing::ValuesIn(BuildAdmissionParams()),
+                         ReduceInputTypeValidationParamName);
+
+TEST(ReduceInputTypeValidationTest,
+     RepeatedFailedAllocateTensorsLeavesTensorCountUnchanged) {
+  DeferredAllocationReduceOpModel sum_model(
+      BuiltinOperator_SUM, ops::builtin::Register_SUM_OPT(), TensorType_FLOAT16,
+      TensorType_FLOAT16, ReduceAxisMode::kConstInt32);
+  const size_t sum_initial_tensors = sum_model.NumTensors();
+  EXPECT_EQ(sum_model.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(sum_model.NumTensors(), sum_initial_tensors);
+  EXPECT_EQ(sum_model.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(sum_model.NumTensors(), sum_initial_tensors);
+
+  DeferredAllocationReduceOpModel prod_model(
+      BuiltinOperator_REDUCE_PROD, ops::builtin::Register_REDUCE_PROD_OPT(),
+      TensorType_FLOAT16, TensorType_FLOAT16, ReduceAxisMode::kConstInt32);
+  const size_t prod_initial_tensors = prod_model.NumTensors();
+  EXPECT_EQ(prod_model.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(prod_model.NumTensors(), prod_initial_tensors);
+  EXPECT_EQ(prod_model.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(prod_model.NumTensors(), prod_initial_tensors);
+
+  DeferredAllocationReduceOpModel max_model(
+      BuiltinOperator_REDUCE_MAX, ops::builtin::Register_REDUCE_MAX_OPT(),
+      TensorType_FLOAT16, TensorType_FLOAT16, ReduceAxisMode::kConstInt32);
+  const size_t max_initial_tensors = max_model.NumTensors();
+  EXPECT_EQ(max_model.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(max_model.NumTensors(), max_initial_tensors);
+  EXPECT_EQ(max_model.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(max_model.NumTensors(), max_initial_tensors);
+
+  DeferredAllocationReduceOpModel all_model(
+      BuiltinOperator_REDUCE_ALL, ops::builtin::Register_REDUCE_ALL_OPT(),
+      TensorType_FLOAT32, TensorType_FLOAT32, ReduceAxisMode::kConstInt32);
+  const size_t all_initial_tensors = all_model.NumTensors();
+  EXPECT_EQ(all_model.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(all_model.NumTensors(), all_initial_tensors);
+  EXPECT_EQ(all_model.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(all_model.NumTensors(), all_initial_tensors);
 }
 
 }  // namespace

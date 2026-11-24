@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -385,17 +386,93 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* absl_nonnull context,
   return kTfLiteOk;
 }
 
-TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
+namespace {
+
+// Returns a short diagnostic name for supported reduction opcodes.
+const char* OpName(TfLiteBuiltinOperator op) {
+  switch (op) {
+    case kTfLiteBuiltinSum:
+      return "SUM";
+    case kTfLiteBuiltinMean:
+      return "MEAN";
+    case kTfLiteBuiltinReduceProd:
+      return "REDUCE_PROD";
+    case kTfLiteBuiltinReduceMin:
+      return "REDUCE_MIN";
+    case kTfLiteBuiltinReduceMax:
+      return "REDUCE_MAX";
+    case kTfLiteBuiltinReduceAny:
+      return "REDUCE_ANY";
+    case kTfLiteBuiltinReduceAll:
+      return "REDUCE_ALL";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+// Returns whether `input_type` is admitted during preparation for basic
+// numeric/boolean reductions (SUM, MEAN, REDUCE_PROD, REDUCE_MIN, REDUCE_MAX).
+bool IsBasicReduceInputTypeSupported(TfLiteType input_type) {
+  switch (input_type) {
+    case kTfLiteFloat32:
+    case kTfLiteInt32:
+    case kTfLiteInt64:
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
+    case kTfLiteInt16:
+    case kTfLiteBool:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Validates that the reduction operator admits `input_type` during preparation.
+TfLiteStatus ValidateInputType(TfLiteContext* absl_nonnull context,
+                               TfLiteBuiltinOperator op,
+                               TfLiteType input_type) {
+  switch (op) {
+    case kTfLiteBuiltinSum:
+    case kTfLiteBuiltinMean:
+    case kTfLiteBuiltinReduceProd:
+    case kTfLiteBuiltinReduceMin:
+    case kTfLiteBuiltinReduceMax:
+      if (IsBasicReduceInputTypeSupported(input_type)) {
+        return kTfLiteOk;
+      }
+      break;
+    case kTfLiteBuiltinReduceAny:
+    case kTfLiteBuiltinReduceAll:
+      if (input_type == kTfLiteBool) {
+        return kTfLiteOk;
+      }
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(context, "Unsupported reduction operator: %d.",
+                         static_cast<int>(op));
+      return kTfLiteError;
+  }
+  TF_LITE_KERNEL_LOG(context, "Operator %s does not support input type %s.",
+                     OpName(op), TfLiteTypeGetName(input_type));
+  return kTfLiteError;
+}
+
+}  // namespace
+
+TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node,
+                           TfLiteBuiltinOperator op) {
   OpContext op_context;
   TF_LITE_ENSURE_OK(context, CreateOpContext(context, node, op_context));
+  TF_LITE_ENSURE_OK(context,
+                    ValidateInputType(context, op, op_context.input->type));
   TF_LITE_ENSURE(context, op_context.axis != nullptr);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   TF_LITE_ENSURE(context, op_data != nullptr);
   if (op_data->scratch_tensor_index == -1) {
     TF_LITE_ENSURE_STATUS(
         context->AddTensors(context, 4, &op_data->scratch_tensor_index));
   }
-  TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, op_context));
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
@@ -450,17 +527,9 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus PrepareAllOrAny(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_OK(context, ValidateNode(context, node));
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
-  TF_LITE_ENSURE_OK(context, ValidateTensorShape(context, *input));
-  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteBool);
-  return PrepareSimple(context, node);
-}
-
-TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_OK(context, PrepareSimple(context, node));
+TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node,
+                              TfLiteBuiltinOperator op) {
+  TF_LITE_ENSURE_OK(context, PrepareSimple(context, node, op));
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   TF_LITE_ENSURE(context, data != nullptr);
 
@@ -494,6 +563,16 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   return ResizeTempAccum(context, op_context, *temp_sum);
 }
 
+template <TfLiteBuiltinOperator op>
+TfLiteStatus PrepareSimpleOp(TfLiteContext* context, TfLiteNode* node) {
+  return PrepareSimple(context, node, op);
+}
+
+template <TfLiteBuiltinOperator op>
+TfLiteStatus PrepareMeanOrSumOp(TfLiteContext* context, TfLiteNode* node) {
+  return PrepareMeanOrSum(context, node, op);
+}
+
 double GetQuantProdScaling(double input_scale, double output_scale,
                            int reduced_axis_size) {
   // The scaling after taking the product of all the quantized values should
@@ -504,7 +583,8 @@ double GetQuantProdScaling(double input_scale, double output_scale,
 }
 
 TfLiteStatus PrepareProd(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_OK(context, PrepareSimple(context, node));
+  TF_LITE_ENSURE_OK(context,
+                    PrepareSimple(context, node, kTfLiteBuiltinReduceProd));
 
   OpContext op_context;
   TF_LITE_ENSURE_OK(context, CreateOpContext(context, node, op_context));
@@ -1299,28 +1379,28 @@ using ops::builtin::reduce::ReduceType;
 
 TfLiteRegistration* Register_MEAN_OPT() {
   static TfLiteRegistration r = {reduce::Init, reduce::Free,
-                                 reduce::PrepareMeanOrSum,
+                                 reduce::PrepareMeanOrSumOp<kTfLiteBuiltinMean>,
                                  reduce::EvalMean<reduce::kGenericOptimized>};
   return &r;
 }
 
 TfLiteRegistration* Register_MEAN_REF() {
   static TfLiteRegistration r = {reduce::Init, reduce::Free,
-                                 reduce::PrepareMeanOrSum,
+                                 reduce::PrepareMeanOrSumOp<kTfLiteBuiltinMean>,
                                  reduce::EvalMean<reduce::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_SUM_REF() {
   static TfLiteRegistration r = {reduce::Init, reduce::Free,
-                                 reduce::PrepareMeanOrSum,
+                                 reduce::PrepareMeanOrSumOp<kTfLiteBuiltinSum>,
                                  reduce::EvalSum<reduce::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_SUM_OPT() {
   static TfLiteRegistration r = {reduce::Init, reduce::Free,
-                                 reduce::PrepareMeanOrSum,
+                                 reduce::PrepareMeanOrSumOp<kTfLiteBuiltinSum>,
                                  reduce::EvalSum<reduce::kGenericOptimized>};
   return &r;
 }
@@ -1341,56 +1421,64 @@ TfLiteRegistration* Register_REDUCE_PROD_OPT() {
 
 TfLiteRegistration* Register_REDUCE_MAX_REF() {
   static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareSimple,
+      reduce::Init, reduce::Free,
+      reduce::PrepareSimpleOp<kTfLiteBuiltinReduceMax>,
       reduce::EvalGeneric<reduce::kReference, ReduceType::kMax>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_MAX_OPT() {
   static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareSimple,
+      reduce::Init, reduce::Free,
+      reduce::PrepareSimpleOp<kTfLiteBuiltinReduceMax>,
       reduce::EvalGeneric<reduce::kGenericOptimized, ReduceType::kMax>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_MIN_REF() {
   static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareSimple,
+      reduce::Init, reduce::Free,
+      reduce::PrepareSimpleOp<kTfLiteBuiltinReduceMin>,
       reduce::EvalGeneric<reduce::kReference, ReduceType::kMin>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_MIN_OPT() {
   static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareSimple,
+      reduce::Init, reduce::Free,
+      reduce::PrepareSimpleOp<kTfLiteBuiltinReduceMin>,
       reduce::EvalGeneric<reduce::kGenericOptimized, ReduceType::kMin>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_ANY_REF() {
   static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareAllOrAny,
+      reduce::Init, reduce::Free,
+      reduce::PrepareSimpleOp<kTfLiteBuiltinReduceAny>,
       reduce::EvalGeneric<reduce::kReference, ReduceType::kAny>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_ANY_OPT() {
   static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareAllOrAny,
+      reduce::Init, reduce::Free,
+      reduce::PrepareSimpleOp<kTfLiteBuiltinReduceAny>,
       reduce::EvalGeneric<reduce::kGenericOptimized, ReduceType::kAny>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_ALL_REF() {
   static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareAllOrAny,
+      reduce::Init, reduce::Free,
+      reduce::PrepareSimpleOp<kTfLiteBuiltinReduceAll>,
       reduce::EvalGeneric<reduce::kReference, ReduceType::kAll>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_ALL_OPT() {
   static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareAllOrAny,
+      reduce::Init, reduce::Free,
+      reduce::PrepareSimpleOp<kTfLiteBuiltinReduceAll>,
       reduce::EvalGeneric<reduce::kGenericOptimized, ReduceType::kAll>};
   return &r;
 }
