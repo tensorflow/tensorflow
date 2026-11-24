@@ -127,6 +127,37 @@ TEST_F(ComputationPartitionerTest, SimpleConcatenate) {
   EXPECT_THAT(computation.subgraphs(), SizeIs(1));
 }
 
+TEST_F(ComputationPartitionerTest, SubgraphNamesAreUniqueAfterSanitization) {
+  // `dynamic-slice.4` and `dynamic_slice.4` both sanitize to `dynamic_slice_4`.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fused_computation {
+      %p0 = f32[8] parameter(0)
+      %p1 = s32[] parameter(1)
+      %p2 = s32[] parameter(2)
+      %dynamic-slice.4 = f32[1] dynamic-slice(%p0, %p1), dynamic_slice_sizes={1}
+      %dynamic_slice.4 = f32[1] dynamic-slice(%p0, %p2), dynamic_slice_sizes={1}
+      ROOT %concat = f32[2] concatenate(%dynamic-slice.4, %dynamic_slice.4),
+          dimensions={0}
+    })"));
+
+  auto* fusion = module->GetComputationWithName("fused_computation");
+  ASSERT_NE(fusion, nullptr);
+  PartitionedComputation computation(
+      fusion, &mlir_context_, [](const HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kDynamicSlice;
+      });
+
+  EXPECT_EQ(computation
+                .FindSubgraph(fusion->GetInstructionWithName("dynamic-slice.4"))
+                .name,
+            "fused_computation_dynamic_slice_4_1");
+  EXPECT_EQ(computation
+                .FindSubgraph(fusion->GetInstructionWithName("dynamic_slice.4"))
+                .name,
+            "fused_computation_dynamic_slice_4");
+}
+
 TEST_F(ComputationPartitionerTest, DiamondConcatenate) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module

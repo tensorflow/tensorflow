@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -163,6 +164,35 @@ TEST_F(ConcatenateTest, TwoR3Axis1Parallel) {
       }
     }
   }
+}
+
+// `dynamic-slice.4` and `dynamic_slice.4` are distinct instructions whose
+// names are equal once sanitized into function names. They must still be
+// emitted as distinct functions when fused into the same concatenate.
+TEST_F(ConcatenateTest, FusedOperandsWithCollidingSanitizedNames) {
+  const std::string hlo_text_module = R"(
+    HloModule module
+
+    ENTRY entry {
+      %a = f32[8] parameter(0)
+      %i = s32[] parameter(1)
+      %one = s32[] constant(1)
+      %i_plus_1 = s32[] add(%i, %one)
+      %dynamic-slice.4 = f32[1] dynamic-slice(%a, %i), dynamic_slice_sizes={1}
+      %dynamic_slice.4 = f32[1] dynamic-slice(%a, %i_plus_1),
+          dynamic_slice_sizes={1}
+      ROOT %concat = f32[2] concatenate(%dynamic-slice.4, %dynamic_slice.4),
+          dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text_module));
+
+  Literal a = LiteralUtil::CreateR1<float>({0, 1, 2, 3, 4, 5, 6, 7});
+  Literal i = LiteralUtil::CreateR0<int32_t>(5);
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&a, &i}));
+
+  LiteralTestUtil::ExpectR1Equal<float>({5, 6}, result);
 }
 
 }  // namespace

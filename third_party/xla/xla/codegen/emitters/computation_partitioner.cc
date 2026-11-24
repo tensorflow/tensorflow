@@ -291,6 +291,7 @@ PartitionedComputation::PartitionedComputation(
   }
 
   subgraphs_.reserve(functions.size());
+  absl::flat_hash_set<std::string> used_names;
   for (auto&& [function_id, instructions] : llvm::enumerate(functions)) {
     std::vector<const HloInstruction*> roots;
     std::vector<IndexingMap> root_indexing;
@@ -327,11 +328,17 @@ PartitionedComputation::PartitionedComputation(
                                 first_root_shape->dimensions().end()};
 
     CHECK(!roots.empty()) << "No roots found";
-    std::string name = llvm_ir::SanitizeFunctionName(absl::StrCat(
+    const std::string base_name = llvm_ir::SanitizeFunctionName(absl::StrCat(
         roots.front()->parent()->name(), "_",
         absl::StrJoin(roots, "_", [](std::string* out, const auto* root) {
           absl::StrAppend(out, root->name());
         })));
+    // Distinct HLO names can be equal after sanitization (e.g.
+    // `dynamic-slice.4` and `dynamic_slice.4`), so make the names unique.
+    std::string name = base_name;
+    for (int suffix = 1; !used_names.insert(name).second; ++suffix) {
+      name = absl::StrCat(base_name, "_", suffix);
+    }
     subgraphs_.push_back(Subgraph{
         /* .name = */ std::move(name),
         /* .instructions = */ {instructions.begin(), instructions.end()},
