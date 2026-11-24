@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -46,6 +47,23 @@ limitations under the License.
 #include "tsl/platform/platform.h"
 
 namespace xla::gpu {
+namespace {
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void InvokeCustomCallOriginal(
+    void* call_target, void* stream_handle, void** buffers, const char* opaque,
+    size_t opaque_len) {
+  reinterpret_cast<CustomCallWithOpaqueStreamHandle>(call_target)(
+      stream_handle, buffers, opaque, opaque_len);
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void InvokeCustomCallWithStatus(
+    void* call_target, void* stream_handle, void** buffers, const char* opaque,
+    size_t opaque_len, XlaCustomCallStatus* status) {
+  reinterpret_cast<CustomCallWithStatusAndOpaqueStreamHandle>(call_target)(
+      stream_handle, buffers, opaque, opaque_len, status);
+}
+
+}  // namespace
 
 static absl::StatusOr<LegacyCustomCallThunk::CustomCallTarget>
 ResolveLegacyCustomCall(const CustomCallTargetRegistry& registry,
@@ -76,9 +94,9 @@ ResolveLegacyCustomCall(const CustomCallTargetRegistry& registry,
       return [call_target](stream_executor::Stream* stream, void** buffers,
                            const char* opaque, size_t opaque_len,
                            XlaCustomCallStatus*) {
-        reinterpret_cast<CustomCallWithOpaqueStreamHandle>(call_target)(
-            stream->platform_specific_handle().stream, buffers, opaque,
-            opaque_len);
+        InvokeCustomCallOriginal(call_target,
+                                 stream->platform_specific_handle().stream,
+                                 buffers, opaque, opaque_len);
       };
       break;
     }
@@ -87,9 +105,9 @@ ResolveLegacyCustomCall(const CustomCallTargetRegistry& registry,
       return [call_target](stream_executor::Stream* stream, void** buffers,
                            const char* opaque, size_t opaque_len,
                            XlaCustomCallStatus* status) {
-        reinterpret_cast<CustomCallWithStatusAndOpaqueStreamHandle>(
-            call_target)(stream->platform_specific_handle().stream, buffers,
-                         opaque, opaque_len, status);
+        InvokeCustomCallWithStatus(call_target,
+                                   stream->platform_specific_handle().stream,
+                                   buffers, opaque, opaque_len, status);
       };
       break;
     case CustomCallApiVersion::API_VERSION_TYPED_FFI:

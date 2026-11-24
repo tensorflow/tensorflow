@@ -1175,6 +1175,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:shaped_slice",
         "//xla/stream_executor:stream",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
