@@ -25,7 +25,7 @@ namespace data {
 namespace experimental {
 namespace sql {
 
-SqliteQueryConnection::SqliteQueryConnection() {}
+SqliteQueryConnection::SqliteQueryConnection() = default;
 
 SqliteQueryConnection::~SqliteQueryConnection() {
   if (db_ != nullptr) db_->Unref();
