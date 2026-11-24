@@ -290,7 +290,7 @@ absl::StatusOr<const std::vector<Field>> GetFieldTypes(
 absl::Status SetRepeatedFieldElement(
     tsl::protobuf::Message* message,
     const tsl::protobuf::FieldDescriptor* field_desc, uint64_t field_index,
-    std::string chunk, std::function<absl::Status(void)> message_callback) {
+    std::string chunk, std::function<absl::Status()> message_callback) {
   if (field_desc->is_map())
     return absl::FailedPreconditionError("Field is a map.");
   const tsl::protobuf::Reflection* reflection = message->GetReflection();
@@ -348,10 +348,10 @@ absl::Status SetRepeatedFieldElement(
   return absl::OkStatus();
 }
 
-absl::Status SetFieldElement(
-    tsl::protobuf::Message* message,
-    const tsl::protobuf::FieldDescriptor* field_desc, std::string chunk,
-    std::function<absl::Status(void)> message_callback) {
+absl::Status SetFieldElement(tsl::protobuf::Message* message,
+                             const tsl::protobuf::FieldDescriptor* field_desc,
+                             std::string chunk,
+                             std::function<absl::Status()> message_callback) {
   const tsl::protobuf::Reflection* reflection = message->GetReflection();
 
   switch (field_desc->cpp_type()) {
