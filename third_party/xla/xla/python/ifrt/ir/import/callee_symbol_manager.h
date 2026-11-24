@@ -63,16 +63,6 @@ class CalleeSymbolManager {
   CalleeSymbolManager(CalleeSymbolManager&&) = default;
   CalleeSymbolManager& operator=(CalleeSymbolManager&&) = default;
 
-  // Returns `call_op`'s `FuncOp` callee from `symbol_table_` if `call_op`
-  // resides in `root_module_`'s symbol scope. Emits an op error on `call_op`
-  // and returns `mlir::failure()` otherwise.
-  //
-  // REQUIRES: `call_op` is non-null; when `call_op` resides in `root_module_`'s
-  // symbol scope, its callee resolves in `symbol_table_` to a defined
-  // (non-external) `mlir::func::FuncOp` either directly in `root_module_` or
-  // inside a named direct child `ModuleOp` (as guaranteed on verified IFRT IR).
-  mlir::FailureOr<mlir::func::FuncOp> GetCallee(CallOp call_op);
-
   // Returns a `FuncOp` that can be safely mutated for `calls` together: returns
   // the resolved callee directly when `calls` account for all uses of its
   // private root symbol, or clones a private copy and redirects every `CallOp`

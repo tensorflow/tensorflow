@@ -207,7 +207,6 @@ class DonationTracker {
           out_shards[input_index] = ref.index;
         } else {
           const llvm::ArrayRef<int32_t> shard_ids = GetShardArenaIds(ref);
-          CHECK_EQ(shard_ids.size(), 1);
           out_shards[input_index] = shard_ids.front();
         }
       }
@@ -485,13 +484,9 @@ mlir::LogicalResult VerifyCallOpAliasesAndDonations(IfrtCallOpInterface op,
   const unsigned num_inputs = static_cast<unsigned>(num_inputs_size);
   llvm::SmallBitVector donated_or_aliased_inputs(num_inputs);
   for (const int32_t input_index : op.getDonatedInputIndices()) {
-    CHECK_GE(input_index, 0);
-    CHECK_LT(static_cast<unsigned>(input_index), num_inputs);
     donated_or_aliased_inputs.set(static_cast<unsigned>(input_index));
   }
   for (const IoAlias& io_alias : op.getIoAliasPairs()) {
-    CHECK_GE(io_alias.input_index, 0);
-    CHECK_LT(static_cast<unsigned>(io_alias.input_index), num_inputs);
     donated_or_aliased_inputs.set(static_cast<unsigned>(io_alias.input_index));
   }
 
@@ -661,8 +656,6 @@ mlir::LogicalResult VerifyRemapArraysOp(RemapArraysOp op,
   llvm::DenseMap<int32_t, int32_t> remapped_donated_shard_id;
   for (const IfrtArrayMappingAttr array_mapping :
        op.getMappings().getAsRange<IfrtArrayMappingAttr>()) {
-    CHECK_GE(array_mapping.getInArrayIndex(), 0);
-    CHECK_GE(array_mapping.getOutArrayIndex(), 0);
     const DonationTracker::ArrayView in_view =
         in_views[static_cast<size_t>(array_mapping.getInArrayIndex())];
     llvm::MutableArrayRef<int32_t> out_shards =
@@ -674,12 +667,6 @@ mlir::LogicalResult VerifyRemapArraysOp(RemapArraysOp op,
       int64_t in_shard = in_interval.getStart();
       int64_t out_shard = out_interval.getStart();
       while (in_shard < in_interval.getEnd()) {
-        CHECK_GE(in_shard, 0);
-        CHECK_GE(out_shard, 0);
-        CHECK_LE(static_cast<uint64_t>(in_shard),
-                 static_cast<uint64_t>(std::numeric_limits<size_t>::max()));
-        CHECK_LE(static_cast<uint64_t>(out_shard),
-                 static_cast<uint64_t>(std::numeric_limits<size_t>::max()));
         int32_t dst_array_id =
             tracker.GetArrayIdForShard(in_view, static_cast<size_t>(in_shard));
         if (donated) {

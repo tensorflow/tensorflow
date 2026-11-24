@@ -983,8 +983,6 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   ReturnOpState state;
   state.pretty_print = PrettyPrint(return_op);
 
-  auto func_op = return_op->getParentOfType<mlir::func::FuncOp>();
-  CHECK_EQ(func_op.getSymName().str(), "main");
   state.output_handles.reserve(return_op->getNumOperands());
   for (const auto& [idx, result] : llvm::enumerate(return_op.getOperands())) {
     state.output_handles.push_back(ToArrayHandle(result));

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -63,7 +62,6 @@ mlir::Attribute GetNormalizedDictAttrAt(mlir::ArrayAttr attrs, size_t index) {
   if (attrs == nullptr) {
     return mlir::Attribute();
   }
-  CHECK_LT(index, attrs.size());
   auto dict = llvm::cast<mlir::DictionaryAttr>(attrs[index]);
   return dict.empty() ? mlir::Attribute() : mlir::Attribute(dict);
 }
@@ -122,8 +120,7 @@ bool FindDuplicateArguments(CallOp call_op, mlir::func::FuncOp callee,
 void RemoveDuplicatedResults(CallOp call_op, mlir::func::FuncOp callee) {
   auto return_op = llvm::dyn_cast<mlir::func::ReturnOp>(
       callee.getBody().front().getTerminator());
-  if (return_op == nullptr ||
-      return_op.getNumOperands() != call_op.getOutputs().size()) {
+  if (return_op == nullptr) {
     return;
   }
 

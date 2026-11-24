@@ -158,16 +158,12 @@ void EliminateUnusedRemapArraysOutputs(RemapArraysOp remap_op,
 // callee (or enclosing module) when shared before erasing unused `call_op`
 // outputs/inputs and remapping aliasing/donation/arg/result attributes. Returns
 // `mlir::failure()` (having emitted an op error) if the callee cannot be
-// resolved or prepared for mutation.
+// prepared for mutation.
 mlir::LogicalResult EliminateCallDce(CallOp call_op,
                                      CalleeSymbolManager& symbol_manager,
+                                     mlir::SymbolTableCollection& symbol_table,
                                      mlir::RewriterBase& rewriter) {
-  mlir::FailureOr<mlir::func::FuncOp> resolved_callee =
-      symbol_manager.GetCallee(call_op);
-  if (mlir::failed(resolved_callee)) {
-    return mlir::failure();
-  }
-  mlir::func::FuncOp callee = *resolved_callee;
+  mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
 
   UsedOutputsSlice out_slice = CollectUsedOutputs(call_op);
 
@@ -337,15 +333,10 @@ class IfrtDcePass : public impl::IfrtDcePassBase<IfrtDcePass> {
     llvm::DenseSet<mlir::func::FuncOp> simplified_callees;
     for (mlir::func::FuncOp func_op : ifrt_funcs) {
       for (CallOp call_op : func_op.getOps<CallOp>()) {
-        mlir::FailureOr<mlir::func::FuncOp> callee =
-            symbol_manager->GetCallee(call_op);
-        if (mlir::failed(callee)) {
-          signalPassFailure();
-          return;
-        }
-        if (simplified_callees.insert(*callee).second) {
-          symbol_manager->RecordOpMutation(*callee, [&]() {
-            (void)mlir::simplifyRegions(rewriter, callee->getBody());
+        mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+        if (simplified_callees.insert(callee).second) {
+          symbol_manager->RecordOpMutation(callee, [&]() {
+            (void)mlir::simplifyRegions(rewriter, callee.getBody());
           });
         }
       }
@@ -358,7 +349,8 @@ class IfrtDcePass : public impl::IfrtDcePassBase<IfrtDcePass> {
         const mlir::LogicalResult op_result =
             llvm::TypeSwitch<mlir::Operation*, mlir::LogicalResult>(op)
                 .Case<CallOp>([&](CallOp call_op) {
-                  return EliminateCallDce(call_op, *symbol_manager, rewriter);
+                  return EliminateCallDce(call_op, *symbol_manager,
+                                          symbol_table, rewriter);
                 })
                 .Case<IfrtPairwiseArrayOpInterface>(
                     [&](IfrtPairwiseArrayOpInterface pairwise_op) {

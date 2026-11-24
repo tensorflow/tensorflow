@@ -166,8 +166,7 @@ platform type is consistent with the dialects the callee is using.
 
 This pass fails if
 1. any `ifrt.CallOp` uses more than one platform type.
-2. any callee of `ifrt.CallOp` has a mixture of MHLO and TF dialects.
-3. the platform type and dialect in `ifrt.CallOp` callee is inconsistent with
+2. the platform type and dialect in `ifrt.CallOp` callee is inconsistent with
  each other.
   }];
 

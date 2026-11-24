@@ -145,15 +145,16 @@ class IfrtCompileAtomProgramPass
 
   // Generates a LoadedExecutableOp.
   // Returns the symbol of the generated LoadedExecutableOp.
-  absl::StatusOr<mlir::SymbolRefAttr> GenerateLoadedExecutableOp(
-      mlir::ModuleOp module_op, absl::string_view symbol_name, CallOp call_op,
-      mlir::OpBuilder& builder);
+  mlir::SymbolRefAttr GenerateLoadedExecutableOp(mlir::ModuleOp module_op,
+                                                 absl::string_view symbol_name,
+                                                 CallOp call_op,
+                                                 mlir::OpBuilder& builder);
 
   // Dispatches compilation of an atom program module.
   // Depending on the type of module, a MLIR pipeline might be executed before
   // the compilation is dispatched.
   absl::StatusOr<AtomProgramCompileResult> CompileModule(
-      CallOp call_op, mlir::ModuleOp module_op,
+      CallOp call_op, mlir::func::FuncOp callee, mlir::ModuleOp module_op,
       llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>&
           cloned_modules,
       const mlir::SymbolUserMap& symbol_users);
@@ -177,9 +178,9 @@ class IfrtCompileAtomProgramPass
           cloned_modules,
       const mlir::SymbolUserMap& symbol_users);
 
-  // Returns an `AtomProgramCompileResult` for the MPMD reshard module.
+  // Returns an `AtomProgramCompileResult` for the MPMD reshard callee.
   absl::StatusOr<AtomProgramCompileResult> CompileMpmdReshard(
-      mlir::ModuleOp module_op);
+      mlir::func::FuncOp main_func);
 
   std::shared_ptr<AtomProgramCompiler> atom_program_compiler_;
 
@@ -342,13 +343,7 @@ IfrtCompileAtomProgramPass::CompileXla(
 }
 
 absl::StatusOr<IfrtCompileAtomProgramPass::AtomProgramCompileResult>
-IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::ModuleOp module_op) {
-  auto main_func =
-      module_op.lookupSymbol<mlir::func::FuncOp>(kCalleeMainFuncName);
-  if (!main_func) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "requires module to have", kCalleeMainFuncName.str(), " function"));
-  }
+IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::func::FuncOp main_func) {
   std::vector<DType> dtypes;
   std::vector<Shape> shapes;
   std::vector<IfrtArrayType> in_arrays_types;
@@ -384,7 +379,7 @@ IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::ModuleOp module_op) {
 
 absl::StatusOr<IfrtCompileAtomProgramPass::AtomProgramCompileResult>
 IfrtCompileAtomProgramPass::CompileModule(
-    CallOp call_op, mlir::ModuleOp module_op,
+    CallOp call_op, mlir::func::FuncOp callee, mlir::ModuleOp module_op,
     llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>&
         cloned_modules,
     const mlir::SymbolUserMap& symbol_users) {
@@ -397,8 +392,7 @@ IfrtCompileAtomProgramPass::CompileModule(
   if (module_type == kIfrtModuleTypeXla) {
     return CompileXla(call_op, module_op, cloned_modules, symbol_users);
   }
-  CHECK(module_type == kIfrtModuleTypeMpmdReshard);
-  return CompileMpmdReshard(module_op);
+  return CompileMpmdReshard(callee);
 }
 
 void IfrtCompileAtomProgramPass::runOnOperation() {
@@ -450,8 +444,8 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
           continue;
         }
 
-        absl::StatusOr<AtomProgramCompileResult> compile_result =
-            CompileModule(call_op, callee_module, cloned_modules, symbol_users);
+        absl::StatusOr<AtomProgramCompileResult> compile_result = CompileModule(
+            call_op, callee, callee_module, cloned_modules, symbol_users);
         if (!compile_result.ok()) {
           call_op_to_error.try_emplace(
               call_op,
@@ -488,17 +482,8 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
               call_to_compile_results[call_op];
           auto callee_module = llvm::cast<mlir::ModuleOp>(
               call_op.getCalleeOp(symbol_table)->getParentOp());
-          absl::StatusOr<mlir::SymbolRefAttr> symbol_ref =
-              GenerateLoadedExecutableOp(callee_module, compile_result.name,
-                                         call_op, builder);
-          if (!symbol_ref.ok()) {
-            call_op_to_error.try_emplace(
-                call_op,
-                absl::StrCat("failed to generate loaded executable op: ",
-                             symbol_ref.status().ToString()));
-            continue;
-          }
-          loaded_exec_op_ref = *symbol_ref;
+          loaded_exec_op_ref = GenerateLoadedExecutableOp(
+              callee_module, compile_result.name, call_op, builder);
           // Clone the CallOp because it will be modified next, but we want to
           // keep the original to get the symbol ref for equal CallOps.
           call_op_to_loaded_exec_op_ref[call_op.clone()] = loaded_exec_op_ref;
@@ -570,8 +555,7 @@ void IfrtCompileAtomProgramPass::SaveCompileResultFuture(
   }
 }
 
-absl::StatusOr<mlir::SymbolRefAttr>
-IfrtCompileAtomProgramPass::GenerateLoadedExecutableOp(
+mlir::SymbolRefAttr IfrtCompileAtomProgramPass::GenerateLoadedExecutableOp(
     mlir::ModuleOp module_op, absl::string_view symbol_name, CallOp call_op,
     mlir::OpBuilder& builder) {
   // Generate LoadedExecutableOp.

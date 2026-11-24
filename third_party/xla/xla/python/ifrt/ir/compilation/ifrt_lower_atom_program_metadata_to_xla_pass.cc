@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -88,8 +89,7 @@ mlir::LogicalResult SetArgHloSharding(mlir::func::FuncOp func_op,
         builder.getStringAttr(xla::HloSharding::Replicate().ToString()));
   } else {
     const auto sharding_param_attr =
-        func_op.getArgAttrOfType<IfrtShardingParamAttr>(arg_idx,
-                                                        kIfrtShardingAttrName);
+        llvm::cast<IfrtShardingParamAttr>(sharding_attr);
     auto hlo_sharding =
         xla::ifrt::support::ToHloSharding(sharding_param_attr.getSharding());
     if (!hlo_sharding.ok()) {
@@ -151,8 +151,7 @@ mlir::LogicalResult SetResultHloSharding(mlir::func::FuncOp func_op,
         builder.getStringAttr(xla::HloSharding::Replicate().ToString()));
   } else {
     const auto sharding_param_attr =
-        func_op.getResultAttrOfType<IfrtShardingParamAttr>(
-            res_idx, kIfrtShardingAttrName);
+        llvm::cast<IfrtShardingParamAttr>(sharding_attr);
     auto hlo_sharding =
         xla::ifrt::support::ToHloSharding(sharding_param_attr.getSharding());
     if (!hlo_sharding.ok()) {

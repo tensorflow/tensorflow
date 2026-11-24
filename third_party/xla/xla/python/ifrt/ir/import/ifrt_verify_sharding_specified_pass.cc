@@ -33,7 +33,7 @@ namespace ifrt {
 namespace {
 
 bool IsArrayWithUnspecifiedSharding(mlir::Type type) {
-  auto array_type = llvm::dyn_cast_or_null<xla::ifrt::IfrtArrayType>(type);
+  auto array_type = llvm::dyn_cast<xla::ifrt::IfrtArrayType>(type);
   if (array_type == nullptr) {
     return false;
   }

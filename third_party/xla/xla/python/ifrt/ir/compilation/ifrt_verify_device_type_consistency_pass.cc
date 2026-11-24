@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -32,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
-#include "mlir/IR/Visitors.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -53,8 +51,7 @@ namespace {
 // Represents module type inferred from function.
 enum class ModuleType { kUnknown, kXLA };
 
-// Infers module type from the dialects in function. If there is conflict in the
-// function or if the module type cannot be inferred, return `mlir::failure`.
+// Infers module type from the dialects in function.
 //
 // The assumption behind the analysis is that mhlo/stablehlo dialects will be
 // run on TPU or GPU devices.
@@ -67,37 +64,28 @@ class ModuleTypeAnalysis {
   ModuleTypeAnalysis& operator=(const ModuleTypeAnalysis& other) = delete;
 
   // Get the analyzed device type.
-  mlir::FailureOr<ModuleType> GetModuleType() const { return module_type_; }
+  ModuleType GetModuleType() const { return module_type_; }
 
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModuleTypeAnalysis);
 
  private:
-  mlir::FailureOr<ModuleType> module_type_;
+  ModuleType module_type_;
 };
 
 ModuleTypeAnalysis::ModuleTypeAnalysis(mlir::Operation* op) {
   auto func = llvm::cast<mlir::func::FuncOp>(op);
   bool is_xla_module = false;
 
-  mlir::WalkResult result =
-      func.walk([&](mlir::Operation* op) -> mlir::WalkResult {
-        if (auto* dialect = op->getDialect();
-            dialect->getTypeID() ==
-                mlir::TypeID::get<mlir::mhlo::MhloDialect>() ||
-            dialect->getTypeID() ==
-                mlir::TypeID::get<mlir::stablehlo::StablehloDialect>()) {
-          is_xla_module = true;
-        }
-        return mlir::WalkResult::advance();
-      });
+  func.walk([&](mlir::Operation* op) {
+    if (auto* dialect = op->getDialect();
+        dialect->getTypeID() == mlir::TypeID::get<mlir::mhlo::MhloDialect>() ||
+        dialect->getTypeID() ==
+            mlir::TypeID::get<mlir::stablehlo::StablehloDialect>()) {
+      is_xla_module = true;
+    }
+  });
 
-  if (result.wasInterrupted()) {
-    module_type_ = mlir::failure();
-  } else if (is_xla_module) {
-    module_type_ = ModuleType::kXLA;
-  } else {
-    module_type_ = ModuleType::kUnknown;
-  }
+  module_type_ = is_xla_module ? ModuleType::kXLA : ModuleType::kUnknown;
 }
 
 class IfrtVerifyDeviceTypeConsistencyPass
@@ -143,10 +131,8 @@ bool IfrtVerifyDeviceTypeConsistencyPass::IsConsistentWithModuleType(
       return true;
     case ModuleType::kXLA:
       return IsXlaPlatform(platform_name);
-    default:
-      LOG(ERROR) << "Unexpected value for InferredDeviceType.";
-      return false;
   }
+  LOG(FATAL) << "Unexpected ModuleType: " << static_cast<int>(module_type);
 }
 
 void IfrtVerifyDeviceTypeConsistencyPass::runOnOperation() {
@@ -155,16 +141,10 @@ void IfrtVerifyDeviceTypeConsistencyPass::runOnOperation() {
   for (mlir::func::FuncOp func_op : GetIfrtFunctions(module_op)) {
     for (CallOp call_op : func_op.getOps<CallOp>()) {
       llvm::ArrayRef<int> devices = call_op.getDevices();
-      DCHECK(!devices.empty()) << "has empty device list";
 
-      mlir::FailureOr<ModuleType> callee_module_type =
-          getChildAnalysis<ModuleTypeAnalysis>(
-              call_op.getCalleeOp(symbol_table))
-              .GetModuleType();
-      if (mlir::failed(callee_module_type)) {
-        signalPassFailure();
-        return;
-      }
+      ModuleType callee_module_type = getChildAnalysis<ModuleTypeAnalysis>(
+                                          call_op.getCalleeOp(symbol_table))
+                                          .GetModuleType();
 
       // Use the first device ID to find platform name.
       mlir::FailureOr<llvm::StringRef> first_platform =
@@ -174,7 +154,7 @@ void IfrtVerifyDeviceTypeConsistencyPass::runOnOperation() {
         return;
       }
 
-      if (!IsConsistentWithModuleType(*callee_module_type, *first_platform)) {
+      if (!IsConsistentWithModuleType(callee_module_type, *first_platform)) {
         call_op->emitOpError()
             << "has platform: " << *first_platform
             << ", which is incompatible with the module type inferred from "

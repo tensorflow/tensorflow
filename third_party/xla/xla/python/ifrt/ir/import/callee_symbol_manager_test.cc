@@ -145,13 +145,6 @@ class CalleeSymbolManagerTest : public test_util::IfrtIrTestBase {
     return *result;
   }
 
-  // Resolves `call_op`'s callee via `CalleeSymbolManager::GetCallee`, capturing
-  // any emitted MLIR diagnostic into the returned `absl::Status`.
-  absl::StatusOr<mlir::func::FuncOp> GetCallee(CallOp call_op) {
-    mlir::BaseScopedDiagnosticHandler diag(&mlir_context_);
-    return CaptureResult(symbol_manager_->GetCallee(call_op), diag);
-  }
-
   // Prepares `calls`'s callee for mutation via
   // `CalleeSymbolManager::GetOrCloneCalleeForMutation`, capturing any emitted
   // MLIR diagnostic into the returned `absl::Status`.
@@ -197,20 +190,14 @@ class CalleeSymbolManagerTest : public test_util::IfrtIrTestBase {
 };
 
 TEST_F(CalleeSymbolManagerTest, ValidatesCalleeScope) {
-  ASSERT_OK(InitModuleWithCalls(
-      absl::StrCat(kPrivateF0, kMultiFuncMod, kNestedCallMod),
-      {"@f0", "@multi_mod::@main"}));
+  ASSERT_OK(
+      InitModuleWithCalls(absl::StrCat(kPrivateF0, kNestedCallMod), {"@f0"}));
 
-  EXPECT_OK(GetCallee(calls_[0]));
-  EXPECT_OK(GetCallee(calls_[1]));
-
-  // Both `GetCallee` and `GetOrClone` reject calls outside root symbol scope.
+  // `GetOrClone` rejects calls outside root symbol scope.
   CallOp nested_call = FindNestedCall();
   ASSERT_NE(nested_call, nullptr);
   constexpr absl::string_view kScopeError =
       "not in the root module's symbol scope";
-  EXPECT_THAT(GetCallee(nested_call),
-              StatusIs(absl::StatusCode::kUnknown, HasSubstr(kScopeError)));
   EXPECT_THAT(GetOrClone({nested_call}),
               StatusIs(absl::StatusCode::kUnknown, HasSubstr(kScopeError)));
   EXPECT_THAT(GetOrClone({calls_[0], nested_call}),
@@ -222,8 +209,8 @@ TEST_F(CalleeSymbolManagerTest,
   ASSERT_OK(InitModuleWithCalls(absl::StrCat(kPrivateF0, kPublicFn),
                                 {"@f0", "@pub"}));
 
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp priv_fn, GetCallee(calls_[0]));
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp pub_fn, GetCallee(calls_[1]));
+  mlir::func::FuncOp priv_fn = calls_[0].getCalleeOp(symbol_table_);
+  mlir::func::FuncOp pub_fn = calls_[1].getCalleeOp(symbol_table_);
 
   EXPECT_THAT(GetOrClone({calls_[0]}), IsOkAndHolds(priv_fn));
 
@@ -237,7 +224,7 @@ TEST_F(CalleeSymbolManagerTest,
        MultiCallGroupMutatesInPlaceWhenAllUsesCoveredAndClonesOnceWhenShared) {
   ASSERT_OK(InitModuleWithCalls(kPrivateF0, {"@f0", "@f0", "@f0"}));
 
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp f0, GetCallee(calls_[0]));
+  mlir::func::FuncOp f0 = calls_[0].getCalleeOp(symbol_table_);
 
   // Two of three calls clone once and redirect both calls to the same clone.
   ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp group_clone,
@@ -299,9 +286,9 @@ TEST_F(CalleeSymbolManagerTest,
 )mlir"));
 
   ASSERT_EQ(calls_.size(), 5u);
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp f0, GetCallee(calls_[0]));
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp f1, GetCallee(calls_[1]));
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp attr_dup, GetCallee(calls_[3]));
+  mlir::func::FuncOp f0 = calls_[0].getCalleeOp(symbol_table_);
+  mlir::func::FuncOp f1 = calls_[1].getCalleeOp(symbol_table_);
+  mlir::func::FuncOp attr_dup = calls_[3].getCalleeOp(symbol_table_);
 
   // While `@caller_helper` holds `func.call @f1`, `GetOrClone` must clone `@f1`
   // rather than mutating it in place, and `@f1` remains alive until
@@ -494,8 +481,8 @@ TEST_F(CalleeSymbolManagerTest, OutlinedRecursiveModuleIsolatesInternalUses) {
 )mlir",
                                 {"@rec_mod::@main", "@pub_rec_mod::@main"}));
 
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp rec_main, GetCallee(calls_[0]));
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp pub_main, GetCallee(calls_[1]));
+  mlir::func::FuncOp rec_main = calls_[0].getCalleeOp(symbol_table_);
+  mlir::func::FuncOp pub_main = calls_[1].getCalleeOp(symbol_table_);
 
   mlir::ModuleOp rec_mod = llvm::cast<mlir::ModuleOp>(rec_main->getParentOp());
   EXPECT_FALSE(mlir::SymbolTable::symbolKnownUseEmpty(rec_main, rec_mod));
@@ -535,7 +522,7 @@ TEST_F(CalleeSymbolManagerTest,
 )mlir",
                                 {"@rec", "@rec_dead"}));
 
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp rec, GetCallee(calls_[0]));
+  mlir::func::FuncOp rec = calls_[0].getCalleeOp(symbol_table_);
 
   // Root-scope self-recursion gives `@rec` count == 2 (`ifrt.Call` + internal
   // `func.call`), so `GetOrClone` must clone rather than mutate in place. The
@@ -570,7 +557,7 @@ TEST_F(CalleeSymbolManagerTest,
   ASSERT_OK(InitModuleWithCalls(kMultiFuncMod,
                                 {"@multi_mod::@main", "@multi_mod::@other"}));
 
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp multi_main, GetCallee(calls_[0]));
+  mlir::func::FuncOp multi_main = calls_[0].getCalleeOp(symbol_table_);
   mlir::SymbolRefAttr multi_main_ref = calls_[0].getCalleeAttr();
 
   EXPECT_THAT(GetOrClone({calls_[0]}), IsOkAndHolds(Ne(multi_main)));
@@ -600,7 +587,7 @@ TEST_F(CalleeSymbolManagerTest, CloningOutlinedModuleTracksRootSymbolAttrUses) {
 )mlir"),
                           {"@mod_with_ref::@main", "@mod_with_ref::@main"}));
 
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp mod_main, GetCallee(calls_[0]));
+  mlir::func::FuncOp mod_main = calls_[0].getCalleeOp(symbol_table_);
 
   EXPECT_THAT(GetOrClone({calls_[0]}), IsOkAndHolds(Ne(mod_main)));
   EXPECT_TRUE(EraseCall(calls_[0]));
@@ -615,9 +602,9 @@ TEST_F(CalleeSymbolManagerTest,
       InitModuleWithCalls(absl::StrCat(kMultiFuncMod, kPrivateF0, kPrivateF1),
                           {"@multi_mod::@main", "@f0", "@f1"}));
 
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp nested_main, GetCallee(calls_[0]));
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp f0, GetCallee(calls_[1]));
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp f1, GetCallee(calls_[2]));
+  mlir::func::FuncOp nested_main = calls_[0].getCalleeOp(symbol_table_);
+  mlir::func::FuncOp f0 = calls_[1].getCalleeOp(symbol_table_);
+  mlir::func::FuncOp f1 = calls_[2].getCalleeOp(symbol_table_);
 
   mlir::func::CallOp added_call;
   symbol_manager_->RecordOpMutation(f0, [&]() {
@@ -845,7 +832,7 @@ TEST_F(CalleeSymbolManagerTest, PreconditionChecksFailFast) {
   ASSERT_OK(InitModuleWithCalls(
       absl::StrCat(kPrivateF0, kPrivateF1, kNestedCallMod), {"@f0", "@f1"}));
 
-  ASSERT_OK_AND_ASSIGN(mlir::func::FuncOp func_op, GetCallee(calls_[0]));
+  mlir::func::FuncOp func_op = calls_[0].getCalleeOp(symbol_table_);
   mlir::OwningOpRef<mlir::Operation*> detached_op(func_op->clone());
   CallOp nested_call = FindNestedCall();
   ASSERT_NE(nested_call, nullptr);
@@ -870,7 +857,6 @@ TEST_F(CalleeSymbolManagerTest, PreconditionChecksFailFast) {
                "Check failed");
   EXPECT_DEATH(symbol_manager_->RecordOpMutation(detached_op.get(), []() {}),
                "Check failed");
-  EXPECT_DEATH(static_cast<void>(GetCallee(CallOp{})), "Check failed");
   EXPECT_DEATH(static_cast<void>(GetOrClone({})), "Check failed");
   EXPECT_DEATH(static_cast<void>(GetOrClone({CallOp{}})), "Check failed");
   EXPECT_DEATH(static_cast<void>(GetOrClone({calls_[0], CallOp{}})),
