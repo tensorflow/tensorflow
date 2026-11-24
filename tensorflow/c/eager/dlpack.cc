@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "tensorflow/c/eager/c_api.h"
@@ -293,7 +294,8 @@ void* TFE_GetDLDevice(TFE_TensorHandle* h, TF_Status* status) {
   return new DLDevice{dl_device.device_type, dl_device.device_id};
 }
 
-void TFE_CallDLManagedTensorDeleter(void* dlm_ptr) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void TFE_CallDLManagedTensorDeleter(
+    void* dlm_ptr) {
   DLManagedTensor* dlMTensor = static_cast<DLManagedTensor*>(dlm_ptr);
   if (dlMTensor->deleter != nullptr) {
     dlMTensor->deleter(dlMTensor);

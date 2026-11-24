@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
@@ -440,11 +441,13 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
                   std::string name)
       : context_(context), device_(device), info_(info), name_(name) {}
 
-  ~CustomDeviceAPI() override { device_.delete_device(info_); }
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI ~CustomDeviceAPI() override {
+    device_.delete_device(info_);
+  }
 
   const std::string& name() override { return name_; }
 
-  absl::Status CopyTensorToDevice(
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CopyTensorToDevice(
       ImmediateExecutionTensorHandle* handle,
       ImmediateExecutionTensorHandle** result) override {
     handle->Ref();
@@ -459,7 +462,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  absl::Status CopyTensorFromDevice(
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CopyTensorFromDevice(
       ImmediateExecutionTensorHandle* handle,
       const std::string& target_device_name,
       ImmediateExecutionTensorHandle** result) override {
@@ -476,9 +479,9 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  absl::Status Execute(const ImmediateExecutionOperation* op,
-                       ImmediateExecutionTensorHandle** retvals,
-                       int* num_retvals) override {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status Execute(
+      const ImmediateExecutionOperation* op,
+      ImmediateExecutionTensorHandle** retvals, int* num_retvals) override {
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
     device_.execute(tensorflow::wrap(op), num_retvals, outputs.data(), &status,
@@ -493,8 +496,9 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  absl::Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
-                    ImmediateExecutionTensorHandle** result) override {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status Pack(
+      absl::Span<ImmediateExecutionTensorHandle*> handles,
+      ImmediateExecutionTensorHandle** result) override {
     TF_Status status;
     *result = tensorflow::unwrap(device_.pack(context_,
                                               tensorflow::wrap(handles.data()),
@@ -502,7 +506,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  absl::StatusOr<bool> ShallPinToThisDevice(
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<bool> ShallPinToThisDevice(
       const ImmediateExecutionOperation* op) override {
     TF_Status status;
     // Let this custom device choose the device to pin this op on if it
@@ -533,14 +537,18 @@ class CAPICustomDeviceTensorHandle
         data_(data),
         methods_(methods) {}
 
-  ~CAPICustomDeviceTensorHandle() override { methods_.deallocator(data_); }
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI ~CAPICustomDeviceTensorHandle() override {
+    methods_.deallocator(data_);
+  }
   void* DevicePointer() const override { return data_; }
-  absl::Status NumDims(int* num_dims) const override {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status NumDims(
+      int* num_dims) const override {
     TF_Status s;
     *num_dims = methods_.num_dims(data_, &s);
     return s.status;
   }
-  absl::Status Dim(int dim_index, int64_t* dim) const override {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status Dim(int dim_index,
+                                                  int64_t* dim) const override {
     TF_Status s;
     *dim = methods_.dim(data_, dim_index, &s);
     return s.status;
@@ -550,7 +558,8 @@ class CAPICustomDeviceTensorHandle
     return methods_.summarize != nullptr;
   }
 
-  absl::Status SummarizeValue(std::string& summary) const override {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status SummarizeValue(
+      std::string& summary) const override {
     if (methods_.summarize == nullptr) {
       return tensorflow::CustomDeviceTensorHandle::SummarizeValue(summary);
     }
@@ -573,9 +582,11 @@ class CAPICustomDeviceTensorHandle
 }  // namespace
 }  // namespace tensorflow
 
-TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
-    TFE_Context* ctx, const char* device_name, TF_DataType dtype, void* data,
-    TFE_CustomDeviceTensorHandleMethods methods, TF_Status* status) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI TFE_TensorHandle*
+TFE_NewCustomDeviceTensorHandle(TFE_Context* ctx, const char* device_name,
+                                TF_DataType dtype, void* data,
+                                TFE_CustomDeviceTensorHandleMethods methods,
+                                TF_Status* status) {
   tensorflow::ImmediateExecutionContext* context = tensorflow::unwrap(ctx);
   tensorflow::CustomDevice* device = nullptr;
   if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(device_name,
@@ -590,11 +601,13 @@ TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
       methods));
 }
 
-TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
-    TFE_Context* ctx, const char* device_name, TF_DataType dtype,
-    const int64_t* dims, int num_dims, void* data, size_t len,
-    void (*deallocator)(void* data, size_t len, void* arg),
-    void* deallocator_arg, TF_Status* status) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI TFE_TensorHandle*
+TFE_NewTensorHandleFromDeviceMemory(TFE_Context* ctx, const char* device_name,
+                                    TF_DataType dtype, const int64_t* dims,
+                                    int num_dims, void* data, size_t len,
+                                    void (*deallocator)(void* data, size_t len,
+                                                        void* arg),
+                                    void* deallocator_arg, TF_Status* status) {
   tensorflow::Device* device = nullptr;
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));

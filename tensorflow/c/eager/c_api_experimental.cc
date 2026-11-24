@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/time/time.h"
@@ -573,12 +574,19 @@ TFE_CancellationToken TFE_CancellationManagerGetToken(
   return tensorflow::unwrap(cancellation_manager)->get_cancellation_token();
 }
 
+namespace {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void InvokeCancelCallback(
+    void (*callback)(void*), void* context) {
+  callback(context);
+}
+}  // namespace
+
 bool TFE_CancellationManagerRegisterCallback(
     TFE_CancellationManager* cancellation_manager, TFE_CancellationToken token,
     const TFE_CancelCallback* c_callback, const char* callback_name) {
   tensorflow::CancelCallback callback = [callback = c_callback->callback,
                                          context = c_callback->context]() {
-    callback(context);
+    InvokeCancelCallback(callback, context);
   };
   return tensorflow::unwrap(cancellation_manager)
       ->RegisterCallbackWithErrorLogging(token, callback, callback_name);
