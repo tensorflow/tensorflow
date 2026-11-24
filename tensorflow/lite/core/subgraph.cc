@@ -1673,9 +1673,10 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   if (!custom_allocations_.empty()) {
     // Verify custom allocations for output tensors from the ops that have just
     // been prepared. Other output tensors might be resized later.
-    if (!nodes_and_registration_.empty()) {
-      for (int node_idx = next_execution_plan_index_to_plan_allocation_;
-           node_idx <= last_exec_plan_index_prepared; ++node_idx) {
+    if (!execution_plan_.empty()) {
+      for (int exec_plan_idx = next_execution_plan_index_to_plan_allocation_;
+           exec_plan_idx <= last_exec_plan_index_prepared; ++exec_plan_idx) {
+        const int node_idx = execution_plan_[exec_plan_idx];
         TfLiteNode& node = nodes_and_registration_[node_idx].first;
         for (int i = 0; i < node.outputs->size; ++i) {
           const int output_tensor_idx = node.outputs->data[i];

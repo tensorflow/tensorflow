@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -26,6 +28,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
@@ -503,6 +506,310 @@ TEST(ReplaceNodeWithSubgraph, PreservesOptionalTensorIndices) {
                                inlined_node.intermediates->data +
                                    inlined_node.intermediates->size),
               ElementsAre(3, kTfLiteOptionalTensor));
+}
+
+TEST(SubgraphCustomAllocationTest,
+     ShrunkCustomOutputAfterCompositeInliningWithDynamicOp) {
+  StderrReporter error_reporter;
+  std::vector<std::unique_ptr<Subgraph>> subgraphs;
+  for (int i = 0; i < 2; ++i) {
+    subgraphs.emplace_back(new Subgraph(/*error_reporter=*/&error_reporter,
+                                        /*external_contexts=*/nullptr,
+                                        /*subgraphs=*/&subgraphs,
+                                        /*resources=*/nullptr,
+                                        /*resource_ids=*/nullptr,
+                                        /*initialization_status_map=*/nullptr,
+                                        /*subgraph_index=*/i));
+  }
+  Subgraph& primary = *subgraphs[0];
+  Subgraph& decomp = *subgraphs[1];
+
+  const TfLiteQuantization no_quant = {kTfLiteNoQuantization, nullptr};
+  ASSERT_EQ(primary.AddTensors(/*tensors_to_add=*/3), kTfLiteOk);
+  ASSERT_EQ(primary.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(primary.SetOutputs({2}), kTfLiteOk);
+  ASSERT_EQ(primary.SetTensorParametersReadWrite(
+                /*tensor_index=*/0, kTfLiteFloat32, "in", /*dims=*/{8},
+                no_quant, /*is_variable=*/false, /*dims_signature=*/{-1}),
+            kTfLiteOk);
+  ASSERT_EQ(
+      primary.SetTensorParametersReadWrite(
+          /*tensor_index=*/1, kTfLiteFloat32, "mid", /*dims=*/{1}, no_quant),
+      kTfLiteOk);
+  ASSERT_EQ(primary.SetTensorParametersReadWrite(
+                /*tensor_index=*/2, kTfLiteFloat32, "out", /*dims=*/{8},
+                no_quant, /*is_variable=*/false, /*dims_signature=*/{-1}),
+            kTfLiteOk);
+
+  TfLiteRegistration composite_op = {};
+  int composite_node_index = -1;
+  ASSERT_EQ(primary.AddNodeWithParameters(
+                /*inputs=*/{0}, /*outputs=*/{1}, /*intermediates=*/{},
+                /*init_data=*/nullptr, /*init_data_size=*/0,
+                /*builtin_data=*/nullptr, &composite_op, &composite_node_index),
+            kTfLiteOk);
+  ASSERT_EQ(composite_node_index, 0);
+
+  // Node 1 copies input 0 to output 2 and resizes output 2 in Prepare().
+  TfLiteRegistration copy_op = {};
+  copy_op.prepare = [](TfLiteContext* context,
+                       TfLiteNode* node) -> TfLiteStatus {
+    const TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
+    TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+    return context->ResizeTensor(context, output,
+                                 TfLiteIntArrayCopy(input->dims));
+  };
+  copy_op.invoke = [](TfLiteContext* context,
+                      TfLiteNode* node) -> TfLiteStatus {
+    const TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
+    TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+    std::memcpy(output->data.raw, input->data.raw, input->bytes);
+    return kTfLiteOk;
+  };
+  int copy_node_index = -1;
+  ASSERT_EQ(primary.AddNodeWithParameters(
+                /*inputs=*/{0, 1}, /*outputs=*/{2}, /*intermediates=*/{},
+                /*init_data=*/nullptr, /*init_data_size=*/0,
+                /*builtin_data=*/nullptr, &copy_op, &copy_node_index),
+            kTfLiteOk);
+  ASSERT_EQ(copy_node_index, 1);
+
+  // Decomposition subgraph has a static op followed by a dynamic-output op.
+  // Inlining it at execution index 0 produces execution_plan_ = {2, 3, 1}, so
+  // PrepareOpsStartingAt() stops at execution-plan index 1 (node 3) before
+  // preparing copy_op (node 1).
+  ASSERT_EQ(decomp.AddTensors(/*tensors_to_add=*/3), kTfLiteOk);
+  ASSERT_EQ(decomp.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(decomp.SetOutputs({2}), kTfLiteOk);
+  ASSERT_EQ(decomp.SetTensorParametersReadWrite(
+                /*tensor_index=*/0, kTfLiteFloat32, "d_in", /*dims=*/{8},
+                no_quant, /*is_variable=*/false, /*dims_signature=*/{-1}),
+            kTfLiteOk);
+  ASSERT_EQ(
+      decomp.SetTensorParametersReadWrite(
+          /*tensor_index=*/1, kTfLiteFloat32, "d_tmp", /*dims=*/{1}, no_quant),
+      kTfLiteOk);
+  ASSERT_EQ(
+      decomp.SetTensorParametersReadWrite(
+          /*tensor_index=*/2, kTfLiteFloat32, "d_out", /*dims=*/{1}, no_quant),
+      kTfLiteOk);
+
+  TfLiteRegistration static_noop = {};
+  static_noop.invoke = [](TfLiteContext* context,
+                          TfLiteNode* node) -> TfLiteStatus {
+    return kTfLiteOk;
+  };
+  ASSERT_EQ(decomp.AddNodeWithParameters(
+                /*inputs=*/{0}, /*outputs=*/{1}, /*intermediates=*/{},
+                /*init_data=*/nullptr, /*init_data_size=*/0,
+                /*builtin_data=*/nullptr, &static_noop),
+            kTfLiteOk);
+
+  TfLiteRegistration dynamic_op = {};
+  dynamic_op.prepare = [](TfLiteContext* context,
+                          TfLiteNode* node) -> TfLiteStatus {
+    TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+    output->allocation_type = kTfLiteDynamic;
+    return kTfLiteOk;
+  };
+  dynamic_op.invoke = [](TfLiteContext* context,
+                         TfLiteNode* node) -> TfLiteStatus {
+    TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+    TfLiteIntArray* dims = TfLiteIntArrayCreate(1);
+    dims->data[0] = 1;
+    if (context->ResizeTensor(context, output, dims) != kTfLiteOk) {
+      return kTfLiteError;
+    }
+    output->data.f[0] = 1.0f;
+    return kTfLiteOk;
+  };
+  ASSERT_EQ(decomp.AddNodeWithParameters(
+                /*inputs=*/{1}, /*outputs=*/{2}, /*intermediates=*/{},
+                /*init_data=*/nullptr, /*init_data_size=*/0,
+                /*builtin_data=*/nullptr, &dynamic_op),
+            kTfLiteOk);
+
+  const auto* composite_node_and_reg =
+      primary.node_and_registration(composite_node_index);
+  ASSERT_NE(composite_node_and_reg, nullptr);
+  int last_inserted_execution_index = -1;
+  ASSERT_EQ(primary.ReplaceNodeWithSubgraph(
+                /*execution_index=*/0, composite_node_and_reg->first,
+                /*subgraph_index=*/1, last_inserted_execution_index),
+            kTfLiteOk);
+  ASSERT_THAT(primary.execution_plan(), ElementsAre(2, 3, 1));
+
+  alignas(kDefaultTensorAlignment) std::array<float, 8> large_in = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  alignas(kDefaultTensorAlignment) std::array<float, 8> large_out = {};
+  ASSERT_EQ(primary.SetCustomAllocationForTensor(
+                0, {large_in.data(), large_in.size() * sizeof(float)}),
+            kTfLiteOk);
+  ASSERT_EQ(primary.SetCustomAllocationForTensor(
+                2, {large_out.data(), large_out.size() * sizeof(float)}),
+            kTfLiteOk);
+  ASSERT_EQ(primary.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(primary.Invoke(), kTfLiteOk);
+  EXPECT_THAT(large_out,
+              ElementsAre(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f));
+
+  // Shrink the input and custom output allocation below the previous run's
+  // size. Output 2's stale byte size must not be verified before copy_op
+  // (node 1, at execution-plan index 2) is prepared during Invoke().
+  primary.ClearCustomAllocations();
+  ASSERT_EQ(primary.ResizeInputTensor(0, {2}), kTfLiteOk);
+
+  alignas(kDefaultTensorAlignment) std::array<float, 2> small_in = {10.0f,
+                                                                    20.0f};
+  alignas(kDefaultTensorAlignment) std::array<float, 2> small_out = {};
+  ASSERT_EQ(primary.SetCustomAllocationForTensor(
+                0, {small_in.data(), small_in.size() * sizeof(float)}),
+            kTfLiteOk);
+  ASSERT_EQ(primary.SetCustomAllocationForTensor(
+                2, {small_out.data(), small_out.size() * sizeof(float)}),
+            kTfLiteOk);
+  ASSERT_EQ(primary.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(primary.Invoke(), kTfLiteOk);
+  EXPECT_THAT(small_out, ElementsAre(10.0f, 20.0f));
+}
+
+TEST(SubgraphCustomAllocationTest,
+     RejectsUndersizedCustomOutputOnDelegatedGraph) {
+  Interpreter interpreter;
+  Subgraph& subgraph = interpreter.primary_subgraph();
+  ASSERT_EQ(subgraph.AddTensors(/*tensors_to_add=*/3), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetOutputs({2}), kTfLiteOk);
+
+  const TfLiteQuantization no_quant = {kTfLiteNoQuantization, nullptr};
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(
+                /*tensor_index=*/0, kTfLiteFloat32, "in", /*dims=*/{4},
+                no_quant, /*is_variable=*/false, /*dims_signature=*/{-1}),
+            kTfLiteOk);
+  ASSERT_EQ(
+      subgraph.SetTensorParametersReadWrite(
+          /*tensor_index=*/1, kTfLiteFloat32, "mid", /*dims=*/{4}, no_quant),
+      kTfLiteOk);
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(
+                /*tensor_index=*/2, kTfLiteFloat32, "out", /*dims=*/{4},
+                no_quant, /*is_variable=*/false, /*dims_signature=*/{-1}),
+            kTfLiteOk);
+
+  TfLiteRegistration noop = {};
+  ASSERT_EQ(subgraph.AddNodeWithParameters(
+                /*inputs=*/{0}, /*outputs=*/{1}, /*intermediates=*/{},
+                /*init_data=*/nullptr, /*init_data_size=*/0,
+                /*builtin_data=*/nullptr, &noop),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph.AddNodeWithParameters(
+                /*inputs=*/{1}, /*outputs=*/{2}, /*intermediates=*/{},
+                /*init_data=*/nullptr, /*init_data_size=*/0,
+                /*builtin_data=*/nullptr, &noop),
+            kTfLiteOk);
+
+  // Replace nodes {0, 1} with a single delegate kernel at node index 2, so
+  // execution_plan_ is {2} while last_exec_plan_index_prepared is 0.
+  TfLiteDelegate delegate = TfLiteDelegateCreate();
+  delegate.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  delegate.Prepare = [](TfLiteContext* context,
+                        TfLiteDelegate* delegate) -> TfLiteStatus {
+    TfLiteIntArray* execution_plan = nullptr;
+    if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk) {
+      return kTfLiteError;
+    }
+    TfLiteRegistration delegate_kernel = {};
+    delegate_kernel.prepare = [](TfLiteContext* context,
+                                 TfLiteNode* node) -> TfLiteStatus {
+      const TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
+      TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+      return context->ResizeTensor(context, output,
+                                   TfLiteIntArrayCopy(input->dims));
+    };
+    return context->ReplaceNodeSubsetsWithDelegateKernels(
+        context, delegate_kernel, execution_plan, delegate);
+  };
+  ASSERT_EQ(interpreter.ModifyGraphWithDelegate(&delegate), kTfLiteOk);
+  ASSERT_THAT(subgraph.execution_plan(), ElementsAre(2));
+
+  // Grow input 0 from {4} to {8} while keeping output 2's custom buffer sized
+  // for {4}, forcing AllocateTensors() through PrepareOpsAndTensors().
+  ASSERT_EQ(subgraph.ResizeInputTensor(0, {8}), kTfLiteOk);
+
+  alignas(kDefaultTensorAlignment) std::array<float, 8> in_buf = {};
+  alignas(kDefaultTensorAlignment) std::array<float, 4> undersized_out_buf = {};
+  ASSERT_EQ(subgraph.SetCustomAllocationForTensor(
+                0, {in_buf.data(), in_buf.size() * sizeof(float)}),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph.SetCustomAllocationForTensor(
+                2, {undersized_out_buf.data(),
+                    undersized_out_buf.size() * sizeof(float)}),
+            kTfLiteOk);
+
+  EXPECT_EQ(subgraph.AllocateTensors(), kTfLiteError);
+}
+
+TEST(SubgraphCustomAllocationTest,
+     HandlesEmptyExecutionPlanAfterInliningEmptySubgraph) {
+  StderrReporter error_reporter;
+  std::vector<std::unique_ptr<Subgraph>> subgraphs;
+  for (int i = 0; i < 2; ++i) {
+    subgraphs.emplace_back(new Subgraph(/*error_reporter=*/&error_reporter,
+                                        /*external_contexts=*/nullptr,
+                                        /*subgraphs=*/&subgraphs,
+                                        /*resources=*/nullptr,
+                                        /*resource_ids=*/nullptr,
+                                        /*initialization_status_map=*/nullptr,
+                                        /*subgraph_index=*/i));
+  }
+  Subgraph& primary = *subgraphs[0];
+  Subgraph& decomp = *subgraphs[1];
+
+  const TfLiteQuantization no_quant = {kTfLiteNoQuantization, nullptr};
+  ASSERT_EQ(primary.AddTensors(/*tensors_to_add=*/2), kTfLiteOk);
+  ASSERT_EQ(primary.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(primary.SetOutputs({0}), kTfLiteOk);
+  ASSERT_EQ(
+      primary.SetTensorParametersReadWrite(
+          /*tensor_index=*/0, kTfLiteFloat32, "in", /*dims=*/{4}, no_quant),
+      kTfLiteOk);
+  ASSERT_EQ(primary.SetTensorParametersReadWrite(
+                /*tensor_index=*/1, kTfLiteFloat32, "dead_out", /*dims=*/{4},
+                no_quant),
+            kTfLiteOk);
+
+  TfLiteRegistration composite_op = {};
+  int composite_node_index = -1;
+  ASSERT_EQ(primary.AddNodeWithParameters(
+                /*inputs=*/{0}, /*outputs=*/{1}, /*intermediates=*/{},
+                /*init_data=*/nullptr, /*init_data_size=*/0,
+                /*builtin_data=*/nullptr, &composite_op, &composite_node_index),
+            kTfLiteOk);
+
+  ASSERT_EQ(decomp.AddTensors(/*tensors_to_add=*/2), kTfLiteOk);
+  ASSERT_EQ(decomp.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(decomp.SetOutputs({1}), kTfLiteOk);
+
+  const auto* composite_node_and_reg =
+      primary.node_and_registration(composite_node_index);
+  ASSERT_NE(composite_node_and_reg, nullptr);
+  int last_inserted_execution_index = -1;
+  ASSERT_EQ(primary.ReplaceNodeWithSubgraph(
+                /*execution_index=*/0, composite_node_and_reg->first,
+                /*subgraph_index=*/1, last_inserted_execution_index),
+            kTfLiteOk);
+  ASSERT_TRUE(primary.execution_plan().empty());
+  ASSERT_EQ(primary.nodes_size(), 1);
+
+  alignas(kDefaultTensorAlignment) std::array<float, 4> in_buf = {};
+  alignas(kDefaultTensorAlignment) std::array<float, 1> dead_out_buf = {};
+  ASSERT_EQ(primary.SetCustomAllocationForTensor(
+                0, {in_buf.data(), in_buf.size() * sizeof(float)}),
+            kTfLiteOk);
+  ASSERT_EQ(primary.SetCustomAllocationForTensor(
+                1, {dead_out_buf.data(), dead_out_buf.size() * sizeof(float)}),
+            kTfLiteOk);
+
+  EXPECT_EQ(primary.AllocateTensors(), kTfLiteOk);
 }
 
 }  // namespace

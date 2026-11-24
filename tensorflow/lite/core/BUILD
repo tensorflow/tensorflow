@@ -567,6 +567,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
         "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
