@@ -816,10 +816,9 @@ absl::Status LinkROCDLIfNecessary(llvm::Module* module,
 
   CHECK(major != 0) << "Could not parse gfx_version.";
 
-  // TODO(rocm): Not great, not terrible
   addControlVariable("__oclc_wavefrontsize64", major == 9);
   addControlVariable("__oclc_ISA_version",
-                     1000 * major + 100 * stepping + minor, 32);
+                     1000 * major + 100 * minor + stepping, 32);
   addControlVariable("__oclc_ABI_version", kAMDGPUAbiVersion, 32);
 
   llvm::Linker linker(*module);
