@@ -2663,6 +2663,197 @@ ENTRY main {
               IsOkAndHolds(compiled_fingerprint));
 }
 
+TEST(CpuClientTest, SubnormalsPreservedWhenFtzDisabled) {
+  static constexpr char kProgram[] = R"(
+HloModule SubnormalTest
+ENTRY main {
+  p = f32[4] parameter(0)
+  half = f32[] constant(0.5)
+  half_bcast = f32[4] broadcast(half), dimensions={}
+  ROOT mul = f32[4] multiply(p, half_bcast)
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient({}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram));
+  XlaComputation xla_computation(hlo_module->ToProto());
+
+  // Input normal/subnormal values: 1e-44f * 0.5f = 5e-45f (subnormal).
+  std::vector<float> input_data = {1e-44f, -1e-44f, 2.0f, 1e-38f};
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                       device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> input_buffer,
+      client->BufferFromHostBuffer(
+          input_data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          memory_space, /*device_layout=*/nullptr));
+
+  // With xla_cpu_ftz=true (default), subnormals are flushed to zero.
+  {
+    CompileOptions compile_options;
+    compile_options.executable_build_options.mutable_debug_options()
+        ->set_xla_cpu_ftz(true);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> executable,
+        client->CompileAndLoad(xla_computation, compile_options));
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+        executable->Execute({{input_buffer.get()}}, {}));
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                         result[0][0]->ToLiteral().Await());
+    EXPECT_EQ(literal->Get<float>({0}), 0.0f);
+    EXPECT_EQ(literal->Get<float>({1}), 0.0f);
+    EXPECT_FLOAT_EQ(literal->Get<float>({2}), 1.0f);
+  }
+
+  // With xla_cpu_ftz=false, subnormals are preserved.
+  {
+    CompileOptions compile_options;
+    compile_options.executable_build_options.mutable_debug_options()
+        ->set_xla_cpu_ftz(false);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> executable,
+        client->CompileAndLoad(xla_computation, compile_options));
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+        executable->Execute({{input_buffer.get()}}, {}));
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                         result[0][0]->ToLiteral().Await());
+    EXPECT_EQ(literal->Get<float>({0}), 1e-44f * 0.5f);
+    EXPECT_EQ(literal->Get<float>({1}), -1e-44f * 0.5f);
+    EXPECT_FLOAT_EQ(literal->Get<float>({2}), 1.0f);
+    EXPECT_EQ(literal->Get<float>({3}), 1e-38f * 0.5f);
+  }
+
+  // Single-threaded Eigen::ThreadPoolDevice with a null pool should work
+  // without crashing and still preserve subnormals when xla_cpu_ftz=false.
+  {
+    Eigen::ThreadPoolDevice null_pool_device(/*pool=*/nullptr, /*num_cores=*/1);
+    CpuClientOptions null_pool_options;
+    null_pool_options.intra_op_device = &null_pool_device;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> single_client,
+                         GetPjRtCpuClient(std::move(null_pool_options)));
+    PjRtDevice* single_device = single_client->addressable_devices()[0];
+    ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * single_memory_space,
+                         single_device->default_memory_space());
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> single_input,
+        single_client->BufferFromHostBuffer(
+            input_data.data(), shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+            single_memory_space, /*device_layout=*/nullptr));
+    CompileOptions compile_options;
+    compile_options.executable_build_options.mutable_debug_options()
+        ->set_xla_cpu_ftz(false);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> executable,
+        single_client->CompileAndLoad(xla_computation, compile_options));
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+        executable->Execute({{single_input.get()}}, {}));
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                         result[0][0]->ToLiteral().Await());
+    EXPECT_EQ(literal->Get<float>({0}), 1e-44f * 0.5f);
+    EXPECT_EQ(literal->Get<float>({1}), -1e-44f * 0.5f);
+    EXPECT_FLOAT_EQ(literal->Get<float>({2}), 1.0f);
+    EXPECT_EQ(literal->Get<float>({3}), 1e-38f * 0.5f);
+  }
+
+  // Verify that a computation partitioned across multiple intra-op worker
+  // threads preserves subnormals on every worker thread.
+  {
+    static constexpr int64_t kDim = 256;
+    static constexpr char kParallelProgram[] = R"(
+HloModule SubnormalParallelTest
+ENTRY main {
+  lhs = f32[256,256] parameter(0)
+  rhs = f32[256,256] parameter(1)
+  ROOT dot = f32[256,256] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "test_intra_op", 4);
+    Eigen::ThreadPoolDevice intra_op_device(pool.AsEigenThreadPool(),
+                                            pool.NumThreads());
+    CpuClientOptions parallel_options;
+    parallel_options.intra_op_device = &intra_op_device;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> parallel_client,
+                         GetPjRtCpuClient(std::move(parallel_options)));
+    PjRtDevice* parallel_device = parallel_client->addressable_devices()[0];
+    ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * parallel_memory_space,
+                         parallel_device->default_memory_space());
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> large_hlo,
+                         ParseAndReturnUnverifiedModule(kParallelProgram, {}));
+    XlaComputation large_comp(large_hlo->ToProto());
+    CompileOptions compile_options;
+    compile_options.executable_build_options.mutable_debug_options()
+        ->set_xla_cpu_ftz(false);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> executable,
+        parallel_client->CompileAndLoad(large_comp, compile_options));
+    Shape mat_shape = ShapeUtil::MakeShape(F32, {kDim, kDim});
+    const float subnormal = 1e-44f;
+    std::vector<float> lhs_in(kDim * kDim, subnormal);
+    std::vector<float> rhs_in(kDim * kDim, 0.0f);
+    for (int64_t i = 0; i < kDim; ++i) {
+      rhs_in[i * kDim + i] = 0.5f;
+    }
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> lhs_buf,
+        parallel_client->BufferFromHostBuffer(
+            lhs_in.data(), mat_shape.element_type(), mat_shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+            parallel_memory_space, /*device_layout=*/nullptr));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> rhs_buf,
+        parallel_client->BufferFromHostBuffer(
+            rhs_in.data(), mat_shape.element_type(), mat_shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+            parallel_memory_space, /*device_layout=*/nullptr));
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+        executable->Execute({{lhs_buf.get(), rhs_buf.get()}}, {}));
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                         result[0][0]->ToLiteral().Await());
+    absl::Span<const float> out = literal->data<float>();
+    ASSERT_EQ(out.size(), kDim * kDim);
+    const float expected = subnormal * 0.5f;
+    for (int64_t i = 0; i < kDim * kDim; ++i) {
+      ASSERT_EQ(out[i], expected) << "Flushed at index " << i;
+    }
+
+    // Also verify a per-execution CpuExecuteContext intra-op thread pool
+    // override wraps worker tasks so subnormals are preserved.
+    tsl::thread::ThreadPool override_pool(tsl::Env::Default(),
+                                          "test_override_intra_op", 4);
+    Eigen::ThreadPoolDevice override_device(override_pool.AsEigenThreadPool(),
+                                            override_pool.NumThreads());
+    CpuExecuteContext override_context;
+    override_context.set_intra_op_thread_pool(&override_device);
+    ExecuteOptions execute_options;
+    execute_options.context = &override_context;
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> override_result,
+        executable->Execute({{lhs_buf.get(), rhs_buf.get()}}, execute_options));
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> override_literal,
+                         override_result[0][0]->ToLiteral().Await());
+    absl::Span<const float> override_out = override_literal->data<float>();
+    ASSERT_EQ(override_out.size(), kDim * kDim);
+    for (int64_t i = 0; i < kDim * kDim; ++i) {
+      ASSERT_EQ(override_out[i], expected)
+          << "Flushed at index " << i << " with CpuExecuteContext override";
+    }
+  }
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//

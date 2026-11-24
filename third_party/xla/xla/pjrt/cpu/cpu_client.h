@@ -132,6 +132,10 @@ class PjRtCpuRawClient : public PjRtRawClient {
     return intraop_device_;
   }
 
+  const Eigen::ThreadPoolDevice* dont_flush_eigen_intraop_device() const {
+    return dont_flush_eigen_intraop_device_.get();
+  }
+
   cpu::CpuCollectives* collectives() const { return collectives_.get(); }
 
   bool asynchronous() const { return asynchronous_; }
@@ -299,6 +303,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
   // destruction guarantees that all scheduled tasks are completed. Otherwise,
   // we might get use-after-free races when dispatched executables try to access
   // the member variables of this class that are already destroyed.
+  std::unique_ptr<Eigen::ThreadPoolInterface> dont_flush_eigen_intraop_pool_;
+  std::unique_ptr<Eigen::ThreadPoolDevice> dont_flush_eigen_intraop_device_;
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
   const Eigen::ThreadPoolDevice* intraop_device_ = nullptr;
