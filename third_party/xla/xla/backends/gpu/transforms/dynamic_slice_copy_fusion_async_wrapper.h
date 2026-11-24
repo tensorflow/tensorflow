@@ -16,28 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_COPY_FUSION_ASYNC_WRAPPER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_COPY_FUSION_ASYNC_WRAPPER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// Wraps dynamic-slice memcpy fusions in async-start/done pairs before
-// scheduling so that latency hiding can overlap the copy with compute.
-class DynamicSliceCopyFusionAsyncWrapper : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "dynamic-slice-copy-fusion-async-wrapper";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/dynamic_slice_copy_fusion_async_wrapper.h"
+#include "xla/backends/gpu/hlo/transforms/dynamic_slice_copy_fusion_async_wrapper.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_COPY_FUSION_ASYNC_WRAPPER_H_

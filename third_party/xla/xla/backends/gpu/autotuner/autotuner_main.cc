@@ -49,7 +49,7 @@ limitations under the License.
 #include "xla/backends/autotuner/tiered_cache.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
-#include "xla/backends/gpu/transforms/config_assigner_pass.h"
+#include "xla/backends/gpu/hlo/transforms/config_assigner_pass.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"

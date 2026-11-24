@@ -16,32 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_STREAM_ATTRIBUTE_ASYNC_WRAPPER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_STREAM_ATTRIBUTE_ASYNC_WRAPPER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// This pass will find the instructions that
-// are annotated with non-default stream id in backend configs
-// by the StreamAttributeAnnotator pass
-// and wrap them using AsyncStartDone pairs to achieve
-// asynchronous executions.
-class StreamAttributeAsyncWrapper : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "async-stream-attribute-wrapper";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/stream_attribute_async_wrapper.h"
+#include "xla/backends/gpu/hlo/transforms/stream_attribute_async_wrapper.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_STREAM_ATTRIBUTE_ASYNC_WRAPPER_H_

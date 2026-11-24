@@ -16,41 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_BLUECONNECT_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_BLUECONNECT_H_
 
-#include <cstddef>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// Decomposes all-reduce operations using the BlueConnect algorithm.
-//
-// Paper: "BLUECONNECT: DECOMPOSING ALL-REDUCE FOR DEEP LEARNING ON
-// HETEROGENEOUS NETWORK HIERARCHY"
-// https://mlsys.org/Conferences/2019/doc/2019/130.pdf
-//
-// This algorithm attempts to minimize the number of levels of network hierarchy
-// traversed for as much data transfer as possible. This implementation assumes
-// that host IDs are ordered corresponding to network hierarchy.
-class AllReduceBlueConnect : public HloModulePass {
- public:
-  explicit AllReduceBlueConnect(const size_t num_devices_per_host)
-      : num_devices_per_host_(num_devices_per_host) {}
-
-  absl::string_view name() const override { return "all-reduce-blueconnect"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const size_t num_devices_per_host_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/collectives/all_reduce_blueconnect.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/all_reduce_blueconnect.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_BLUECONNECT_H_

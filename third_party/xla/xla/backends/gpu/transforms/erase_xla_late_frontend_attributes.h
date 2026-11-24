@@ -16,32 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_ERASE_XLA_LATE_FRONTEND_ATTRIBUTES_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_ERASE_XLA_LATE_FRONTEND_ATTRIBUTES_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// An HLO pass that erases `inlineable="xla_late"` frontend attributes so that
-// late-inlined calls are treated as standard calls on GPU (i.e. as if xla_late
-// was not specified), while preserving Shardy manual computation calls so that
-// ShardyXLA can process them.
-class EraseXlaLateFrontendAttributes : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "erase-xla-late-frontend-attributes";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/erase_xla_late_frontend_attributes.h"
+#include "xla/backends/gpu/hlo/transforms/erase_xla_late_frontend_attributes.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_ERASE_XLA_LATE_FRONTEND_ATTRIBUTES_H_

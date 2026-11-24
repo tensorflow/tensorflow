@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/cost_model/fusion_analysis_cache.h"
 #include "xla/backends/gpu/cost_model/gpu_indexing_performance_model.h"
 #include "xla/backends/gpu/cost_model/gpu_performance_model_base.h"
-#include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
+#include "xla/backends/gpu/hlo/transforms/convert_triton_gemm_config.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

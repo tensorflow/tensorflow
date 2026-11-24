@@ -16,32 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_EXPLICIT_STREAM_ANNOTATION_ASYNC_WRAPPER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_EXPLICIT_STREAM_ANNOTATION_ASYNC_WRAPPER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// This pass finds instructions annotated with an explicit stream id in their
-// frontend attributes (kXlaStreamAnnotationAttr). If the instruction is already
-// a kCall it is asynchronized directly; otherwise it is first wrapped in a
-// kCall (with all frontend attributes moved to the wrapper) and then
-// asynchronized, using AsyncStart/Done pairs to achieve asynchronous execution.
-class ExplicitStreamAnnotationAsyncWrapper : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "explicit-stream-annotation-async-wrapper";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/explicit_stream_annotation_async_wrapper.h"
+#include "xla/backends/gpu/hlo/transforms/explicit_stream_annotation_async_wrapper.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_EXPLICIT_STREAM_ANNOTATION_ASYNC_WRAPPER_H_

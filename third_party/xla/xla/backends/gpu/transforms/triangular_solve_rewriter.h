@@ -16,45 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_TRIANGULAR_SOLVE_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_TRIANGULAR_SOLVE_REWRITER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Rewrites HLO TriangularSolve ops into a custom-call.
-//
-// The motivation for this is that we need to add temp memory to batched
-// triangular-solve ops in order to call cublas trsmBatched.  We rewrite batch 1
-// ops as well so that we have fewer codepaths to worry about in the backend.
-//
-// cublas trsmBatched takes arrays in GPU memory of pointers to the inputs and
-// outputs, `a` and `b`.  In XLA the inputs/outputs are always contiguous, but
-// we still have to materialize out these arrays.
-//
-// We use the same trick as for cudnn convolutions: This custom-call returns a
-// tuple (actual-result, temp-memory).  In this our case the temp buffer always
-// has size 2 * sizeof(void*) * batch_size, because we need two arrays of
-// pointers.
-//
-// The custom-call has a backend-config equal to the TriangularSolveOptions
-// object.
-class TriangularSolveRewriter : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "triangular-solve-rewriter";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/triangular_solve_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/triangular_solve_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_TRIANGULAR_SOLVE_REWRITER_H_

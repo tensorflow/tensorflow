@@ -1,0 +1,206 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/hlo/transforms/composite_rewriter.h"
+
+#include <optional>
+#include <string>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "mlir/AsmParser/AsmParser.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
+#include "xla/service/decision.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+
+namespace xla {
+namespace gpu {
+
+namespace {
+
+absl::StatusOr<DotDimensionNumbers> ParseDimensionNumbers(
+    absl::string_view composite_attributes) {
+  mlir::MLIRContext context;
+  mlir::Attribute attr = mlir::parseAttribute(composite_attributes, &context);
+  mlir::DictionaryAttr dict_attrs = mlir::dyn_cast<mlir::DictionaryAttr>(attr);
+  if (!dict_attrs.contains("dimension_numbers")) {
+    return absl::InvalidArgumentError(
+        "dimension_numbers are not set in composite attributes");
+  }
+
+  mlir::ArrayAttr dim_numbers =
+      mlir::dyn_cast<mlir::ArrayAttr>(dict_attrs.get("dimension_numbers"));
+  if (!dim_numbers || dim_numbers.size() != 2) {
+    return absl::InvalidArgumentError(
+        "dimension_numbers must be array of size 2");
+  }
+
+  mlir::ArrayAttr contracting = mlir::dyn_cast<mlir::ArrayAttr>(dim_numbers[0]);
+  mlir::ArrayAttr batch = mlir::dyn_cast<mlir::ArrayAttr>(dim_numbers[1]);
+  if (!contracting || contracting.size() != 2 || !batch || batch.size() != 2) {
+    return absl::InvalidArgumentError(
+        "invalid contracting or batch dimensions");
+  }
+
+  mlir::ArrayAttr lhs_contracting =
+      mlir::dyn_cast<mlir::ArrayAttr>(contracting[0]);
+  mlir::ArrayAttr rhs_contracting =
+      mlir::dyn_cast<mlir::ArrayAttr>(contracting[1]);
+  mlir::ArrayAttr lhs_batch = mlir::dyn_cast<mlir::ArrayAttr>(batch[0]);
+  mlir::ArrayAttr rhs_batch = mlir::dyn_cast<mlir::ArrayAttr>(batch[1]);
+
+  if (!lhs_contracting || !rhs_contracting || !lhs_batch || !rhs_batch) {
+    return absl::InvalidArgumentError("Invalid dimension_numbers structure");
+  }
+
+  DotDimensionNumbers dnums;
+  for (mlir::Attribute dim : lhs_contracting) {
+    dnums.add_lhs_contracting_dimensions(
+        mlir::cast<mlir::IntegerAttr>(dim).getInt());
+  }
+  for (mlir::Attribute dim : rhs_contracting) {
+    dnums.add_rhs_contracting_dimensions(
+        mlir::cast<mlir::IntegerAttr>(dim).getInt());
+  }
+  for (mlir::Attribute dim : lhs_batch) {
+    dnums.add_lhs_batch_dimensions(mlir::cast<mlir::IntegerAttr>(dim).getInt());
+  }
+  for (mlir::Attribute dim : rhs_batch) {
+    dnums.add_rhs_batch_dimensions(mlir::cast<mlir::IntegerAttr>(dim).getInt());
+  }
+  return dnums;
+}
+
+Decision IsScaledDotComposite(const HloInstruction* instruction) {
+  if (instruction->opcode() != HloOpcode::kCall) {
+    return Decision::Forbid("instruction is not a call");
+  }
+  auto call = Cast<HloCallInstruction>(instruction);
+  if (!call->is_composite()) {
+    return Decision::Forbid(
+        absl::StrCat(instruction->name(), " is not composite"));
+  }
+  if (!call->has_frontend_attributes()) {
+    return Decision::Forbid("No frontend attributes");
+  }
+  std::optional<std::string> composite_name =
+      call->get_frontend_attribute("composite.name");
+  if (!composite_name.has_value() || *composite_name != "xla.scaled_dot") {
+    return Decision::Forbid(
+        composite_name.has_value()
+            ? absl::StrCat("composite.name is not xla.scaled_dot: ",
+                           *composite_name)
+            : "composite.name attribute is missing");
+  }
+  return Decision::Allow();
+}
+
+Decision HasSupportedDimensionNumbers(
+    const DotDimensionNumbers& dot_dimension_numbers) {
+  if (dot_dimension_numbers.lhs_contracting_dimensions_size() != 1 ||
+      dot_dimension_numbers.rhs_contracting_dimensions_size() != 1) {
+    return Decision::Forbid(
+        absl::StrCat("Expected 1 contracting dimension on LHS and RHS, got: ",
+                     dot_dimension_numbers.DebugString()));
+  }
+  if (dot_dimension_numbers.lhs_batch_dimensions_size() > 1 ||
+      dot_dimension_numbers.rhs_batch_dimensions_size() > 1) {
+    return Decision::Forbid(
+        absl::StrCat("Expected at most 1 batch dimension on LHS and RHS, got: ",
+                     dot_dimension_numbers.DebugString()));
+  }
+  return Decision::Allow();
+}
+
+absl::Status RewriteScaledDot(
+    HloComputation* computation, HloCallInstruction* call,
+    const DotDimensionNumbers& dot_dimension_numbers) {
+  PrecisionConfig precision{};
+  precision.mutable_operand_precision()->Resize(2, PrecisionConfig::DEFAULT);
+  auto* scaled_dot =
+      computation->AddInstruction(HloInstruction::CreateScaledDot(
+          call->shape(), call->mutable_operand(0), call->mutable_operand(1),
+          call->mutable_operand(2), call->mutable_operand(3),
+          dot_dimension_numbers, precision));
+  scaled_dot->set_metadata(call->metadata());
+  ABSL_RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(call));
+  return absl::OkStatus();
+}
+
+const HloPassFactory* const kCompositeRewriterRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<CompositeRewriter>>(
+        "composite-rewriter");
+
+}  // namespace
+
+absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
+    HloComputation* computation) {
+  bool changed = false;
+  for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
+    if (Decision d = IsScaledDotComposite(instruction); !d) {
+      VLOG(5) << d.Explain();
+      continue;
+    }
+    auto* call = Cast<HloCallInstruction>(instruction);
+    std::optional<std::string> composite_attributes =
+        call->get_frontend_attribute("composite.attributes");
+    if (!composite_attributes.has_value()) {
+      return absl::InvalidArgumentError(
+          "composite.attributes is not set for xla.scaled_dot");
+    }
+    ABSL_ASSIGN_OR_RETURN(DotDimensionNumbers dot_dimension_numbers,
+                     ParseDimensionNumbers(*composite_attributes));
+
+    if (Decision d = HasSupportedDimensionNumbers(dot_dimension_numbers); !d) {
+      LOG(ERROR) << d.Explain();
+      continue;
+    }
+
+    ABSL_RETURN_IF_ERROR(RewriteScaledDot(computation, call, dot_dimension_numbers));
+    changed = true;
+  }
+  return changed;
+}
+
+absl::StatusOr<bool> CompositeRewriter::RunImpl(
+    HloModule* module, const absl::flat_hash_set<absl::string_view>&) {
+  bool changed = false;
+  for (HloComputation* computation : module->computations()) {
+    ABSL_ASSIGN_OR_RETURN(bool result, RewriteComputation(computation));
+    changed |= result;
+  }
+  return changed;
+}
+
+}  // namespace gpu
+}  // namespace xla

@@ -16,42 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_COPY_FUSION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_COPY_FUSION_H_
 
-#include <memory>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/call_graph.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla {
-namespace gpu {
-
-// CopyFusion checks if a fusion is followed by multiple copies and if so, adds
-// those copies to the fusion, replacing the copies with get_tuple_elements.
-class CopyFusion : public HloModulePass {
- public:
-  explicit CopyFusion(const se::DeviceDescription& device_description)
-      : device_description_(device_description) {}
-
-  absl::string_view name() const override { return "copy_fusion"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  absl::StatusOr<bool> DoCopyFusion(HloComputation* computation,
-                                    std::unique_ptr<CallGraph> call_graph);
-
-  const se::DeviceDescription& device_description_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/copy_fusion.h"
+#include "xla/backends/gpu/hlo/transforms/copy_fusion.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_COPY_FUSION_H_

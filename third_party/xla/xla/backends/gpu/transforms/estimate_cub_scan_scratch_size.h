@@ -16,42 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SCAN_SCRATCH_SIZE_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SCAN_SCRATCH_SIZE_H_
 
-#include <string>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// Updates the scratch size of CUB scan custom calls to match the actual
-// scratch size.
-class EstimateCubScanScratchSize : public HloModulePass {
- public:
-  explicit EstimateCubScanScratchSize(std::string platform_name)
-      : platform_name_(platform_name) {}
-
-  absl::string_view name() const override {
-    return "estimate-cub-scan-scratch-size";
-  }
-
- protected:
-  absl::Status RunOnScanInstruction(HloCustomCallInstruction* custom_call);
-  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
-
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  std::string platform_name_;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/estimate_cub_scan_scratch_size.h"
+#include "xla/backends/gpu/hlo/transforms/estimate_cub_scan_scratch_size.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SCAN_SCRATCH_SIZE_H_

@@ -1,0 +1,478 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/hlo/transforms/dot_algorithm_rewriter.h"
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/dot_algorithm_rewriter.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
+
+namespace xla::gpu {
+
+namespace {
+
+absl::StatusOr<HloInstruction*> Mult(HloInstruction* lhs, HloInstruction* rhs) {
+  return MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs);
+}
+
+HloInstruction* UpcastToF32(HloInstruction* instr) {
+  Shape new_shape = instr->shape();
+  new_shape.set_element_type(PrimitiveType::F32);
+  return instr->AddInstruction(HloInstruction::CreateConvert(new_shape, instr));
+}
+
+HloInstruction* SumToF32(HloInstruction* lhs, HloInstruction* rhs) {
+  Shape shape = lhs->shape();
+  shape.set_element_type(PrimitiveType::F32);
+  auto computation = lhs->parent();
+  return computation->AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, UpcastToF32(lhs), UpcastToF32(rhs)));
+}
+
+// Mask for truncating F32 to BF16. For truncating F32 to BF16 precision, the
+// lower 16 bits of F32 should be zeroed out. The upper 16 bits could be used
+// to represent BF16.
+constexpr uint32_t kMaskBF16 = 0xFFFF0000;
+
+// Mask for truncating F32 to TF32. For truncating F32 to TF32 precision, the
+// lower 13 bits of F32 should be zeroed out. The upper 19 bits could be used
+// to represent TF32.
+constexpr uint32_t kMaskTF32 = 0xFFFFE000;
+
+HloInstruction* Truncate(HloInstruction* f32_param, uint32_t mask) {
+  // Cast to int32 first, then zero out the lower bits. Then cast back to f32.
+  Shape u32_shape = f32_param->shape();
+  u32_shape.set_element_type(PrimitiveType::U32);
+  HloInstruction* u32_param = f32_param->AddInstruction(
+      HloInstruction::CreateBitcastConvert(u32_shape, f32_param));
+  HloInstruction* mask_constant = f32_param->parent()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(mask)));
+  HloInstruction* u32_mask = u32_param->AddInstruction(
+      HloInstruction::CreateBroadcast(u32_shape, mask_constant, {}));
+  HloInstruction* masked_u32 =
+      u32_param->AddInstruction(HloInstruction::CreateBinary(
+          u32_shape, HloOpcode::kAnd, u32_param, u32_mask));
+  return masked_u32->AddInstruction(
+      HloInstruction::CreateBitcastConvert(f32_param->shape(), masked_u32));
+}
+
+HloInstruction* Sub(HloInstruction* instr, HloInstruction* high) {
+  return instr->AddInstruction(HloInstruction::CreateBinary(
+      instr->shape(), HloOpcode::kSubtract, instr, high));
+}
+
+HloInstruction* RoundToBF16(HloInstruction* instr) {
+  Shape new_shape = instr->shape();
+  new_shape.set_element_type(PrimitiveType::BF16);
+  return instr->AddInstruction(HloInstruction::CreateConvert(new_shape, instr));
+}
+
+std::pair<HloInstruction*, HloInstruction*> Split2xToBF16(
+    HloInstruction* f32_param) {
+  HloInstruction* high_f32 = Truncate(f32_param, kMaskBF16);
+  HloInstruction* low_f32 = Sub(f32_param, high_f32);
+  return std::make_pair(RoundToBF16(high_f32), RoundToBF16(low_f32));
+}
+
+std::tuple<HloInstruction*, HloInstruction*, HloInstruction*> Split3xToBF16(
+    HloInstruction* f32_param) {
+  HloInstruction* high_f32_t = Truncate(f32_param, kMaskBF16);
+  HloInstruction* mid_f32 = Sub(f32_param, high_f32_t);
+  HloInstruction* mid_f32_t = Truncate(mid_f32, kMaskBF16);
+  HloInstruction* low_f32 = Sub(mid_f32, mid_f32_t);
+  return std::make_tuple(RoundToBF16(high_f32_t), RoundToBF16(mid_f32_t),
+                         RoundToBF16(low_f32));
+}
+
+std::pair<HloInstruction*, HloInstruction*> Split2xToTF32(
+    HloInstruction* f32_param) {
+  HloInstruction* high_f32 = Truncate(f32_param, kMaskTF32);
+  HloInstruction* low_f32 = Sub(f32_param, high_f32);
+  return std::make_pair(high_f32, low_f32);
+}
+
+std::array<std::pair<HloInstruction*, HloInstruction*>, 3> Make2xOperandPairs(
+    std::pair<HloInstruction*, HloInstruction*> lhs,
+    std::pair<HloInstruction*, HloInstruction*> rhs) {
+  auto [lhs_high, lhs_low] = lhs;
+  auto [rhs_high, rhs_low] = rhs;
+  return {{{lhs_low, rhs_high}, {lhs_high, rhs_low}, {lhs_high, rhs_high}}};
+}
+
+std::array<std::pair<HloInstruction*, HloInstruction*>, 3>
+Split2xToBF16OperandPairs(HloInstruction* lhs, HloInstruction* rhs) {
+  auto lhs_parts = Split2xToBF16(lhs);
+  auto rhs_parts = Split2xToBF16(rhs);
+  return Make2xOperandPairs(lhs_parts, rhs_parts);
+}
+
+std::array<std::pair<HloInstruction*, HloInstruction*>, 3>
+Split2xToTF32OperandPairs(HloInstruction* lhs, HloInstruction* rhs) {
+  auto lhs_parts = Split2xToTF32(lhs);
+  auto rhs_parts = Split2xToTF32(rhs);
+  return Make2xOperandPairs(lhs_parts, rhs_parts);
+}
+
+std::array<std::pair<HloInstruction*, HloInstruction*>, 9>
+Split3xToBF16OperandPairs(HloInstruction* lhs, HloInstruction* rhs) {
+  auto [lhs_high, lhs_mid, lhs_low] = Split3xToBF16(lhs);
+  auto [rhs_high, rhs_mid, rhs_low] = Split3xToBF16(rhs);
+  return {{{lhs_low, rhs_low},
+           {lhs_low, rhs_mid},
+           {lhs_mid, rhs_low},
+           {lhs_mid, rhs_mid},
+           {lhs_high, rhs_low},
+           {lhs_low, rhs_high},
+           {lhs_high, rhs_mid},
+           {lhs_mid, rhs_high},
+           {lhs_high, rhs_high}}};
+}
+
+// If lhs is 1.0, we will have lhs_high = 1.0 and lhs_low = 0.0.
+// If rhs is +infinity, we will have:
+// +infinity * 1.0 = +infinity
+// +infinity * 0.0 = NaN
+// We would get the wrong result if we sum these partial products. Instead, we
+// must override any accumulated result if the last partial product is
+// non-finite. See b/115844437.
+HloInstruction* ReplaceNaNWithZeros(HloInstruction* input) {
+  HloComputation* computation = input->parent();
+  Shape shape = input->shape();
+  HloInstruction* infinity = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(
+          std::numeric_limits<float>::infinity())));
+  // Broadcast the infinity to the same shape as the result.
+  infinity = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(shape, infinity, {}));
+  // abs the result.
+  HloInstruction* abs_result = computation->AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kAbs, input));
+  // Compare the abs result with the infinity.
+  Shape cmp_shape = shape;
+  cmp_shape.set_element_type(PrimitiveType::PRED);
+  HloInstruction* cmp_result =
+      computation->AddInstruction(HloInstruction::CreateCompare(
+          cmp_shape, infinity, abs_result, ComparisonDirection::kGe));
+  HloInstruction* zero = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
+  zero = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(shape, zero, {}));
+  // Select the high high dot if the result is less than the infinity.
+  input = computation->AddInstruction(HloInstruction::CreateTernary(
+      shape, HloOpcode::kSelect, cmp_result, input, zero));
+  return input;
+}
+
+void RewriteF32ToBF16(HloInstruction* instr) {
+  HloComputation* computation = instr->parent();
+  HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
+  PrecisionConfig precision_config = original_dot->precision_config();
+  precision_config.set_algorithm(PrecisionConfig::ALG_DOT_BF16_BF16_F32);
+  const Shape& shape = original_dot->shape();
+  const DotDimensionNumbers& dnums = original_dot->dot_dimension_numbers();
+  auto lhs = original_dot->mutable_operand(0);
+  auto rhs = original_dot->mutable_operand(1);
+  HloInstruction* lhs_bf16 = RoundToBF16(lhs);
+  HloInstruction* rhs_bf16 = RoundToBF16(rhs);
+  HloInstruction* result =
+      computation->AddInstruction(HloInstruction::CreateDot(
+          shape, lhs_bf16, rhs_bf16, dnums, precision_config));
+  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
+  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+}
+
+HloInstruction* AccumulatePartialProducts(
+    absl::Span<HloInstruction* const> partial_products,
+    absl::FunctionRef<HloInstruction*(HloInstruction*, HloInstruction*)> add) {
+  CHECK_GE(partial_products.size(), 3);
+  HloInstruction* result = add(partial_products[0], partial_products[1]);
+  for (size_t i = 2; i < partial_products.size() - 1; ++i) {
+    result = add(result, partial_products[i]);
+  }
+  result = ReplaceNaNWithZeros(result);
+  return add(result, partial_products.back());
+}
+
+void RewriteDotWithOperandPairs(
+    HloDotInstruction* original_dot, PrecisionConfig::Algorithm sub_algorithm,
+    absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
+        operand_pairs) {
+  HloComputation* computation = original_dot->parent();
+  PrecisionConfig precision_config = original_dot->precision_config();
+  precision_config.set_algorithm(sub_algorithm);
+  const Shape& shape = original_dot->shape();
+  const DotDimensionNumbers& dnums = original_dot->dot_dimension_numbers();
+
+  std::vector<HloInstruction*> partial_dots;
+  partial_dots.reserve(operand_pairs.size());
+  for (auto [lhs, rhs] : operand_pairs) {
+    partial_dots.push_back(computation->AddInstruction(
+        HloInstruction::CreateDot(shape, lhs, rhs, dnums, precision_config)));
+  }
+
+  HloInstruction* result = AccumulatePartialProducts(
+      partial_dots, [&](HloInstruction* lhs, HloInstruction* rhs) {
+        return computation->AddInstruction(
+            HloInstruction::CreateBinary(shape, HloOpcode::kAdd, lhs, rhs));
+      });
+  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
+  CHECK_OK(computation->RemoveInstruction(original_dot));
+}
+
+absl::StatusOr<HloInstruction*> MakeMultiplyWithOperandPairs(
+    absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
+        operand_pairs) {
+  std::vector<HloInstruction*> partial_products;
+  partial_products.reserve(operand_pairs.size());
+  for (auto [lhs, rhs] : operand_pairs) {
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * product, Mult(lhs, rhs));
+    partial_products.push_back(product);
+  }
+  return AccumulatePartialProducts(partial_products, SumToF32);
+}
+
+void RewriteF32ToBF16X3(HloInstruction* instr) {
+  HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
+  auto pairs = Split2xToBF16OperandPairs(original_dot->mutable_operand(0),
+                                         original_dot->mutable_operand(1));
+  RewriteDotWithOperandPairs(original_dot,
+                             PrecisionConfig::ALG_DOT_BF16_BF16_F32, pairs);
+}
+
+void RewriteF32ToBF16X6(HloInstruction* instr) {
+  HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
+  auto pairs = Split3xToBF16OperandPairs(original_dot->mutable_operand(0),
+                                         original_dot->mutable_operand(1));
+  RewriteDotWithOperandPairs(original_dot,
+                             PrecisionConfig::ALG_DOT_BF16_BF16_F32,
+                             absl::MakeConstSpan(pairs).subspan(3));
+}
+
+void RewriteF32ToBF16X9(HloInstruction* instr) {
+  HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
+  auto pairs = Split3xToBF16OperandPairs(original_dot->mutable_operand(0),
+                                         original_dot->mutable_operand(1));
+  RewriteDotWithOperandPairs(original_dot,
+                             PrecisionConfig::ALG_DOT_BF16_BF16_F32, pairs);
+}
+
+void RewriteF32ToTF32X3(HloInstruction* instr) {
+  HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
+  auto pairs = Split2xToTF32OperandPairs(original_dot->mutable_operand(0),
+                                         original_dot->mutable_operand(1));
+  RewriteDotWithOperandPairs(original_dot,
+                             PrecisionConfig::ALG_DOT_TF32_TF32_F32, pairs);
+}
+
+}  // namespace
+
+absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Pre-Ampere architectures (e.g. Volta SM70, Turing SM75) do not have BF16
+  // Tensor Cores or TF32 hardware support. On pre-Ampere GPUs, BF16 matmuls are
+  // explicitly upcast to F32 for performance, so we do not rewrite them here.
+  const auto* cuda_cc = gpu_version_.cuda_compute_capability();
+  if (cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) {
+    return false;
+  }
+
+  bool changed = false;
+  bool default_to_bf16 = module->config()
+                             .debug_options()
+                             .xla_gpu_default_to_alg_dot_bf16_bf16_f32();
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      if (HloPredicateIsNotOp<HloOpcode::kDot>(instruction)) {
+        continue;
+      }
+      auto algorithm = instruction->precision_config().algorithm();
+      if (fp8xn_only_ &&
+          algorithm != PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3 &&
+          algorithm != PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4) {
+        continue;
+      }
+      auto need_to_simulate_tpu_precision = [&]() -> bool {
+        if (!default_to_bf16) {
+          return false;  // Default to BF16 is disabled by flag.
+        }
+        if (instruction->shape().element_type() != PrimitiveType::F32) {
+          return false;  // Accumulator type is not F32.
+        }
+        if (instruction->operand(0)->shape().element_type() !=
+                PrimitiveType::F32 ||
+            instruction->operand(1)->shape().element_type() !=
+                PrimitiveType::F32) {
+          return false;  // Operands are not F32.
+        }
+        for (int p : instruction->precision_config().operand_precision()) {
+          if (p != PrecisionConfig::DEFAULT) {
+            return false;  // Non-default precision is set.
+          }
+        }
+        return true;  // All conditions met, need to simulate TPU precision.
+      };
+      switch (algorithm) {
+        case PrecisionConfig::ALG_UNSET:
+          if (!need_to_simulate_tpu_precision()) {
+            break;
+          }
+          [[fallthrough]];
+        case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+          RewriteF32ToBF16(instruction);
+          changed = true;
+          break;
+        case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+          RewriteF32ToBF16X3(instruction);
+          changed = true;
+          break;
+        case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+          RewriteF32ToBF16X6(instruction);
+          changed = true;
+          break;
+        case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+          RewriteF32ToBF16X9(instruction);
+          changed = true;
+          break;
+        case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+          RewriteF32ToTF32X3(instruction);
+          changed = true;
+          break;
+        case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3:
+        case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4: {
+          // HIGHEST disables FP8 fast accumulation in cuBLASLt
+          // (IsFastAccumEnabled in cuda_blas_lt.cc requires
+          // compute_precision == 0) and in Triton (stablehlo_lower_to_triton.cc
+          // keeps max_num_imprecise_acc = 0 for HIGHEST F8 dots).
+          ABSL_ASSIGN_OR_RETURN(
+              bool rewritten,
+              RewriteFp8xNDot(instruction, PrecisionConfig::HIGHEST));
+          changed |= rewritten;
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+  return changed;
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32(HloInstruction* lhs,
+                                                 HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32 ||
+               lhs->shape().element_type() == PrimitiveType::BF16)
+      << "Algorithm field set to BF16_BF16_F32, but the lhs isn't F32 or BF16.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32 ||
+               rhs->shape().element_type() == PrimitiveType::BF16)
+      << "Algorithm field set to BF16_BF16_F32, but the rhs isn't F32 or BF16.";
+  if (lhs->shape().element_type() == PrimitiveType::BF16 &&
+      rhs->shape().element_type() == PrimitiveType::BF16) {
+    ABSL_ASSIGN_OR_RETURN(auto result_bf16,
+                     MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs));
+    return UpcastToF32(result_bf16);
+  }
+  auto lhs_bf16 = RoundToBF16(lhs);
+  auto rhs_bf16 = RoundToBF16(rhs);
+  ABSL_ASSIGN_OR_RETURN(auto result_bf16,
+                   MakeBinaryHlo(HloOpcode::kMultiply, lhs_bf16, rhs_bf16));
+  return UpcastToF32(result_bf16);
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X3(HloInstruction* lhs,
+                                                   HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X3, but the lhs is not F32.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X3, but the rhs is not F32.";
+  return MakeMultiplyWithOperandPairs(Split2xToBF16OperandPairs(lhs, rhs));
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X6(HloInstruction* lhs,
+                                                   HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X6, but the lhs is not F32.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X6, but the rhs is not F32.";
+  auto pairs = Split3xToBF16OperandPairs(lhs, rhs);
+  return MakeMultiplyWithOperandPairs(absl::MakeConstSpan(pairs).subspan(3));
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X9(HloInstruction* lhs,
+                                                   HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X9, but the lhs is not F32.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X9, but the rhs is not F32.";
+  return MakeMultiplyWithOperandPairs(Split3xToBF16OperandPairs(lhs, rhs));
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32(HloInstruction* lhs,
+                                                 HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to TF32_TF32_F32_X3, but the lhs is not F32.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to TF32_TF32_F32_X3, but the rhs is not F32.";
+  auto lhs_tf32 = Truncate(lhs, kMaskTF32);
+  auto rhs_tf32 = Truncate(rhs, kMaskTF32);
+  ABSL_ASSIGN_OR_RETURN(auto* result, Mult(lhs_tf32, rhs_tf32));
+  return result;
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32X3(HloInstruction* lhs,
+                                                   HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to TF32_TF32_F32_X3, but the lhs is not F32.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to TF32_TF32_F32_X3, but the rhs is not F32.";
+  return MakeMultiplyWithOperandPairs(Split2xToTF32OperandPairs(lhs, rhs));
+}
+
+}  // namespace xla::gpu

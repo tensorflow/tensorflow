@@ -16,42 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_STREAM_ATTRIBUTE_ANNOTATOR_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_STREAM_ATTRIBUTE_ANNOTATOR_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla::gpu {
-
-// This pass checks to see if there's any fusion instruction with non-default
-// stream fusion root. It will annotate the corresponding instruction with
-// the correct operation_queue_id attribute in GpuBackendConfig. Instructions
-// annotated with operation_queue_id > 0 will be wrapped with AsyncInstruction
-// and split into AsyncStart and AsyncDone in the StreamAttributeAsyncWrapper
-// pass.
-
-class StreamAttributeAnnotator : public HloModulePass {
- public:
-  explicit StreamAttributeAnnotator(
-      const se::DeviceDescription& device_description)
-      : device_description_(device_description) {}
-
-  absl::string_view name() const override {
-    return "stream-attribute-annotator";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const se::DeviceDescription& device_description_;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/stream_attribute_annotator.h"
+#include "xla/backends/gpu/hlo/transforms/stream_attribute_annotator.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_STREAM_ATTRIBUTE_ANNOTATOR_H_

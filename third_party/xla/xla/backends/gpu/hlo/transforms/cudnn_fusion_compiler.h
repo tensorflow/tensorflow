@@ -1,0 +1,105 @@
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_BACKENDS_GPU_HLO_TRANSFORMS_CUDNN_FUSION_COMPILER_H_
+#define XLA_BACKENDS_GPU_HLO_TRANSFORMS_CUDNN_FUSION_COMPILER_H_
+
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/hlo/transforms/compiled_cudnn_graph_cache.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor.h"
+
+namespace xla {
+namespace gpu {
+
+// Converts HLO fusions with cuDNN backend config to cuDNN graphs,
+// compiles them using a cuDNN handle and serializes them.
+class CuDnnFusionCompiler : public HloModulePass {
+ public:
+  // If `cache` is not null, built graphs are looked up in and inserted into it.
+  explicit CuDnnFusionCompiler(
+      se::StreamExecutor* absl_nullable stream_exec,
+      const se::DeviceDescription& gpu_device_info,
+      BinaryMap& compilation_results,
+      CompiledCudnnGraphCache* absl_nullable cache = nullptr)
+      : stream_exec_(stream_exec),
+        gpu_device_info_(gpu_device_info),
+        compilation_results_(compilation_results),
+        cache_(cache) {}
+
+  absl::string_view name() const override { return "cudnn-fusion-compiler"; }
+
+  static absl::StatusOr<int> GetAvailablePlanCount(
+      se::dnn::DnnSupport* dnn_support,
+      const se::DeviceDescription& gpu_device_info,
+      const HloFusionInstruction& hlo);
+
+  // Whether `hlo` (a fusion with no gemm/conv/ragged-dot/scaled-dot hero) is
+  // eligible to become a cuDNN fusion: rejects fusions with more than one
+  // concatenate (cuDNN reports execution plans available for these but fails
+  // to lower them), then probes cuDNN for at least one available execution
+  // plan via `GetAvailablePlanCount`. Returns false (not an error) when
+  // ineligible; propagates genuine probe failures (e.g. stream/graph
+  // construction errors) as a non-OK status.
+  static absl::StatusOr<bool> IsSupportedNonGemmFusion(
+      se::StreamExecutor* stream_exec,
+      const se::DeviceDescription& gpu_device_info,
+      const HloFusionInstruction& hlo);
+
+  enum class DevicelessFusionSupport {
+    // cuDNN's deviceless heuristics advertise at least one execution plan.
+    // Not a guarantee: building the plan on the real device (possibly a
+    // different cuDNN) can still fail.
+    kSupported,
+    // Authoritative: cuDNN reports no engine supports this graph on the
+    // target.
+    kUnsupported,
+    // No verdict (graph construction or deviceless preparation failed; cause
+    // is VLOG(1)-logged). Not evidence either way.
+    kUnknown,
+  };
+
+  // Deviceless (no GPU / cuDNN handle) probe of cuDNN support for the fusion
+  // `hlo` on the target `gpu_device_info`. The verdict applies to the fusion
+  // pipeline only; the legacy conv custom-call pipeline enumerates engines
+  // differently.
+  static DevicelessFusionSupport SupportsFusionDeviceless(
+      const se::DeviceDescription& gpu_device_info,
+      const HloFusionInstruction& hlo);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  se::StreamExecutor* absl_nullable stream_exec_;
+  const se::DeviceDescription& gpu_device_info_;
+  BinaryMap& compilation_results_;
+  CompiledCudnnGraphCache* absl_nullable cache_;
+};
+
+}  // namespace gpu
+}  // namespace xla
+
+#endif  // XLA_BACKENDS_GPU_HLO_TRANSFORMS_CUDNN_FUSION_COMPILER_H_

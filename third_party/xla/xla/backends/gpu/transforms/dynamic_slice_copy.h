@@ -16,64 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_COPY_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_COPY_H_
 
-#include <cstdint>
-#include <optional>
-#include <vector>
-
-#include "absl/status/statusor.h"
-#include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla::gpu {
-
-// Returns true if the platform emits DS/DUS copy fusions as
-// DynamicSliceFusionV2Thunk copies. GpuCompiler (for
-// DynamicSliceCopyFusionAsyncWrapper) and ThunkEmitter both use this so the
-// HLO passes and thunk emission agree. Limited to CUDA Ampere+, the platforms
-// the replaced FusionDynamicMemcpyRewriter ran on. This is not the
-// command-buffer limit: converting the thunk into a command buffer also needs
-// CUDA 12.9+ (SupportsMovedChildCommands), so Ampere+ with an older CUDA still
-// splits the enclosing command buffer.
-bool SupportsDynamicSliceCopyThunks(const se::DeviceDescription& device_info);
-
-// Analysis result for a fusion that can be lowered as a DeviceToDeviceCopyThunk
-// wrapped by DynamicSliceFusionV2Thunk. The source and destination slices are
-// described by `parameters` and `results`; no HLO copy needs to exist.
-struct DynamicSliceCopyFusion {
-  const HloInstruction* copy_operand;
-  std::vector<DynamicSliceFusion::Parameter> parameters;
-  std::vector<DynamicSliceFusion::Result> results;
-};
-
-// Analysis result for a static slice fusion that can be lowered directly to a
-// DeviceToDeviceCopyThunk.
-struct StaticSliceCopyFusion {
-  int64_t parameter_number;
-  Shape slice_shape;
-  int64_t source_byte_offset;
-};
-
-// Matches raw DS/DUS-root fusions that copy one contiguous slice. This does not
-// match already-materialized copy-hero DynamicSliceFusionV2 custom fusions.
-absl::StatusOr<std::optional<DynamicSliceCopyFusion>>
-AnalyzeDynamicSliceCopyFusion(const HloInstruction* instr);
-
-// Matches a fusion whose root is a contiguous static slice of a fusion
-// parameter and can therefore be emitted as a plain D2D copy.
-absl::StatusOr<std::optional<StaticSliceCopyFusion>>
-AnalyzeStaticSliceCopyFusion(const HloFusionInstruction* instr);
-
-// Returns true for a DynamicSliceFusionV2 custom fusion whose hero instruction
-// is a device-to-device copy.
-bool IsCopyHeroDynamicSliceFusion(const HloInstruction* instr);
-
-// Returns true for raw DS/DUS-root copy fusions or copy-hero
-// DynamicSliceFusionV2 custom fusions.
-bool IsDynamicSliceCopyFusion(const HloInstruction* instr);
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/dynamic_slice_copy.h"
+#include "xla/backends/gpu/hlo/transforms/dynamic_slice_copy.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_COPY_H_

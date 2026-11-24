@@ -16,37 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SPLITK_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SPLITK_REWRITER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla {
-namespace gpu {
-
-// Rewrites dot instructions that don't fully utilize cores but have a long K
-// dimension. For such dots, the input tensors are split along the K dimension
-// (forming a new batch dimension) and the resulting dot is reduced along the
-// new batch dimension.
-class SplitkRewriter : public HloModulePass {
- public:
-  explicit SplitkRewriter(const se::DeviceDescription& device_description)
-      : device_description_(device_description) {}
-
-  absl::string_view name() const override { return "splitk-rewriter"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  se::DeviceDescription device_description_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/splitk_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/splitk_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_SPLITK_REWRITER_H_

@@ -16,55 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_GATHER_DYNAMIC_SLICE_SIMPLIFIER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_GATHER_DYNAMIC_SLICE_SIMPLIFIER_H_
 
-#include <utility>
-
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
-
-namespace xla {
-
-// A pass that simplifies a dynamic-slice of an all-gather
-// whose slice is the same as the original operand of the all-gather.
-// As an example:
-//
-//   ag = all-gather(x) replica_groups={{0,1,2,3,4,5,6,7}}
-//   offset = multiply(partition_id, slice_size)
-//   ds = dynamic-slice(ag, offset, 0, 0)
-//
-//  Can be simplified to the all-gather operand.
-
-class AllGatherDynamicSliceSimplifier : public OpExpanderPass {
- public:
-  struct Config {
-    bool allow_multiple_split_dims = false;
-    bool allow_intervening_reshape = true;
-    int min_rank = 1;
-    bool allow_intervening_bitcast = false;
-    bool allow_multiple_users = false;
-  };
-
-  static Config DefaultConfig() { return {}; }
-
-  explicit AllGatherDynamicSliceSimplifier(
-      const Config config = AllGatherDynamicSliceSimplifier::DefaultConfig())
-      : config_(std::move(config)) {}
-
-  absl::string_view name() const override {
-    return "all-gather-dynamic-slice-simplifier";
-  }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-
- private:
-  const Config config_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/collectives/all_gather_dynamic_slice_simplifier.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/all_gather_dynamic_slice_simplifier.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_GATHER_DYNAMIC_SLICE_SIMPLIFIER_H_

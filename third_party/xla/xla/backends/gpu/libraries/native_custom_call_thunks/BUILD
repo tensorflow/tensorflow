@@ -70,7 +70,7 @@ cc_library(
     hdrs = ["native_custom_call_scratch_context.h"],
     visibility = internal_visibility([
         ":handler_allowlist",
-        "//xla/backends/gpu/transforms:__pkg__",
+        "//xla/backends/gpu/hlo/transforms:__pkg__",
     ]),
     deps = [
         "//xla:xla_proto_cc",

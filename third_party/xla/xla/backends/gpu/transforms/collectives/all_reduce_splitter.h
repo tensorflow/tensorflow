@@ -16,72 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_SPLITTER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_SPLITTER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// Rewrites AR + DS into a logical RS followed by AR when the dynamic-slice
-// implies that only a subset of the reduced data is needed per device.
-//
-// Supports both:
-//   1. A single replica group spanning all partitions (classic HSDP case).
-//   2. Uniform subgroup ARs (e.g. DP x FSDP within each TP plane), where the
-//      split is applied independently inside every input replica group using
-//      the dynamic-slice offset -> shard map.
-//
-// Consider following example:
-//
-// Input program:
-//   HloModule m, num_partitions=8
-//     p = partition_id()
-//     ar = bf16[32] all-reduce(x), replica_groups={{0,1,2,3,4,5,6,7}}
-//     ds = dynamic-slice(ar, pointer(partition_id)), dynamic_slice_sizes={8}
-//
-// There is a global AR performing a reduction over 8 partitions.
-// However DS is performing 8-sized slice of a 32-sized tensor which implies
-// only 4 distinct slices of a tensor, which further implies 2 replicas of each
-// calculated slice. This can be expressed as RS within the replicas followed by
-// AR across the replicas. The transformation limits collectives to the data
-// that is actually needed for the requested slice.
-//
-// Output program:
-//   HloModule m, num_partitions=8
-//     p = partition_id()
-//     ar = bf16[32] all-reduce(x), replica_groups={{0,1,2,3},{4,5,6,7}}
-//     ds = dynamic-slice(ar, pointer(partition_id)), dynamic_slice_sizes={8}
-//     ar.2 = bf16[32] all-reduce(ds), replica_groups={{0,4},{1,5},{2,6},{3,7}}
-//
-// By default the pass only rewrites when it finds it profitable to do so.
-// The profitability function is simple, and just checks whether there are
-// any collectives with same replica groups. If there are then the combiner pass
-// can pick it up, and fuse it into the same NCCL call. Pass
-// ignore_profitability_check=true (or the corresponding XLA flag) to split
-// regardless.
-//
-// While the solution is orthogonal to existing known distribution patterns, in
-// practice it is profitable for HSDP style communication pattern.
-// https://arxiv.org/pdf/2203.11014
-//
-class AllReduceSplitter : public HloModulePass {
- public:
-  explicit AllReduceSplitter(bool ignore_profitability_check = false)
-      : ignore_profitability_check_(ignore_profitability_check) {}
-
-  absl::string_view name() const override { return "all-reduce-splitter"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const bool ignore_profitability_check_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/collectives/all_reduce_splitter.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/all_reduce_splitter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_SPLITTER_H_

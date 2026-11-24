@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
-#include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/dot_algorithm_rewriter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"

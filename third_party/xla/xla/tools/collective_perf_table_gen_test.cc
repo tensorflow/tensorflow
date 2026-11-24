@@ -21,8 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "xla/backends/gpu/cost_model/hlo_op_profile.pb.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
-#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 
 namespace xla::gpu {
 namespace {

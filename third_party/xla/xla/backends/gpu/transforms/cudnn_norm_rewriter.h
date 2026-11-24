@@ -16,34 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_NORM_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_NORM_REWRITER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-
-namespace xla {
-namespace gpu {
-
-// Rewrites norm patterns into Custom Calls to the cuDNN library. Currently, the
-// forward and backward passes of layer norm patterns are implemented.
-class CudnnNormRewriter : public HloModulePass {
- public:
-  explicit CudnnNormRewriter(
-      const se::CudaComputeCapability& cuda_compute_capability);
-  absl::string_view name() const override { return "norm-rewriter"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  se::CudaComputeCapability cuda_compute_capability_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/cudnn_norm_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/cudnn_norm_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_NORM_REWRITER_H_

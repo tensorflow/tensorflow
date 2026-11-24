@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
-#include "xla/backends/gpu/transforms/alias_passthrough_params.h"
-#include "xla/backends/gpu/transforms/constant_fill_copy_rewriter.h"
-#include "xla/backends/gpu/transforms/copy_fusion.h"
-#include "xla/backends/gpu/transforms/sanitize_constant_names.h"
+#include "xla/backends/gpu/hlo/transforms/alias_passthrough_params.h"
+#include "xla/backends/gpu/hlo/transforms/constant_fill_copy_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/copy_fusion.h"
+#include "xla/backends/gpu/hlo/transforms/sanitize_constant_names.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/copy_insertion.h"

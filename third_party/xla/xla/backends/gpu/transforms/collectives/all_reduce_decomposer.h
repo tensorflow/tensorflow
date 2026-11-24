@@ -16,27 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_DECOMPOSER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_DECOMPOSER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Rewrites an `all-reduce` as `all-gather` and `reduce`.
-class AllReduceDecomposer : public HloModulePass {
- public:
-  absl::string_view name() const override { return "all-reduce-decomposer"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/collectives/all_reduce_decomposer.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/all_reduce_decomposer.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_DECOMPOSER_H_

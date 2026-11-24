@@ -1,0 +1,178 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/hlo/transforms/collectives/collective_kernel_strategy_annotator.h"
+
+#include <variant>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/overload.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/collective_ops_utils.h"
+#include "xla/backends/gpu/runtime/all_gather.h"
+#include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/all_to_all.h"
+#include "xla/backends/gpu/runtime/collective_info_utils.h"
+#include "xla/backends/gpu/runtime/reduce_scatter.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu_topology.h"
+#include "xla/side_effect_util.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/xla.pb.h"
+
+namespace xla {
+namespace gpu {
+
+namespace {
+
+using stream_executor::gpu::AllReduceStrategy;
+
+// Maps the runtime AllReduceStrategy enum to the proto enum.
+// Both the Triton codegen kernel and the built-in custom C++ kernel use the
+// same NVLink-based cost formula, so a single annotation covers both backends.
+CollectiveBackendConfig::CollectiveKernelStrategy ToProtoStrategy(
+    const CollectiveKernelInfo& info) {
+  return std::visit(
+      absl::Overload{
+          [](const AllReduceInfo& all_reduce_info) {
+            switch (all_reduce_info.all_reduce_strategy) {
+              case AllReduceStrategy::kOneShot:
+                return CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT;
+              case AllReduceStrategy::kTwoShot:
+                return CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
+              case AllReduceStrategy::kMultimem:
+                // Not yet modelled in the cost model; fall back to default.
+                [[fallthrough]];
+              default:
+                return CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT;
+            }
+          },
+          [](const AllGatherInfo&) {
+            return CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT;
+          },
+          [](const AllToAllInfo& all_to_all_info) {
+            switch (all_to_all_info.all_to_all_strategy) {
+              case AllToAllStrategy::kOneShot:
+                return CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT;
+              case AllToAllStrategy::kTwoShot:
+                return CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
+            }
+          },
+          [](const ReduceScatterInfo&) {
+            return CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT;
+          }},
+      info);
+}
+
+bool HasCollectivesGroupAttribute(const HloInstruction* instruction) {
+  return instruction->has_frontend_attribute(kCollectiveGroupMarkerAttr);
+}
+
+// Tries to determine the collective kernel strategy for `instr` and writes the
+// result into backend_config. Returns true if the annotation was written.
+absl::StatusOr<bool> TryAnnotateCollective(HloInstruction* instr,
+                                           const GpuTopology& gpu_topology,
+                                           bool is_multimem_enabled) {
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr->backend_config<GpuBackendConfig>());
+  if (gpu_config.collective_backend_config().kernel_strategy() !=
+      CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT) {
+    return false;
+  }
+
+  const DeviceAssignment* device_assignment = nullptr;
+  if (instr->GetModule()->config().has_static_device_assignment()) {
+    device_assignment =
+        &instr->GetModule()->config().static_device_assignment();
+  }
+
+  absl::StatusOr<CollectiveKernelInfo> maybe_info = GetCollectiveInfo(
+      instr, gpu_topology, device_assignment, is_multimem_enabled);
+  if (absl::IsUnimplemented(maybe_info.status())) {
+    VLOG(3) << "[CollectiveKernelStrategyAnnotator] Collective kernel not "
+               "supported for "
+            << instr->name() << ": " << maybe_info.status();
+    return false;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(CollectiveKernelInfo info, maybe_info);
+
+  CollectiveBackendConfig::CollectiveKernelStrategy proto_strategy =
+      ToProtoStrategy(info);
+
+  gpu_config.mutable_collective_backend_config()->set_kernel_strategy(
+      proto_strategy);
+  ABSL_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+
+  VLOG(3) << "[CollectiveKernelStrategyAnnotator] Annotated " << instr->name()
+          << " with kernel strategy "
+          << CollectiveBackendConfig::CollectiveKernelStrategy_Name(
+                 proto_strategy);
+  return true;
+}
+
+}  // namespace
+
+CollectiveKernelStrategyAnnotator::CollectiveKernelStrategyAnnotator(
+    const GpuTopology& gpu_topology, bool is_multimem_enabled)
+    : gpu_topology_(gpu_topology), is_multimem_enabled_(is_multimem_enabled) {}
+
+absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  ABSL_ASSIGN_OR_RETURN(
+      absl::flat_hash_set<HloOpcode> instructions_to_annotate,
+      OpcodesForTritonCollectives(module->config().debug_options()));
+  if (instructions_to_annotate.empty()) {
+    return false;  // No instructions to annotate.
+  }
+  TF_RET_CHECK(gpu_topology_.has_gpu_target_config())
+      << "GpuTopology must have a target config for the strategy annotator.";
+  bool changed = false;
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    // A computation called by an operation with `_collectives_group` lowers to
+    // a CollectiveGroupThunk. We do not yet support grouping of collective
+    // kernels and always fall back on default collective implementation.
+    if (absl::c_any_of(computation->caller_instructions(),
+                       HasCollectivesGroupAttribute)) {
+      continue;
+    }
+    for (HloInstruction* instr : computation->instructions()) {
+      if (!instructions_to_annotate.contains(instr->opcode())) {
+        continue;
+      }
+      ABSL_ASSIGN_OR_RETURN(
+          bool annotated,
+          TryAnnotateCollective(instr, gpu_topology_, is_multimem_enabled_));
+      changed |= annotated;
+    }
+  }
+  return changed;
+}
+
+}  // namespace gpu
+}  // namespace xla

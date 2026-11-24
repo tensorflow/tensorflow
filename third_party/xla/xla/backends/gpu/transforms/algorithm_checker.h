@@ -16,39 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_ALGORITHM_CHECKER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_ALGORITHM_CHECKER_H_
 
-#include <utility>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla {
-namespace gpu {
-
-// This checks if the requested algorithms are supported. This can give an early
-// and specific error if an unsupported algorithm is requested.
-//
-// Note: Maybe we can make this more generic and move it outside of GPU.
-class AlgorithmChecker : public HloModulePass {
- public:
-  explicit AlgorithmChecker(se::GpuComputeCapability gpu_compute_capability)
-      : gpu_compute_capability_(std::move(gpu_compute_capability)){};
-
-  absl::string_view name() const override { return "algorithm-checker"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  se::GpuComputeCapability gpu_compute_capability_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/algorithm_checker.h"
+#include "xla/backends/gpu/hlo/transforms/algorithm_checker.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_ALGORITHM_CHECKER_H_

@@ -16,38 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_MATMUL_PTABLE_STATS_COLLECTION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_MATMUL_PTABLE_STATS_COLLECTION_H_
 
-#include <string>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla::gpu {
-
-class MatmulPerfTableStatsCollection : public HloModulePass {
- public:
-  explicit MatmulPerfTableStatsCollection(
-      absl::string_view perf_table_path,
-      const se::DeviceDescription& device_info)
-      : perf_table_path_(perf_table_path), device_info_(device_info) {}
-
-  absl::string_view name() const override {
-    return "matmul-perf-table-stats-collection";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const std::string perf_table_path_;
-  const se::DeviceDescription& device_info_;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/matmul_ptable_stats_collection.h"
+#include "xla/backends/gpu/hlo/transforms/matmul_ptable_stats_collection.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_MATMUL_PTABLE_STATS_COLLECTION_H_

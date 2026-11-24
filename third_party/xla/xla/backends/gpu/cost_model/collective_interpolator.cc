@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/cost_model/hlo_op_profile.pb.h"
 #include "xla/backends/gpu/cost_model/hlo_op_profiles.h"
 #include "xla/backends/gpu/cost_model/interpolator.h"
-#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

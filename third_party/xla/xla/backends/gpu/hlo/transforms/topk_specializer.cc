@@ -1,0 +1,766 @@
+/* Copyright 2023 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/hlo/transforms/topk_specializer.h"
+
+#include <stddef.h>
+
+#include <cstdint>
+#include <initializer_list>
+#include <limits>
+#include <string>
+#include <utility>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/raft_select_k_utils.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/tuple_util.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+
+namespace xla::gpu {
+
+namespace {
+
+// Broadcast a 32-bit scalar to a target shape.
+HloInstruction* BroadcastU32(HloComputation* comp, const Shape& target_shape,
+                             uint32_t value) {
+  HloInstruction* constant = comp->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(value)));
+  return comp->AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::ChangeElementType(target_shape, U32), constant, {}));
+}
+
+// Broadcast a 64-bit scalar to a target shape.
+HloInstruction* BroadcastU64(HloComputation* comp, const Shape& target_shape,
+                             uint64_t value) {
+  HloInstruction* constant = comp->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint64_t>(value)));
+  return comp->AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::ChangeElementType(target_shape, U64), constant, {}));
+}
+
+// Emits HLO to pack F32 values and Iota indices into U64 priority keys for
+// TOTAL (+0.0 > -0.0) or PARTIAL (+0.0 == -0.0) order.
+//
+// Key layout:
+// - TOTAL order (+0.0 > -0.0):
+//   [63..32]: radix_key (IEEE-754 sign-bit smeared/flipped F32 -> U32)
+//   [31..0]:  0xFFFFFFFF - iota (32-bit reversed index, breaking ties in
+//             ascending index order)
+// - PARTIAL order (+0.0 == -0.0):
+//   [63..32]: partial_radix_key (where -0.0f's radix_key 0x7FFFFFFF is
+//             canonicalized to +0.0f's radix_key 0x80000000 so that +0.0f and
+//             -0.0f tie on the upper 32 bits)
+//   [31..1]:  0x7FFFFFFF - iota (31-bit reversed index, breaking ties in
+//             ascending index order)
+//   [0]:      is_neg_zero (1 if original value was -0.0f, 0 otherwise; never
+//             affects ordering since bits [31..1] are strictly unique per
+//             index, and allows unpacking to restore -0.0f bit-identically)
+absl::StatusOr<HloInstruction*> BuildPackF32ToU64(HloInstruction* data,
+                                                  ComparisonOrder order,
+                                                  HloComputation* comp) {
+  TF_RET_CHECK(order == ComparisonOrder::kTotal ||
+               order == ComparisonOrder::kPartial);
+
+  const Shape& shape = data->shape();
+  int64_t iota_dim = shape.dimensions().size() - 1;
+
+  Shape u32_shape = ShapeUtil::ChangeElementType(shape, U32);
+  Shape s32_shape = ShapeUtil::ChangeElementType(shape, S32);
+  Shape u64_shape = ShapeUtil::ChangeElementType(shape, U64);
+
+  // 1. Pure Bitwise Radix Float Flip (F32 -> U32)
+  // s32_val = bitcast(data)
+  HloInstruction* s32_val = comp->AddInstruction(
+      HloInstruction::CreateBitcastConvert(s32_shape, data));
+
+  // sign_smeared = s32_val >> 31 (arithmetic shift)
+  HloInstruction* const_31_s32 = comp->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(31)));
+  HloInstruction* broadcast_31_s32 = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(s32_shape, const_31_s32, {}));
+  HloInstruction* sign_smeared = comp->AddInstruction(
+      HloInstruction::CreateBinary(s32_shape, HloOpcode::kShiftRightArithmetic,
+                                   s32_val, broadcast_31_s32));
+
+  // mask = bitcast(sign_smeared) | 0x80000000
+  HloInstruction* sign_smeared_u32 = comp->AddInstruction(
+      HloInstruction::CreateBitcastConvert(u32_shape, sign_smeared));
+  HloInstruction* broadcast_8 = BroadcastU32(comp, shape, 0x80000000);
+  HloInstruction* mask = comp->AddInstruction(HloInstruction::CreateBinary(
+      u32_shape, HloOpcode::kOr, sign_smeared_u32, broadcast_8));
+
+  // radix_key = bitcast(data) ^ mask
+  HloInstruction* u32_val = comp->AddInstruction(
+      HloInstruction::CreateBitcastConvert(u32_shape, data));
+  HloInstruction* radix_key = comp->AddInstruction(
+      HloInstruction::CreateBinary(u32_shape, HloOpcode::kXor, u32_val, mask));
+
+  // 2. Build upper 32-bit key and lower 32-bit tie-breaker based on order.
+  HloInstruction* iota_u32 =
+      comp->AddInstruction(HloInstruction::CreateIota(u32_shape, iota_dim));
+  HloInstruction* high_u32 = nullptr;
+  HloInstruction* low_u32 = nullptr;
+  if (order == ComparisonOrder::kPartial) {
+    // 31-bit reversed indices shifted left by 1: (0x7FFFFFFF - iota) << 1
+    HloInstruction* broadcast_7f = BroadcastU32(comp, shape, 0x7FFFFFFF);
+    HloInstruction* iota_neg =
+        comp->AddInstruction(HloInstruction::CreateBinary(
+            u32_shape, HloOpcode::kSubtract, broadcast_7f, iota_u32));
+    HloInstruction* broadcast_1 = BroadcastU32(comp, shape, 1);
+    HloInstruction* iota_shifted =
+        comp->AddInstruction(HloInstruction::CreateBinary(
+            u32_shape, HloOpcode::kShiftLeft, iota_neg, broadcast_1));
+
+    // Canonicalize -0.0f (u32_val == 0x80000000, radix_key == 0x7FFFFFFF) to
+    // +0.0f's radix_key (0x80000000) by adding is_neg_zero (1 for -0.0f, 0
+    // otherwise), and save is_neg_zero in bit 0 of the lower 32 bits.
+    Shape pred_shape = ShapeUtil::ChangeElementType(shape, PRED);
+    HloInstruction* is_neg_zero_pred =
+        comp->AddInstruction(HloInstruction::CreateCompare(
+            pred_shape, u32_val, broadcast_8, ComparisonDirection::kEq));
+    HloInstruction* is_neg_zero = comp->AddInstruction(
+        HloInstruction::CreateConvert(u32_shape, is_neg_zero_pred));
+    high_u32 = comp->AddInstruction(HloInstruction::CreateBinary(
+        u32_shape, HloOpcode::kAdd, radix_key, is_neg_zero));
+    low_u32 = comp->AddInstruction(HloInstruction::CreateBinary(
+        u32_shape, HloOpcode::kOr, iota_shifted, is_neg_zero));
+  } else {
+    // 32-bit reversed indices: 0xFFFFFFFF - iota
+    HloInstruction* broadcast_ff = BroadcastU32(comp, shape, 0xFFFFFFFF);
+    high_u32 = radix_key;
+    low_u32 = comp->AddInstruction(HloInstruction::CreateBinary(
+        u32_shape, HloOpcode::kSubtract, broadcast_ff, iota_u32));
+  }
+
+  // 3. Pack into U64: (high_u32 << 32) | low_u32
+  HloInstruction* val_u64 =
+      comp->AddInstruction(HloInstruction::CreateConvert(u64_shape, high_u32));
+  HloInstruction* broadcast_32_u64 = BroadcastU64(comp, shape, 32);
+  HloInstruction* val_u64_top =
+      comp->AddInstruction(HloInstruction::CreateBinary(
+          u64_shape, HloOpcode::kShiftLeft, val_u64, broadcast_32_u64));
+  HloInstruction* low_u64 =
+      comp->AddInstruction(HloInstruction::CreateConvert(u64_shape, low_u32));
+  return comp->AddInstruction(HloInstruction::CreateBinary(
+      u64_shape, HloOpcode::kOr, val_u64_top, low_u64));
+}
+
+// Emits HLO to unpack TOTAL- or PARTIAL-order U64 priority keys back to F32
+// values.
+absl::StatusOr<HloInstruction*> BuildUnpackU64ToF32(HloInstruction* u64_values,
+                                                    ComparisonOrder order,
+                                                    HloComputation* comp) {
+  TF_RET_CHECK(order == ComparisonOrder::kTotal ||
+               order == ComparisonOrder::kPartial);
+
+  const Shape& shape = u64_values->shape();
+  Shape u32_shape = ShapeUtil::ChangeElementType(shape, U32);
+  Shape f32_shape = ShapeUtil::ChangeElementType(shape, F32);
+
+  // 1. Shift right by 32 and cast to U32 to extract the upper 32-bit key.
+  HloInstruction* broadcast_32_u64 = BroadcastU64(comp, shape, 32);
+  HloInstruction* rshift = comp->AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kShiftRightLogical, u64_values, broadcast_32_u64));
+  HloInstruction* radix_key =
+      comp->AddInstruction(HloInstruction::CreateConvert(u32_shape, rshift));
+
+  HloInstruction* broadcast_1 = BroadcastU32(comp, shape, 1);
+  if (order == ComparisonOrder::kPartial) {
+    // Subtract bit 0 (is_neg_zero) from partial_radix_key to restore the
+    // original radix_key (0x80000000 - 1 = 0x7FFFFFFF for -0.0f).
+    HloInstruction* low_u32 = comp->AddInstruction(
+        HloInstruction::CreateConvert(u32_shape, u64_values));
+    HloInstruction* is_neg_zero =
+        comp->AddInstruction(HloInstruction::CreateBinary(
+            u32_shape, HloOpcode::kAnd, low_u32, broadcast_1));
+    radix_key = comp->AddInstruction(HloInstruction::CreateBinary(
+        u32_shape, HloOpcode::kSubtract, radix_key, is_neg_zero));
+  }
+
+  // 2. Isolate the MSB: msb = radix_key >> 31 (Logical shift)
+  HloInstruction* broadcast_31_u32 = BroadcastU32(comp, shape, 31);
+  HloInstruction* msb = comp->AddInstruction(HloInstruction::CreateBinary(
+      u32_shape, HloOpcode::kShiftRightLogical, radix_key, broadcast_31_u32));
+
+  // 3. Reconstruct mask: msb_minus_one = msb - 1
+  // If MSB was 1: 1 - 1 = 0x00000000.
+  // If MSB was 0: 0 - 1 = 0xFFFFFFFF (unsigned underflow).
+  HloInstruction* msb_minus_one =
+      comp->AddInstruction(HloInstruction::CreateBinary(
+          u32_shape, HloOpcode::kSubtract, msb, broadcast_1));
+
+  // 4. unmask = msb_minus_one | 0x80000000
+  HloInstruction* broadcast_8 = BroadcastU32(comp, shape, 0x80000000);
+  HloInstruction* unmask = comp->AddInstruction(HloInstruction::CreateBinary(
+      u32_shape, HloOpcode::kOr, msb_minus_one, broadcast_8));
+
+  // 5. Unflip the bits: original_u32 = radix_key ^ unmask
+  HloInstruction* original_u32 =
+      comp->AddInstruction(HloInstruction::CreateBinary(
+          u32_shape, HloOpcode::kXor, radix_key, unmask));
+
+  // 6. Bitcast back to F32
+  return comp->AddInstruction(
+      HloInstruction::CreateBitcastConvert(f32_shape, original_u32));
+}
+
+// Decision-tree heuristics for routing TopK to RAFT select_k vs Sort+Slice on
+// H100 (also used for pre-H100 GPUs) and B200 (also used for Vera Rubin until
+// dedicated heuristics are derived) GPU families across 4 pairs:
+//   1. select_k<F32>  vs unstable sort<F32>
+//   2. select_k<BF16> vs unstable sort<BF16>
+//   3. select_k<U64>  vs stable sort<F32>
+//   4. select_k<U64>  vs stable sort<BF16>
+// The heuristic generation process is described in b/409009349.
+// TODO(b/409009349): Derive dedicated heuristics for Vera Rubin (SM 10.7+) once
+// hardware is more widely available to experiment with.
+
+// 1. select_k<F32> vs unstable sort<F32>
+bool ShouldUseRaftSelectKF32OnH100(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 24576) {
+    return (batch <= 48 && k <= 192) || (batch > 48 && k > 384);
+  }
+  if (n <= 229376) {
+    return batch > 1;
+  }
+  return true;
+}
+
+bool ShouldUseRaftSelectKF32OnB200(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 24576) {
+    return (batch > 48 && k > 384) || k <= 192;
+  }
+  if (n <= 114688) {
+    return batch > 3 || k <= 192;
+  }
+  return batch > 1;
+}
+
+// 2. select_k<BF16> vs unstable sort<BF16>
+bool ShouldUseRaftSelectKBF16OnH100(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 12288) {
+    return (batch <= 12 && k <= 192) || batch > 96;
+  }
+  if (n <= 24576) {
+    return batch > 48 || k <= 192;
+  }
+  return true;
+}
+
+bool ShouldUseRaftSelectKBF16OnB200(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 12288) {
+    return batch > 96;
+  }
+  if (n <= 24576) {
+    return batch > 48 || k <= 192;
+  }
+  if (n <= 49152) {
+    return batch > 24 || k <= 192;
+  }
+  return true;
+}
+
+// 3. select_k<U64> vs stable sort<F32>
+bool ShouldUseRaftSelectKU64ForF32OnH100(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 48) {
+    return true;
+  }
+  if (n <= 4608) {
+    return batch <= 24 && k <= 96;
+  }
+  if (n <= 24576) {
+    return (batch <= 24 && k <= 96) || (batch > 48 && k > 384);
+  }
+  if (n <= 81920) {
+    return (batch > 1 && k <= 192) || batch > 6 || k <= 96;
+  }
+  return batch > 1 || k <= 96;
+}
+
+bool ShouldUseRaftSelectKU64ForF32OnB200(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (batch <= 3) {
+    return false;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 24576) {
+    return batch > 48 && (batch <= 96 || k > 384);
+  }
+  if (n <= 163840) {
+    return batch > 6 || k <= 192;
+  }
+  return true;
+}
+
+// 4. select_k<U64> vs stable sort<BF16>
+bool ShouldUseRaftSelectKU64ForBF16OnH100(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 48) {
+    return true;
+  }
+  if (n <= 4608) {
+    return batch <= 24 && k <= 96;
+  }
+  if (n <= 24576) {
+    return (batch <= 24 && k <= 96) || (batch > 96 && k > 384);
+  }
+  if (n <= 81920) {
+    return (batch <= 3 && k <= 192) || batch > 12 || k <= 96;
+  }
+  if (n <= 163840) {
+    return batch > 3 || k <= 192;
+  }
+  return true;
+}
+
+bool ShouldUseRaftSelectKU64ForBF16OnB200(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (batch <= 3) {
+    return false;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 24576) {
+    return batch > 192 && k > 384;
+  }
+  if (n <= 49152) {
+    return batch > 48;
+  }
+  if (n <= 163840) {
+    return batch > 6;
+  }
+  return true;
+}
+
+bool ShouldUseRaftSelectK(const se::CudaComputeCapability& cuda_cc,
+                          PrimitiveType dtype, size_t batch, size_t n,
+                          size_t k) {
+  // TODO(b/409009349): Update for Vera Rubin (SM 10.7+) once hardware is more
+  // widely available to experiment with.
+  const bool use_b200_heuristic = cuda_cc.IsAtLeastBlackwell();
+  if (dtype == F32) {
+    return use_b200_heuristic ? ShouldUseRaftSelectKF32OnB200(batch, n, k)
+                              : ShouldUseRaftSelectKF32OnH100(batch, n, k);
+  }
+  if (dtype == BF16) {
+    return use_b200_heuristic ? ShouldUseRaftSelectKBF16OnB200(batch, n, k)
+                              : ShouldUseRaftSelectKBF16OnH100(batch, n, k);
+  }
+  return false;
+}
+
+bool ShouldUseRaftSelectKU64(const se::CudaComputeCapability& cuda_cc,
+                             PrimitiveType dtype, size_t batch, size_t n,
+                             size_t k) {
+  // TODO(b/409009349): Update for Vera Rubin (SM 10.7+) once hardware is more
+  // widely available to experiment with.
+  const bool use_b200_heuristic = cuda_cc.IsAtLeastBlackwell();
+  if (dtype == F32) {
+    return use_b200_heuristic
+               ? ShouldUseRaftSelectKU64ForF32OnB200(batch, n, k)
+               : ShouldUseRaftSelectKU64ForF32OnH100(batch, n, k);
+  }
+  if (dtype == BF16) {
+    return use_b200_heuristic
+               ? ShouldUseRaftSelectKU64ForBF16OnB200(batch, n, k)
+               : ShouldUseRaftSelectKU64ForBF16OnH100(batch, n, k);
+  }
+  return false;
+}
+
+// Checks if we can safely route stable TopK to RAFT using the Uint64 adapter.
+bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk,
+                                     const se::CudaComputeCapability& cuda_cc) {
+  // The Uint64 bit-packing adapter supports TOTAL and PARTIAL ordering.
+  ComparisonOrder order = hlo_instruction_utils::GetTopKOrder(topk);
+  if (order != ComparisonOrder::kTotal && order != ComparisonOrder::kPartial) {
+    return false;
+  }
+  if (!hlo_instruction_utils::IsTopKStable(topk)) {
+    return false;
+  }
+
+  Shape data_shape = topk->operand(0)->shape();
+  PrimitiveType dtype = data_shape.element_type();
+  if (!(dtype == F32 || dtype == BF16)) {
+    return false;  // Only F32 and BF16 are supported for now.
+  }
+
+  size_t rank = data_shape.dimensions().size();
+  if (rank < 1 || rank > 2) {
+    return false;
+  }
+
+  bool has_batch = rank == 2;
+  size_t batch = has_batch ? data_shape.dimensions(0) : 1;
+  size_t n = data_shape.dimensions(has_batch ? 1 : 0);
+  size_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
+
+  // Skip degenerate zero-sized dimensions.
+  if (batch == 0 || n == 0 || k == 0) {
+    return false;
+  }
+
+  // XLA TopK indices are signed S32 and RAFT uses 32-bit signed int in launch
+  // calculations, so batch and n must fit in int32_t (which also ensures all
+  // indices fit in the 31-bit PARTIAL-order U64 key field).
+  constexpr size_t kMaxInt32 =
+      static_cast<size_t>(std::numeric_limits<int32_t>::max());
+  if (batch > kMaxInt32 || n > kMaxInt32 ||
+      uint64_t{batch} * uint64_t{k} >
+          static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
+    return false;
+  }
+
+  double ratio = static_cast<double>(k) / n;
+  if (ratio >= 0.85) {
+    return false;
+  }
+
+  // Use built-in stable XLA GPU TopK kernel if n/k ranges are supported
+  if (n >= 1024 && k <= 16) {
+    return false;
+  }
+
+  // TODO(b/409009349): Remove this guard after 2026-11-28 once the 14-day GPU
+  // AOT forward-compatibility window for U64 segmented radix sort has elapsed.
+  if (k > 129 && (n > 20215 || k > 256) &&
+      !topk->GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_experimental_enable_raft_u64_radix()) {
+    return false;
+  }
+
+  return ShouldUseRaftSelectKU64(cuda_cc, dtype, batch, n, k);
+}
+
+absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
+    HloCustomCallInstruction* topk, int sm_count) {
+  HloComputation* comp = topk->parent();
+  HloInstruction* data = topk->mutable_operand(0);
+  const Shape& data_shape = data->shape();
+  PrimitiveType original_type = data_shape.element_type();
+
+  // 1. Pack
+  // If BF16, upcast to F32 first to match F32 bitmath logic.
+  if (original_type == BF16) {
+    data = comp->AddInstruction(HloInstruction::CreateConvert(
+        ShapeUtil::ChangeElementType(data_shape, F32), data));
+  }
+  ComparisonOrder order = hlo_instruction_utils::GetTopKOrder(topk);
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * packed_u64,
+                   BuildPackF32ToU64(data, order, comp));
+
+  // 2. Create the specialized __gpu$TopK custom call
+  const bool has_batch = data_shape.dimensions().size() == 2;
+  const uint32_t batch =
+      static_cast<uint32_t>(has_batch ? data_shape.dimensions(0) : 1);
+  const uint32_t n =
+      static_cast<uint32_t>(data_shape.dimensions(has_batch ? 1 : 0));
+  const uint32_t k = static_cast<uint32_t>(
+      topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0));
+  // TODO(b/409009349): Switch to RaftScratchPhaseMode::kMaxAcrossPhases
+  // after 2026-11-24 once the 14-day GPU AOT forward-compatibility window
+  // for FixedBufferDeviceMemoryResource phase reclamation has elapsed.
+  ABSL_ASSIGN_OR_RETURN(
+      const int64_t scratch_bytes,
+      EstimateRaftSelectKScratchBytesUInt64(
+          batch, n, k, sm_count, RaftScratchPhaseMode::kSumAcrossPhases));
+  Shape k_shape =
+      ShapeUtil::ChangeElementType(topk->shape().tuple_shapes(0), U64);
+  Shape idx_shape = topk->shape().tuple_shapes(1);
+  Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_bytes});
+  Shape new_cc_shape =
+      ShapeUtil::MakeTupleShape({k_shape, idx_shape, scratch_shape});
+
+  HloCustomCallInstruction* new_topk = Cast<HloCustomCallInstruction>(
+      comp->AddInstruction(HloInstruction::CreateCustomCall(
+          new_cc_shape, {packed_u64}, "__gpu$TopK", "",
+          CustomCallApiVersion::API_VERSION_TYPED_FFI)));
+  new_topk->set_raw_backend_config_string(topk->raw_backend_config_string());
+
+  // The packed U64 keys guarantee uniqueness, making ties impossible.
+  // Therefore, the inner TopK operation no longer requires stability to
+  // produce a stable overall result. We clear the is_stable flag so the
+  // backend can freely route this to the fast unstable topk kernel (RAFT lib).
+  hlo_instruction_utils::SetTopKStability(new_topk, false);
+
+  // 3. Unpack values and retain indices
+  HloInstruction* u64_vals = comp->AddInstruction(
+      HloInstruction::CreateGetTupleElement(k_shape, new_topk, 0));
+  HloInstruction* indices = comp->AddInstruction(
+      HloInstruction::CreateGetTupleElement(idx_shape, new_topk, 1));
+
+  // Unpack to F32.
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * unpacked_data,
+                   BuildUnpackU64ToF32(u64_vals, order, comp));
+
+  // If the original input was BF16, downcast the F32 result back to BF16.
+  if (original_type == BF16) {
+    unpacked_data = comp->AddInstruction(HloInstruction::CreateConvert(
+        ShapeUtil::ChangeElementType(unpacked_data->shape(), BF16),
+        unpacked_data));
+  }
+
+  return comp->AddInstruction(
+      HloInstruction::CreateTuple({unpacked_data, indices}));
+}
+
+absl::StatusOr<HloInstruction*> SmallBufferOptimization(
+    HloCustomCallInstruction* topk, const se::CudaComputeCapability* cuda_cc,
+    int sm_count) {
+  ComparisonOrder order = hlo_instruction_utils::GetTopKOrder(topk);
+  if (order != ComparisonOrder::kTotal && order != ComparisonOrder::kPartial) {
+    return InvalidArgument(
+        "Unsupported comparator order: only TOTAL and PARTIAL orders are "
+        "supported.");
+  }
+
+  Shape data_shape = topk->operand(0)->shape();
+  auto dtype = data_shape.element_type();
+  auto supported_dtypes = {F32, BF16};
+  if (!absl::c_linear_search(supported_dtypes, dtype)) {
+    return InvalidArgument("Invalid Dtype: %s",
+                           primitive_util::LowercasePrimitiveTypeName(dtype));
+  }
+  // We only support topk of the shape [x] or [batch, x].
+  if (data_shape.dimensions().size() > 2) {
+    return InvalidArgument("Invalid input dimensions: %s",
+                           data_shape.ToString());
+  }
+  bool has_batch = data_shape.dimensions().size() == 2;
+  size_t max_k = 16;  // CustomCall TopK requires k <= 16 and n >= 1024
+  size_t min_n = 1024;
+  size_t batch = has_batch ? data_shape.dimensions(0) : 1;
+  size_t n = data_shape.dimensions(has_batch ? 1 : 0);
+  size_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
+  if (batch == 0 || n == 0 || k == 0) {
+    return InvalidArgument(
+        "TopK dimensions must be positive (batch=%zu, n=%zu, k=%zu)", batch, n,
+        k);
+  }
+  constexpr size_t kMaxInt32 =
+      static_cast<size_t>(std::numeric_limits<int32_t>::max());
+  if (batch > kMaxInt32 || n > kMaxInt32 || k > kMaxInt32) {
+    return InvalidArgument(
+        "TopK dimensions exceed int32 limits (batch=%zu, n=%zu, k=%zu)", batch,
+        n, k);
+  }
+  double ratio = static_cast<double>(k) / n;
+  if (ratio >= 0.85) {
+    return InvalidArgument(
+        "k/n ratio (%f) is too high for TopK. Falling back to sort + slice.",
+        ratio);
+  }
+  // Enable RAFT if TopK is_stable = false.
+  bool use_raft = !hlo_instruction_utils::IsTopKStable(topk);
+
+  if (cuda_cc != nullptr && use_raft) {
+    if (!ShouldUseRaftSelectK(*cuda_cc, dtype, batch, n, k)) {
+      return InvalidArgument(
+          "RAFT select_k heuristic rejected shape (dtype=%s, batch=%d, n=%d, "
+          "k=%d)",
+          primitive_util::LowercasePrimitiveTypeName(dtype), batch, n, k);
+    }
+  } else {
+    if (k > max_k) {
+      return InvalidArgument("k too large (%d), must be <= %d", k, max_k);
+    }
+    if (n < min_n) {
+      return InvalidArgument("Input too small (n=%d, min_n=%d)", n, min_n);
+    }
+  }
+  Shape cc_shape = topk->shape();
+  if (cuda_cc != nullptr && use_raft) {
+    if (uint64_t{batch} * uint64_t{k} >
+        static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
+      return InvalidArgument(
+          "TopK batch * k exceeds RAFT uint32 limit (batch=%zu, k=%zu)", batch,
+          k);
+    }
+    int64_t scratch_bytes = 0;
+    // TODO(b/409009349): Switch to RaftScratchPhaseMode::kMaxAcrossPhases
+    // after 2026-11-24 once the 14-day GPU AOT forward-compatibility window
+    // for FixedBufferDeviceMemoryResource phase reclamation has elapsed.
+    if (dtype == F32) {
+      ABSL_ASSIGN_OR_RETURN(scratch_bytes,
+                       EstimateRaftSelectKScratchBytesFloat(
+                           static_cast<uint32_t>(batch),
+                           static_cast<uint32_t>(n), static_cast<uint32_t>(k),
+                           sm_count, RaftScratchPhaseMode::kSumAcrossPhases));
+    } else if (dtype == BF16) {
+      ABSL_ASSIGN_OR_RETURN(scratch_bytes,
+                       EstimateRaftSelectKScratchBytesBFloat16(
+                           static_cast<uint32_t>(batch),
+                           static_cast<uint32_t>(n), static_cast<uint32_t>(k),
+                           sm_count, RaftScratchPhaseMode::kSumAcrossPhases));
+    } else {
+      return InvalidArgument("Invalid Dtype: %s",
+                             primitive_util::LowercasePrimitiveTypeName(dtype));
+    }
+    Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_bytes});
+    cc_shape = ShapeUtil::MakeTupleShape({topk->shape().tuple_shapes(0),
+                                          topk->shape().tuple_shapes(1),
+                                          scratch_shape});
+  }
+  HloComputation* comp = topk->parent();
+  HloInstruction* new_topk =
+      comp->AddInstruction(HloInstruction::CreateCustomCall(
+          cc_shape, topk->operands(), "__gpu$TopK",
+          /*opaque=*/"", CustomCallApiVersion::API_VERSION_TYPED_FFI));
+  new_topk->set_raw_backend_config_string(topk->raw_backend_config_string());
+  return TupleUtil::ExtractPrefix(new_topk, 2);
+}
+
+class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
+ public:
+  SpecializeTopkVisitor(se::GpuComputeCapability compute_capability,
+                        int sm_count)
+      : compute_capability_(std::move(compute_capability)),
+        sm_count_(sm_count) {}
+
+  absl::Status HandleCustomCall(HloInstruction* inst) override {
+    HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
+    if (topk == nullptr || topk->custom_call_target() != "TopK" ||
+        compute_capability_.IsOneAPI()) {
+      return absl::OkStatus();
+    }
+    TF_RET_CHECK(topk->operand_count() == 1);
+    const se::CudaComputeCapability* cuda_cc =
+        compute_capability_.cuda_compute_capability();
+    bool enable_raft_for_stable_topk =
+        topk->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_experimental_enable_raft_for_stable_topk();
+    // Route stable TopK to RAFT select_k via Uint64 adapter
+    if (cuda_cc != nullptr && enable_raft_for_stable_topk &&
+        ShouldRewriteStableTopKToUint64(topk, *cuda_cc)) {
+      VLOG(2) << "Rewriting stable TopK to RAFT select_k via Uint64 adapter";
+      ABSL_ASSIGN_OR_RETURN(HloInstruction * new_topk,
+                       RewriteStableTopKToUint64(topk, sm_count_));
+      return ReplaceInstruction(topk, new_topk);
+    }
+
+    if (auto small_topk = SmallBufferOptimization(topk, cuda_cc, sm_count_);
+        small_topk.ok()) {
+      return ReplaceInstruction(topk, *small_topk);
+    } else {  // NOLINT(readability-else-after-return)
+      VLOG(2) << "Small TopK optimization doesn't match: "
+              << small_topk.status();
+    }
+
+    return absl::OkStatus();
+  }
+
+ private:
+  se::GpuComputeCapability compute_capability_;
+  int sm_count_;
+};
+
+}  // namespace
+
+absl::StatusOr<bool> TopkSpecializer::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  int raft_sm_count = sm_count_;
+  if (const se::CudaComputeCapability* cuda_cc =
+          compute_capability_.cuda_compute_capability()) {
+    raft_sm_count = GetRaftSelectKMaxSmCount(*cuda_cc, sm_count_);
+  }
+  return SpecializeTopkVisitor(compute_capability_, raft_sm_count)
+      .RunOnModule(module, execution_threads);
+}
+
+}  // namespace xla::gpu

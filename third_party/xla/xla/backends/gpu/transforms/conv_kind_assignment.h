@@ -16,42 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CONV_KIND_ASSIGNMENT_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CONV_KIND_ASSIGNMENT_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
-
-namespace xla {
-namespace gpu {
-
-// Assign the conv kind for each conv and transform the conv accordingly if
-// needed.
-
-class ConvKindAssignment : public HloModulePass {
- public:
-  explicit ConvKindAssignment(
-      const se::GpuComputeCapability& compute_capability,
-      se::dnn::VersionInfo dnn_version = se::dnn::VersionInfo{})
-      : compute_capability_(compute_capability), dnn_version_(dnn_version) {};
-
-  absl::string_view name() const override { return "conv-kind-assignment"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const se::GpuComputeCapability compute_capability_;
-  const se::dnn::VersionInfo dnn_version_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/conv_kind_assignment.h"
+#include "xla/backends/gpu/hlo/transforms/conv_kind_assignment.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_CONV_KIND_ASSIGNMENT_H_

@@ -16,32 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_PDL_LAUNCH_ANNOTATION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_PDL_LAUNCH_ANNOTATION_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Annotates fusions that should get PDL launch and marks operands of the
-// immediately following fusions to avoid invariant annotations if they are
-// modified by the first fusion issuing PDL launch. PDL launch is only applied
-// when the immediately following fusion can be reliably identified within the
-// computation's schedule. More operations implemented as GPU kernels could
-// be PDL-launched but they'd need to be ensured to not use non-coherent loads.
-class PdlLaunchAnnotationPass : public HloModulePass {
- public:
-  absl::string_view name() const override { return "pdl-launch-annotation"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/pdl_launch_annotation.h"
+#include "xla/backends/gpu/hlo/transforms/pdl_launch_annotation.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_PDL_LAUNCH_ANNOTATION_H_

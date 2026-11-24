@@ -19,8 +19,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "xla/backends/gpu/hlo/transforms/dynamic_slice_copy.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
-#include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

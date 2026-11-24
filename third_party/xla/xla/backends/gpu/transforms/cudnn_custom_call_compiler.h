@@ -16,47 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_CUSTOM_CALL_COMPILER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_CUSTOM_CALL_COMPILER_H_
 
-#include "absl/base/nullability.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/stream_executor.h"
-
-namespace xla {
-namespace gpu {
-
-// Compile cuDNN custom calls to binaries and serialize them.
-// Also adjust them in HLO to have correct workspace size.
-class CuDnnCustomCallCompiler : public HloModulePass {
- public:
-  explicit CuDnnCustomCallCompiler(
-      se::StreamExecutor* absl_nullable stream_exec,
-      const se::DeviceDescription& gpu_device_info,
-      BinaryMap& compilation_results)
-      : stream_exec_(stream_exec),
-        gpu_device_info_(gpu_device_info),
-        compilation_results_(compilation_results) {}
-
-  absl::string_view name() const override {
-    return "cudnn-custom-call-compiler";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  se::StreamExecutor* absl_nullable stream_exec_;
-  const se::DeviceDescription& gpu_device_info_;
-  BinaryMap& compilation_results_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/cudnn_custom_call_compiler.h"
+#include "xla/backends/gpu/hlo/transforms/cudnn_custom_call_compiler.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_CUSTOM_CALL_COMPILER_H_

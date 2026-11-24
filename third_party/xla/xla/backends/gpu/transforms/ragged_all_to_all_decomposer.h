@@ -16,42 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_RAGGED_ALL_TO_ALL_DECOMPOSER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_RAGGED_ALL_TO_ALL_DECOMPOSER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Rewrites a `ragged-all-to-all` as a regular `all-to-all`.
-//
-// A ragged tensor is converted into a dense representation by slicing each
-// ragged row from the input and padding with zeros. Then, `all-to-all` is
-// performed on the dense representation to exchange rows between replicas.
-// Finally, the dense representation is converted back to ragged using
-// `dynamic-update-slice` and filling padded values with zero.
-//
-// This pass is intended as a temporary solution to unblock end-to-end
-// integration of `ragged-all-to-all` on GPU, to serve as a reference
-// implementation and help with writing integration tests.
-//
-// TODO(b/379629619): Remove this pass once `ragged-all-to-all` is implemented
-// natively on GPU with NCCL.
-class RaggedAllToAllDecomposer : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "ragged-all-to-all-decomposer";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/ragged_all_to_all_decomposer.h"
+#include "xla/backends/gpu/hlo/transforms/ragged_all_to_all_decomposer.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_RAGGED_ALL_TO_ALL_DECOMPOSER_H_

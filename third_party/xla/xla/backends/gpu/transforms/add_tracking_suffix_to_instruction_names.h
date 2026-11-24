@@ -16,36 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_ADD_TRACKING_SUFFIX_TO_INSTRUCTION_NAMES_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_ADD_TRACKING_SUFFIX_TO_INSTRUCTION_NAMES_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// Appends ".0" suffix to instruction names.
-//
-// Priority fusion pass duplicates instructions, and it's hard to match
-// instructions before and after the run as they got renamed.
-// To make debugging easier, we append ".0" suffix to instruction names
-// and priority fusion pass will increment this suffix:
-//
-// Original: broadcast.123
-// After this pass: broadcast.123.0
-// After priority fusion: broadcast.123.1, broadcast.123.2, ...
-//
-// One can match instructions before and after by their original name.
-class AddTrackingSuffixToInstructionNames : public HloModulePass {
- public:
-  absl::string_view name() const override { return "rename-instructions"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/add_tracking_suffix_to_instruction_names.h"
+#include "xla/backends/gpu/hlo/transforms/add_tracking_suffix_to_instruction_names.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_ADD_TRACKING_SUFFIX_TO_INSTRUCTION_NAMES_H_

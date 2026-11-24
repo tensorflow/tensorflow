@@ -149,7 +149,7 @@ cc_library(
         "//xla/backends/gpu/cost_model:fusion_analysis_cache",
         "//xla/backends/gpu/cost_model:gpu_indexing_performance_model",
         "//xla/backends/gpu/cost_model:gpu_performance_model_base",
-        "//xla/backends/gpu/transforms:convert_triton_gemm_config",
+        "//xla/backends/gpu/hlo/transforms:convert_triton_gemm_config",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",

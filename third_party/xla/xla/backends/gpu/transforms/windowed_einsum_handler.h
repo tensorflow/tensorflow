@@ -16,76 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_WINDOWED_EINSUM_HANDLER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_WINDOWED_EINSUM_HANDLER_H_
 
-#include <vector>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// This pass is targeting the windowed einsum optimization
-// in the SPMD pipeline. The SPMD partitioner's HandleDot
-// rewrites all-gather+gemm or gemm+reduce-scatter into sharded
-// loops with p2p communication to achieve overlap between sharded
-// gemms and communication.
-// This pass does the following transformations to further optimize
-// rewritten loops for GPU:
-//  1. it annotates independent gemms with stream ids in the backend config
-//     to achieve overlap between compute kernels in addition to
-//     compute-gemm overlap
-//  2. it removes all-gathers in ag+gemm patterns if the input to the ags is
-//     also an input to another windowed einsum ag loop, ie:
-//                       input
-//                       /    |
-//                      /     |
-//                     AG    windowed loop
-//                     /
-//                    /
-//                   dot
-// to:
-//                       input
-//                       |
-//                       |
-//                     windowed loop
-//                       |
-//                       |
-//                      dot
-//  3. it moves the fp8 dequantization outside of a rewritten windowed einsum
-//     loop inside of the loop so the dq+gemm can be fused into an fp8 gemm
-//     later in gemm rewriter.
-//  4. it shards a large all-to-all+gemm into smaller independent a2a+gemm
-//     shards to pipeline compute and communication so most of the
-//     communication overhead can be hidden.
-
-class WindowedEinsumHandler : public HloModulePass {
- public:
-  absl::string_view name() const override { return "windowed-einsum-handler"; }
-
-  struct WindowedEinsumAgLoops {
-    explicit WindowedEinsumAgLoops(HloInstruction* loop) : loop(loop) {}
-    HloInstruction* loop;
-    bool consumed = false;
-  };
-
-  constexpr static const char* kWindowedEinsumRsLoopName =
-      "windowed_dot_general_body_rs";
-  constexpr static const char* kWindowedEinsumAgLoopName =
-      "windowed_dot_general_body_ag";
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  std::vector<WindowedEinsumAgLoops> all_ag_loops_;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/windowed_einsum_handler.h"
+#include "xla/backends/gpu/hlo/transforms/windowed_einsum_handler.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_WINDOWED_EINSUM_HANDLER_H_

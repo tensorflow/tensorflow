@@ -12,46 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_REDUCTION_DIMENSION_GROUPER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_REDUCTION_DIMENSION_GROUPER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Groups adjacent (logically and physically) reduced dimensions in reduction
-// input.
-//
-// Precondition: ReductionLayoutNormalizer has been run (physical proximity and
-// logical proximity become the same).
-//
-// For example,
-//
-//   out = f32[] reduce(f32[10,20,30] input, dimensions={0,1,2})
-//
-// becomes:
-//
-//   tmp = f32[6000] bitcast(f32[10,20,30] input)
-//   out = f32[] reduce(f32[6000] tmp, dimensions={0})
-//
-class ReductionDimensionGrouper : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "reduction-dimension-grouper";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/reduction_dimension_grouper.h"
+#include "xla/backends/gpu/hlo/transforms/reduction_dimension_grouper.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_REDUCTION_DIMENSION_GROUPER_H_

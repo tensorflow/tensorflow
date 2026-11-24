@@ -16,35 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_EXPLICIT_COLLECTIVES_GROUP_ASYNC_WRAPPER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_EXPLICIT_COLLECTIVES_GROUP_ASYNC_WRAPPER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// This pass will find the kCall instructions that
-// are annotated with explicit collectives groups in their frontend
-// attributes. It then will convert the kCall into an async
-// start-done pair with the same computation. This is then
-// picked up by the IR emitter stage, and the entire computation
-// will be launched in a single Collective Group.
-class ExplicitCollectivesGroupAsyncWrapper : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "explicit-collectives-group-async-wrapper";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/explicit_collectives_group_async_wrapper.h"
+#include "xla/backends/gpu/hlo/transforms/explicit_collectives_group_async_wrapper.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_EXPLICIT_COLLECTIVES_GROUP_ASYNC_WRAPPER_H_

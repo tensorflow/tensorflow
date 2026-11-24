@@ -16,61 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_GROUP_COLLECTIVES_BY_KEY_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_GROUP_COLLECTIVES_BY_KEY_H_
 
-#include <utility>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/util.h"
-
-namespace xla::gpu {
-
-// Groups independent collectives that share the same nonempty
-// `collective_group_key` frontend attribute into a single async group call.
-//
-// At run time grouped collectives are launched via the GpuCollectives
-// GroupLaunch API, which allows the collective backend to apply optimizations
-// like collective kernel fusion. However, the main reason why XLA does it is to
-// make a group of semantically related collective operations (e.g. FSDP for
-// layer_N) into a single scheduling unit.
-//
-// Which opcodes are eligible for grouping is controlled by a predicate; the
-// default predicate accepts all-gather, reduce-scatter, and all-reduce. Callers
-// (e.g. the GPU compiler pipeline) can pass a narrower or wider predicate.
-//
-// Collectives tagged with the same key must be independent (no cycles are
-// allowed), and it is the user's responsibility to tag them appropriately.
-class GroupCollectivesByKey : public HloModulePass {
- public:
-  // Default predicate: groups all-gather, reduce-scatter, and all-reduce.
-  static HloPredicate DefaultPredicate() {
-    return HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kReduceScatter,
-                            HloOpcode::kAllReduce>;
-  }
-
-  GroupCollectivesByKey() : predicate_(DefaultPredicate()) {}
-
-  // `predicate` selects which instructions the pass may group. Only
-  // instructions carrying a collective_group_key are ever considered, so the
-  // predicate just narrows or widens the eligible opcode set.
-  explicit GroupCollectivesByKey(HloPredicate predicate)
-      : predicate_(std::move(predicate)) {}
-
-  absl::string_view name() const override { return "group-collectives-by-key"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  HloPredicate predicate_;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/group_collectives_by_key.h"
+#include "xla/backends/gpu/hlo/transforms/group_collectives_by_key.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_GROUP_COLLECTIVES_BY_KEY_H_

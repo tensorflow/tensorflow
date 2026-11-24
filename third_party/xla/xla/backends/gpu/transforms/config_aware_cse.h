@@ -16,40 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CONFIG_AWARE_CSE_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CONFIG_AWARE_CSE_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Runs HloCSE on fusion computations and drops the `sequential_tile_sizes` of
-// Triton fusions whose sequential dimensions CSE removed, e.g. by merging
-// reduces that producer fusion duplicated into a scan fusion.
-//
-// TODO(b/538986250): This is a temporary workaround until the new generic
-// config is available. Then this pass should be removed and HloCSE be used
-// directly again.
-class ConfigAwareCSE : public HloModulePass {
- public:
-  explicit ConfigAwareCSE(mlir::MLIRContext* mlir_context)
-      : mlir_context_(mlir_context) {}
-
-  absl::string_view name() const override { return "config-aware-cse"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  mlir::MLIRContext* mlir_context_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/config_aware_cse.h"
+#include "xla/backends/gpu/hlo/transforms/config_aware_cse.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_CONFIG_AWARE_CSE_H_

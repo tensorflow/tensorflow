@@ -12,28 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SORT_IOTA_FUSION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SORT_IOTA_FUSION_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// Fuses iotas into sort.
-class SortIotaFusion : public HloModulePass {
- public:
-  absl::string_view name() const override { return "sort-iota-fusion"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/sort_iota_fusion.h"
+#include "xla/backends/gpu/hlo/transforms/sort_iota_fusion.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_SORT_IOTA_FUSION_H_

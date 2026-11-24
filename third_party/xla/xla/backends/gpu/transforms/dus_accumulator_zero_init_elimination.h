@@ -16,28 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_DUS_ACCUMULATOR_ZERO_INIT_ELIMINATION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_DUS_ACCUMULATOR_ZERO_INIT_ELIMINATION_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// Replaces broadcast(0) scan-accumulator init with AllocateBuffer when the
-// body's DUS exhaustively covers every slot.
-class DusAccumulatorZeroInitElimination : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "dus-accumulator-zero-init-elimination";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/dus_accumulator_zero_init_elimination.h"
+#include "xla/backends/gpu/hlo/transforms/dus_accumulator_zero_init_elimination.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_DUS_ACCUMULATOR_ZERO_INIT_ELIMINATION_H_

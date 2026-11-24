@@ -16,40 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CONV_PADDING_LEGALIZATION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CONV_PADDING_LEGALIZATION_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// An HLO pass that canonicalizes convolution instructions for GPU codegen. It
-// inserts Pad instructions before Convolution instructions with uncanonicalized
-// padding, so that they can be lowered to Cudnn/Miopen convolution.
-class ConvPaddingLegalization : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "conv-padding-legalization";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
-  // Returns if any changes are made to the parent computation.
-  bool CanonicalizeForwardConvolution(HloInstruction* conv);
-  bool CanonicalizeBackwardFilterConvolution(HloInstruction* backward_conv);
-  bool CanonicalizeBackwardInputConvolution(HloInstruction* backward_conv);
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/conv_padding_legalization.h"
+#include "xla/backends/gpu/hlo/transforms/conv_padding_legalization.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_CONV_PADDING_LEGALIZATION_H_

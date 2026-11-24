@@ -16,52 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_DOT_OPERAND_CONVERTER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_DOT_OPERAND_CONVERTER_H_
 
-#include <utility>
-
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/util.h"
-
-namespace xla::gpu {
-
-// Converts both operands of a dot to a common element type (typically the
-// higher-precision operand type, or BF16 when multiplying an <=8-bit integer
-// operand by an F32 operand with default precision).
-//
-// Also demotes TF32-eligible F32 x F32 dots whose operands only carry
-// BF16-exact values (e.g. `dot(convert<f32>(s8), convert<f32>(bf16))`) to
-// BF16 x BF16 dots with the same output type. This is lossless: TF32 (8
-// exponent, 10 mantissa bits) represents these BF16 (8 exponent, 7 mantissa
-// bits) values exactly, so products and F32 accumulation are unchanged.
-class DotOperandConverter : public OpExpanderPass {
- public:
-  explicit DotOperandConverter(const se::GpuComputeCapability& gpu_version =
-                                   se::CudaComputeCapability::Ampere(),
-                               HloPredicate extra_filter = nullptr)
-      : OpExpanderPass(std::move(extra_filter)), gpu_version_(gpu_version) {}
-
-  explicit DotOperandConverter(HloPredicate extra_filter)
-      : DotOperandConverter(se::CudaComputeCapability::Ampere(),
-                            std::move(extra_filter)) {}
-
-  static bool SupportsBf16Dot(const se::GpuComputeCapability& gpu_version);
-
-  absl::string_view name() const override { return "operand_converter"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-
- private:
-  se::GpuComputeCapability gpu_version_;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/dot_operand_converter.h"
+#include "xla/backends/gpu/hlo/transforms/dot_operand_converter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_DOT_OPERAND_CONVERTER_H_

@@ -16,37 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SYCL_GEMM_WORKSPACE_PASS_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SYCL_GEMM_WORKSPACE_PASS_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla {
-namespace gpu {
-
-// Resizes the cuBLASLt matmul workspace to the size oneDNN's matmul primitive
-// requires for its scratchpad (oneDNN's term for workspace).
-// Added only by IntelGpuCompiler, after the generic GPU post-layout-assignment
-// pipeline.
-class SyclGemmWorkspacePass : public HloModulePass {
- public:
-  explicit SyclGemmWorkspacePass(se::GpuComputeCapability gpu_version)
-      : gpu_version_(gpu_version) {}
-
-  absl::string_view name() const override { return "sycl-gemm-workspace"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  se::GpuComputeCapability gpu_version_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/sycl_gemm_workspace_pass.h"
+#include "xla/backends/gpu/hlo/transforms/sycl_gemm_workspace_pass.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_SYCL_GEMM_WORKSPACE_PASS_H_

@@ -33,7 +33,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"

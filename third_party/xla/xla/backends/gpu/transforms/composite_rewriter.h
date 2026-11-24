@@ -16,30 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_COMPOSITE_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_COMPOSITE_REWRITER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// This pass rewrites the composite a specific instruction.
-class CompositeRewriter : public HloModulePass {
- public:
-  absl::string_view name() const override { return "composite-rewriter"; }
-
-  absl::StatusOr<bool> RewriteComputation(HloComputation* computation);
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/composite_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/composite_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_COMPOSITE_REWRITER_H_

@@ -16,31 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SCALAR_CONSTANT_SINKER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SCALAR_CONSTANT_SINKER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Sinks scalar constants into fusions. Normally, such constants are always
-// fused (see priority_fusion), but it is possible for post-fusion passes to
-// create new unfused scalar constants. This is common in particular for passes
-// that modify while loops, e.g. by peeling them. The induction variable then
-// typically becomes an unfused scalar constant.
-class ScalarConstantSinker : public HloModulePass {
- public:
-  absl::string_view name() const override { return "scalar-constant-sinker"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/scalar_constant_sinker.h"
+#include "xla/backends/gpu/hlo/transforms/scalar_constant_sinker.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_SCALAR_CONSTANT_SINKER_H_

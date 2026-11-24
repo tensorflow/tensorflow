@@ -16,38 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_ASYNC_WRAPPER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_ASYNC_WRAPPER_H_
 
-#include <functional>
-#include <utility>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// AsyncWrappers wrap instructions that match a given `predicate` into async
-// blocks (i.e. `async-start` and `async-stop` instructions) so that they run
-// concurrently.
-class AsyncWrapper : public HloModulePass {
- public:
-  using Predicate = std::function<bool(HloInstruction*)>;
-  explicit AsyncWrapper(Predicate predicate)
-      : predicate_(std::move(predicate)) {}
-
-  absl::string_view name() const override { return "async-wrapper"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const Predicate predicate_;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/async_wrapper.h"
+#include "xla/backends/gpu/hlo/transforms/async_wrapper.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_ASYNC_WRAPPER_H_

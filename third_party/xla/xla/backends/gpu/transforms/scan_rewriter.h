@@ -16,29 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SCAN_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SCAN_REWRITER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// Rewrites Scan operations into CUB PrefixSum custom calls.
-class ScanRewriter : public HloModulePass {
- public:
-  absl::string_view name() const override { return "scan-rewriter"; }
-
- protected:
-  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
-
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/scan_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/scan_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_SCAN_REWRITER_H_

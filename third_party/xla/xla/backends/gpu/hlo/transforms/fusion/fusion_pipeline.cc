@@ -1,0 +1,131 @@
+/* Copyright 2023 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/hlo/transforms/fusion/fusion_pipeline.h"
+
+#include <memory>
+#include <utility>
+
+#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/cost_model/gpu_hlo_cost_analysis.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
+#include "xla/backends/gpu/hlo/transforms/config_aware_cse.h"
+#include "xla/backends/gpu/hlo/transforms/conv_canonicalizer.h"
+#include "xla/backends/gpu/hlo/transforms/fusion/conv_fusion_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/fusion/multi_output_fusion.h"
+#include "xla/backends/gpu/hlo/transforms/fusion/multi_phase_fusion.h"
+#include "xla/backends/gpu/hlo/transforms/fusion/priority_fusion.h"
+#include "xla/backends/gpu/hlo/transforms/ragged_dot_fusion_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/sort_iota_fusion.h"
+#include "xla/backends/gpu/hlo/transforms/variadic_op_splitter.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/layout_assignment.h"
+#include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/service/cpu_gpu_shape_verifier.h"
+#include "xla/service/gpu/mlir_context_pool.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_verifier.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/threadpool.h"
+
+namespace xla {
+namespace gpu {
+
+HloPassPipeline FusionPipeline(
+    const DebugOptions& debug_options,
+    HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
+    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+    const se::DeviceDescription& gpu_device_info,
+    mlir::MLIRContext* mlir_context, MlirContextPool* mlir_context_pool) {
+  HloPassPipeline fusion("fusion");
+  // We try to split variadic ops with many parameters into several such ops
+  // to avoid exceeding the parameter space.
+  fusion.AddPass<VariadicOpSplitter>();
+  HloVerifierOpts opts =
+      HloVerifierOpts().MakeLayoutSensitive().WithInstructionCanChangeLayout(
+          LayoutAssignment::InstructionCanChangeLayout);
+  fusion.AddInvariantCheckerDebug<HloVerifier>(
+      std::make_unique<CpuGpuVerifierMetadata>(std::move(opts)),
+      "hlo verifier (debug)");
+
+  fusion.AddPass<SortIotaFusion>();
+
+  // Rewrite convs into conv fusions.
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
+      debug_options.xla_gpu_experimental_enable_conv_fusion()) {
+    HloConstantFolding::Options constant_folding_options;
+    constant_folding_options.is_layout_sensitive = true;
+    constant_folding_options.can_fold_shape = [](const Shape& shape) {
+      return ShapeUtil::IsEffectiveScalar(shape);
+    };
+    fusion.AddPass<HloConstantFolding>(constant_folding_options);
+    fusion.AddPass<ConvCanonicalizer>();
+    fusion.AddPass<ConvFusionRewriter>(gpu_device_info);
+  }
+
+  // RaggedDotFusionRewriter converts ragged dots into cuDNN fusions, which is
+  // only supported on NVIDIA/CUDA devices. On AMD ROCm, ragged dots are
+  // handled by hipBLASLt GroupedMatMul via GemmRewriter instead. Runs before
+  // PriorityFusion so it sees a raw ragged-dot rather than one PriorityFusion
+  // has already started fusing neighbors around.
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
+      debug_options.xla_gpu_experimental_use_ragged_dot_fusion() &&
+      gpu_device_info.gpu_compute_capability().IsCuda()) {
+    fusion.AddPass<RaggedDotFusionRewriter>();
+  }
+
+  GpuHloCostAnalysis::Options cost_analysis_options{
+      shape_size_bytes_function,
+      /*per_second_rates=*/{},
+      /*min_latencies_seconds=*/{},
+      /*count_multiple_input_accesses=*/true};
+  fusion.AddPass<PriorityFusion>(thread_pool, gpu_device_info, alias_info,
+                                 std::move(cost_analysis_options), mlir_context,
+                                 mlir_context_pool);
+
+  // Running CSE affects how many users an op has. This plays a role in what
+  // we detect as a tiled transpose fusion.
+  // TODO(b/538986250): ConfigAwareCSE is a workaround that keeps the positional
+  // `sequential_tile_sizes` of Triton fusions consistent across CSE. Once the
+  // new generic config is available, remove it and call HloCSE directly again
+  // (here and below).
+  fusion.AddPass<ConfigAwareCSE>(mlir_context);
+  fusion.AddPass<HloDCE>();
+  fusion.AddPass<MultiOutputFusion>(gpu_device_info, alias_info,
+                                    shape_size_bytes_function);
+  // TODO(b/538986250): Replace with HloCSE once the new generic config is
+  // available (see above).
+  fusion.AddPass<ConfigAwareCSE>(mlir_context);
+  fusion.AddPass<HloDCE>();
+
+  const se::CudaComputeCapability* cuda_cc =
+      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
+  if (debug_options.xla_gpu_experimental_multi_phase_fusion() &&
+      cuda_cc != nullptr && cuda_cc->IsAtLeastHopper()) {
+    fusion.AddPass<MultiPhaseFusion>(gpu_device_info);
+  }
+
+  return fusion;
+}
+
+}  // namespace gpu
+}  // namespace xla

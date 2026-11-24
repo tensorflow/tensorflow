@@ -13,44 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
-#include "xla/stream_executor/device_description.h"
-
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_DOT_STRENGTH_REDUCTION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_DOT_STRENGTH_REDUCTION_H_
 
-namespace xla {
-namespace gpu {
-
-// This pass strength-reduces dot operations into simpler operations.
-// This transformation is applied to:
-// - One-hot dots into gather and select.
-// - The following dots into broadcast, multiply, and reduce:
-//   - All vector * vector dots.
-//   - Some vector * matrix dots (depending on size).
-//   - s32 * s32 -> s32 dots with RHS contracting dimension 1 (unsupported by
-//     Triton and slow in the loop emitter).
-class DotStrengthReduction : public OpExpanderPass {
- public:
-  explicit DotStrengthReduction(se::GpuComputeCapability compute_capability,
-                                bool enable_one_hot_dot_to_gather = true)
-      : compute_capability_(compute_capability),
-        enable_one_hot_dot_to_gather_(enable_one_hot_dot_to_gather) {}
-  absl::string_view name() const override { return "dot-strength-reduction"; }
-
- private:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-
-  se::GpuComputeCapability compute_capability_;
-  bool enable_one_hot_dot_to_gather_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/dot_strength_reduction.h"
+#include "xla/backends/gpu/hlo/transforms/dot_strength_reduction.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_DOT_STRENGTH_REDUCTION_H_

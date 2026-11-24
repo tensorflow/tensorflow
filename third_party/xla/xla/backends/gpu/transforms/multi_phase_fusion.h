@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_MULTI_PHASE_FUSION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_MULTI_PHASE_FUSION_H_
 
-// IWYU pragma: private, include "xla/backends/gpu/transforms/fusion/multi_phase_fusion.h"
-#include "xla/backends/gpu/transforms/fusion/multi_phase_fusion.h"  // IWYU pragma: export // INLINER_FORWARD_TO
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/fusion/multi_phase_fusion.h"
+#include "xla/backends/gpu/hlo/transforms/fusion/multi_phase_fusion.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_MULTI_PHASE_FUSION_H_

@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/triton/triton_configs.h"
 #include "xla/backends/gpu/cost_model/gpu_dot_fusion_cost_model.h"
 #include "xla/backends/gpu/cost_model/gpu_performance_model_base.h"
-#include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
+#include "xla/backends/gpu/hlo/transforms/convert_triton_gemm_config.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"

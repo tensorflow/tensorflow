@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
-#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/collective_domain.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"

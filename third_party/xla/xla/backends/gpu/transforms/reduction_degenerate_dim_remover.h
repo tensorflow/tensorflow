@@ -12,46 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_REDUCTION_DEGENERATE_DIM_REMOVER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_REDUCTION_DEGENERATE_DIM_REMOVER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Enforces the invariant that reduction input and output have no degenerate
-// (size 1) dimension. Since these dimensions are physically meaningless, they
-// are removed using bitcasts.
-//
-// For example,
-//
-//   f[1] out = reduce(f[100, 1, 1] input, dimensions={0, 1})
-//
-// becomes:
-//
-//
-//   f[100] tmp1 = f[100] bitcast(f[100, 1, 1], input)
-//   f[] tmp2 = reduce(f[100] tmp1, dimensions={0})
-//   f[1] out = f[] bitcast(tmp2)
-//
-class ReductionDegenerateDimRemover : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "reduction-degenerate-dim-remover";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/reduction_degenerate_dim_remover.h"
+#include "xla/backends/gpu/hlo/transforms/reduction_degenerate_dim_remover.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_REDUCTION_DEGENERATE_DIM_REMOVER_H_

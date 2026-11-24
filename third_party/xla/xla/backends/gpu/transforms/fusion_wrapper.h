@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_FUSION_WRAPPER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_FUSION_WRAPPER_H_
 
-// IWYU pragma: private, include "xla/backends/gpu/transforms/fusion/fusion_wrapper.h"
-#include "xla/backends/gpu/transforms/fusion/fusion_wrapper.h"  // IWYU pragma: export // INLINER_FORWARD_TO
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/fusion/fusion_wrapper.h"
+#include "xla/backends/gpu/hlo/transforms/fusion/fusion_wrapper.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_FUSION_WRAPPER_H_

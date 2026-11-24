@@ -16,34 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_GATHER_OPTIMIZER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_GATHER_OPTIMIZER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Transforms
-//   binary_op(all-gather(op1(a)),all-gather(op2(b)))
-// to
-//   allgather(binary_op(op1(a),op2(b)))
-//
-// Where binary_op is commutative and takes exactly two operands as input.
-//
-class AllGatherOptimizer : public HloModulePass {
- public:
-  AllGatherOptimizer() = default;
-  absl::string_view name() const override { return "all-gather-optimizer"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/collectives/all_gather_optimizer.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/all_gather_optimizer.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_ALL_GATHER_OPTIMIZER_H_

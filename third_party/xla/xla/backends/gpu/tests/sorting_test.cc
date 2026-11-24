@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "Eigen/Core"
-#include "xla/backends/gpu/transforms/sort_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/sort_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"

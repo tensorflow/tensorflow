@@ -16,37 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_RAGGED_ALL_TO_ALL_MULTI_HOST_DECOMPOSER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_RAGGED_ALL_TO_ALL_MULTI_HOST_DECOMPOSER_H_
 
-#include <cstdint>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Rewrites a `ragged-all-to-all` into inter-host and intra-host parts.
-class RaggedAllToAllMultiHostDecomposer : public HloModulePass {
- public:
-  explicit RaggedAllToAllMultiHostDecomposer(int fast_interconnect_slice_size)
-      : fast_interconnect_slice_size_(fast_interconnect_slice_size) {}
-
-  absl::string_view name() const override {
-    return "ragged-all-to-all-multi-host-decomposer";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  int64_t fast_interconnect_slice_size_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/ragged_all_to_all_multi_host_decomposer.h"
+#include "xla/backends/gpu/hlo/transforms/ragged_all_to_all_multi_host_decomposer.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_RAGGED_ALL_TO_ALL_MULTI_HOST_DECOMPOSER_H_

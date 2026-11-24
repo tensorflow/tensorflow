@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSION_PROCESS_DUMP_H_
 #define XLA_SERVICE_GPU_FUSION_PROCESS_DUMP_H_
 
-// IWYU pragma: private, include "xla/backends/gpu/transforms/fusion/fusion_process_dump.h"
-#include "xla/backends/gpu/transforms/fusion/fusion_process_dump.h"  // IWYU pragma: export // INLINER_FORWARD_TO
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/fusion/fusion_process_dump.h"
+#include "xla/backends/gpu/hlo/transforms/fusion/fusion_process_dump.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_GPU_FUSION_PROCESS_DUMP_H_

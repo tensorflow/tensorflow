@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CONV_FUSION_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CONV_FUSION_REWRITER_H_
 
-// IWYU pragma: private, include "xla/backends/gpu/transforms/fusion/conv_fusion_rewriter.h"
-#include "xla/backends/gpu/transforms/fusion/conv_fusion_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/fusion/conv_fusion_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/fusion/conv_fusion_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_CONV_FUSION_REWRITER_H_

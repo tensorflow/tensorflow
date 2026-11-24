@@ -16,31 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SCATTER_DETERMINISM_EXPANDER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SCATTER_DETERMINISM_EXPANDER_H_
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
-
-namespace xla {
-
-// This pass rewrites scatter operations into a prefix-scan based algorithm that
-// ensures the scatter results to be determininstic. Note that the computation
-// after the expansion still contains a scatter operation, but it does not have
-// duplicated indices and hence the results are guaranteed to be deterministic.
-class ScatterDeterminismExpander : public OpExpanderPass {
- public:
-  explicit ScatterDeterminismExpander() = default;
-
-  absl::string_view name() const override {
-    return "scatter_determinism_expander";
-  }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* inst) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* inst) override;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/scatter_determinism_expander.h"
+#include "xla/backends/gpu/hlo/transforms/scatter_determinism_expander.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_SCATTER_DETERMINISM_EXPANDER_H_

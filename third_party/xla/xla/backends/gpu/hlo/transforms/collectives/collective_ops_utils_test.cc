@@ -1,0 +1,1085 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/hlo/transforms/collectives/collective_ops_utils.h"
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/target_config/target_config.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/device_assignment.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu_topology.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
+
+namespace xla::gpu {
+namespace {
+
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::testing::Test;
+
+class CommunicationTypeTest : public Test {
+ protected:
+  se::DeviceDescription& device_info() { return device_info_; }
+
+ private:
+  se::DeviceDescription device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo(
+      stream_executor::CudaComputeCapability(9, 0));
+};
+
+TEST_F(CommunicationTypeTest, DetectsSingleHost8Devices) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[1024] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1,8]<=[8]
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[512] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1,4]<=[4]
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[512] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[2,8]<=[16]
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*partition_size=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectWorldLevelAllDevices) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[2048] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1,16]<=[16]
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectWorldLevelHalfMesh) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=32
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[2048] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups={
+          {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15},
+          {16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectNonWorldLevel) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[256] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
+  absl::string_view kHlo = R"(
+    HloModule m, replica_count=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[512] all-gather(p),
+        dimensions={0},
+        replica_groups={}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/16, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectWorldLevel8DevicesForEmptyReplicaGroups) {
+  absl::string_view kHlo = R"(
+    HloModule m, replica_count=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[2048] all-gather(p),
+        dimensions={0},
+        replica_groups={}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectNonWorldLevel16Devices) {
+  absl::string_view kHlo = R"(
+    HloModule m, replica_count=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[256] all-gather(p),
+        dimensions={0},
+        replica_groups={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,7},{7,0}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermuteSinglePair) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,7},{7,0}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectNonWorldLevelCollectivePermute) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{8,0},{1,9},{9,1},{2,10},{10,2},{3,11},{11,3},
+                             {4,12},{12,4},{5,13},{13,5},{6,14},{14,6},{7,15},{15,7}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectWorldLevelCollectivePermute) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+       source_target_pairs={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsCrossHostCollectivePermuteMixed) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+       source_target_pairs={{0,7},
+                            {0,8},
+                            {1,9},
+                            {2,10},
+                            {3,11},
+                            {4,12},
+                            {5,13},
+                            {6,14},
+                            {7,15}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSinglePartitionMultiHost) {
+  // 16 devices across 2 hosts with partition_size=16 (single partition spanning
+  // 2 hosts)
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[2048] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1,16]<=[16]
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*partition_size=*/16, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectsMultiPartitionWith8DevicePartitions) {
+  // 64 devices across 2 partitions with partition_size=32
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[2048] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1, 64]<=[64]
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*partition_size=*/32, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsMultiPartitionNonRailAligned) {
+  // 64 devices with partition_size=36: partition 0 has 36 devices, partition 1
+  // has 28 devices
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=12
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[1536] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1, 64]<=[64]
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  // With partition_size=8, spans 2 partitions but not rail-aligned (8 and 4
+  // devices)
+  EXPECT_THAT(CommunicationType(/*partition_size=*/36, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSinglePartitionSubset) {
+  // 6 devices within a single partition (partition_size=36)
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=4
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[512] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups={{0,1,2,3,4,5}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*partition_size=*/36, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectsRailAlignedMultiPartition) {
+  // 128 devices across 2 partitions with partition_size=8 (rail-aligned: 64
+  // devices per partition)
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=32
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[4096] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1,128]<=[128]
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*partition_size=*/64, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
+}
+
+}  // namespace
+
+TEST_F(CommunicationTypeTest, CollectivePermuteIntraPartitionOneWay) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{2,3},{4,5},{6,7}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kIntraPartitionOneWay);
+}
+
+TEST_F(CommunicationTypeTest, CollectivePermuteIntraPartitionTwoWayMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=4
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{1,0},{2,3},{3,2}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual);
+}
+
+TEST_F(CommunicationTypeTest, CollectivePermuteInterPartitionTwoWayMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{8,0}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kInterPartitionTwoWayAllMutual);
+}
+
+TEST_F(CommunicationTypeTest, CollectivePermuteInterPartitionOneWay) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{1,9}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kInterPartitionOneWay);
+}
+
+TEST_F(CommunicationTypeTest,
+       CollectivePermuteIntraPartitionTwoWayHasNonMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{1,2},{2,0}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kIntraPartitionTwoWayHasNonMutual);
+}
+
+TEST_F(CommunicationTypeTest,
+       CollectivePermuteInterPartitionTwoWayHasNonMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{1,9},{8,2}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kInterPartitionTwoWayHasNonMutual);
+}
+
+// TODO(b/460155942): remove once the collective-permute with empty pairs is
+// disallowed by the HLO verifier.
+TEST_F(CommunicationTypeTest, CollectivePermuteEmptyPairs) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kUnknown);
+}
+
+TEST(IsSpmdGeneratedTest, ReturnsTrueWhenAttributeSet) {
+  absl::string_view kHlo = R"(
+    HloModule m
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY e {
+      p = bf16[8] parameter(0)
+      ROOT ar = bf16[8] all-reduce(p), to_apply=add,
+        frontend_attributes={is_spmd_generated="true"}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* ar = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsSpmdGenerated(*ar));
+}
+
+TEST(IsSpmdGeneratedTest, ReturnsFalseByDefault) {
+  absl::string_view kHlo = R"(
+    HloModule m
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY e {
+      p = bf16[8] parameter(0)
+      ROOT ar = bf16[8] all-reduce(p), to_apply=add
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* ar = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(IsSpmdGenerated(*ar));
+}
+
+TEST(IsSpmdGeneratedTest, ReturnsTrueWhenBackendConfigSet) {
+  absl::string_view kHlo = R"(
+    HloModule m
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY e {
+      p = bf16[8] parameter(0)
+      ROOT ar = bf16[8] all-reduce(p), to_apply=add
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* ar = module->entry_computation()->root_instruction();
+
+  GpuBackendConfig config;
+  config.mutable_collective_backend_config()->set_is_spmd_generated(true);
+  ASSERT_THAT(ar->set_backend_config(config), IsOk());
+
+  EXPECT_TRUE(IsSpmdGenerated(*ar));
+}
+
+namespace {
+
+GpuTopology MakeGpuTopology(int32_t num_partitions,
+                            int32_t num_hosts_per_partition,
+                            int32_t num_devices_per_host,
+                            int32_t num_devices_per_process,
+                            bool is_cuda = true) {
+  se::DeviceDescription device_info =
+      is_cuda ? TestGpuDeviceInfo::H100SXMDeviceInfo()
+              : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+  target_config_proto.set_platform_name(is_cuda ? "CUDA" : "ROCM");
+  absl::StatusOr<GpuTargetConfig> target_config =
+      GpuTargetConfig::FromProto(target_config_proto);
+  CHECK_OK(target_config);
+  return GpuTopology(
+      /*platform_version=*/"", num_partitions, num_hosts_per_partition,
+      num_devices_per_host, *target_config,
+      /*host_target_machine_options=*/std::nullopt, num_devices_per_process);
+}
+
+TEST(IsAllReplicasLocalTest, SingleHostSingleProcess) {
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/1,
+      /*num_devices_per_host=*/8,
+      /*num_devices_per_process=*/8);
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  EXPECT_TRUE(IsAllReplicasLocal(
+      topology, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA));
+}
+
+TEST(AreAllReplicasOnSameSliceTest,
+     SingleGBClusterHostMultiProcess_DefaultDisabled_ReturnsFalse) {
+  // A single GB cluster host with 2 processes (each having 1 device).
+  // num_hosts_per_partition = 2, num_devices_per_host = 1, slice_size = 2.
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*num_devices_per_process=*/1);
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 1;
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  // Without the flag enabled, multi-process within a GB cluster host is NOT
+  // considered on the same collective kernel slice.
+  DebugOptions debug_options;
+  EXPECT_FALSE(AreAllReplicasOnSameSlice(
+      topology, debug_options, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
+}
+
+TEST(AreAllReplicasOnSameSliceTest,
+     SingleGBClusterHostMultiProcess_FlagEnabled_ReturnsTrue) {
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*num_devices_per_process=*/1);
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 1;
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  // With ALLREDUCE enabled in
+  // xla_gpu_unsupported_use_cross_host_one_shot_kernel:
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLREDUCE);
+  EXPECT_TRUE(AreAllReplicasOnSameSlice(
+      topology, debug_options, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
+
+  // With ALLCOLLECTIVES enabled:
+  DebugOptions all_collectives_opts;
+  all_collectives_opts.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_TRUE(AreAllReplicasOnSameSlice(
+      topology, all_collectives_opts, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
+}
+
+TEST(AreAllReplicasOnSameSliceTest,
+     SingleGBClusterHostMultiProcess_FlagEnabledForDifferentCollective) {
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*num_devices_per_process=*/1);
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 1;
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  // With only ALLGATHER enabled in the flag, ALLREDUCE should return false:
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLGATHER);
+  EXPECT_FALSE(AreAllReplicasOnSameSlice(
+      topology, debug_options, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
+}
+
+TEST(AreAllReplicasOnSameSliceTest, CrossGBClusterPartitionReturnsFalse) {
+  // 2 GB cluster partitions with 2 devices each (slice_size = 2).
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/2,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*num_devices_per_process=*/1);
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 2;  // Device 2 is in partition 1
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLREDUCE);
+
+  EXPECT_FALSE(AreAllReplicasOnSameSlice(
+      topology, debug_options, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
+}
+
+TEST(IsCollectiveSingleHostAndCrossHostTest, SingleHostAndCrossHostSameSlice) {
+  absl::string_view kHlo = R"(
+    HloModule m, replica_count=2
+
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT sum = f32[] add(a, b)
+    }
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] all-reduce(p), replica_groups={{0,1}}, to_apply=add
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_gpu_unsupported_use_cross_host_one_shot_kernel();
+  const HloInstruction* instr = module->entry_computation()->root_instruction();
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 1;
+
+  // Single host: 1 host with 2 devices per process.
+  GpuTopology single_host_topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/1,
+      /*num_devices_per_host=*/2,
+      /*num_devices_per_process=*/2);
+  EXPECT_THAT(IsCollectiveSingleHost(single_host_topology, *instr, &da),
+              IsOkAndHolds(true));
+  EXPECT_THAT(
+      IsCrossHostCollectiveKernelPossible(single_host_topology, *instr, &da),
+      IsOkAndHolds(false));
+  EXPECT_THAT(AreAllReplicasOnSameSlice(single_host_topology, *instr, &da),
+              IsOkAndHolds(true));
+
+  // Cross-host within same NVLink slice: 2 hosts, 1 device per process.
+  GpuTopology cross_host_topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*num_devices_per_process=*/1);
+  EXPECT_THAT(IsCollectiveSingleHost(cross_host_topology, *instr, &da),
+              IsOkAndHolds(false));
+  EXPECT_THAT(
+      IsCrossHostCollectiveKernelPossible(cross_host_topology, *instr, &da),
+      IsOkAndHolds(false));
+  EXPECT_THAT(AreAllReplicasOnSameSlice(cross_host_topology, *instr, &da),
+              IsOkAndHolds(false));
+
+  // Enable cross-host one-shot kernel flag.
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+          DebugOptions::ALLREDUCE);
+  EXPECT_THAT(IsCollectiveSingleHost(cross_host_topology, *instr, &da),
+              IsOkAndHolds(false));
+  EXPECT_THAT(
+      IsCrossHostCollectiveKernelPossible(cross_host_topology, *instr, &da),
+      IsOkAndHolds(true));
+  EXPECT_THAT(AreAllReplicasOnSameSlice(cross_host_topology, *instr, &da),
+              IsOkAndHolds(true));
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, IsProcessWithoutFlag) {
+  // One NVLink partition of 2 hosts with one 4-device process each.
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/4,
+      /*num_devices_per_process=*/4);
+
+  DebugOptions debug_options;
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            4);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest,
+     IsSliceWhenFlagEnabledAndSliceSpansProcesses) {
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/4,
+      /*num_devices_per_process=*/4);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            8);
+  // Without an op type the flag does not apply.
+  EXPECT_EQ(
+      GetCollectiveKernelDomainSize(topology, debug_options, std::nullopt), 4);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, FlagOnlyAppliesToListedCollective) {
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/4,
+      /*num_devices_per_process=*/4);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLREDUCE);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            8);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLGATHER),
+            4);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, IsProcessWhenSliceIsOneProcess) {
+  // Two NVLink partitions (e.g. two H100 hosts) with one 8-device process each.
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/2,
+      /*num_hosts_per_partition=*/1,
+      /*num_devices_per_host=*/8,
+      /*num_devices_per_process=*/8);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            8);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, IsProcessWhenLsaNotPossible) {
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/4,
+      /*num_devices_per_process=*/4,
+      /*is_cuda=*/false);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            4);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, IsProcessForAsymmetricTopology) {
+  GpuTopology topology(/*platform_version=*/"", /*num_partitions=*/-1,
+                       /*num_hosts_per_partition=*/-1,
+                       /*num_devices_per_host=*/-1);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            topology.num_devices_per_process());
+}
+
+TEST(OpcodesForTritonCollectivesTest,
+     AllCollectivesEnablesAllSupportedOpcodes) {
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_experimental_use_collective_kernels(
+      DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES);
+  EXPECT_THAT(OpcodesForTritonCollectives(debug_options),
+              IsOkAndHolds(::testing::UnorderedElementsAre(
+                  HloOpcode::kAllReduce, HloOpcode::kAllReduceStart,
+                  HloOpcode::kAllGather, HloOpcode::kReduceScatter,
+                  HloOpcode::kAllToAll)));
+}
+
+TEST(IsTritonTwoShotAllGatherTest, MatchesDirectAndCustomFusedTwoShot) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m, replica_count=2
+
+    two_shot_comp {
+      p0 = f32[8] parameter(0)
+      ROOT ag = f32[16] all-gather(p0), replica_groups={{0,1}}, dimensions={0},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+    }
+
+    one_shot_comp {
+      p0 = f32[8] parameter(0)
+      ROOT ag = f32[16] all-gather(p0), replica_groups={{0,1}}, dimensions={0},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
+    }
+
+    ENTRY e {
+      p0 = f32[8] parameter(0)
+      ag_unconfigured = f32[16] all-gather(p0), replica_groups={{0,1}}, dimensions={0}
+      f_two_shot = f32[16] fusion(p0), kind=kCustom, calls=two_shot_comp
+      f_one_shot = f32[16] fusion(p0), kind=kCustom, calls=one_shot_comp
+      ROOT out = (f32[16], f32[16], f32[16]) tuple(ag_unconfigured, f_two_shot, f_one_shot)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const HloInstruction* two_shot_ag =
+      module->GetComputationWithName("two_shot_comp")->root_instruction();
+  const HloInstruction* one_shot_ag =
+      module->GetComputationWithName("one_shot_comp")->root_instruction();
+  HloComputation* entry = module->entry_computation();
+  EXPECT_TRUE(IsTritonTwoShotAllGather(*two_shot_ag));
+  EXPECT_FALSE(IsTritonTwoShotAllGather(*one_shot_ag));
+  EXPECT_FALSE(IsTritonTwoShotAllGather(
+      *entry->GetInstructionWithName("ag_unconfigured")));
+  EXPECT_TRUE(
+      IsTritonTwoShotAllGather(*entry->GetInstructionWithName("f_two_shot")));
+  EXPECT_FALSE(
+      IsTritonTwoShotAllGather(*entry->GetInstructionWithName("f_one_shot")));
+}
+
+}  // namespace
+}  // namespace xla::gpu

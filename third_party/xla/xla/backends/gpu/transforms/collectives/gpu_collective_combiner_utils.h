@@ -16,51 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_GPU_COLLECTIVE_COMBINER_UTILS_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_GPU_COLLECTIVE_COMBINER_UTILS_H_
 
-#include <cstdint>
-#include <string>
-
-#include "absl/status/status.h"
-#include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla::gpu {
-
-// Adds information that `instr` has been pipelined to the
-// `CollectiveBackendInfo`. It is up to the caller to decide when to invoke
-// this.
-absl::Status AppendPipelinedInstruction(HloInstruction* instr,
-                                        HloInstruction* new_while_instr);
-
-// Returns true if `instr` is a pipelined collective instruction.
-bool IsPipelinedCollective(const HloInstruction& instr);
-
-// Returns true if module contains any pipelined instruction. False otherwise.
-bool ContainsPipelinedInstruction(const HloModule& module);
-
-// Returns true if heuristic collective combining is enabled.
-// Heuristic collective combining enables more aggressive optimizations based
-// on the platform and HLO's topology.
-bool EnableHeuristicCollectiveCombining(
-    const HloModuleConfig& config,
-    const se::DeviceDescription& device_description, int64_t nvlink_slice_size);
-
-// Merges the CollectiveBackendConfig from all combined instructions onto the
-// target instruction. The is_pipelined and is_spmd_generated fields are
-// logical ORs over the source instructions. An explicitly known communication
-// domain propagates over UNSPECIFIED; conflicting known domains are rejected.
-absl::Status MergeCollectiveBackendConfig(
-    absl::Span<HloInstruction* const> to_combine, HloInstruction* combined);
-
-// Appends frontend attributes that constrain collective combining to
-// `extra_args`. Values are length-prefixed so arbitrary frontend strings cannot
-// produce colliding combiner keys.
-void AppendFrontendAttributesToCombinerKey(const HloInstruction* instruction,
-                                           std::string& extra_args);
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/collectives/gpu_collective_combiner_utils.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/gpu_collective_combiner_utils.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_GPU_COLLECTIVE_COMBINER_UTILS_H_

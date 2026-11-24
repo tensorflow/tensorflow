@@ -16,46 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SCAN_REWRITER_TRITON_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SCAN_REWRITER_TRITON_H_
 
-#include <utility>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/hlo_cost_analysis.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla {
-namespace gpu {
-
-// Rewrites compatible scan operations into custom fusions to be
-// code-generated with the Triton fusion emitter. Each fusion gets the
-// block-level config with the cost model's best tiling.
-class ScanRewriterTriton : public HloModulePass {
- public:
-  ScanRewriterTriton(const se::DeviceDescription& device_info,
-                     HloCostAnalysis::ShapeSizeFunction shape_size,
-                     mlir::MLIRContext* mlir_context)
-      : device_info_(device_info),
-        shape_size_(std::move(shape_size)),
-        mlir_context_(mlir_context) {}
-
-  absl::string_view name() const override { return "scan-rewriter-triton"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const se::DeviceDescription& device_info_;
-  HloCostAnalysis::ShapeSizeFunction shape_size_;
-  mlir::MLIRContext* mlir_context_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/scan_rewriter_triton.h"
+#include "xla/backends/gpu/hlo/transforms/scan_rewriter_triton.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_SCAN_REWRITER_TRITON_H_

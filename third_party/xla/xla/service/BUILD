@@ -1272,7 +1272,7 @@ cc_library(
         "//xla:native_custom_call_handler_allowlist",
         "//xla/backends/gpu/runtime:__subpackages__",
         "//xla/backends/gpu/tests:__pkg__",
-        "//xla/backends/gpu/transforms:__subpackages__",
+        "//xla/backends/gpu/hlo/transforms:__subpackages__",
         "//xla/stream_executor/sycl:__pkg__",
         "//third_party/pathways/configuration:__subpackages__",
     ]),

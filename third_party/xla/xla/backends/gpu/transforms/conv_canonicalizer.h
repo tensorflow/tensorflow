@@ -16,46 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CONV_CANONICALIZER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CONV_CANONICALIZER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Canonicalizes convolutions and convolution operands.
-//
-// 1. Transforms s32 constants -> s32 convert(s8 constant)
-// If a s32 constant is equivalent to an s8 constant, i.e. the constant contains
-// values in the range [-128, 127], convert the constant to s8 and add a convert
-// op to bring the operand back to s32.
-//
-// 2. Removes redundant converts, e.g. s32 convert(s32 convert(s8)) -> s32
-// convert(s8).
-//
-// 3. Transforms SpatialOp(s32 convert(s8)) -> s32 convert(SpatialOp(s8)).
-// Commutes convert op over spatial operations (e.g. Reshape, Transpose,
-// Broadcast, Pad, Slice) and moves the convert to the convolution operand.
-//
-// 4. Pads odd channel dimensions to multiples of 2 for 16-bit float (BF16/F16)
-// convolutions so that they satisfy 32-bit alignment requirements for cuDNN
-// runtime epilogue fusion.
-
-class ConvCanonicalizer : public HloModulePass {
- public:
-  ConvCanonicalizer() = default;
-
-  absl::string_view name() const override { return "conv-canonicalizer"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/conv_canonicalizer.h"
+#include "xla/backends/gpu/hlo/transforms/conv_canonicalizer.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_CONV_CANONICALIZER_H_

@@ -16,31 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_BACKEND_ASSIGNER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_BACKEND_ASSIGNER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-namespace gpu {
-
-// Assigns the appropriate collectives backend to collective operations.
-class CollectiveBackendAssigner : public HloModulePass {
- public:
-  CollectiveBackendAssigner() = default;
-
-  absl::string_view name() const override {
-    return "collective-backend-assigner";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/collectives/collective_backend_assigner.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/collective_backend_assigner.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_BACKEND_ASSIGNER_H_

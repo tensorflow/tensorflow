@@ -16,39 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_ANNOTATOR_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_ANNOTATOR_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// Annotates dynamic-slice and dynamic-update-slice instructions with a
-// DynamicSliceConfig backend config. Stores loop-dependent offsets as a linear
-// progression or a table indexed by iteration; static offsets use zero stride.
-//
-// TODO(ezhulenev): Remove `enable_table_offsets` together with the
-// `xla_gpu_experimental_enable_dynamic_slice_table_offsets` flag two weeks
-// after the runtime support for table offsets has landed (see the GPU
-// compatibility window in docs/contributing.md). Until then, the production
-// pipeline must not emit table offsets that an older runtime cannot understand.
-class DynamicSliceAnnotator : public HloModulePass {
- public:
-  explicit DynamicSliceAnnotator(bool enable_table_offsets = false)
-      : enable_table_offsets_(enable_table_offsets) {}
-
-  absl::string_view name() const override { return "dynamic-slice-annotator"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  bool enable_table_offsets_;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/dynamic_slice_annotator.h"
+#include "xla/backends/gpu/hlo/transforms/dynamic_slice_annotator.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_DYNAMIC_SLICE_ANNOTATOR_H_

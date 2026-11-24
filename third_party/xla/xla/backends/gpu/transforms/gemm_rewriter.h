@@ -12,103 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_GEMM_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_GEMM_REWRITER_H_
 
-#include <functional>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/decision.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/semantic_version.h"
-
-namespace xla {
-namespace gpu {
-
-// cuBLAS GEMM in the most general form can run the following operation:
-//
-// (kAdd
-//    (kMultiply (kDot A B) alpha)
-//    (kMultiply C beta))
-//
-// where A, B, C are matrices or vectors and `alpha` and `beta` are host
-// constants. In matrix-vector multiplication, one operand must be a matrix and
-// the other must be a vector. The additional requirement is that C has no other
-// users (otherwise, it does not make sense to fuse it inside the custom call).
-//
-// Both multiplication and addition can be avoided (equivalent to setting
-// `alpha` to one and `beta` to zero).
-//
-// This pass pattern-matches the most general form of this instruction
-// (we assume transposes are already folded), and rewrites it into a custom call
-// where (A, B, C) are three operands respectively, and `alpha` and `beta` are
-// stored in the backend config.
-
-struct GemmRewriterOptions {
-  // The DType of the GEMM to rewrite.
-  enum class DType { kFp8Only, kNonFp8Only };
-  DType dtype = DType::kNonFp8Only;
-
-  // Disabling bias prevents using the `beta * C` term the GEMM, which can
-  // remove dependencies between multiple matrix multiplications. This, in
-  // turn, can improve the performance of overall computation by allowing
-  // multiple GEMMs to be scheduled in parallel.
-  //
-  // As an example, consider the following computation: `(A * A) + (B * B)`.
-  // With bias enabled, the `GemmRewriter` will emit the following GEMMs:
-  //
-  // AA := GEMM(A * A)
-  // ROOT := GEMM(B * B + AA)
-  //
-  // Because the second GEMM depends on the first, they cannot be scheduled in
-  // parallel. Instead, with bias disabled, the `GemmRewriter` will emit the
-  // following:
-  //
-  // AA := GEMM(A * A)
-  // BB := GEMM(B * B)
-  // ROOT := AA + BB
-  //
-  // In this case, the two GEMMs can be scheduled in parallel.
-  enum class BiasMode { kBias, kNoBias };
-  BiasMode bias_mode = BiasMode::kBias;
-};
-
-class GemmRewriter : public HloModulePass {
- public:
-  // `cudnn_version` and `is_supported_by_cudnn_fusion` are only used to decide
-  // whether a ragged-dot is left for RaggedDotFusionRewriter; the defaults
-  // stand for "no cuDNN support", which is what pipelines that do not run
-  // RaggedDotFusionRewriter want.  A pipeline that passes a real
-  // `cudnn_version` must pass the same `is_supported_by_cudnn_fusion` as its
-  // RaggedDotRewriter, or the two disagree about which ragged-dots cuDNN owns.
-  GemmRewriter(se::GpuComputeCapability gpu_version,
-               se::SemanticVersion toolkit_version,
-               GemmRewriterOptions options = {},
-               se::dnn::VersionInfo cudnn_version = se::dnn::VersionInfo(),
-               std::function<Decision(const HloInstruction*)>
-                   is_supported_by_cudnn_fusion = nullptr);
-  absl::string_view name() const override { return "cublas-gemm-rewriter"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  se::GpuComputeCapability gpu_version_;
-  se::SemanticVersion toolkit_version_;
-  GemmRewriterOptions options_;
-  se::dnn::VersionInfo cudnn_version_;
-  std::function<Decision(const HloInstruction*)> is_supported_by_cudnn_fusion_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/gemm_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/gemm_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_GEMM_REWRITER_H_

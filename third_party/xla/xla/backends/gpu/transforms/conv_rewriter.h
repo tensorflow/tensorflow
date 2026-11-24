@@ -16,48 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CONV_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CONV_REWRITER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
-
-namespace xla {
-namespace gpu {
-
-// Rewrites plain convolutions, backwards-filter convolutions, and
-// backwards-input convolutions into CustomCall HLOs that call into
-// Cudnn/Miopen.
-//
-// This pass does not fuse other ops into the convolution. Instead, specific
-// patterns of ops will be matched and fused into the custom call in
-// CudnnFusedConvRewriter.
-
-class ConvRewriter : public HloModulePass {
- public:
-  explicit ConvRewriter(
-      const se::GpuComputeCapability& compute_capability,
-      se::dnn::VersionInfo dnn_version = se::dnn::VersionInfo{})
-      : compute_capability_(compute_capability), dnn_version_(dnn_version) {};
-
-  absl::string_view name() const override { return "conv-rewriter"; }
-
-  static bool ConvIsLowerable(HloInstruction* conv);
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const se::GpuComputeCapability compute_capability_;
-  const se::dnn::VersionInfo dnn_version_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/conv_rewriter.h"
+#include "xla/backends/gpu/hlo/transforms/conv_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_CONV_REWRITER_H_

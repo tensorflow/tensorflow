@@ -54,8 +54,8 @@ before deciding.
 | **D. Avoidable** | `GOOGLE_CUDA`, `TENSORFLOW_USE_ROCM`, `TENSORFLOW_USE_SYCL`, `XLA_*`/`TF_*` feature toggles (`ENABLE_ONEDNN_ASYNC`, `INTEL_MKL`, ...) outside platform-leaf targets; any backend/version conditional in a `_test.cc`; conditionals in public headers that pull in platform headers | **Major** Category I / II / III finding (Step 3) - blocking. |
 
 Classification is about the *condition and location*, not about who wrote it.
-A `CUDA_VERSION` guard in `xla/backends/gpu/transforms/` is class C only if the
-compile-required test passes; a tiny `NDEBUG` block in a test is class B.
+A `CUDA_VERSION` guard in `xla/backends/gpu/hlo/transforms/` is class C only if
+the compile-required test passes; a tiny `NDEBUG` block in a test is class B.
 
 ## Step 2: Minimality Check (Class B, and Class C That Passed Verification)
 
@@ -142,7 +142,7 @@ Raise a **minor** suggestion when:
   `select()`), see Category III below.
 - A verified compile-required library version guard (`CUDNN_VERSION`,
   `CUDNN_FRONTEND_VERSION`, `NCCL_VERSION_CODE`, ...) sits **outside
-  `xla/stream_executor/`** - e.g. in `xla/backends/gpu/transforms/`,
+  `xla/stream_executor/`** - e.g. in `xla/backends/gpu/hlo/transforms/`,
   `xla/service/gpu/`, or `xla/backends/gpu/collectives/`. Accept it, but suggest
   confining the version-dependent piece to `xla/stream_executor/` (or the
   backend's leaf target) behind a backend-agnostic API, so compiler passes never

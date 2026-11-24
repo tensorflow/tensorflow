@@ -16,29 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SCHEDULING_INSTRUCTION_ANNOTATOR_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SCHEDULING_INSTRUCTION_ANNOTATOR_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla::gpu {
-
-// The pass amends the `OpMetadata` with instruction name present at the
-// scheduling time. This is later being used to make sure instructions are not
-// renamed post scheduling. Enforcing this is necessary because otherwise
-class SchedulingInstructionAnnotator : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "scheduling-instruction-annotator";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/scheduling_instruction_annotator.h"
+#include "xla/backends/gpu/hlo/transforms/scheduling_instruction_annotator.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_SCHEDULING_INSTRUCTION_ANNOTATOR_H_

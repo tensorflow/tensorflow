@@ -1,0 +1,116 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/hlo/transforms/collectives/all_reduce_decomposer.h"
+
+#include <memory>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/simplifiers/hlo_cse.h"
+#include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/test.h"
+
+namespace xla {
+namespace gpu {
+namespace {
+
+using AllReduceDecomposerTest = HloHardwareIndependentTestBase;
+
+TEST_F(AllReduceDecomposerTest, SmallAllReduceIsDecomposed) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  input = f32[16] parameter(0)
+  ROOT all-reduce = f32[16] all-reduce(input), replica_groups={{0,1}}, to_apply=add
+}
+)"));
+
+  AllReduceDecomposer decomposer;
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  EXPECT_TRUE(changed);
+  EXPECT_OK(VerifyHloModule(module.get(), true, true));
+  EXPECT_OK(HloCSE(true).Run(module.get()));
+
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    // CHECK: f32[1,16]{1,0} reshape
+    // CHECK: f32[2,16]{1,0} all-gather
+    // CHECK: f32[16]{0} reduce
+  )"));
+}
+
+TEST_F(AllReduceDecomposerTest, GroupedAllReduceIsDecomposed) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  input = f32[16] parameter(0)
+  ROOT all-reduce = f32[16] all-reduce(input), replica_groups={{0,1}},
+    to_apply=add, frontend_attributes={collective_group_key="g0"}
+}
+)"));
+
+  AllReduceDecomposer decomposer;
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  EXPECT_TRUE(changed);
+
+  EXPECT_TRUE(FindInstructions(module.get(), HloOpcode::kAllReduce).empty());
+  HloInstruction* all_gather =
+      FindInstruction(module.get(), HloOpcode::kAllGather);
+  ASSERT_NE(all_gather, nullptr);
+  EXPECT_EQ(all_gather->get_frontend_attribute("collective_group_key"), "g0");
+}
+
+TEST_F(AllReduceDecomposerTest, LargeAllReduceIsNotDecomposed) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  input = f32[16777216] parameter(0)
+  ROOT all-reduce = f32[16777216] all-reduce(input), replica_groups={{0,1}}, to_apply=add
+}
+)"));
+
+  AllReduceDecomposer decomposer;
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  EXPECT_FALSE(changed);
+}
+
+}  // namespace
+}  // namespace gpu
+}  // namespace xla

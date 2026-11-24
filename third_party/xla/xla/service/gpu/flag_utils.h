@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FLAG_UTILS_H_
 #define XLA_SERVICE_GPU_FLAG_UTILS_H_
 
-#include "xla/backends/gpu/transforms/double_buffer_loop_unrolling.h"
+#include "xla/backends/gpu/hlo/transforms/double_buffer_loop_unrolling.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/transforms/collectives/collective_pipeliner.h"
 #include "xla/hlo/transforms/hlo_scheduling/latency_hiding_scheduler.h"

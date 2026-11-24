@@ -33,7 +33,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
-#include "xla/backends/gpu/transforms/compiled_cudnn_graph_cache.h"
+#include "xla/backends/gpu/hlo/transforms/compiled_cudnn_graph_cache.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"

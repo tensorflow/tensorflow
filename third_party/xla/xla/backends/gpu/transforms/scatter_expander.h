@@ -16,25 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SCATTER_EXPANDER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SCATTER_EXPANDER_H_
 
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/transforms/expanders/scatter_expander.h"
-
-namespace xla {
-
-// Legalizes scatters on the GPU.
-class GpuScatterExpander : public ScatterExpander {
- public:
-  // Although we pass kEliminateAllScatters, we override this behavior in
-  // InstructionMatchesPattern and select only some scatters to expand.
-  GpuScatterExpander() : ScatterExpander(kEliminateAllScatters) {}
-
-  absl::string_view name() const override { return "gpu_scatter_expander"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* inst) override;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/scatter_expander.h"
+#include "xla/backends/gpu/hlo/transforms/scatter_expander.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_SCATTER_EXPANDER_H_

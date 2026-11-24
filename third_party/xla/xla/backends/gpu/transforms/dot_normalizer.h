@@ -16,33 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_DOT_NORMALIZER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_DOT_NORMALIZER_H_
 
-#include <utility>
-
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/transforms/expanders/op_expander_pass.h"
-#include "xla/util.h"
-
-namespace xla::gpu {
-
-// Ensures that a dot has at least 1 contracting dimension. If there are no
-// contracting dimensions, a trivial 1-sized contracting dimension is added.
-// This pass is expected to be run after layout assignment.
-class DotNormalizer : public OpExpanderPass {
- public:
-  explicit DotNormalizer(HloPredicate extra_filter = nullptr)
-      : OpExpanderPass(std::move(extra_filter)) {}
-
-  absl::string_view name() const override { return "dot_normalizer"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-};
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/dot_normalizer.h"
+#include "xla/backends/gpu/hlo/transforms/dot_normalizer.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_DOT_NORMALIZER_H_
