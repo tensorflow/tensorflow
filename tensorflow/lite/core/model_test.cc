@@ -355,6 +355,21 @@ TEST(BasicFlatBufferModel, TestNullDestination) {
   ASSERT_NE(InterpreterBuilder(*model, TrivialResolver())(nullptr), kTfLiteOk);
 }
 
+TEST(BasicFlatBufferModel, TestMissingSubgraphs) {
+  flatbuffers::FlatBufferBuilder builder;
+  FinishModelBuffer(builder, CreateModel(builder, TFLITE_SCHEMA_VERSION));
+  auto model = FlatBufferModel::VerifyAndBuildFromBuffer(
+      reinterpret_cast<const char*>(builder.GetBufferPointer()),
+      builder.GetSize());
+  ASSERT_NE(model, nullptr);
+  ASSERT_EQ(model->GetModel()->subgraphs(), nullptr);
+
+  std::unique_ptr<Interpreter> interpreter;
+  EXPECT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
+            kTfLiteError);
+  EXPECT_EQ(interpreter, nullptr);
+}
+
 // Make sure currently unsupported # of subgraphs are checked
 // TODO(aselle): Replace this test when multiple subgraphs are supported.
 TEST(BasicFlatBufferModel, TestZeroSubgraphs) {
