@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
@@ -79,9 +80,9 @@ class CUDABlas : public blas::BlasSupport {
   //                     (true) or device (false).
   // args:               Arguments of cuBLAS function.
   template <typename FuncT, typename... Args>
-  absl::Status DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
-                                  bool pointer_mode_host,
-                                  cublasMath_t math_type, Args... args);
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status DoBlasInternalImpl(
+      FuncT cublas_func, Stream* stream, bool pointer_mode_host,
+      cublasMath_t math_type, Args... args);
 
   // Convenience functions that call DoBlasInternalImpl with err_on_failure=true
   // and math_type=CUBLAS_DEFAULT_MATH.

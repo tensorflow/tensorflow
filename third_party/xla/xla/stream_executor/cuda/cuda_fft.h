@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "absl/base/attributes.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cufft.h"
@@ -112,17 +113,16 @@ class CUDAFft : public fft::FftSupport {
 
   // This is for complex to complex FFT, when the direction is required.
   template <typename FuncT, typename InputT, typename OutputT>
-  bool DoFftWithDirectionInternal(Stream* stream, fft::Plan* plan,
-                                  FuncT cufft_exec,
-                                  const DeviceAddress<InputT>& input,
-                                  DeviceAddress<OutputT>* output);
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI bool DoFftWithDirectionInternal(
+      Stream* stream, fft::Plan* plan, FuncT cufft_exec,
+      const DeviceAddress<InputT>& input, DeviceAddress<OutputT>* output);
 
   // This is for complex to real or real to complex FFT, when the direction
   // is implied.
   template <typename FuncT, typename InputT, typename OutputT>
-  bool DoFftInternal(Stream* stream, fft::Plan* plan, FuncT cufft_exec,
-                     const DeviceAddress<InputT>& input,
-                     DeviceAddress<OutputT>* output);
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI bool DoFftInternal(
+      Stream* stream, fft::Plan* plan, FuncT cufft_exec,
+      const DeviceAddress<InputT>& input, DeviceAddress<OutputT>* output);
 
   CUDAFft(const CUDAFft&) = delete;
   void operator=(const CUDAFft&) = delete;
