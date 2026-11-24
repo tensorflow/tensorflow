@@ -512,8 +512,8 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
 
   HloSnapshot snapshot;
 
-  if (executable_ptr->dumping_snapshot()) {
-    *snapshot.mutable_hlo() = *executable_ptr->hlo_proto();
+  if (DumpingHloSnapshots(*executable_ptr)) {
+    *snapshot.mutable_hlo() = MakeHloProtoForSnapshot(*executable_ptr);
     ABSL_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
                                       executors[0]->device_ordinal()));
     ABSL_RETURN_IF_ERROR(RecordArguments(replicated_arguments.front(), stream.get(),
@@ -554,7 +554,7 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
     out.push_back(std::make_unique<GlobalData>(this, output));
   }
 
-  if (executable_ptr->dumping_snapshot()) {
+  if (DumpingHloSnapshots(*executable_ptr)) {
     ABSL_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
                      allocation_tracker_.ResolveForReplica(outputs[0], 0));
     ABSL_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executors[0]));
@@ -597,7 +597,7 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const HloModuleProto& module_proto,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
     se::StreamExecutor* executor, const Compiler::CompileOptions& options,
-    bool run_backend_only) {
+    bool run_backend_only, std::unique_ptr<HloProto>* snapshot_hlo) {
   VLOG(1) << StrFormat(
       "BuildExecutable on service %p with serialized module proto: %s", this,
       module_proto.name());
@@ -620,7 +620,8 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     // Save proto state before optimizations if we want a snapshot.
     // When run_backend_only is enabled the post-optimization HLO will be the
     // same as the pre-optimization HLO.
-    if (DumpingEnabledForHloModule(*module)) {
+    if (snapshot_hlo != nullptr && DumpingEnabledForHloModule(*module) &&
+        module->config().debug_options().xla_dump_hlo_snapshots()) {
       hlo_proto_before_opt = std::make_unique<HloProto>(MakeHloProto(*module));
     }
     ABSL_ASSIGN_OR_RETURN(module, backend->compiler()->RunHloPasses(
@@ -634,17 +635,15 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   const BufferAssignmentProto* buffer_assignment_proto_after_opt =
       executable->buffer_assignment_proto();
 
-  // If dumping is enabled RunBackend(...) will emit a hlo_proto in the
-  // executable. This contains the buffer_assignment that is only available
-  // after RunBackend(). If hlo_proto_before_opt is not null, then we replace
-  // its buffer_assignment with the one from after_opt and then store it into
-  // the executable.
+  // The buffer assignment is only available after RunBackend(). If the
+  // executable exposes it, attach it to the HLO before optimizations and hand
+  // that to the caller as the snapshot HLO.
   if (hlo_proto_before_opt != nullptr &&
       buffer_assignment_proto_after_opt != nullptr) {
     CHECK(DumpingEnabledForHloModule(executable->module()));
     *hlo_proto_before_opt->mutable_buffer_assignment() =
         *buffer_assignment_proto_after_opt;
-    executable->set_hlo_proto(std::move(hlo_proto_before_opt));
+    *snapshot_hlo = std::move(hlo_proto_before_opt);
   }
   return executable;
 }
@@ -677,15 +676,18 @@ absl::StatusOr<ExecutionHandle> Service::Compile(
   VLOG(3) << "Compile created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
 
+  std::unique_ptr<HloProto> snapshot_hlo;
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       BuildExecutable(computation.proto(), std::move(module_config),
                       execute_backend_.get(),
                       execute_backend_->default_stream_executor(),
-                      {/*device_allocator=*/nullptr}));
+                      {/*device_allocator=*/nullptr},
+                      /*run_backend_only=*/false, &snapshot_hlo));
 
   VLOG(1) << "successfully completed 'compile' request";
-  return compilation_cache_.Insert(std::move(executable));
+  return compilation_cache_.Insert(std::move(executable),
+                                   std::move(snapshot_hlo));
 }
 
 absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
@@ -729,8 +731,12 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
                    execute_backend_->BorrowStream(
                        execute_backend_->default_stream_executor()));
   HloSnapshot snapshot;
-  if (executable->dumping_snapshot()) {
-    *snapshot.mutable_hlo() = *executable->hlo_proto();
+  if (DumpingHloSnapshots(*executable)) {
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const HloProto> snapshot_hlo,
+                     compilation_cache_.LookUpSnapshotHlo(handle));
+    *snapshot.mutable_hlo() = snapshot_hlo != nullptr
+                                  ? *snapshot_hlo
+                                  : MakeHloProtoForSnapshot(*executable);
     snapshot.set_execution_platform(execute_backend_->platform()->Name());
     ABSL_RETURN_IF_ERROR(RecordArguments(replicated_arguments.front(), stream.get(),
                                     execute_backend_->transfer_manager(),
@@ -744,7 +750,7 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
           SingleComputationDeviceHandle(),
           absl::StrCat("result of ", executable->name()), execution_profile));
 
-  if (executable->dumping_snapshot()) {
+  if (DumpingHloSnapshots(*executable)) {
     ABSL_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
                      allocation_tracker_.ResolveForReplica(output, 0));
     ABSL_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),

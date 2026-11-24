@@ -40,7 +40,9 @@ limitations under the License.
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_address.h"
@@ -54,7 +56,7 @@ namespace cpu {
 //
 // Wraps a JIT-ed object that can be executed "on device". We JIT for the host
 // architecture, so JIT-ed code and host code share the same ABI.
-class CpuExecutable : public Executable {
+class CpuExecutable : public HloModuleExecutable {
  public:
   // Creates a CpuExecutable from a thunk sequence.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
@@ -134,6 +136,17 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
   absl::Span<const ConstantAllocation> constants() const { return constants_; }
 
+  // Sets the buffer assignment proto that `buffer_assignment_proto()` returns.
+  // The compiler only sets it if it embeds debug info in the executable.
+  void set_buffer_assignment_proto(BufferAssignmentProto proto) {
+    buffer_assignment_proto_ = std::move(proto);
+  }
+
+  const BufferAssignmentProto* buffer_assignment_proto() const override {
+    return buffer_assignment_proto_.has_value() ? &*buffer_assignment_proto_
+                                                : nullptr;
+  }
+
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
   absl::Span<const BufferAllocation* absl_nonnull const> GetAllocations()
@@ -210,6 +223,10 @@ class CpuExecutable : public Executable {
   // Buffer assignment for the buffers we need to allocate.
   std::shared_ptr<BufferAssignment> assignment_;
   std::vector<const BufferAllocation*> alloc_ptrs_;
+
+  // Proto form of `assignment_`, exposed through `buffer_assignment_proto()`.
+  // Only set if the compiler embeds debug info in the executable.
+  std::optional<BufferAssignmentProto> buffer_assignment_proto_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
