@@ -27,6 +27,10 @@ package(
 cc_library(
     name = "nvptx_libdevice_path",
     srcs = ["nvptx_libdevice_path.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         "//xla/backends/gpu/target_lowering:nvptx_utils",
         "@com_google_absl//absl/base:core_headers",

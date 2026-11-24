@@ -46,6 +46,9 @@ cc_library(
 cc_library(
     name = "nvptx_libdevice_path",
     hdrs = ["nvptx_libdevice_path.h"],
-    tags = if_google(["avoid_dep"]),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ] + if_google(["avoid_dep"]),
     deps = ["//xla/backends/gpu/target_lowering:nvptx_libdevice_path"],
 )

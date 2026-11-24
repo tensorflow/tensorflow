@@ -95,6 +95,8 @@ cc_library(
         "CUDA_CUDART_REPO_NAME=\\\"" + get_canonical_repo_name("cuda_cudart") + "\\\"",
     ],
     tags = [
+        "cuda-only",
+        "gpu",
         "manual",
         "no_oss",
         "nobuilder",
