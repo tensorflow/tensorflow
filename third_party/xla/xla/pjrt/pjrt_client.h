@@ -998,8 +998,13 @@ class PjRtClient {
   // Creates a PjRtBuffer that is a non-owned view of an on-device
   // buffer (typically allocated by another library).
   // on_delete_callback is called when the PjRtBuffer is done with the on-device
-  // buffer. The buffer may be mutated, for example, if the buffer is donated
-  // to an Execute operation.
+  // buffer.
+  //
+  // If `is_mutable` is true, the buffer may be mutated, for example, if the
+  // buffer is donated to an Execute operation. If `is_mutable` is false
+  // (default), platforms that support read-only views (such as CPU) will not
+  // mutate the buffer in place on donation; note that some platforms (such as
+  // GPU) may still mutate the buffer on donation regardless of `is_mutable`.
   //
   // `stream`, if specified, is a platform-specific stream handle that should
   // contain the work or events needed to materialize the on-device
@@ -1011,6 +1016,15 @@ class PjRtClient {
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream = std::nullopt) {
+    return CreateViewOfDeviceBuffer(device_ptr, shape, memory_space,
+                                    std::move(on_delete_callback), stream,
+                                    /*is_mutable=*/false);
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+      void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
+      std::function<void()> on_delete_callback,
+      std::optional<std::intptr_t> stream, bool is_mutable) {
     return absl::UnimplementedError(
         "CreateViewOfDeviceBuffer is not implemented.");
   }

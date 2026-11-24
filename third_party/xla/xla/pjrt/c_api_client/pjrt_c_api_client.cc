@@ -1223,7 +1223,14 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtCApiClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
     std::function<void()> on_delete_callback,
-    std::optional<std::intptr_t> stream) {
+    std::optional<std::intptr_t> stream, bool is_mutable) {
+  const PJRT_Api* c_api = pjrt_c_api();
+  if (is_mutable && c_api->pjrt_api_version.major_version == 0 &&
+      c_api->pjrt_api_version.minor_version < 119) {
+    return absl::UnimplementedError(
+        "PJRT_Client_CreateViewOfDeviceBuffer with is_mutable=true requires "
+        "PJRT C API version 0.119 or higher.");
+  }
   PJRT_Client_CreateViewOfDeviceBuffer_Args args;
   args.struct_size = PJRT_Client_CreateViewOfDeviceBuffer_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -1254,12 +1261,12 @@ PjRtCApiClient::CreateViewOfDeviceBuffer(
   }
   args.device = nullptr;
   args.memory = absl::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
+  args.is_mutable = is_mutable;
   if (stream.has_value()) {
     args.stream = *stream;
   } else {
     args.stream = reinterpret_cast<intptr_t>(nullptr);
   }
-  const PJRT_Api* c_api = pjrt_c_api();
 
   RETURN_STATUS_IF_PJRT_ERROR(
       c_api->PJRT_Client_CreateViewOfDeviceBuffer(&args), c_api);

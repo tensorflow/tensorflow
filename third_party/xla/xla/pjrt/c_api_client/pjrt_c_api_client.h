@@ -486,10 +486,11 @@ class PjRtCApiClient : public PjRtClient {
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
 
+  using PjRtClient::CreateViewOfDeviceBuffer;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
-      std::optional<std::intptr_t> stream) override;
+      std::optional<std::intptr_t> stream, bool is_mutable) override;
 
   absl::StatusOr<std::uintptr_t> UnsafeBufferPointer(
       PjRtBuffer* buffer) override;

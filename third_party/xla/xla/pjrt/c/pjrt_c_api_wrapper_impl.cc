@@ -1541,6 +1541,10 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
 
 PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
     PJRT_Client_CreateViewOfDeviceBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_CreateViewOfDeviceBuffer_Args",
+      PJRT_STRUCT_SIZE(PJRT_Client_CreateViewOfDeviceBuffer_Args, buffer),
+      args->struct_size));
   PJRT_ASSIGN_OR_RETURN(xla::Shape shape,
                         pjrt::BuildXlaShapeFromC(args->element_type, args->dims,
                                                  args->num_dims, args->layout));
@@ -1557,8 +1561,9 @@ PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
     stream = args->stream;
   }
   std::unique_ptr<xla::PjRtBuffer> buffer;
-  bool has_memory_space = args->struct_size >=
-                          PJRT_Client_CreateViewOfDeviceBuffer_Args_STRUCT_SIZE;
+  bool has_memory_space =
+      args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Client_CreateViewOfDeviceBuffer_Args, memory);
   xla::PjRtMemorySpace* memory_space = nullptr;
   if (has_memory_space && args->memory != nullptr) {
     memory_space = xla::PjRtMemorySpace::FromC(args->memory);
@@ -1570,9 +1575,23 @@ PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
         absl::InvalidArgumentError("PJRT_Client_CreateViewOfDeviceBuffer "
                                    "requires either a device or a memory"));
   }
-  PJRT_ASSIGN_OR_RETURN(buffer, args->client->client->CreateViewOfDeviceBuffer(
-                                    args->device_buffer_ptr, shape,
-                                    memory_space, on_delete_callback, stream));
+  bool is_mutable =
+      args->struct_size >=
+          PJRT_STRUCT_SIZE(PJRT_Client_CreateViewOfDeviceBuffer_Args,
+                           is_mutable) &&
+      args->is_mutable;
+  if (is_mutable) {
+    PJRT_ASSIGN_OR_RETURN(buffer,
+                          args->client->client->CreateViewOfDeviceBuffer(
+                              args->device_buffer_ptr, shape, memory_space,
+                              std::move(on_delete_callback), stream,
+                              /*is_mutable=*/true));
+  } else {
+    PJRT_ASSIGN_OR_RETURN(buffer,
+                          args->client->client->CreateViewOfDeviceBuffer(
+                              args->device_buffer_ptr, shape, memory_space,
+                              std::move(on_delete_callback), stream));
+  }
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
   return nullptr;
 }

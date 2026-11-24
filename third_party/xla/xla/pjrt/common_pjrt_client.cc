@@ -2139,18 +2139,21 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
     std::function<void()> on_delete_callback,
-    std::optional<std::intptr_t> stream) {
+    std::optional<std::intptr_t> stream, bool is_mutable) {
   ABSL_ASSIGN_OR_RETURN(
       Shape device_shape,
       MakeDefaultShapeForMemorySpace(
           memory_space, shape, shape.has_layout() ? &shape.layout() : nullptr));
   ABSL_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
                    GetOnDeviceBytesCount(memory_space, device_shape));
+  absl::AnyInvocable<void() &&> delete_callback = nullptr;
+  if (on_delete_callback != nullptr) {
+    delete_callback = std::move(on_delete_callback);
+  }
   ABSL_ASSIGN_OR_RETURN(
       auto raw_buffer,
-      ImportForeignMemory(device_ptr, std::move(on_delete_callback),
-                          on_device_bytes_count, memory_space,
-                          /*is_mutable=*/false));
+      ImportForeignMemory(device_ptr, std::move(delete_callback),
+                          on_device_bytes_count, memory_space, is_mutable));
 
   absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
   if (stream.has_value()) {

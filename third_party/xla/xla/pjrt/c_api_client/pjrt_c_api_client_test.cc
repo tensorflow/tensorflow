@@ -80,6 +80,7 @@ limitations under the License.
 
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 
@@ -601,6 +602,66 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
   std::vector<int32_t> expected(4, 0);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
+}
+
+TEST(PjRtClientTest, CreateViewOfDeviceBufferMutabilityCpuOnly) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  static constexpr char kProgram[] = R"(
+HloModule DonateView, input_output_alias={ {}: (0, {}, may-alias) }
+
+ENTRY DonateView() -> f32[2, 2] {
+  %param = f32[2, 2] parameter(0)
+  %one = f32[] constant(1.0)
+  %one_bcast = f32[2, 2] broadcast(%one), dimensions={}
+  ROOT %result = f32[2, 2] add(%param, %one_bcast)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Literal expected = LiteralUtil::CreateR2<float>({{2.0f, 3.0f}, {4.0f, 5.0f}});
+
+  // Default (is_mutable=false) does not mutate caller memory on donation.
+  alignas(cpu::MinAlign()) std::array<float, 4> immutable_data = {1.0f, 2.0f,
+                                                                  3.0f, 4.0f};
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> immutable_buffer,
+      client->CreateViewOfDeviceBuffer(immutable_data.data(), shape,
+                                       client->memory_spaces()[0],
+                                       /*on_delete_callback=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> immutable_result,
+      executable->Execute({{immutable_buffer.get()}}, /*options=*/{}));
+  ASSERT_EQ(immutable_result.size(), 1);
+  ASSERT_EQ(immutable_result[0].size(), 1);
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> immutable_literal,
+                       immutable_result[0][0]->ToLiteral().Await());
+  EXPECT_EQ(*immutable_literal, expected);
+  EXPECT_THAT(immutable_data, ElementsAre(1.0f, 2.0f, 3.0f, 4.0f));
+
+  // Explicit is_mutable=true mutates caller memory in place on donation.
+  alignas(cpu::MinAlign()) std::array<float, 4> mutable_data = {1.0f, 2.0f,
+                                                                3.0f, 4.0f};
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> mutable_buffer,
+      client->CreateViewOfDeviceBuffer(
+          mutable_data.data(), shape, client->memory_spaces()[0],
+          /*on_delete_callback=*/nullptr, /*stream=*/std::nullopt,
+          /*is_mutable=*/true));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> mutable_result,
+      executable->Execute({{mutable_buffer.get()}}, /*options=*/{}));
+  ASSERT_EQ(mutable_result.size(), 1);
+  ASSERT_EQ(mutable_result[0].size(), 1);
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> mutable_literal,
+                       mutable_result[0][0]->ToLiteral().Await());
+  EXPECT_EQ(*mutable_literal, expected);
+  EXPECT_THAT(mutable_data, ElementsAre(2.0f, 3.0f, 4.0f, 5.0f));
 }
 
 TEST(PjRtClientTest, CompileUsesStableHloVersion) {

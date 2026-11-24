@@ -98,6 +98,7 @@ using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::IsFalse;
+using ::testing::Ne;
 using ::testing::Not;
 
 static absl::Status TestError(ffi::AnyBuffer, ffi::Result<ffi::AnyBuffer>,
@@ -295,6 +296,106 @@ ENTRY DonateWithExternalReference() -> f32[2, 2] {
             LiteralUtil::CreateR2<float>({{2.0f, 3.0f}, {4.0f, 5.0f}}));
   EXPECT_THAT(absl::MakeConstSpan(ext_data, 4),
               ElementsAre(1.0f, 2.0f, 3.0f, 4.0f));
+}
+
+TEST(PjRtCpuClientTest, DonateMutableViewOfDeviceBuffer) {
+  static constexpr char kProgram[] = R"hlo(
+HloModule DonateMutableViewOfDeviceBuffer,
+  input_output_alias={ {}: (0, {}, may-alias) }
+
+ENTRY DonateMutableViewOfDeviceBuffer() -> f32[2, 2] {
+  %param = f32[2, 2] parameter(0)
+  %one = f32[] constant(1.0)
+  %one_bcast = f32[2, 2] broadcast(%one), dimensions={}
+  ROOT %result = f32[2, 2] add(%param, %one_bcast)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  alignas(64) std::array<float, 4> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  absl::Notification deleted;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->CreateViewOfDeviceBuffer(
+          data.data(), shape, client->memory_spaces()[0],
+          [&deleted]() { deleted.Notify(); }, /*stream=*/std::nullopt,
+          /*is_mutable=*/true));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+      pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
+                               /*options=*/{}));
+  EXPECT_TRUE(buffer->IsDeleted());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                       result[0][0]->ToLiteral().Await());
+  EXPECT_EQ(*result_literal,
+            LiteralUtil::CreateR2<float>({{2.0f, 3.0f}, {4.0f, 5.0f}}));
+  EXPECT_THAT(client->UnsafeBufferPointer(result[0][0].get()),
+              IsOkAndHolds(absl::bit_cast<std::uintptr_t>(data.data())));
+  EXPECT_THAT(data, ElementsAre(2.0f, 3.0f, 4.0f, 5.0f));
+  EXPECT_FALSE(deleted.HasBeenNotified());
+
+  result.clear();
+  buffer.reset();
+  deleted.WaitForNotification();
+}
+
+TEST(PjRtCpuClientTest, DonateImmutableViewOfDeviceBuffer) {
+  static constexpr char kProgram[] = R"hlo(
+HloModule DonateImmutableViewOfDeviceBuffer,
+  input_output_alias={ {}: (0, {}, may-alias) }
+
+ENTRY DonateImmutableViewOfDeviceBuffer() -> f32[2, 2] {
+  %param = f32[2, 2] parameter(0)
+  %one = f32[] constant(1.0)
+  %one_bcast = f32[2, 2] broadcast(%one), dimensions={}
+  ROOT %result = f32[2, 2] add(%param, %one_bcast)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  alignas(64) std::array<float, 4> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  absl::Notification deleted;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> buffer,
+                       client->CreateViewOfDeviceBuffer(
+                           data.data(), shape, client->memory_spaces()[0],
+                           [&deleted]() { deleted.Notify(); }));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+      pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
+                               /*options=*/{}));
+  EXPECT_TRUE(buffer->IsDeleted());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                       result[0][0]->ToLiteral().Await());
+  EXPECT_EQ(*result_literal,
+            LiteralUtil::CreateR2<float>({{2.0f, 3.0f}, {4.0f, 5.0f}}));
+  EXPECT_THAT(client->UnsafeBufferPointer(result[0][0].get()),
+              IsOkAndHolds(Ne(absl::bit_cast<std::uintptr_t>(data.data()))));
+  EXPECT_THAT(data, ElementsAre(1.0f, 2.0f, 3.0f, 4.0f));
+
+  buffer.reset();
+  deleted.WaitForNotification();
 }
 
 TEST(PjRtCpuClientTest, ArgumentMemorySpace) {

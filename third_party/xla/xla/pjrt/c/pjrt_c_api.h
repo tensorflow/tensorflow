@@ -118,7 +118,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 118
+#define PJRT_API_MINOR 119
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1295,8 +1295,15 @@ struct PJRT_Client_CreateViewOfDeviceBuffer_Args {
   PJRT_Buffer* buffer;  // out
   // The memory space that `device_buffer_ptr` is in.
   PJRT_Memory* memory;
+  // Whether the created buffer view may be mutated (for example, if donated to
+  // an Execute operation). Defaults to false when omitted by older callers.
+  // Platforms that support read-only views (such as CPU) will not mutate the
+  // buffer in place on donation when false; some platforms (such as GPU) may
+  // still mutate the buffer on donation regardless of this flag.
+  bool is_mutable;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateViewOfDeviceBuffer_Args, memory);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateViewOfDeviceBuffer_Args,
+                          is_mutable);
 
 // Creates a PJRT buffer that is a non-owned view of an on-device buffer
 // (typically allocated by another library). The buffer may be mutated,

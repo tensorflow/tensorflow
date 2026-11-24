@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.119
+
+*   Added `is_mutable` field to `PJRT_Client_CreateViewOfDeviceBuffer_Args`.
+
 ## 0.118
 
 *   Added `local_device_id` and `memory_kind_id` fields to `PJRT_Memory`.
