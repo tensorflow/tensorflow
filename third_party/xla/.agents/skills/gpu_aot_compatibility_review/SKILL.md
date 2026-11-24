@@ -5,23 +5,23 @@ description: >-
   AOT-compiled executables (GpuExecutableProto and ThunkProto) and produces a
   structured AOT compatibility review summary. Use when authoring or reviewing
   any change touching XLA GPU runtime files (xla/backends/gpu/runtime/...,
-  including thunks, collective/kernel helpers, and constants), GPU collective
-  backends (xla/backends/gpu/collectives/...), GpuExecutable and runtime
-  helpers (xla/service/gpu/gpu_executable*, stream_executor_util*,
-  dense_data_intermediate*), DebugOptions defaults (xla/debug_options_flags.cc),
-  or transitive proto dependencies of GpuExecutableProto, even when a change
-  does not directly modify proto serialization. Don't use for CPU/TPU-only
-  changes or HLO passes outside the GPU runtime/executable scope that do not
-  affect GPU AOT artifacts.
+  including GpuExecutable, thunks, collective/kernel helpers, and constants),
+  GPU collective backends (xla/backends/gpu/collectives/...), GpuExecutable
+  proto and runtime helpers (xla/service/gpu/gpu_executable.proto,
+  stream_executor_util*, dense_data_intermediate*), DebugOptions defaults
+  (xla/debug_options_flags.cc), or transitive proto dependencies of
+  GpuExecutableProto, even when a change does not directly modify proto
+  serialization. Don't use for CPU/TPU-only changes or HLO passes outside the
+  GPU runtime/executable scope that do not affect GPU AOT artifacts.
 ---
 
 # XLA GPU Runtime & GpuExecutable AOT Compatibility Review
 
 Use this skill when reviewing a change or validating local modifications that
-touch any file under `xla/backends/gpu/runtime/...`,
-`xla/backends/gpu/collectives/...`, `GpuExecutable`
-(`xla/service/gpu/gpu_executable*`), `xla/debug_options_flags.cc`, or related
-GPU runtime serialization and execution helpers.
+touch any file under `xla/backends/gpu/runtime/...` (including `GpuExecutable`),
+`xla/backends/gpu/collectives/...`, `xla/service/gpu/gpu_executable.proto`,
+`xla/debug_options_flags.cc`, or related GPU runtime serialization and execution
+helpers.
 
 ## Context & Compatibility Guarantees
 

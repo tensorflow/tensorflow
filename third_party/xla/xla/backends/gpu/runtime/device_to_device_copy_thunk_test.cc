@@ -22,13 +22,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
+#include "xla/backends/gpu/runtime/buffer_allocations.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

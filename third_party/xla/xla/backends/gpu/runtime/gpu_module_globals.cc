@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_module_globals.h"
+#include "xla/backends/gpu/runtime/gpu_module_globals.h"
 
 #include <optional>
 #include <string>

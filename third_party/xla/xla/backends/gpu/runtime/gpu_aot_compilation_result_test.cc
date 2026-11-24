@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_aot_compilation_result.h"
+#include "xla/backends/gpu/runtime/gpu_aot_compilation_result.h"
 
 #include <memory>
 #include <optional>
@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/gpu_executable.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"

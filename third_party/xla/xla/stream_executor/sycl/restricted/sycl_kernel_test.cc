@@ -19,11 +19,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/gpu_executable.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/gpu_executable.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform_manager.h"

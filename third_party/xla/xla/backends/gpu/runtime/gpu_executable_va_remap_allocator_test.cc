@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_executable_va_remap_allocator.h"
+#include "xla/backends/gpu/runtime/gpu_executable_va_remap_allocator.h"
 
 #include <algorithm>
 #include <array>
@@ -35,17 +35,17 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/buffer_allocations.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/gpu_executable_buffer_allocator.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_aot_compilation_result.h"
+#include "xla/backends/gpu/runtime/gpu_aot_compilation_result.h"
 
 #include <memory>
 #include <string>
@@ -29,13 +29,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "google/protobuf/arena.h"
 #include "riegeli/bytes/string_writer.h"
+#include "xla/backends/gpu/runtime/gpu_executable.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/printer.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_symbol_registry.h"

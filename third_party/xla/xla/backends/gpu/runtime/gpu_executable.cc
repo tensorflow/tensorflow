@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_executable.h"
+#include "xla/backends/gpu/runtime/gpu_executable.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
+#include "xla/backends/gpu/runtime/buffer_allocations.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
@@ -60,6 +61,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 #include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/backends/gpu/runtime/gpu_executable_buffer_allocator.h"
+#include "xla/backends/gpu/runtime/gpu_executable_run_options.h"
+#include "xla/backends/gpu/runtime/gpu_module_globals.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -83,11 +87,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
-#include "xla/service/gpu/gpu_executable_buffer_allocator.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu_topology.h"

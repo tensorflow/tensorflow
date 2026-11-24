@@ -27,7 +27,7 @@ phases:
     loads it directly for execution with `PjRtClient::LoadSerializedExecutable`.
 *   **Compiler-level artifacts:** At the compiler layer, ahead-of-time
     compilation produces a
-    [`GpuAotCompilationResult`](https://github.com/openxla/xla/blob/main/xla/service/gpu/gpu_aot_compilation_result.h)
+    [`GpuAotCompilationResult`](https://github.com/openxla/xla/blob/main/xla/backends/gpu/runtime/gpu_aot_compilation_result.h)
     (a `CompiledModule`;
     [`AotCompilationResult`](https://github.com/openxla/xla/blob/main/xla/service/compiler.h)
     is a deprecated alias). This object encapsulates the serialized
@@ -91,7 +91,7 @@ Not all executable load failures are caused by serialization regressions. Two
 common environment mismatches produce load-time errors:
 
 *   **Compute capability mismatch:**
-    [`GpuExecutable::FromProto`](https://github.com/openxla/xla/blob/main/xla/service/gpu/gpu_executable.cc)
+    [`GpuExecutable::FromProto`](https://github.com/openxla/xla/blob/main/xla/backends/gpu/runtime/gpu_executable.cc)
     validates that the serialized `gpu_compute_capability` matches the target
     device. An executable compiled for NVIDIA Hopper cannot execute on NVIDIA
     Ampere.

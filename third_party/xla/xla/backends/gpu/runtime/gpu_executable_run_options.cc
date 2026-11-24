@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/backends/gpu/runtime/gpu_executable_run_options.h"
 
 #include <functional>
 #include <optional>

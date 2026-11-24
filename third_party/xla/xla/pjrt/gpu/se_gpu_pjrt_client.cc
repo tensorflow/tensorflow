@@ -150,16 +150,16 @@ limitations under the License.
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM) || \
     defined(TENSORFLOW_USE_SYCL)
+#include "xla/backends/gpu/runtime/buffer_allocations.h"
+#include "xla/backends/gpu/runtime/gpu_constants.h"
+#include "xla/backends/gpu/runtime/gpu_executable.h"
+#include "xla/backends/gpu/runtime/gpu_executable_buffer_allocator.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/gpu/gpu_metrics.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/se/stream_executor_executable.pb.h"
-#include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/tsl/framework/scoped_allocation_trace.h"
 #include "xla/xla.pb.h"
@@ -172,7 +172,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #endif
 
-#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/backends/gpu/runtime/gpu_executable_run_options.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/util.h"
 

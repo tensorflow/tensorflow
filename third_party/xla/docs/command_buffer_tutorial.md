@@ -296,7 +296,7 @@ For implementation details, see the
 [flag definitions](https://github.com/openxla/xla/blob/main/xla/debug_options_flags.cc),
 [option enums](https://github.com/openxla/xla/blob/main/xla/xla.proto),
 [capture eligibility checks](https://github.com/openxla/xla/blob/main/xla/backends/gpu/runtime/command_buffer_conversion_pass.cc),
-and [VMM allocation policy](https://github.com/openxla/xla/blob/main/xla/service/gpu/gpu_executable_va_remap_allocator.cc).
+and [VMM allocation policy](https://github.com/openxla/xla/blob/main/xla/backends/gpu/runtime/gpu_executable_va_remap_allocator.cc).
 
 ## Debugging
 

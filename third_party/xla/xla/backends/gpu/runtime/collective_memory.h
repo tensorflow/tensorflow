@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/buffer_allocations.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/device_address.h"
 
 namespace xla::gpu {

@@ -25,10 +25,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/buffer_allocations.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 

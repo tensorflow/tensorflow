@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/early_exit_compilation_result.h"
+#include "xla/backends/gpu/runtime/early_exit_compilation_result.h"
 
 #include <memory>
 #include <string>

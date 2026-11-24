@@ -2041,6 +2041,7 @@ xla_test(
     deps = [
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/runtime:command_buffer_thunk",
+        "//xla/backends/gpu/runtime:gpu_executable",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
@@ -2050,7 +2051,6 @@ xla_test(
         "//xla/service:executable",
         "//xla/service:gpu_topology",
         "//xla/service:platform_util",
-        "//xla/service/gpu:gpu_executable",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/strings:string_view",

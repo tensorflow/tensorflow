@@ -45,13 +45,13 @@ xla_test(
     deps = [
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/runtime:custom_kernel_thunk",
+        "//xla/backends/gpu/runtime:gpu_executable",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:thunk_proto_cc",
         "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:dump",
         "//xla/service:executable",
-        "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:launch_dim",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep

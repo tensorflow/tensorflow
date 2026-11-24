@@ -250,7 +250,7 @@ review skill in `.agents/skills/` (also symlinked under `.claude/skills/`):
     (`.agents/skills/gpu_aot_compatibility_review/SKILL.md`): 6-month backward
     and 2-week forward compatibility checks for changes touching
     `xla/backends/gpu/runtime/...`, `xla/backends/gpu/collectives/...`,
-    `xla/service/gpu/gpu_executable*`, `xla/debug_options_flags.cc`, or
+    `xla/service/gpu/gpu_executable.proto`, `xla/debug_options_flags.cc`, or
     transitive proto dependencies of `GpuExecutableProto` and `ThunkProto` (see
     `docs/gpu_aot_compatibility.md`).
 *   **CUDA & cuDNN API Compatibility**

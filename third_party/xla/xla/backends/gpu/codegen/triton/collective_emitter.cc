@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/all_to_all.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/gpu_constants.h"
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
@@ -84,7 +85,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"

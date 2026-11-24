@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/backends/gpu/runtime/buffer_allocations.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
-#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/mock_stream.h"
 #include "xla/stream_executor/mock_stream_executor.h"

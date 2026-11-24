@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_executable_buffer_allocator.h"
+#include "xla/backends/gpu/runtime/gpu_executable_buffer_allocator.h"
 
 #include <cstdint>
 #include <memory>
@@ -28,10 +28,10 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/buffer_allocations.h"
+#include "xla/backends/gpu/runtime/gpu_constants.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"

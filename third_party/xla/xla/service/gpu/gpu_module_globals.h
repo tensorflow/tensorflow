@@ -16,74 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_MODULE_GLOBALS_H_
 #define XLA_SERVICE_GPU_GPU_MODULE_GLOBALS_H_
 
-#include <cstdint>
-#include <optional>
-#include <string>
-#include <vector>
-
-#include "absl/base/nullability.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/status/statusor.h"
-#include "xla/backends/gpu/runtime/per_device_state.h"
-#include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/dense_data_intermediate.h"
-#include "xla/service/gpu/gpu_executable.pb.h"
-#include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/scoped_module_handle.h"
-#include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
-
-namespace xla {
-
-class HloInstruction;
-
-namespace gpu {
-
-class GpuModuleGlobals {
- public:
-  using BufferAllocToDeviceMemoryMap =
-      absl::flat_hash_map<BufferAllocation::Index, se::DeviceAddressBase>;
-
-  struct ConstantInfo {
-    std::string symbol_name;
-    DenseDataIntermediate content;
-    int allocation_index = -1;
-
-    GpuExecutableProto::ConstantInfoProto ToProto(
-        bool skip_content_serialization = false) const;
-
-    static absl::StatusOr<ConstantInfo> FromProto(
-        const GpuExecutableProto::ConstantInfoProto& proto,
-        const absl::flat_hash_map<std::string,
-                                  const HloInstruction*>* absl_nullable
-            content_overrides = nullptr);
-  };
-
-  GpuModuleGlobals(const std::vector<uint8_t>& binary,
-                   const std::vector<ConstantInfo>& constants,
-                   int devices_per_host = 0)
-      : binary_(binary),
-        constants_(constants),
-        device_states_(devices_per_host) {}
-
-  // Loads the executable module for `stream` and initializes constant globals.
-  // Loaded modules and resolved global addresses are cached per device ordinal.
-  absl::StatusOr<const BufferAllocToDeviceMemoryMap*> Resolve(
-      se::Stream* stream);
-
- private:
-  struct DeviceState {
-    // Required to keep the loaded module alive until this helper is destroyed.
-    std::optional<se::ScopedModuleHandle> module_handle;
-    BufferAllocToDeviceMemoryMap globals;
-  };
-
-  const std::vector<uint8_t>& binary_;
-  const std::vector<ConstantInfo>& constants_;
-  PerDeviceState<DeviceState> device_states_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/runtime/gpu_module_globals.h"
+#include "xla/backends/gpu/runtime/gpu_module_globals.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_GPU_GPU_MODULE_GLOBALS_H_

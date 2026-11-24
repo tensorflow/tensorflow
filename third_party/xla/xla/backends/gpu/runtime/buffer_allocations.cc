@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/backends/gpu/runtime/buffer_allocations.h"
 
 #include <cstdint>
 #include <optional>

@@ -149,7 +149,7 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
     ] + if_gpu_is_configured([
         "//xla/service:gpu_plugin_without_collectives",
-        "//xla/service/gpu:gpu_executable",
+        "//xla/backends/gpu/runtime:gpu_executable",
     ]) + if_cuda_is_configured([
         "//xla/stream_executor:cuda_platform",
     ]) + if_rocm_is_configured([
