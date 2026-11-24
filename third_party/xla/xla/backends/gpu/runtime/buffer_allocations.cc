@@ -15,15 +15,22 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/buffer_allocations.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <set>
+#include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla {
 namespace gpu {
@@ -64,6 +71,8 @@ se::DeviceAddressBase& BufferAllocations::GetMutableDeviceAddress(
     BufferAllocation::Index buffer_index) {
   CHECK_GE(buffer_index, 0);
   CHECK_LT(buffer_index, buffers_.size());
+  // The caller may change the address through the returned reference.
+  ResetAddressIndex();
   return buffers_[buffer_index];
 }
 
@@ -85,14 +94,74 @@ se::DeviceAddressBase BufferAllocations::GetDeviceAddress(
   return base.GetByteSlice(buffer_slice.offset(), buffer_slice.size());
 }
 
+BufferAllocations& BufferAllocations::operator=(BufferAllocations&& other) {
+  if (this != &other) {
+    buffers_ = std::move(other.buffers_);
+    other.buffers_.clear();
+    device_ordinal_ = other.device_ordinal_;
+    memory_allocator_ = other.memory_allocator_;
+    ResetAddressIndex();
+    other.ResetAddressIndex();
+  }
+  return *this;
+}
+
+void BufferAllocations::ResetAddressIndex() {
+  address_index_once_.emplace();
+  address_index_.clear();
+}
+
+void BufferAllocations::BuildAddressIndex() const {
+  std::vector<AddressIndexEntry>& entries = address_index_;
+  entries.reserve(buffers_.size());
+  for (BufferAllocation::Index i = 0; i < buffers_.size(); ++i) {
+    if (buffers_[i].is_null() || buffers_[i].size() == 0) {
+      continue;
+    }
+    entries.push_back(
+        {tsl::safe_reinterpret_cast<uintptr_t>(buffers_[i].opaque()),
+         buffers_[i].size(), i});
+  }
+  absl::c_sort(entries,
+               [](const AddressIndexEntry& a, const AddressIndexEntry& b) {
+                 return a.begin < b.begin;
+               });
+  for (size_t i = 1; i < entries.size(); ++i) {
+    const AddressIndexEntry& prev = entries[i - 1];
+    const AddressIndexEntry& curr = entries[i];
+    if (curr.begin == prev.begin && curr.size == prev.size) {
+      continue;
+    }
+    if (curr.begin - prev.begin < prev.size) {
+      LOG(ERROR) << "Overlapping buffer allocations detected: buffer "
+                 << prev.index << " (" << buffers_[prev.index].opaque() << ", "
+                 << prev.size << " B) and buffer " << curr.index << " ("
+                 << buffers_[curr.index].opaque() << ", " << curr.size << " B)";
+      entries = {};
+      return;
+    }
+  }
+}
+
 std::optional<BufferAllocation::Index> BufferAllocations::FindAllocationIndex(
     const se::DeviceAddressBase& addr) const {
-  for (BufferAllocation::Index i = 0; i < buffers_.size(); ++i) {
-    auto* buf = static_cast<char*>(buffers_[i].opaque());
-    auto* ptr = static_cast<char*>(addr.opaque());
-    if (ptr >= buf && ptr < buf + buffers_[i].size()) {
-      return i;
-    }
+  if (addr.is_null()) {
+    return std::nullopt;
+  }
+  absl::call_once(*address_index_once_, &BufferAllocations::BuildAddressIndex,
+                  this);
+  uintptr_t ptr = tsl::safe_reinterpret_cast<uintptr_t>(addr.opaque());
+  auto it = absl::c_upper_bound(
+      address_index_, ptr, [](uintptr_t p, const AddressIndexEntry& entry) {
+        return p < entry.begin;
+      });
+  if (it == address_index_.begin()) {
+    return std::nullopt;
+  }
+  --it;
+  uint64_t offset = ptr - it->begin;
+  if (offset < it->size && addr.size() <= it->size - offset) {
+    return it->index;
   }
   return std::nullopt;
 }
