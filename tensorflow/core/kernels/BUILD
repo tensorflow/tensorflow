@@ -4945,9 +4945,10 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-        "@local_config_cuda//cuda:cudnn_header",
         "@xla//xla/tsl/framework/fixedpoint",
-    ],
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cudnn_header",
+    ]),
 )
 
 tf_cuda_only_cc_test(
