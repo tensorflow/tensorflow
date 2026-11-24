@@ -318,7 +318,6 @@ def lit_device_test(
         [],  # disabled_backends
         backend_tags,
         backend_args,
-        tags,
     )
     backends = [
         backend

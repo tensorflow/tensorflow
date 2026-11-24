@@ -20,7 +20,12 @@ load(
     "xla_py_proto_library",
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
-load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "AMD_GPU_ANY_BACKEND",
+    "GPU_DEFAULT_BACKENDS",
+    "xla_test",
+)
 load(
     "//xla/tsl:tsl.bzl",
     "if_cuda_or_rocm",
@@ -786,7 +791,7 @@ xla_test(
     srcs = ["matmul_perf_table_gen_test.cc"],
     # TODO(b/372714955): Remove once default CUDA ver is >= 13.4 (CUPTI session leak fixed in 13.4).
     args = if_google(["--heap_check="]),
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     # TODO(b/372714955): Remove once default CUDA ver is >= 13.4 (CUPTI session leak fixed in 13.4).
     tags = if_google(["noasan"]),
@@ -961,7 +966,7 @@ tsl_pybind_extension(
 xla_test(
     name = "collective_perf_table_gen_test",
     srcs = ["collective_perf_table_gen_test.cc"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":collective_perf_table_gen",
@@ -1245,9 +1250,7 @@ xla_test(
 xla_test(
     name = "xla_gpu_compile_lib_test",
     srcs = ["xla_gpu_compile_lib_test.cc"],
-    backends = [
-        "gpu",
-    ],
+    backends = GPU_DEFAULT_BACKENDS,
     data = [
         ":data/add.hlo",
         "//xla/backends/gpu/target_config:all_gpu_specs",

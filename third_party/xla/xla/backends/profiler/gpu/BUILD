@@ -16,7 +16,12 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "AMD_GPU_DEFAULT_BACKENDS",
+    "NVIDIA_GPU_DEFAULT_BACKENDS",
+    "xla_test",
+)
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
@@ -214,7 +219,7 @@ xla_test(
     name = "cupti_error_manager_test",
     size = "small",
     srcs = ["cupti_error_manager_test.cc"],
-    backends = ["gpu"],
+    backends = NVIDIA_GPU_DEFAULT_BACKENDS,
     tags = [
         "cuda-only",
         "no_mac",
@@ -291,7 +296,7 @@ xla_test(
     name = "cupti_tracer_test",
     size = "small",
     srcs = ["cupti_tracer_test.cc"],
-    backends = ["gpu"],
+    backends = NVIDIA_GPU_DEFAULT_BACKENDS,
     tags = [
         "cuda-only",
         "no_mac",
@@ -674,7 +679,7 @@ xla_test(
     name = "rocm_tracer_test",
     size = "small",
     srcs = ["rocm_tracer_test.cc"],
-    backends = ["gpu"],
+    backends = AMD_GPU_DEFAULT_BACKENDS,
     tags = ["rocm-only"],
     deps = [
         ":rocm_collector",
@@ -1021,7 +1026,7 @@ xla_test(
     name = "nvtx_with_cuda_kernels_test",
     size = "small",
     srcs = ["nvtx_with_cuda_kernels_test.cc"],
-    backends = ["gpu"],
+    backends = NVIDIA_GPU_DEFAULT_BACKENDS,
     tags = [
         "cuda-only",
         "no_mac",

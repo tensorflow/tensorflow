@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "GPU_DEFAULT_BACKENDS", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -57,7 +57,7 @@ cc_library(
 xla_test(
     name = "gpu_host_offloading_allocator_test",
     srcs = ["gpu_host_offloading_allocator_test.cc"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     deps = [
         ":gpu_host_offloading_allocator",
         "//xla/core/host_offloading:host_offloading_allocator",

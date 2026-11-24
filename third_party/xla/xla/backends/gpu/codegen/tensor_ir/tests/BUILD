@@ -1,5 +1,10 @@
 load("//xla:lit.bzl", "lit_test_suite")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "NVIDIA_GPU_BACKENDS",
+    "NVIDIA_GPU_DEFAULT_BACKENDS",
+    "xla_test",
+)
 load("//xla/tsl:tsl.bzl", "if_google")
 
 package(
@@ -31,12 +36,8 @@ lit_test_suite(
 xla_test(
     name = "fusion_emitter_thunk_test",
     srcs = ["fusion_emitter_thunk_test.cc"],
-    backend_tags = {
-        # The emitter compiles for whatever device the test runs on, and
-        # `IsSupportedComputeCapability` rejects anything before Hopper.
-        "gpu": ["requires-gpu-sm90"],
-    },
-    backends = ["gpu"],
+    backend_tags = {gpu: ["requires-gpu-sm90"] for gpu in NVIDIA_GPU_BACKENDS},
+    backends = NVIDIA_GPU_DEFAULT_BACKENDS,
     tags = [
         "cuda-only",
         "no_mac",
@@ -93,10 +94,8 @@ xla_test(
 xla_test(
     name = "fusion_emitter_device_test",
     srcs = ["fusion_emitter_device_test.cc"],
-    backend_tags = {
-        "gpu": ["requires-gpu-sm90"],
-    },
-    backends = ["gpu"],
+    backend_tags = {gpu: ["requires-gpu-sm90"] for gpu in NVIDIA_GPU_BACKENDS},
+    backends = NVIDIA_GPU_DEFAULT_BACKENDS,
     tags = [
         "cuda-only",
         "manual",

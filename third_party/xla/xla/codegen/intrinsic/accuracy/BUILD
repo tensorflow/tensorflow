@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "GPU_DEFAULT_BACKENDS", "xla_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -43,10 +43,7 @@ cc_library(
 xla_test(
     name = "intrinsic_accuracy_test",
     srcs = ["intrinsic_accuracy_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":accuracy_budget",
         ":golden_baselines",

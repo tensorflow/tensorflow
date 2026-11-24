@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "GPU_BACKENDS",
+    "GPU_DEFAULT_BACKENDS",
+    "xla_test",
+)
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
@@ -52,18 +57,15 @@ cc_library(
 xla_test(
     name = "pjrt_c_api_cross_host_transfers_extension_gpu_test",
     srcs = ["pjrt_c_api_cross_host_transfers_extension_gpu_test.cc"],
-    backend_tags = {
-        "h100": [
-            "full",
-            "multi_gpu",
-            "no_oss",
-        ],
-        "gpu": [
-            "multi_gpu",
-            "no_oss",
-        ],
-    },
-    backends = ["gpu"],
+    backend_tags = {gpu: [
+        "multi_gpu",
+        "no_oss",
+    ] for gpu in GPU_BACKENDS} | {"h100": [
+        "full",
+        "multi_gpu",
+        "no_oss",
+    ]},
+    backends = GPU_DEFAULT_BACKENDS,
     tags = if_google([
         "config-cuda-only",
     ]),

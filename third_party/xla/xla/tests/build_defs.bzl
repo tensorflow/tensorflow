@@ -194,9 +194,9 @@ def xla_test(
     if not backends:
         backends = _DEFAULT_BACKENDS
 
-    # Expand "gpu" backend name to specific GPU backends and update tags.
+    # Add vendor-specific GPU tags and disable backends that don't meet device requirements.
     backends, disabled_backends, backend_tags, backend_args = \
-        prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, tags)
+        prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args)
 
     backends = [
         backend

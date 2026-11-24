@@ -1,6 +1,11 @@
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
 load("//xla:restricted_package.bzl", "xla_restricted_allow", "xla_restricted_verify")
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "GPU_DEFAULT_BACKENDS",
+    "generate_backend_suites",
+    "xla_test",
+)
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -58,10 +63,7 @@ cc_library(
 xla_test(
     name = "llvm_compiler_test",
     srcs = ["llvm_compiler_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     use_legacy_runtime = True,
     deps = [
         ":hlo_test_base_legacy",

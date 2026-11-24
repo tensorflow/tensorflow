@@ -5,7 +5,12 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
 
 # Libraries for performance modeling of HLO.
-load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "AMD_GPU_ANY_BACKEND",
+    "GPU_DEFAULT_BACKENDS",
+    "xla_test",
+)
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
@@ -945,7 +950,7 @@ xla_test(
     # Disable backend optimizations (in particular reassociate and instcombine) which would optimize
     # expressions like integer add and multiply.
     args = ["--xla_backend_optimization_level=0"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     fail_if_no_test_linked = False,  # NOLINT=not based on gtest and thus doesn't support --gunit_fail_if_no_test_linked.
     fail_if_no_test_selected = False,  # NOLINT=not based on gtest and thus doesn't support --gunit_fail_if_no_test_selected.
     shuffle_tests = False,  # CANNOT_SHUFFLE_TESTS=This test is not based on gtest and thus doesn't support shuffling.
@@ -996,7 +1001,7 @@ xla_test(
     srcs = ["hlo_op_profiler_test.cc"],
     # TODO(b/372714955): Fix the memory leak!
     args = if_google(["--heap_check="]),
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     deps = [
         ":hlo_op_profiler_lib",
         "//xla:xla_data_proto_cc",

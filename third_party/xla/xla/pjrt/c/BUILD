@@ -26,7 +26,7 @@ load(
     "xla_cc_binary",
     "xla_cc_test",
 )
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "GPU_DEFAULT_BACKENDS", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
@@ -810,7 +810,7 @@ cc_library(
 xla_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     tags = if_google([
         "config-cuda-only",
     ]),

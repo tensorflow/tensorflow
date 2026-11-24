@@ -15,7 +15,12 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "GPU_DEFAULT_BACKENDS",
+    "NVIDIA_GPU_DEFAULT_BACKENDS",
+    "xla_test",
+)
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -83,7 +88,7 @@ cc_library(
 xla_test(
     name = "cudnn_test",
     srcs = ["cudnn_test.cc"],
-    backends = ["gpu"],
+    backends = NVIDIA_GPU_DEFAULT_BACKENDS,
     shard_count = 5,
     tags = ["cuda-only"],
     deps = [
@@ -357,7 +362,7 @@ cc_library(
 xla_test(
     name = "thread_block_specialized_test",
     srcs = ["thread_block_specialized_test.cc"],
-    backends = ["gpu"],
+    backends = NVIDIA_GPU_DEFAULT_BACKENDS,
     tags = ["cuda-only"],
     deps = [
         ":thread_block_specialized",
@@ -450,7 +455,7 @@ cc_library(
 xla_test(
     name = "pad_to_static_test",
     srcs = ["pad_to_static_test.cc"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     deps = [
         ":pad_to_static",
         "//xla:literal",
@@ -515,7 +520,7 @@ cc_library(
 xla_test(
     name = "rng_get_and_update_state_test",
     srcs = ["rng_get_and_update_state_test.cc"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     deps = [
         ":rng_get_and_update_state",
         "//xla:literal",
@@ -581,7 +586,7 @@ cc_library(
 xla_test(
     name = "slice_to_dynamic_test",
     srcs = ["slice_to_dynamic_test.cc"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     deps = [
         ":slice_to_dynamic",
         "//xla:literal",

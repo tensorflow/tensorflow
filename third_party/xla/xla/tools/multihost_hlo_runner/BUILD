@@ -20,7 +20,10 @@ load("//xla:xla.default.bzl", "xla_cc_binary")
 load(
     "//xla/tests:build_defs.bzl",
     "AMD_GPU_ANY_BACKEND",
+    "GPU_BACKENDS",
+    "GPU_DEFAULT_BACKENDS",
     "NVIDIA_GPU_ANY_BACKEND",
+    "NVIDIA_GPU_BACKENDS",
     "xla_py_test",
     "xla_test",
 )
@@ -275,15 +278,14 @@ filegroup(
 xla_test(
     name = "functional_hlo_runner_test",
     srcs = ["functional_hlo_runner_test.cc"],
-    backend_tags = {
+    backend_tags = {gpu: [
+        "multi_gpu",
+        "nomsan",
+    ] for gpu in GPU_BACKENDS} | {
         "h100": [
             "full",
             "multi_gpu",
             "no_oss",
-            "nomsan",
-        ],
-        "gpu": [
-            "multi_gpu",
             "nomsan",
         ],
     } | if_oss(
@@ -295,10 +297,7 @@ xla_test(
         },
         {},
     ),
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     data = [":hlo_files"],
     shard_count = 4,
     tags = ["no_mac"],
@@ -397,17 +396,13 @@ xla_test(
     name = "multipass_functional_hlo_runner_test",
     srcs = ["multipass_functional_hlo_runner_test.cc"],
     backend_args = if_google(
-        {
-            "gpu": ["--heap_check="],
-            "a100": ["--heap_check="],
-        },
+        {gpu: ["--heap_check="] for gpu in NVIDIA_GPU_BACKENDS},
         {},
     ),
-    backend_tags = {
-        "gpu": [
-            "nomsan",
-            "requires-gpu-sm80-only",
-        ],
+    backend_tags = {gpu: [
+        "nomsan",
+        "requires-gpu-sm80-only",
+    ] for gpu in NVIDIA_GPU_BACKENDS} | {
         AMD_GPU_ANY_BACKEND: [
             "broken",
             "no_oss",
@@ -421,10 +416,7 @@ xla_test(
         },
         {},
     ),
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     data = [":hlo_files"],
     tags = [
         "no_mac",

@@ -27,6 +27,9 @@ load(
     "//xla/tests:build_defs.bzl",
     "ALL_HARDWARE_BACKENDS",
     "AMD_GPU_ANY_BACKEND",
+    "GPU_BACKENDS",
+    "GPU_DEFAULT_BACKENDS",
+    "NVIDIA_GPU_BACKENDS",
     "generate_backend_suites",
     "xla_test",
 )
@@ -566,9 +569,8 @@ xla_test(
     ),
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     use_legacy_runtime = True,
     deps = [
         ":literal_test_util",
@@ -920,10 +922,7 @@ xla_test(
         "complex_unary_op_samples.h",
         "complex_unary_op_test.cc",
     ],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -973,9 +972,8 @@ xla_test(
     srcs = ["deallocation_test.cc"],
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     use_legacy_runtime = True,
     deps = [
         ":local_client_test_base",
@@ -1167,7 +1165,7 @@ xla_test(
         # TODO(b/445172709): Re-enable once fixed.
         "b200": ["broken"],
     },
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     shard_count = 20,
     tags = [
         "optonly",
@@ -1220,9 +1218,8 @@ xla_test(
     ],
     disabled_backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_BACKENDS,
     shard_count = 50,
     tags = [
         "nozapfhahn",
@@ -1386,7 +1383,7 @@ xla_test(
         "--xla_gpu_deterministic_ops",
         "--xla_gpu_enable_scatter_determinism_expander",
     ],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
@@ -1526,7 +1523,7 @@ xla_test(
     name = "convolution_autotune_disabled_test",
     srcs = ["convolution_test.cc"],
     args = ["--xla_gpu_autotune_level=0"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     shard_count = 40,
     tags = [
         "nozapfhahn",
@@ -1562,7 +1559,7 @@ xla_test(
     name = "convolution_1d_autotune_disabled_test",
     srcs = ["convolution_test_1d.cc"],
     args = ["--xla_gpu_autotune_level=0"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     shard_count = 40,
     tags = ["optonly"],
     deps = [
@@ -1587,8 +1584,8 @@ xla_test(
 xla_test(
     name = "convolution_gpu_alternative_layout_test",
     srcs = ["convolution_test.cc"],
-    backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
-    backends = ["gpu"],
+    backend_args = {gpu: ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"] for gpu in NVIDIA_GPU_BACKENDS},
+    backends = GPU_DEFAULT_BACKENDS,
     shard_count = 25,
     tags = ["nozapfhahn"],
     deps = [
@@ -1620,8 +1617,8 @@ xla_test(
 xla_test(
     name = "convolution_1d_gpu_alternative_layout_test",
     srcs = ["convolution_test_1d.cc"],
-    backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
-    backends = ["gpu"],
+    backend_args = {gpu: ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"] for gpu in NVIDIA_GPU_BACKENDS},
+    backends = GPU_DEFAULT_BACKENDS,
     shard_count = 25,
     deps = [
         ":client_library_test_runner_mixin",
@@ -1793,10 +1790,7 @@ xla_test(
 xla_test(
     name = "half_test",
     srcs = ["half_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1818,9 +1812,8 @@ xla_test(
     srcs = ["int4_test.cc"],
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     # TODO(intel-tf): Enable on oneAPI once int4 support is added to oneAPI.
     tags = ["no-oneapi"],
     deps = [
@@ -1999,10 +1992,7 @@ xla_test(
 xla_test(
     name = "reduce_window_rewriter_execution_test",
     srcs = ["reduce_window_rewriter_execution_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
@@ -2113,10 +2103,9 @@ xla_test(
     name = "reduce_hlo_test",
     srcs = ["reduce_hlo_test.cc"],
     backends = [
-        "gpu",
         "cpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
@@ -2167,16 +2156,12 @@ xla_test(
 xla_test(
     name = "approx_topk_special_floats_test",
     srcs = ["approx_topk_special_floats_test.cc"],
-    backend_tags = {
-        "gpu": [
-            # Skip P100/V100 GPUs due to 0.0 and -0.0 interleaving bug in sort.
-            "requires-gpu-sm80",
-        ],
-    },
-    backends = [
-        # Skip CPU because it still uses TOTAL order for approx_topk.
-        "gpu",
-    ],
+    backend_tags = {gpu: [
+        # Skip P100/V100 GPUs due to 0.0 and -0.0 interleaving bug in sort.
+        "requires-gpu-sm80",
+    ] for gpu in NVIDIA_GPU_BACKENDS},
+    # Skip CPU because it still uses TOTAL order for approx_topk.
+    backends = GPU_DEFAULT_BACKENDS,
     disabled_backends = [AMD_GPU_ANY_BACKEND],
     deps = [
         ":hlo_interpreter_reference_mixin",
@@ -2204,16 +2189,11 @@ xla_test(
 xla_test(
     name = "topk_special_floats_test",
     srcs = ["topk_special_floats_test.cc"],
-    backend_tags = {
-        "gpu": [
-            # Skip P100/V100 GPUs due to 0.0 and -0.0 interleaving bug in sort.
-            "requires-gpu-sm80",
-        ],
-    },
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backend_tags = {gpu: [
+        # Skip P100/V100 GPUs due to 0.0 and -0.0 interleaving bug in sort.
+        "requires-gpu-sm80",
+    ] for gpu in NVIDIA_GPU_BACKENDS},
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":hlo_interpreter_reference_mixin",
         ":hlo_test_base",
@@ -2580,9 +2560,7 @@ xla_test(
 xla_test(
     name = "dynamic_reshape_test",
     srcs = ["dynamic_reshape_test.cc"],
-    backend_tags = {
-        "gpu": ["notsan"],  # TODO(b/345034145): Fix tsan error.
-    },
+    backend_tags = {gpu: ["notsan"] for gpu in GPU_BACKENDS},
     disabled_backends = ["interpreter"],
     deps = [
         ":hlo_pjrt_test_base",
@@ -2730,13 +2708,12 @@ xla_test(
     srcs = ["collective_ops_test.cc"],
     args = ["--xla_force_host_platform_device_count=4"],
     backend_tags =
-        {
+        {gpu: [
+            "multi_gpu",
+            "no_oss",
+        ] for gpu in GPU_BACKENDS} | {
             "h100": [
                 "full",
-                "multi_gpu",
-                "no_oss",
-            ],
-            "gpu": [
                 "multi_gpu",
                 "no_oss",
             ],
@@ -2744,10 +2721,7 @@ xla_test(
                 "notsan",
             ],
         },
-    backends = [
-        "gpu",
-        "cpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":aot_utils",
         ":hlo_pjrt_test_base",
@@ -2839,10 +2813,7 @@ xla_test(
 xla_test(
     name = "multithreaded_compilation_test",
     srcs = ["multithreaded_compilation_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":aot_utils",
         ":pjrt_client_registry",
@@ -2867,9 +2838,8 @@ xla_test(
     srcs = ["compute_constant_test.cc"],
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     use_legacy_runtime = True,
     deps = [
         ":literal_test_util",
@@ -2963,9 +2933,8 @@ xla_test(
     srcs = ["round_trip_packed_literal_test.cc"],
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     use_legacy_runtime = True,
     deps = [
         ":literal_test_util",
@@ -2992,9 +2961,8 @@ xla_test(
     srcs = ["cpu_gpu_fusion_test.cc"],
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     test_cpu_fast_compile = True,
     deps = [
         ":client_library_test_runner_mixin",
@@ -3036,9 +3004,8 @@ xla_test(
     srcs = ["local_client_allocation_test.cc"],
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     use_legacy_runtime = True,
     deps = [
         ":literal_test_util",
@@ -3059,9 +3026,8 @@ xla_test(
     srcs = ["local_client_execute_test.cc"],
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     shard_count = 15,
     tags = ["optonly"],
     use_legacy_runtime = True,
@@ -3098,10 +3064,7 @@ xla_test(
 xla_test(
     name = "outfeed_in_nested_computation_test",
     srcs = ["outfeed_in_nested_computation_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     use_legacy_runtime = True,
     deps = [
         ":local_client_test_base",
@@ -3140,9 +3103,8 @@ xla_test(
     srcs = ["round_trip_transfer_test.cc"],
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     use_legacy_runtime = True,
     deps = [
         ":literal_test_util",
@@ -3212,9 +3174,8 @@ xla_test(
     srcs = ["transfer_manager_test.cc"],
     backends = [
         "cpu",
-        "gpu",
         "interpreter",
-    ],
+    ] + GPU_DEFAULT_BACKENDS,
     shard_count = 8,
     use_legacy_runtime = True,
     deps = [
@@ -3248,10 +3209,7 @@ xla_test(
     name = "sample_text_test",
     srcs = ["sample_text_test.cc"],
     # You can leave this empty if you want to test all supported backends.
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
@@ -3265,7 +3223,7 @@ xla_test(
 xla_test(
     name = "sample_file_test",
     srcs = ["sample_file_test.cc"],
-    backends = ["gpu"],
+    backends = GPU_DEFAULT_BACKENDS,
     data = ["isolated_convolution.hlo"],
     deps = [
         ":hlo_pjrt_test_base",
@@ -3384,9 +3342,7 @@ xla_test(
 xla_test(
     name = "set_dimension_size_test",
     srcs = ["set_dimension_size_test.cc"],
-    backend_tags = {
-        "gpu": ["notsan"],  # TODO(b/345034145): Fix tsan error.
-    },
+    backend_tags = {gpu: ["notsan"] for gpu in GPU_BACKENDS},
     deps = [
         ":hlo_pjrt_test_base",
         ":xla_internal_test_main",  # fixdeps: keep
@@ -3501,9 +3457,7 @@ xla_test(
 xla_test(
     name = "concatenate_test",
     srcs = ["concatenate_test.cc"],
-    backend_tags = {
-        "gpu": ["notsan"],
-    },
+    backend_tags = {gpu: ["notsan"] for gpu in GPU_BACKENDS},
     deps = [
         ":hlo_pjrt_test_base",
         ":literal_test_util",
@@ -3920,10 +3874,7 @@ xla_test(
     name = "batchnorm_expander_test",
     size = "small",
     srcs = ["batchnorm_expander_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    backends = ["cpu"] + GPU_DEFAULT_BACKENDS,
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",

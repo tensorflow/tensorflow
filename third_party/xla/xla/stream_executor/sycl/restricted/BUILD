@@ -18,7 +18,7 @@ load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "INTEL_GPU_DEFAULT_BACKENDS", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
@@ -35,7 +35,7 @@ package_group(
 xla_test(
     name = "sycl_blas_lt_test",
     srcs = ["sycl_blas_lt_test.cc"],
-    backends = ["gpu"],
+    backends = INTEL_GPU_DEFAULT_BACKENDS,
     tags = [
         "gpu",
         "oneapi-only",
@@ -54,7 +54,7 @@ xla_test(
 xla_test(
     name = "sycl_kernel_test",
     srcs = ["sycl_kernel_test.cc"],
-    backends = ["gpu"],
+    backends = INTEL_GPU_DEFAULT_BACKENDS,
     tags = [
         "gpu",
         "oneapi-only",

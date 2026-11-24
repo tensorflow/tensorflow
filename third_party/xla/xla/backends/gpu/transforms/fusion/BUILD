@@ -15,7 +15,7 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "GPU_DEFAULT_BACKENDS", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//xla/tsl/platform:build_config.bzl",
@@ -70,9 +70,7 @@ cc_library(
 xla_test(
     name = "conv_fusion_rewriter_test",
     srcs = ["conv_fusion_rewriter_test.cc"],
-    backends = [
-        "gpu",
-    ],
+    backends = GPU_DEFAULT_BACKENDS,
     deps = [
         ":conv_fusion_rewriter",
         "//xla:error_spec",

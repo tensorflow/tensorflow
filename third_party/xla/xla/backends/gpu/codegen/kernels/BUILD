@@ -15,7 +15,7 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "NVIDIA_GPU_DEFAULT_BACKENDS", "xla_test")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -109,7 +109,7 @@ cc_library(
 xla_test(
     name = "ptx_custom_kernel_test",
     srcs = ["ptx_custom_kernel_test.cc"],
-    backends = ["gpu"],
+    backends = NVIDIA_GPU_DEFAULT_BACKENDS,
     tags = ["cuda-only"],
     deps = [
         ":custom_kernel",
