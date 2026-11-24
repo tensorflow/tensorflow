@@ -1005,6 +1005,65 @@ module @add_sub {
   }
 }
 
+TEST_P(LoadedExecutableImplTest, DonationDeletesUnaliasedBufferDonor) {
+  static constexpr absl::string_view kModule = R"mlir(
+module @add_three {
+  func.func @main(
+    %arg0: tensor<2x3xi32> {jax.buffer_donor = true},
+    %arg1: tensor<2x3xi32> {jax.buffer_donor = true},
+    %arg2: tensor<2x3xi32> {jax.buffer_donor = true}
+  ) -> tensor<2x3xi32> {
+    %0 = stablehlo.add %arg0, %arg1 : tensor<2x3xi32>
+    %1 = stablehlo.add %0, %arg2 : tensor<2x3xi32>
+    return %1 : tensor<2x3xi32>
+  }
+})mlir";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule, {device},
+                       /*replicated=*/false, /*serialize=*/GetParam()));
+
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  std::vector<ArrayRef> arrays;
+  for (int i = 0; i < 3; ++i) {
+    std::vector<int32_t> data(6);
+    absl::c_iota(data, 0);
+    ASSERT_OK_AND_ASSIGN(
+        arrays.emplace_back(),
+        client->MakeArrayFromHostBuffer(
+            data.data(), DType(DType::kS32), Shape({2, 3}),
+            /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
+            Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*host_buffer_hold=*/nullptr));
+  }
+
+  LoadedExecutable::ExecuteOptions execute_options;
+  execute_options.non_donatable_input_indices.insert(2);
+  execute_options.fill_status = true;
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      executable->Execute(absl::MakeSpan(arrays), execute_options,
+                          /*devices=*/std::nullopt));
+
+  EXPECT_TRUE(arrays[0]->IsDeleted());
+  EXPECT_TRUE(arrays[1]->IsDeleted());
+  EXPECT_FALSE(arrays[2]->IsDeleted());
+  EXPECT_OK(arrays[2]->GetReadyFuture().Await());
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_THAT(result.outputs, SizeIs(1));
+  std::vector<int32_t> output(6);
+  ASSERT_OK(result.outputs[0]
+                ->CopyToHostBuffer(output.data(),
+                                   /*byte_strides=*/std::nullopt,
+                                   ArrayCopySemantics::kAlwaysCopy)
+                .Await());
+  EXPECT_THAT(output, ElementsAre(0, 3, 6, 9, 12, 15));
+}
+
 TEST_P(LoadedExecutableImplTest, DonationOfNonFirstShardMarksArrayDeleted) {
   bool serialize = GetParam();
 
