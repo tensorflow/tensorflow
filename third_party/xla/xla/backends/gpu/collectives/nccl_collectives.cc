@@ -531,9 +531,9 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     ABSL_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                      AsNcclConfig(gpu_config, stream_executors[i]));
 
-    ncclComm_t split_comm;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(parent_comm, color, key.value(),
-                                           &split_comm, &comm_config));
+    const auto* parent = absl::down_cast<const NcclCommunicator*>(comms[i]);
+    ABSL_ASSIGN_OR_RETURN(ncclComm_t split_comm,
+                     parent->Split(color, key.value(), comm_config));
 
     absl::Time split_done = absl::Now();
     VLOG(1) << absl::StreamFormat(
@@ -553,6 +553,8 @@ NcclCollectives::SplitCommunicatorsWithCancel(
   std::vector<Future<std::unique_ptr<Communicator>>> futures(comms.size());
   for (size_t i = 0; i < comms.size(); ++i) {
     futures[i] = MakeFutureOn(*pool.AsExecutor(), [&, i] {
+      // Split waits for the parent to publish a valid child handle. Create
+      // must still poll that child, whose initialization may be in progress.
       absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
           NcclCommunicator::Create(stream_executors[i], std::bind(make_comm, i),
                                    cancel, gpu_config.async_execution);
@@ -577,7 +579,6 @@ NcclCollectives::SplitCommunicatorsWithCancel(
 
   return split_comms;
 }
-
 
 absl::StatusOr<GpuCollectives::CliqueIdCallback>
 NcclCollectives::InitializeTopology(const Topology& topology) {

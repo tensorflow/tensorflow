@@ -481,6 +481,8 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
   }
   auto f = [cancel, &make_comm]() -> absl::StatusOr<ncclComm_t> {
     ABSL_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
+    // For a split, make_comm waits for parent completion to publish the child
+    // handle. The child can still be initializing, so wait for its readiness.
     if (cancel) {
       ABSL_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
     } else {
@@ -551,6 +553,64 @@ NcclCommunicator::~NcclCommunicator() {
     XLA_LOG_DEVICE(ERROR, stream_executor_->device_ordinal())
         << "NcclCommunicator::~NcclCommunicator: " << s;
   }
+}
+
+absl::StatusOr<ncclComm_t> NcclCommunicator::Split(int color, int key,
+                                                   ncclConfig_t config) const {
+  absl::MutexLock lock(comm_->mutex);
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("Cannot split an aborted NCCL communicator");
+  }
+  if (comm_->comm == nullptr) {
+    return FailedPrecondition("Cannot split a null NCCL communicator");
+  }
+
+  if (config.blocking) {
+    // A blocking split publishes the child handle before it returns, so no
+    // polling or deferred cleanup is needed.
+    ncclComm_t child = nullptr;
+    XLA_NCCL_RETURN_IF_ERROR(
+        ncclCommSplit(comm_->comm, color, key, &child, &config));
+    return child;
+  }
+
+  // A nonblocking split can publish the child handle after ncclCommSplit
+  // returns. Allocate the output on the heap so it can remain valid if this
+  // method returns an error before completion.
+  auto child = std::make_unique<ncclComm_t>(nullptr);
+  absl::Status status = XLA_NCCL_STATUS(
+      ncclCommSplit(comm_->comm, color, key, child.get(), &config));
+  if (status.ok()) {
+    // Only parent success establishes that the child handle is valid. Abort()
+    // cancels this wait, so a peer that never completes the split cannot
+    // deadlock Abort() on the parent mutex.
+    status = ::xla::gpu::PollUntilDone(comm_->comm, *cancel_);
+  }
+  if (!status.ok()) {
+    // When PollUntilDone returns an error, ncclCommGetAsyncError itself may
+    // have failed. In that case we do not know whether the split completed,
+    // and NCCL might still write to the memory pointed to by `child`.
+    // Leave the output allocated and unread because NCCL may still write
+    // to it.
+    XLA_LOG_DEVICE(WARNING, stream_executor_->device_ordinal())
+        << "Leaking NCCL split output storage after failed split: " << status;
+    (void)child.release();
+    return status;
+  }
+  if (*child == nullptr && color != NCCL_SPLIT_NOCOLOR) {
+    // Parent completion should have published the child handle. Retain the
+    // output conservatively if NCCL violates that completion contract.
+    XLA_LOG_DEVICE(WARNING, stream_executor_->device_ordinal())
+        << "Leaking NCCL split output storage: split reported success but "
+           "the child communicator is null";
+    (void)child.release();
+    return Internal(
+        "NCCL split completed with ncclSuccess, but child communicator is "
+        "null");
+  }
+  // Parent completion publishes the handle. Create() still waits for the
+  // child's readiness before use.
+  return *child;
 }
 
 absl::Status NcclCommunicator::Abort() {
