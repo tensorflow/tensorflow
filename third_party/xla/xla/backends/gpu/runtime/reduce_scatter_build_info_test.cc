@@ -299,7 +299,7 @@ TEST_F(BuildReduceScatterInfoTest, FailsWhenInputAndOutputLayoutsDoNotMatch) {
 TEST_F(BuildReduceScatterInfoTest,
        VariadicChecksSizePerOperandAndUsesMaxElements) {
   // 8 MB + 16 MB = 24 MB total input across operands, but each operand is <=
-  // the 16 MB per-operand limit, and `num_output_elements` is the maximum
+  // the 32 MB per-operand limit, and `num_output_elements` is the maximum
   // across operands (2M elements from the second operand).
   constexpr absl::string_view kModuleStr = R"(
   HloModule test
@@ -456,23 +456,23 @@ TEST_F(BuildReduceScatterInfoTest, FailsForMoreThanMaxOperands) {
 }
 
 TEST_F(BuildReduceScatterInfoTest, FailsForLargeInputs) {
-  // 4 * 1024 * 1024 F32 output elements * 2 devices = 32 MB input > 16 MB
+  // 8 * 1024 * 1024 F32 output elements * 2 devices = 64 MB input > 32 MB
   // limit -> unimplemented.
-  EXPECT_THAT(BuildInfo(F32, /*num_output_elements=*/4 * 1024 * 1024,
+  EXPECT_THAT(BuildInfo(F32, /*num_output_elements=*/8 * 1024 * 1024,
                         HloOpcode::kAdd, /*replica_groups=*/{0, 1}),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("only supported for small inputs")));
 }
 
-TEST_F(BuildReduceScatterInfoTest, SucceedsFor16MBInput) {
-  // 2 * 1024 * 1024 F32 output elements * 2 devices = 16 MB input == 16 MB
+TEST_F(BuildReduceScatterInfoTest, SucceedsFor32MBInput) {
+  // 4 * 1024 * 1024 F32 output elements * 2 devices = 32 MB input == 32 MB
   // limit -> ok.
   EXPECT_THAT(
-      BuildInfo(F32, /*num_output_elements=*/2 * 1024 * 1024, HloOpcode::kAdd,
+      BuildInfo(F32, /*num_output_elements=*/4 * 1024 * 1024, HloOpcode::kAdd,
                 /*replica_groups=*/{0, 1}),
       IsOkAndHolds(AllOf(
           Field(&ReduceScatterInfo::num_devices, 2),
-          Field(&ReduceScatterInfo::num_output_elements, 2 * 1024 * 1024))));
+          Field(&ReduceScatterInfo::num_output_elements, 4 * 1024 * 1024))));
 }
 
 TEST_F(BuildReduceScatterInfoTest, CreateReduceScatterKernelSpec) {

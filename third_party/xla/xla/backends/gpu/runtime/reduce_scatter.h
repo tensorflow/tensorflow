@@ -30,7 +30,7 @@ namespace xla::gpu {
 
 // Maximum input byte size per operand for the custom reduce-scatter kernel.
 inline constexpr int64_t kMaxReduceScatterSizeBytes =
-    16 * 1024 * 1024;  // 16 MB
+    32 * 1024 * 1024;  // 32 MB
 
 // Maximum number of blocks per grid for the Triton reduce-scatter kernel.
 inline constexpr int64_t kReduceScatterMaxBlocksPerGrid = 128;
