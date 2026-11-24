@@ -77,6 +77,7 @@ cc_library(
 xla_cc_test(
     name = "builtin_symbols_test",
     srcs = ["builtin_symbols_test.cc"],
+    linkstatic = True,
     deps = [
         ":builtin_symbols",
         "@com_google_googletest//:gtest_main",
