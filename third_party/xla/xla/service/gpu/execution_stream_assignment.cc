@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/hlo/transforms/collectives/collective_domain.h"
 #include "xla/backends/gpu/hlo/transforms/dynamic_slice_copy.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_latency_hiding_scheduler.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"
-#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/side_effect_util.h"
 
 namespace xla::gpu {

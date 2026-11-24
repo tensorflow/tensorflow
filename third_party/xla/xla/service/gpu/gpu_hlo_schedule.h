@@ -16,63 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 #define XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 
-#include <cstdint>
-#include <optional>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/hlo/analysis/alias_info.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/hlo/transforms/hlo_scheduling/latency_hiding_scheduler.h"
-#include "xla/stream_executor/device_description.h"
-#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
-
-namespace xla {
-namespace gpu {
-
-// Converts sync collective instructions to a pair of async start and done
-// instructions.
-absl::Status RunAsyncCollectivesConversionPasses(HloModule* module);
-
-struct ScheduleMetadata {
-  uint64_t scheduler_mem_limit;
-  int64_t peak_memory_usage;
-};
-
-// Defines the scheduler config to be used by LHS.
-SchedulerConfig MakeGPUSchedulerConfig(uint64_t memory_limit,
-                                       int64_t overlap_limit,
-                                       int64_t scale_up_overlap_limit,
-                                       int64_t async_compute_limit);
-
-// Resolves the configured SchedulerMemoryFencing threshold. A negative value
-// disables the pass, zero selects 1% of the scheduler memory limit, and a
-// positive value selects an explicit threshold capped at the memory limit.
-std::optional<int64_t> GetSchedulerMemoryFencingThresholdBytes(
-    int64_t configured_threshold_bytes, uint64_t memory_limit);
-
-// Compute the device memory limit to be used by passes like scheduler and
-// HLO rematerialization.
-uint64_t GetSchedulerMemoryLimit(const HloModule& module,
-                                 const se::DeviceDescription& gpu_device_info,
-                                 int pointer_size);
-
-// Determines whether Latency Hiding Scheduler (LHS) is enabled for a module.
-bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint,
-                  const se::DeviceDescription& gpu_device_info);
-
-// Determines the schedule of HLO instructions for a module run on the GPU.
-absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
-    HloModule* module, int64_t pointer_size,
-    const se::DeviceDescription& gpu_device_info,
-    mlir::MLIRContext* mlir_context, const GpuAliasInfo* alias_info);
-
-HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_hlo_schedule.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_hlo_schedule.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_

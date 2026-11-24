@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_hlo_schedule.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/hlo/transforms/collectives/async_collective_annotator.h"
 #include "xla/backends/gpu/hlo/transforms/collectives/collective_domain.h"
 #include "xla/backends/gpu/hlo/transforms/collectives/collective_ops_utils.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_latency_hiding_scheduler.h"
 #include "xla/backends/gpu/hlo/transforms/pgle_accuracy_checker.h"
 #include "xla/backends/gpu/hlo/transforms/scheduling_instruction_annotator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -70,7 +71,6 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/flag_utils.h"
-#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo.pb.h"

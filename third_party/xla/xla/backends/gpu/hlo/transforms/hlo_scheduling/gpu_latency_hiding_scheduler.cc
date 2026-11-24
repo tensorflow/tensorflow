@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_latency_hiding_scheduler.h"
 
 #include <algorithm>
 #include <cmath>

@@ -29,14 +29,14 @@ limitations under the License.
 #include "xla/backends/gpu/cost_model/gpu_hlo_cost_analysis.h"
 #include "xla/backends/gpu/cost_model/hlo_op_profiles.h"
 #include "xla/backends/gpu/cost_model/sol_latency_estimator.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_hlo_schedule.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_latency_hiding_scheduler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/hlo_scheduling/latency_hiding_scheduler.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/gpu_hlo_schedule.h"
-#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {

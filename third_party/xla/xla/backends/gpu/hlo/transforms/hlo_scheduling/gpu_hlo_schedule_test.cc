@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_hlo_schedule.h"
 
 #include <algorithm>
 #include <cstdint>

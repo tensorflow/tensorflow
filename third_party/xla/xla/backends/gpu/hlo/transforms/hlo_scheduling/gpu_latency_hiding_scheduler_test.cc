@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_latency_hiding_scheduler.h"
 
 #include <cstdint>
 #include <limits>
@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/backends/gpu/hlo/transforms/collectives/collective_domain.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_hlo_schedule.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
