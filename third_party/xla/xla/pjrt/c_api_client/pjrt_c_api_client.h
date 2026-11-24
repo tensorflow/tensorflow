@@ -26,6 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -527,7 +528,8 @@ class PjRtCApiClient : public PjRtClient {
     return it->second;
   }
 
-  PjRtCApiMemorySpace* GetCppMemory(PJRT_Memory* c_memory) const {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI PjRtCApiMemorySpace* GetCppMemory(
+      PJRT_Memory* c_memory) const {
     if (SupportsMemoryUserData() && c_memory->vtable &&
         c_memory->vtable->get_user_data) {
       void* data = c_memory->vtable->get_user_data(

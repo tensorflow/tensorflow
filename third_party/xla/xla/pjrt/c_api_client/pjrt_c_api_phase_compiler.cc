@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
@@ -87,7 +88,7 @@ void CleanUpCallerDefinedCBuffers(absl::Span<const char* const> char_buffers) {
 // Cleans up C buffers allocated by the plugin-side code and passed to the
 // caller-side code. Example buffers include those used to propagate the
 // compiled output programs.
-void CleanUpPluginDefinedCBuffers(
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void CleanUpPluginDefinedCBuffers(
     const char** char_buffers, const size_t* char_buffer_sizes,
     size_t num_char_buffers,
     const PJRT_PhaseCompile_Extension* phase_compile_extension) {
@@ -101,6 +102,41 @@ void CleanUpPluginDefinedCBuffers(
   phase_compile_extension->phase_compile_c_buffers_destroy(&destroy_args);
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void DestroyPhaseCompiler(
+    const PJRT_PhaseCompile_Extension* phase_compile_extension,
+    const PJRT_PhaseCompiler* p_compiler) {
+  PJRT_PhaseCompile_Destroy_Compiler_Args destroy_args;
+  destroy_args.struct_size =
+      PJRT_PhaseCompile_Destroy_Compiler_Args_STRUCT_SIZE;
+  destroy_args.extension_start = nullptr;
+  destroy_args.phase_compiler = p_compiler;
+  phase_compile_extension->phase_compile_destroy_compiler(&destroy_args);
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void DestroyRelocatable(
+    const PJRT_Api* c_api,
+    const PJRT_PhaseCompile_Extension* phase_compile_extension,
+    PJRT_Relocatable* reloc) {
+  PJRT_Relocatable_Destroy_Args destroy_args;
+  destroy_args.struct_size = PJRT_Relocatable_Destroy_Args_STRUCT_SIZE;
+  destroy_args.extension_start = nullptr;
+  destroy_args.relocatable = reloc;
+  pjrt::LogFatalIfPjrtError(
+      phase_compile_extension->relocatable_destroy(&destroy_args), c_api);
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void DeleteSerializedRelocatable(
+    void (*deleter)(PJRT_SerializedRelocatable*),
+    PJRT_SerializedRelocatable* serialized) {
+  deleter(serialized);
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void DeleteSerializedLayout(
+    void (*deleter)(PJRT_Layouts_SerializedLayout*),
+    PJRT_Layouts_SerializedLayout* serialized) {
+  deleter(serialized);
+}
+
 }  // namespace
 
 PjRtCApiPhaseCompiler::PjRtCApiPhaseCompiler(
@@ -112,13 +148,7 @@ PjRtCApiPhaseCompiler::PjRtCApiPhaseCompiler(
       phase_compiler_(
           phase_compiler,
           [phase_compile_extension](const PJRT_PhaseCompiler* p_compiler) {
-            PJRT_PhaseCompile_Destroy_Compiler_Args destroy_args;
-            destroy_args.struct_size =
-                PJRT_PhaseCompile_Destroy_Compiler_Args_STRUCT_SIZE;
-            destroy_args.extension_start = nullptr;
-            destroy_args.phase_compiler = p_compiler;
-            phase_compile_extension->phase_compile_destroy_compiler(
-                &destroy_args);
+            DestroyPhaseCompiler(phase_compile_extension, p_compiler);
           }) {}
 
 // Returns the reference to the phase compiler.
@@ -126,7 +156,7 @@ const PJRT_PhaseCompiler* PjRtCApiPhaseCompiler::GetPhaseCompiler() const {
   return phase_compiler_.get();
 }
 
-absl::StatusOr<std::vector<std::string>>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<std::vector<std::string>>
 PjRtCApiPhaseCompiler::GetPhaseNames() {
   PJRT_PhaseCompile_Get_PhaseNames_Args args;
   args.struct_size = PJRT_PhaseCompile_Get_PhaseNames_Args_STRUCT_SIZE;
@@ -144,6 +174,7 @@ PjRtCApiPhaseCompiler::GetPhaseNames() {
   return phase_names;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>>
 PjRtCApiPhaseCompiler::RunPhases(
     xla::CompileOptions options,
@@ -228,7 +259,7 @@ PjRtCApiPhaseCompiler::RunPhases(
   return output_programs;
 }
 
-absl::StatusOr<std::unique_ptr<PjRtRelocatable>>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<std::unique_ptr<PjRtRelocatable>>
 PjRtCApiPhaseCompiler::CompileToRelocatable(
     CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, absl::string_view name,
@@ -286,7 +317,7 @@ PjRtCApiPhaseCompiler::CompileToRelocatable(
                                                args.relocatable);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtRelocatable>>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<std::unique_ptr<PjRtRelocatable>>
 PjRtCApiPhaseCompiler::DeserializeRelocatable(
     absl::string_view serialized) const {
   PJRT_PhaseCompile_DeserializeRelocatable_Args args;
@@ -304,7 +335,7 @@ PjRtCApiPhaseCompiler::DeserializeRelocatable(
                                                args.relocatable);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 PjRtCApiPhaseCompiler::LinkRelocatables(
     CompileOptions options, const PjRtTopologyDescription& topology,
     std::shared_ptr<const PjRtRelocatable> entrypoint,
@@ -359,17 +390,13 @@ PjRtCApiRelocatable::PjRtCApiRelocatable(
     PJRT_Relocatable* relocatable)
     : c_api_(c_api),
       phase_compile_extension_(phase_compile_extension),
-      relocatable_(relocatable, [c_api, phase_compile_extension](
-                                    PJRT_Relocatable* reloc) {
-        PJRT_Relocatable_Destroy_Args destroy_args;
-        destroy_args.struct_size = PJRT_Relocatable_Destroy_Args_STRUCT_SIZE;
-        destroy_args.extension_start = nullptr;
-        destroy_args.relocatable = reloc;
-        pjrt::LogFatalIfPjrtError(
-            phase_compile_extension->relocatable_destroy(&destroy_args), c_api);
-      }) {}
+      relocatable_(relocatable,
+                   [c_api, phase_compile_extension](PJRT_Relocatable* reloc) {
+                     DestroyRelocatable(c_api, phase_compile_extension, reloc);
+                   }) {}
 
-absl::string_view PjRtCApiRelocatable::name() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::string_view PjRtCApiRelocatable::name()
+    const {
   PJRT_Relocatable_Name_Args args;
   args.struct_size = PJRT_Relocatable_Name_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -379,7 +406,8 @@ absl::string_view PjRtCApiRelocatable::name() const {
   return absl::string_view(args.relocatable_name, args.relocatable_name_size);
 }
 
-absl::string_view PjRtCApiRelocatable::build_id() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::string_view PjRtCApiRelocatable::build_id()
+    const {
   PJRT_Relocatable_BuildId_Args args;
   args.struct_size = PJRT_Relocatable_BuildId_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -389,7 +417,8 @@ absl::string_view PjRtCApiRelocatable::build_id() const {
   return absl::string_view(args.build_id, args.build_id_size);
 }
 
-absl::string_view PjRtCApiRelocatable::call_backend_config() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::string_view
+PjRtCApiRelocatable::call_backend_config() const {
   PJRT_Relocatable_CallBackendConfig_Args args;
   args.struct_size = PJRT_Relocatable_CallBackendConfig_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -400,7 +429,8 @@ absl::string_view PjRtCApiRelocatable::call_backend_config() const {
                            args.call_backend_config_size);
 }
 
-bool PjRtCApiRelocatable::has_side_effects() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI bool PjRtCApiRelocatable::has_side_effects()
+    const {
   PJRT_Relocatable_HasSideEffects_Args args;
   args.struct_size = PJRT_Relocatable_HasSideEffects_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -410,7 +440,8 @@ bool PjRtCApiRelocatable::has_side_effects() const {
   return args.has_side_effects;
 }
 
-absl::StatusOr<std::string> PjRtCApiRelocatable::Serialize() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<std::string>
+PjRtCApiRelocatable::Serialize() const {
   PJRT_Relocatable_Serialize_Args ser_args;
   ser_args.struct_size = PJRT_Relocatable_Serialize_Args_STRUCT_SIZE;
   ser_args.extension_start = nullptr;
@@ -420,12 +451,13 @@ absl::StatusOr<std::string> PjRtCApiRelocatable::Serialize() const {
   RETURN_STATUS_IF_PJRT_ERROR(
       phase_compile_extension_->relocatable_serialize(&ser_args), c_api_);
   absl::Cleanup cleanup = [&ser_args] {
-    ser_args.serialized_relocatable_deleter(ser_args.serialized_relocatable);
+    DeleteSerializedRelocatable(ser_args.serialized_relocatable_deleter,
+                                ser_args.serialized_relocatable);
   };
   return std::string(ser_args.serialized_bytes, ser_args.serialized_bytes_size);
 }
 
-absl::StatusOr<std::vector<PrimitiveType>>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<std::vector<PrimitiveType>>
 PjRtCApiRelocatable::GetParameterElementTypes() const {
   PJRT_Relocatable_ParameterElementTypes_Args args;
   args.struct_size = PJRT_Relocatable_ParameterElementTypes_Args_STRUCT_SIZE;
@@ -444,7 +476,7 @@ PjRtCApiRelocatable::GetParameterElementTypes() const {
   return out;
 }
 
-absl::StatusOr<std::vector<PrimitiveType>>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<std::vector<PrimitiveType>>
 PjRtCApiRelocatable::GetOutputElementTypes() const {
   PJRT_Relocatable_OutputElementTypes_Args args;
   args.struct_size = PJRT_Relocatable_OutputElementTypes_Args_STRUCT_SIZE;
@@ -463,7 +495,7 @@ PjRtCApiRelocatable::GetOutputElementTypes() const {
   return out;
 }
 
-absl::StatusOr<std::vector<DimensionVector>>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<std::vector<DimensionVector>>
 PjRtCApiRelocatable::GetParameterDimensions() const {
   PJRT_Relocatable_ParameterDimensions_Args args;
   args.struct_size = PJRT_Relocatable_ParameterDimensions_Args_STRUCT_SIZE;
@@ -488,7 +520,7 @@ PjRtCApiRelocatable::GetParameterDimensions() const {
   return out;
 }
 
-absl::StatusOr<std::vector<DimensionVector>>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<std::vector<DimensionVector>>
 PjRtCApiRelocatable::GetOutputDimensions() const {
   PJRT_Relocatable_OutputDimensions_Args args;
   args.struct_size = PJRT_Relocatable_OutputDimensions_Args_STRUCT_SIZE;
@@ -512,6 +544,7 @@ PjRtCApiRelocatable::GetOutputDimensions() const {
   return out;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtCApiRelocatable::GetParameterLayouts() const {
   PJRT_Layouts_Extension* layouts_extension =
@@ -544,8 +577,8 @@ PjRtCApiRelocatable::GetParameterLayouts() const {
         c_api_);
 
     absl::Cleanup cleanup = [&serialize_args] {
-      serialize_args.serialized_layout_deleter(
-          serialize_args.serialized_layout);
+      DeleteSerializedLayout(serialize_args.serialized_layout_deleter,
+                             serialize_args.serialized_layout);
     };
 
     std::string serialized_layout(serialize_args.serialized_bytes,
@@ -557,6 +590,7 @@ PjRtCApiRelocatable::GetParameterLayouts() const {
   return layouts;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtCApiRelocatable::GetOutputLayouts() const {
   PJRT_Layouts_Extension* layouts_extension =
@@ -589,8 +623,8 @@ PjRtCApiRelocatable::GetOutputLayouts() const {
         c_api_);
 
     absl::Cleanup cleanup = [&serialize_args] {
-      serialize_args.serialized_layout_deleter(
-          serialize_args.serialized_layout);
+      DeleteSerializedLayout(serialize_args.serialized_layout_deleter,
+                             serialize_args.serialized_layout);
     };
 
     std::string serialized_layout(serialize_args.serialized_bytes,
@@ -602,6 +636,7 @@ PjRtCApiRelocatable::GetOutputLayouts() const {
   return layouts;
 }
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>>
 PjRtCApiRelocatable::GetParameterOutputAliases() const {
   PJRT_Relocatable_ParameterOutputAliases_Args args;

@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -29,6 +30,7 @@ limitations under the License.
 
 namespace pjrt {
 
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI
 PjRtCApiMultiSliceConfig::~PjRtCApiMultiSliceConfig() {
   PJRT_MultiSlice_Config_Destroy_Args args;
   args.struct_size = PJRT_MultiSlice_Config_Destroy_Args_STRUCT_SIZE;
@@ -42,7 +44,8 @@ PjRtCApiMultiSliceConfig::~PjRtCApiMultiSliceConfig() {
   }
 }
 
-int32_t PjRtCApiMultiSliceConfig::NumSlices() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI int32_t
+PjRtCApiMultiSliceConfig::NumSlices() const {
   PJRT_MultiSlice_Config_NumSlices_Args args;
   args.struct_size = PJRT_MultiSlice_Config_NumSlices_Args_STRUCT_SIZE;
   args.config = config_;
@@ -51,7 +54,8 @@ int32_t PjRtCApiMultiSliceConfig::NumSlices() const {
   return args.num_slices;
 }
 
-int32_t PjRtCApiMultiSliceConfig::SliceId() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI int32_t
+PjRtCApiMultiSliceConfig::SliceId() const {
   PJRT_MultiSlice_Config_SliceId_Args args;
   args.struct_size = PJRT_MultiSlice_Config_SliceId_Args_STRUCT_SIZE;
   args.config = config_;
@@ -60,7 +64,7 @@ int32_t PjRtCApiMultiSliceConfig::SliceId() const {
   return args.slice_id;
 }
 
-absl::flat_hash_map<int32_t, int32_t>
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::flat_hash_map<int32_t, int32_t>
 PjRtCApiMultiSliceConfig::NumDevicesPerSlice() const {
   PJRT_MultiSlice_Config_NumDevicesPerSlice_Args args;
   args.struct_size = PJRT_MultiSlice_Config_NumDevicesPerSlice_Args_STRUCT_SIZE;
@@ -77,7 +81,8 @@ PjRtCApiMultiSliceConfig::NumDevicesPerSlice() const {
   return result;
 }
 
-std::string PjRtCApiMultiSliceConfig::Serialize() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI std::string PjRtCApiMultiSliceConfig::Serialize()
+    const {
   CHECK(extension_ != nullptr);
 
   PJRT_MultiSlice_Config_Serialize_Args args;
