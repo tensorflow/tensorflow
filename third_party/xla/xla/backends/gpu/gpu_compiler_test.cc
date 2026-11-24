@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_compiler.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -61,6 +59,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/error_spec.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
@@ -75,7 +74,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -131,12 +129,10 @@ namespace {
 namespace m = ::xla::match;
 
 using ::testing::AssertionResult;
-using ::testing::AtLeast;
 using ::testing::Contains;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
-using ::testing::EndsWith;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
@@ -1905,7 +1901,8 @@ ENTRY main {
 }
 )";
 
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_text).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.clear_xla_gpu_enable_command_buffer();
@@ -1944,7 +1941,8 @@ ENTRY main {
 }
 )";
 
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_text).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   Compiler::CompileOptions compile_options;
   compile_options.gpu_topology =

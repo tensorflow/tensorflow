@@ -1,4 +1,4 @@
-/* Copyright 2019 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,13 @@ limitations under the License.
 
 #include <memory>
 
-#include "xla/service/compiler.h"
-#include "xla/service/gpu/nvptx_compiler.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/backends/gpu/intel_gpu_compiler.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 
-static bool InitModule() {
+static bool InitCompilerModule() {
   xla::Compiler::RegisterCompilerFactory(
-      stream_executor::cuda::kCudaPlatformId,
-      []() { return std::make_unique<xla::gpu::NVPTXCompiler>(); });
+      stream_executor::sycl::kSyclPlatformId,
+      []() { return std::make_unique<xla::gpu::IntelGpuCompiler>(); });
   return true;
 }
-static bool module_initialized = InitModule();
+static bool compiler_module_initialized = InitCompilerModule();

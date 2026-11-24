@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/amdgpu_compiler.h"
+#include "xla/backends/gpu/amdgpu_compiler.h"
 
 #include <cstdint>
 #include <optional>
@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/gpu_compiler.h"
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/backends/gpu/hlo/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/hlo/transforms/conv_padding_legalization.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiler.h"
 #include "xla/service/float_support.h"
-#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_pipeline.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu_topology.h"

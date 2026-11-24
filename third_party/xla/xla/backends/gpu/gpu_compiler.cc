@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_compiler.h"
+#include "xla/backends/gpu/gpu_compiler.h"
 
 #include <algorithm>
 #include <array>
@@ -59,7 +59,6 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/in_memory_store.h"
@@ -128,8 +127,6 @@ limitations under the License.
 #include "xla/backends/gpu/hlo/transforms/gpu_cost_model_stats_collection.h"
 #include "xla/backends/gpu/hlo/transforms/gpu_transpose_folding.h"
 #include "xla/backends/gpu/hlo/transforms/group_collectives_by_key.h"
-#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_hlo_schedule.h"
-#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_latency_hiding_scheduler.h"
 #include "xla/backends/gpu/hlo/transforms/layout_assignment.h"
 #include "xla/backends/gpu/hlo/transforms/matmul_ptable_stats_collection.h"
 #include "xla/backends/gpu/hlo/transforms/move_copy_to_users.h"
@@ -168,7 +165,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
@@ -279,7 +275,6 @@ limitations under the License.
 #include "xla/hlo/transforms/topk_rewriter.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/collective_utils.h"
@@ -305,12 +300,13 @@ limitations under the License.
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_hlo_schedule.h"
+#include "xla/backends/gpu/hlo/transforms/hlo_scheduling/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/gpu_pipeline.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
-#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/pre_scheduling_copy_insertion_pipeline.h"
 #include "xla/service/gpu/reduction_utils.h"
@@ -379,20 +375,6 @@ bool IsTritonGemmEnabled(const DebugOptions& debug_options,
     return false;
   }
   return IsTritonEnabled(gpu_version);
-}
-
-tsl::thread::ThreadPool* GetCompilationThreadPool() {
-  static constexpr int kMaxCompilationThreads = 32;
-  tsl::ThreadOptions thread_options;
-  thread_options.stack_size = 4 * 1024 * 1024;  // 4 MB
-  static auto* const thread_pool = new tsl::thread::ThreadPool(
-      tsl::Env::Default(), thread_options, "xla-gpu-codegen",
-      std::min(kMaxCompilationThreads, tsl::port::MaxParallelism()));
-  return thread_pool;
-}
-
-tsl::thread::ThreadPool* GetGpuCompilationThreadPool() {
-  return GetCompilationThreadPool();
 }
 
 using MaybeOwningThreadPool = tsl::MaybeOwning<tsl::thread::ThreadPool>;
@@ -621,6 +603,7 @@ absl::StatusOr<GpuTopology> InferGpuTopology(
 }
 
 void MergeModuleStatsInPlace(const ModuleStats& from, ModuleStats& to) {
+  // NOLINTNEXTLINE
   for (const auto& [name, kernel_stats] : from) {
     to[name].load_bytes_spilled += kernel_stats.load_bytes_spilled;
     to[name].store_bytes_spilled += kernel_stats.store_bytes_spilled;
@@ -1048,7 +1031,10 @@ absl::Status RunOptimizationPasses(
   // Do not merge dots when they are assigned different stream ids.
   std::function<int64_t(const HloInstruction* dot)> queue_id =
       [&](const HloInstruction* dot) -> int64_t {
-    return dot->backend_config<GpuBackendConfig>()->operation_queue_id();
+    absl::StatusOr<GpuBackendConfig> config =
+        dot->backend_config<GpuBackendConfig>();
+    CHECK_OK(config);
+    return config->operation_queue_id();
   };
   pipeline.AddPass<DotMerger>(
       /*max_size_to_merge=*/int64_t{debug_options

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/gpu_compiler.h"
 #include "xla/backends/gpu/tests/hlo_legacy_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
@@ -50,13 +50,11 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -69,9 +67,14 @@ using ::testing::Property;
 using ::testing::SizeIs;
 
 se::Platform* GpuPlatform() {
-  std::string name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  return se::PlatformManager::PlatformWithName(name).value();
+  absl::StatusOr<std::string> canonical_name =
+      PlatformUtil::CanonicalPlatformName("gpu");
+  CHECK_OK(canonical_name);
+  std::string name = absl::AsciiStrToUpper(*canonical_name);
+  absl::StatusOr<se::Platform*> platform =
+      se::PlatformManager::PlatformWithName(name);
+  CHECK_OK(platform);
+  return *platform;
 }
 
 class AotCompilationTest : public HloLegacyGpuTestBase,

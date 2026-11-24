@@ -28,7 +28,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
-#include "xla/service/gpu/nvptx_compiler.h"
+#include "xla/backends/gpu/nvptx_compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
@@ -59,7 +59,7 @@ class NVPTXCompilerTargetTest
  protected:
   void SetUp() override {
     module_config_.mutable_debug_options().set_xla_gpu_cuda_data_dir(
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service/gpu",
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "backends/gpu",
                           "nvptx_compiler_target_test_cuda"));
     device_description_.set_cuda_compute_capability(
         {10, 7,

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/intel_gpu_compiler.h"
+#include "xla/backends/gpu/intel_gpu_compiler.h"
 
 #include "absl/status/status_macros.h"
 #include "xla/backends/gpu/hlo/transforms/algebraic_simplifier.h"

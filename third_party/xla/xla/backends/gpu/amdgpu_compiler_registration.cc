@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,14 @@ limitations under the License.
 
 #include <memory>
 
-#include "xla/service/gpu/intel_gpu_compiler.h"
-#include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/backends/gpu/amdgpu_compiler.h"
+#include "xla/service/compiler.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 
-static bool InitCompilerModule() {
+static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
-      stream_executor::sycl::kSyclPlatformId,
-      []() { return std::make_unique<xla::gpu::IntelGpuCompiler>(); });
+      stream_executor::rocm::kROCmPlatformId,
+      []() { return std::make_unique<xla::gpu::AMDGPUCompiler>(); });
   return true;
 }
-static bool compiler_module_initialized = InitCompilerModule();
+static bool module_initialized = InitModule();

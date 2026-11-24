@@ -18,6 +18,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//xla/backends/autotuner:__subpackages__",
+        "//xla/backends/gpu:__pkg__",
         "//xla/backends/gpu/hlo/transforms:__subpackages__",
         "//xla/service/gpu:__subpackages__",
     ],

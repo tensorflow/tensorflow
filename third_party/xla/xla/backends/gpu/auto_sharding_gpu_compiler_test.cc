@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -21,10 +22,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
-#include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -47,20 +47,28 @@ ENTRY matmul {
     config.set_auto_spmd_partitioning_mesh_shape({num_partitions});
     config.set_num_partitions(num_partitions);
 
-    auto module = ParseAndReturnVerifiedModule(dot_hlo_string_, config).value();
-    std::unique_ptr<HloModule> compiled_module =
-        backend()
-            .compiler()
-            ->RunHloPasses(module->Clone(), backend().default_stream_executor(),
-                           /*device_allocator=*/nullptr)
-            .value();
-    VLOG(2) << compiled_module->ToString();
-    return compiled_module;
+    absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
+        ParseAndReturnVerifiedModule(dot_hlo_string_, config);
+    if (!module.ok()) {
+      ADD_FAILURE() << module.status();
+      return nullptr;
+    }
+    absl::StatusOr<std::unique_ptr<HloModule>> compiled_module =
+        backend().compiler()->RunHloPasses(
+            (*module)->Clone(), backend().default_stream_executor(),
+            /*device_allocator=*/nullptr);
+    if (!compiled_module.ok()) {
+      ADD_FAILURE() << compiled_module.status();
+      return nullptr;
+    }
+    VLOG(2) << (*compiled_module)->ToString();
+    return *std::move(compiled_module);
   }
 };
 
 TEST_F(AutoShardingTest, MatMulWithoutAutosharding) {
   auto compiled_module = CompileMatMul(false, 4);
+  ASSERT_NE(compiled_module, nullptr);
   auto* instruction =
       compiled_module->entry_computation()->parameter_instruction(0);
   VLOG(2) << instruction->ToString();

@@ -15,14 +15,14 @@ limitations under the License.
 
 #include <memory>
 
+#include "xla/backends/gpu/nvptx_compiler.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/amdgpu_compiler.h"
-#include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
-      stream_executor::rocm::kROCmPlatformId,
-      []() { return std::make_unique<xla::gpu::AMDGPUCompiler>(); });
+      stream_executor::cuda::kCudaPlatformId,
+      []() { return std::make_unique<xla::gpu::NVPTXCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();
