@@ -75,10 +75,18 @@ struct PointwiseShardingRuleOpInterface
   }
 };
 
+// Attaches default PartitioningOpInterface (all hooks return std::nullopt) so
+// Shardy's generic pad-for-divisibility and global-to-local patterns apply to
+// MHLO ops whose shapes can be padded and localized generically.
+template <typename OpTy>
+struct GenericPartitioningOpInterface
+    : public mlir::sdy::PartitioningOpInterface::ExternalModel<
+          GenericPartitioningOpInterface<OpTy>, OpTy> {};
+
 template <typename... OpTys>
-void attachPointwiseShardingRule(mlir::MLIRContext* ctx) {
-  (OpTys::template attachInterface<PointwiseShardingRuleOpInterface<OpTys>>(
-       *ctx),
+void attachPointwiseInterfaces(mlir::MLIRContext* ctx) {
+  (OpTys::template attachInterface<PointwiseShardingRuleOpInterface<OpTys>,
+                                   GenericPartitioningOpInterface<OpTys>>(*ctx),
    ...);
 }
 
@@ -90,6 +98,31 @@ enum RaggedDotMode {
   // Ragged batch (b):           [b,m,k], [b,k,n],   [g]   -> [b,m,n].
   kBatch,
 };
+
+RaggedDotMode getRaggedDotMode(mhlo::RaggedDotOp raggedDot) {
+  mhlo::RaggedDotDimensionNumbersAttr raggedDotDimNumbers =
+      raggedDot.getRaggedDotDimensionNumbers();
+  mhlo::DotDimensionNumbersAttr dotDimNumbers =
+      raggedDotDimNumbers.getDotDimensionNumbers();
+  ArrayRef<int64_t> lhsRaggedDims =
+      raggedDotDimNumbers.getLhsRaggedDimensions();
+  CHECK_EQ(lhsRaggedDims.size(), 1);
+  int64_t lhsRaggedDim = lhsRaggedDims.front();
+  ArrayRef<int64_t> rhsGroupDims = raggedDotDimNumbers.getRhsGroupDimensions();
+
+  if (llvm::is_contained(dotDimNumbers.getLhsContractingDimensions(),
+                         lhsRaggedDim)) {
+    CHECK(rhsGroupDims.empty());
+    return RaggedDotMode::kContracting;
+  }
+  if (llvm::is_contained(dotDimNumbers.getLhsBatchingDimensions(),
+                         lhsRaggedDim)) {
+    CHECK(rhsGroupDims.empty());
+    return RaggedDotMode::kBatch;
+  }
+  CHECK_EQ(rhsGroupDims.size(), 1);
+  return RaggedDotMode::kNonContracting;
+}
 
 struct RaggedDotShardingRuleOpInterface
     : public mlir::sdy::ShardingRuleOpInterface::ExternalModel<
@@ -110,24 +143,10 @@ struct RaggedDotShardingRuleOpInterface
     ArrayRef<int64_t> rhsContractingDims =
         dotDimNumbers.getRhsContractingDimensions();
 
-    ArrayRef<int64_t> lhsRaggedDims =
-        raggedDotDimNumbers.getLhsRaggedDimensions();
-    CHECK_EQ(lhsRaggedDims.size(), 1);
-    int64_t lhsRaggedDim = lhsRaggedDims.front();
+    RaggedDotMode mode = getRaggedDotMode(raggedDot);
+    int64_t lhsRaggedDim = raggedDotDimNumbers.getLhsRaggedDimensions().front();
     ArrayRef<int64_t> rhsGroupDims =
         raggedDotDimNumbers.getRhsGroupDimensions();
-
-    RaggedDotMode mode;
-    if (llvm::is_contained(lhsContractingDims, lhsRaggedDim)) {
-      CHECK(rhsGroupDims.empty());
-      mode = RaggedDotMode::kContracting;
-    } else if (llvm::is_contained(lhsBatchingDims, lhsRaggedDim)) {
-      CHECK(rhsGroupDims.empty());
-      mode = RaggedDotMode::kBatch;
-    } else {
-      CHECK_EQ(rhsGroupDims.size(), 1);
-      mode = RaggedDotMode::kNonContracting;
-    }
 
     OpShardingRuleBuilder builder(raggedDot);
 
@@ -224,17 +243,229 @@ struct RaggedDotShardingRuleOpInterface
   }
 };
 
+mlir::sdy::TensorShardingAttr getShardingOrWhileOperandSharding(
+    mlir::Value value) {
+  if (mlir::sdy::TensorShardingAttr sharding = mlir::sdy::getSharding(value)) {
+    return sharding;
+  }
+  if (auto blockArg = llvm::dyn_cast<mlir::BlockArgument>(value)) {
+    if (auto whileOp = llvm::dyn_cast_or_null<mlir::stablehlo::WhileOp>(
+            blockArg.getOwner()->getParentOp())) {
+      unsigned idx = blockArg.getArgNumber();
+      if (auto sharding =
+              getShardingOrWhileOperandSharding(whileOp->getOperand(idx))) {
+        return sharding;
+      }
+      return mlir::sdy::getSharding(whileOp->getResult(idx));
+    }
+  }
+  return {};
+}
+
+// Masks elements outside origType bounds along dimsToZero to zero.
+mlir::Value ensureZeroPaddingOnDims(mlir::Location loc, mlir::Value paddedVal,
+                                    mlir::RankedTensorType origType,
+                                    ArrayRef<int64_t> dimsToZero,
+                                    mlir::OpBuilder& builder) {
+  auto paddedType = llvm::cast<mlir::RankedTensorType>(paddedVal.getType());
+  if (origType == paddedType) {
+    return paddedVal;
+  }
+  mlir::sdy::TensorShardingAttr sharding =
+      getShardingOrWhileOperandSharding(paddedVal);
+  mlir::Type indexElemType = mlir::sdy::getIndexOrOffsetType(
+      builder, mlir::sdy::requires64BitIndex(paddedType));
+  auto indexType =
+      mlir::RankedTensorType::get(paddedType.getShape(), indexElemType);
+  mlir::Value validDataMask;
+  for (int64_t dim : dimsToZero) {
+    int64_t origSize = origType.getDimSize(dim);
+    if (origSize == paddedType.getDimSize(dim)) {
+      continue;
+    }
+    mlir::Value iota =
+        mlir::stablehlo::IotaOp::create(builder, loc, indexType, dim);
+    if (sharding) {
+      mlir::sdy::setSharding(iota, sharding);
+    }
+    mlir::Value limit = mlir::sdy::createScalarIntConstant(loc, indexElemType,
+                                                           origSize, builder);
+    mlir::Value broadcastLimit = mlir::stablehlo::BroadcastInDimOp::create(
+        builder, loc, indexType, limit, builder.getDenseI64ArrayAttr({}));
+    if (sharding) {
+      mlir::sdy::setSharding(broadcastLimit, sharding);
+    }
+    mlir::Value mask = mlir::stablehlo::CompareOp::create(
+        builder, loc, iota, broadcastLimit,
+        mlir::stablehlo::ComparisonDirection::LT);
+    if (sharding) {
+      mlir::sdy::setSharding(mask, sharding);
+    }
+    if (validDataMask) {
+      validDataMask =
+          mlir::stablehlo::AndOp::create(builder, loc, validDataMask, mask);
+      if (sharding) {
+        mlir::sdy::setSharding(validDataMask, sharding);
+      }
+    } else {
+      validDataMask = mask;
+    }
+  }
+  if (!validDataMask) {
+    return paddedVal;
+  }
+  mlir::Value zeroScalar = mlir::sdy::createZeroConstant(
+      loc, mlir::RankedTensorType::get({}, paddedType.getElementType()),
+      builder);
+  mlir::Value broadcastZero = mlir::stablehlo::BroadcastInDimOp::create(
+      builder, loc, paddedType, zeroScalar, builder.getDenseI64ArrayAttr({}));
+  if (sharding) {
+    mlir::sdy::setSharding(broadcastZero, sharding);
+  }
+  mlir::Value select = mlir::stablehlo::SelectOp::create(
+      builder, loc, validDataMask, paddedVal, broadcastZero);
+  if (sharding) {
+    mlir::sdy::setSharding(select, sharding);
+  }
+  return select;
+}
+
+mlir::ArrayAttr convertPrecisionConfig(
+    std::optional<mlir::ArrayAttr> precisionConfig, mlir::MLIRContext* ctx) {
+  if (!precisionConfig.has_value()) {
+    return nullptr;
+  }
+  mlir::SmallVector<mlir::stablehlo::Precision> precisions;
+  for (mhlo::PrecisionAttr attr :
+       precisionConfig->getAsRange<mhlo::PrecisionAttr>()) {
+    switch (attr.getValue()) {
+      case mhlo::Precision::DEFAULT:
+        precisions.push_back(mlir::stablehlo::Precision::DEFAULT);
+        break;
+      case mhlo::Precision::HIGH:
+        precisions.push_back(mlir::stablehlo::Precision::HIGH);
+        break;
+      case mhlo::Precision::HIGHEST:
+        precisions.push_back(mlir::stablehlo::Precision::HIGHEST);
+        break;
+    }
+  }
+  return mlir::stablehlo::PrecisionConfigAttr::get(ctx, precisions);
+}
+
+// Lowers a batch-mode (kBatch) mhlo.ragged_dot to stablehlo.dot_general,
+// dropping group_sizes, matching SpmdPartitioningVisitor::HandleRaggedDot.
+mlir::LogicalResult replaceBatchRaggedDotWithDotGeneral(
+    mhlo::RaggedDotOp raggedDot, mlir::Value lhs, mlir::Value rhs,
+    const mlir::TypeConverter& typeConverter,
+    mlir::ConversionPatternRewriter& rewriter) {
+  mlir::SmallVector<mlir::Type> newResultTypes;
+  if (mlir::failed(typeConverter.convertTypes(raggedDot->getResults(),
+                                              newResultTypes))) {
+    return mlir::failure();
+  }
+  mlir::MLIRContext* ctx = rewriter.getContext();
+  mhlo::DotDimensionNumbersAttr mhloDotDims =
+      raggedDot.getRaggedDotDimensionNumbers().getDotDimensionNumbers();
+  auto stablehloDotDims = mlir::stablehlo::DotDimensionNumbersAttr::get(
+      ctx, mhloDotDims.getLhsBatchingDimensions(),
+      mhloDotDims.getRhsBatchingDimensions(),
+      mhloDotDims.getLhsContractingDimensions(),
+      mhloDotDims.getRhsContractingDimensions());
+  mlir::ArrayAttr precisionConfig =
+      convertPrecisionConfig(raggedDot.getPrecisionConfig(), ctx);
+  auto dotGeneral = mlir::stablehlo::DotGeneralOp::create(
+      rewriter, raggedDot.getLoc(), newResultTypes.front(), lhs, rhs,
+      stablehloDotDims, precisionConfig,
+      /*algorithm=*/mlir::stablehlo::DotAlgorithmAttr());
+  mlir::NamedAttrList discardableAttrs(
+      raggedDot->getDiscardableAttrDictionary());
+  discardableAttrs.erase(mlir::sdy::kShardingRuleAttr);
+  dotGeneral->setDiscardableAttrs(discardableAttrs.getAttrs());
+  rewriter.replaceOp(raggedDot, dotGeneral->getResults());
+  return mlir::success();
+}
+
+struct RaggedDotPartitioningOpInterface
+    : public mlir::sdy::PartitioningOpInterface::ExternalModel<
+          RaggedDotPartitioningOpInterface, mhlo::RaggedDotOp> {
+  std::optional<mlir::LogicalResult> padForDivisibility(
+      mlir::Operation* op, mlir::ValueRange operands,
+      mlir::ConversionPatternRewriter& rewriter,
+      const mlir::TypeConverter& typeConverter,
+      const mlir::SymbolTable& /*symbolTable*/) const {
+    auto raggedDot = llvm::cast<mhlo::RaggedDotOp>(op);
+    mhlo::DotDimensionNumbersAttr dotDimNums =
+        raggedDot.getRaggedDotDimensionNumbers().getDotDimensionNumbers();
+    mlir::Location loc = raggedDot.getLoc();
+    mlir::Value paddedLhs = ensureZeroPaddingOnDims(
+        loc, operands[0], raggedDot.getLhs().getType(),
+        dotDimNums.getLhsContractingDimensions(), rewriter);
+    mlir::Value paddedRhs = ensureZeroPaddingOnDims(
+        loc, operands[1], raggedDot.getRhs().getType(),
+        dotDimNums.getRhsContractingDimensions(), rewriter);
+    if (getRaggedDotMode(raggedDot) == RaggedDotMode::kBatch) {
+      // Lower kBatch directly to stablehlo.dot_general so group_sizes (whose
+      // prefix dims are not mapped in kBatch mode and remain unpadded) cannot
+      // violate mhlo.ragged_dot shape verification.
+      return replaceBatchRaggedDotWithDotGeneral(
+          raggedDot, paddedLhs, paddedRhs, typeConverter, rewriter);
+    }
+    mlir::RankedTensorType origGroupSizesType =
+        raggedDot.getGroupSizes().getType();
+    mlir::SmallVector<int64_t> groupSizesPrefixDims;
+    for (int64_t dim = 0; dim + 1 < origGroupSizesType.getRank(); ++dim) {
+      groupSizesPrefixDims.push_back(dim);
+    }
+    mlir::Value paddedGroupSizes = ensureZeroPaddingOnDims(
+        loc, operands[2], origGroupSizesType, groupSizesPrefixDims, rewriter);
+    if (paddedLhs == operands[0] && paddedRhs == operands[1] &&
+        paddedGroupSizes == operands[2]) {
+      return std::nullopt;
+    }
+    mlir::SmallVector<mlir::Type> newResultTypes;
+    if (mlir::failed(
+            typeConverter.convertTypes(op->getResults(), newResultTypes))) {
+      return mlir::failure();
+    }
+    mlir::NamedAttrList discardableAttrs(
+        raggedDot->getDiscardableAttrDictionary());
+    discardableAttrs.erase(mlir::sdy::kShardingRuleAttr);
+    auto newRaggedDot = mhlo::RaggedDotOp::create(
+        rewriter, loc, newResultTypes,
+        mlir::ValueRange{paddedLhs, paddedRhs, paddedGroupSizes},
+        raggedDot.getProperties(), discardableAttrs.getAttrs());
+    rewriter.replaceOp(op, newRaggedDot->getResults());
+    return mlir::success();
+  }
+
+  std::optional<mlir::LogicalResult> convertGlobalToLocal(
+      mlir::Operation* op, mlir::ValueRange operands,
+      mlir::ConversionPatternRewriter& rewriter,
+      const mlir::TypeConverter& typeConverter,
+      const mlir::SymbolTable& /*symbolTable*/) const {
+    auto raggedDot = llvm::cast<mhlo::RaggedDotOp>(op);
+    if (getRaggedDotMode(raggedDot) == RaggedDotMode::kBatch) {
+      return replaceBatchRaggedDotWithDotGeneral(
+          raggedDot, operands[0], operands[1], typeConverter, rewriter);
+    }
+    return std::nullopt;
+  }
+};
+
 struct TopKShardingRuleOpInterface
     : public mlir::sdy::ShardingRuleOpInterface::ExternalModel<
           TopKShardingRuleOpInterface, mhlo::TopKOp> {
   mlir::sdy::OpShardingRuleAttr getShardingRule(mlir::Operation* op) const {
     mhlo::TopKOp topK = llvm::cast<mhlo::TopKOp>(op);
-    return OpShardingRuleBuilder(topK)
-        .addPointwiseWithDiffTypeForMismatch(getTensorShape(topK.getOperand()),
-                                             getTensorShape(topK.getResult(0)),
-                                             FactorType::kNeedReplication,
-                                             /*mismatchFactorIsBlocked=*/true)
-        .build();
+    mlir::ArrayRef<int64_t> inShape = getTensorShape(topK.getOperand());
+    OpShardingRuleBuilder builder(topK);
+    if (!inShape.empty()) {
+      builder.addPointwise(inShape.drop_back())
+          .addFactor(inShape.size() - 1, inShape.back(),
+                     FactorType::kNeedReplication, /*isBlocked=*/true);
+    }
+    return builder.build();
   }
 };
 
@@ -1316,14 +1547,17 @@ struct ScanPartitioningOpInterface
 
 void registerMhloExtensions(mlir::DialectRegistry& registry) {
   registry.addExtension(+[](mlir::MLIRContext* ctx, mhlo::MhloDialect*) {
-    attachPointwiseShardingRule<mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp,
-                                mhlo::AsinhOp, mhlo::AtanhOp, mhlo::CopyOp,
-                                mhlo::CoshOp, mhlo::ErfOp, mhlo::MulhiOp,
-                                mhlo::SinhOp, mhlo::StochasticConvertOp>(ctx);
-    mhlo::RaggedDotOp::attachInterface<RaggedDotShardingRuleOpInterface>(*ctx);
+    attachPointwiseInterfaces<mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp,
+                              mhlo::AsinhOp, mhlo::AtanhOp, mhlo::CopyOp,
+                              mhlo::CoshOp, mhlo::ErfOp, mhlo::MulhiOp,
+                              mhlo::SinhOp, mhlo::StochasticConvertOp>(ctx);
+    mhlo::RaggedDotOp::attachInterface<RaggedDotShardingRuleOpInterface,
+                                       RaggedDotPartitioningOpInterface>(*ctx);
     mhlo::ScanOp::attachInterface<ScanShardingRuleOpInterface,
                                   ScanPartitioningOpInterface>(*ctx);
-    mhlo::TopKOp::attachInterface<TopKShardingRuleOpInterface>(*ctx);
+    mhlo::TopKOp::attachInterface<TopKShardingRuleOpInterface,
+                                  GenericPartitioningOpInterface<mhlo::TopKOp>>(
+        *ctx);
   });
 }
 

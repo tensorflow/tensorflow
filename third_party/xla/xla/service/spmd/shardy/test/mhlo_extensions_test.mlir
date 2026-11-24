@@ -242,6 +242,13 @@ func.func @topk_2d_k_equals_one(%arg0: tensor<16x10xf32>) -> tensor<16x1xf32> {
   return %0#0 : tensor<16x1xf32>
 }
 
+// CHECK-LABEL: func @topk_2d_k_equals_last_dim
+func.func @topk_2d_k_equals_last_dim(%arg0: tensor<16x10xf32>) -> tensor<16x10xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j], [i, j]) {i=16, j=10} need_replication={j} blocked_propagation={j}>
+  %0:2 = mhlo.topk(%arg0, k=10, largest=true) : tensor<16x10xf32> -> (tensor<16x10xf32>, tensor<16x10xi32>)
+  return %0#0 : tensor<16x10xf32>
+}
+
 // Associative scans expose the scan dim as a permutation factor (parallel-prefix
 // can shard it at the cost of inter-shard combine traffic).
 // CHECK-LABEL: func @scan_1d_associative
