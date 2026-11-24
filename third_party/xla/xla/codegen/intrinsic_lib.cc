@@ -143,6 +143,8 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Exp>>());
   intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Exp2>>());
+  intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Expm1>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::FpTrunc>>());

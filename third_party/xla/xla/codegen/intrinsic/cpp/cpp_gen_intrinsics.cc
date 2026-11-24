@@ -47,6 +47,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/intrinsic/cpp/atan_ll.h"
 #include "xla/codegen/intrinsic/cpp/custom_cpp_intrinsics_ll.h"
+#include "xla/codegen/intrinsic/cpp/exp2_ll.h"
 #include "xla/codegen/intrinsic/cpp/expm1_ll.h"
 #include "xla/codegen/intrinsic/cpp/trig_ll.h"
 #include "xla/codegen/intrinsic/cpp/ynnpack_unary_ll.h"
@@ -68,6 +69,9 @@ std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
   }
   if (!::llvm_ir::kAtanLlIr.empty()) {
     libraries.emplace_back(::llvm_ir::kAtanLlIr, "atan");
+  }
+  if (!::llvm_ir::kExp2LlIr.empty()) {
+    libraries.emplace_back(::llvm_ir::kExp2LlIr, "exp2");
   }
   if (!::llvm_ir::kExpm1LlIr.empty()) {
     libraries.emplace_back(::llvm_ir::kExpm1LlIr, "expm1");

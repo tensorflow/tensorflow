@@ -18,7 +18,7 @@ limitations under the License.
 
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.xla_version.
-#define JAX_XLA_VERSION_NUMBER 92  // XLA:CPU xla_cpu_ftz runtime support
+#define JAX_XLA_VERSION_NUMBER 93  // CPU vectorized exp2 intrinsics
 
 // TODO(phawkins): Remove JAX_IFRT_VERSION_NUMBER once JAX no longer references
 // it.

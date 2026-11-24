@@ -215,7 +215,33 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
 
     IntrinsicTestSpec{
         HloOpcode::kLog, F32, true, kTriple_android_arm, "",
-        R"(CHECK: @llvm.fma.v4f32(<4 x float> {{.*}}, <4 x float> splat (float f0x3EB5CBDB)"}};
+        R"(CHECK: @llvm.fma.v4f32(<4 x float> {{.*}}, <4 x float> splat (float f0x3EB5CBDB)"},
+
+    IntrinsicTestSpec{HloOpcode::kExp2, BF16, false, kTriple_x86_64, "+avx2",
+                      R"(CHECK: call {{.*}}@xla.exp2.{{v[0-9]+f32|f32}})"},
+
+    IntrinsicTestSpec{HloOpcode::kExp2, F16, false, kTriple_x86_64, "+avx2",
+                      R"(CHECK: call {{.*}}@xla.exp2.{{v[0-9]+f32|f32}})"},
+
+    IntrinsicTestSpec{HloOpcode::kExp2, F32, false, kTriple_x86_64, "+avx2",
+                      R"(CHECK: call {{.*}}@xla.exp2.{{v[0-9]+f32|f32}})"},
+
+    IntrinsicTestSpec{HloOpcode::kExp2, F64, false, kTriple_x86_64, "+avx2",
+                      R"(CHECK: call {{.*}}@xla.exp2.{{v[0-9]+f64|f64}})"},
+
+    IntrinsicTestSpec{HloOpcode::kExp2, F32, true, kTriple_x86_64, "+avx2",
+                      R"(
+                      CHECK-NOT: @llvm.exp2
+                      CHECK-NOT: exp2f
+                      CHECK: @llvm.fmuladd.v8f32
+    )"},
+
+    IntrinsicTestSpec{HloOpcode::kExp2, F64, true, kTriple_x86_64, "+avx2",
+                      R"(
+                      CHECK-NOT: @llvm.exp2
+                      CHECK-NOT: call {{.*}}@exp2(
+                      CHECK: @llvm.fmuladd.v4f64
+    )"}};
 
 INSTANTIATE_TEST_SUITE_P(CpuUnaryIntrinsicTestInstantiation,
                          CpuUnaryIntrinsicTest,

@@ -197,6 +197,38 @@ TEST(IntrinsicLibTest, AtanHasNoLibmCallsAfterInlining) {
   }
 }
 
+TEST(IntrinsicLibTest, Exp2Vectorizations) {
+  if (!AreCppGenIntrinsicsAvailable()) {
+    GTEST_SKIP();
+  }
+  auto descs_for_features = [](absl::string_view features) {
+    IntrinsicOptions options;
+    options.features = features;
+    auto lib = IntrinsicFunctionLib(options);
+    std::vector<std::string> descs;
+    for (const auto& vec_desc : lib.Vectorizations()) {
+      if (vec_desc.getScalarFnName().starts_with("xla.exp2.")) {
+        descs.push_back(ToString(vec_desc));
+      }
+    }
+    return descs;
+  };
+
+  std::vector<std::string> expected = {
+      "xla.exp2.f32:xla.exp2.v4f32:4:_ZGV_LLVM_N4v",
+      "xla.exp2.f32:xla.exp2.v8f32:8:_ZGV_LLVM_N8v",
+      "xla.exp2.f64:xla.exp2.v2f64:2:_ZGV_LLVM_N2v",
+      "xla.exp2.f64:xla.exp2.v4f64:4:_ZGV_LLVM_N4v",
+  };
+  EXPECT_THAT(descs_for_features(""), UnorderedElementsAreArray(expected));
+
+  expected.insert(expected.end(),
+                  {"xla.exp2.f32:xla.exp2.v16f32:16:_ZGV_LLVM_N16v",
+                   "xla.exp2.f64:xla.exp2.v8f64:8:_ZGV_LLVM_N8v"});
+  EXPECT_THAT(descs_for_features("+avx512f"),
+              UnorderedElementsAreArray(expected));
+}
+
 TEST(IntrinsicLibTest, Expm1Vectorizations) {
   IntrinsicOptions options;
   auto lib = IntrinsicFunctionLib(options);

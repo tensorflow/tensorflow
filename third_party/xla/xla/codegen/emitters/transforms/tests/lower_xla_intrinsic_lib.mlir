@@ -588,3 +588,44 @@ module {
 // CHECK-NOT: math.acos
 // CHECK: %[[ACOS_CALL:.*]] = call @xla.acos.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
 // CHECK: return %[[ACOS_CALL]]
+
+// -----
+
+module {
+  func.func @exp2_bf16_vector(%arg0: vector<8xbf16>) -> vector<8xbf16> {
+    %ret = math.exp2 %arg0 : vector<8xbf16>
+    return %ret : vector<8xbf16>
+  }
+}
+// CHECK-LABEL: @exp2_bf16_vector
+// CHECK-NOT: math.exp2
+// CHECK: %[[EXT:.*]] = arith.extf %arg0 : vector<8xbf16> to vector<8xf32>
+// CHECK: %[[CALL:.*]] = call @xla.exp2.v8f32(%[[EXT]]) : (vector<8xf32>) -> vector<8xf32>
+// CHECK: %[[TRUNC:.*]] = call @xla.fptrunc.v8f32.to.v8bf16(%[[CALL]]) : (vector<8xf32>) -> vector<8xbf16>
+// CHECK: return %[[TRUNC]] : vector<8xbf16>
+
+// -----
+
+module {
+  func.func @exp2_f32_vector(%arg0: vector<4xf32>) -> vector<4xf32> {
+    %ret = math.exp2 %arg0 : vector<4xf32>
+    return %ret : vector<4xf32>
+  }
+}
+// CHECK-LABEL: @exp2_f32_vector
+// CHECK-NOT: math.exp2
+// CHECK: %[[CALL:.*]] = call @xla.exp2.v4f32(%arg0) : (vector<4xf32>) -> vector<4xf32>
+// CHECK: return %[[CALL]] : vector<4xf32>
+
+// -----
+
+module {
+  func.func @exp2_f64_vector(%arg0: vector<4xf64>) -> vector<4xf64> {
+    %ret = math.exp2 %arg0 : vector<4xf64>
+    return %ret : vector<4xf64>
+  }
+}
+// CHECK-LABEL: @exp2_f64_vector
+// CHECK-NOT: math.exp2
+// CHECK: %[[CALL:.*]] = call @xla.exp2.v4f64(%arg0) : (vector<4xf64>) -> vector<4xf64>
+// CHECK: return %[[CALL]] : vector<4xf64>
