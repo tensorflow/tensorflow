@@ -1318,22 +1318,49 @@ StreamExecutorGpuRawClient::AcquireExternalDmaAccess(
 
   tsl::AsyncValueRef<GpuExternalDmaAccess> result =
       tsl::MakeUnconstructedAsyncValueRef<GpuExternalDmaAccess>();
-  device_buffer.AndThen(
-      [cache = dma_buf_cache_, gpu_executor, device_buffer, result]() mutable {
-        if (device_buffer.IsError()) {
-          result.SetError(device_buffer.GetError());
-          return;
-        }
-        const se::DeviceAddressBase mem = device_buffer->mem();
-        absl::StatusOr<GpuDmaBufCache::ExportedDmaBuf> exported =
-            ExportDeviceBufferDmaBuf(*cache, *gpu_executor, mem);
-        if (!exported.ok()) {
-          result.SetError(exported.status());
-          return;
-        }
-        result.emplace(std::move(device_buffer), std::move(exported->dma_buf),
-                       exported->offset, mem.size());
-      });
+  device_buffer.AndThen([cache = dma_buf_cache_, gpu_executor, device_buffer,
+                         result,
+                         async_work_runner = async_work_runner()]() mutable {
+    if (device_buffer.IsError()) {
+      result.SetError(device_buffer.GetError());
+      return;
+    }
+    const se::DeviceAddressBase mem = device_buffer->mem();
+    absl::StatusOr<GpuDmaBufCache::ExportedDmaBuf> exported =
+        ExportDeviceBufferDmaBuf(*cache, *gpu_executor, mem);
+    if (!exported.ok()) {
+      result.SetError(exported.status());
+      return;
+    }
+    // The allocator can return memory that an earlier computation is still
+    // using. An external engine is not ordered against that computation, so
+    // the access becomes available only after the memory may be accessed.
+    absl::StatusOr<BufferSequencingEventRef> allocation_event =
+        device_buffer->GetDefinitionEvent(async_work_runner,
+                                          /*nullptr_if_past=*/true);
+    if (!allocation_event.ok()) {
+      result.SetError(allocation_event.status());
+      return;
+    }
+    BufferSequencingEventRef event = *std::move(allocation_event);
+    if (!event) {
+      // The sync point has already passed, so the memory may be accessed now.
+      result.emplace(std::move(device_buffer), std::move(exported->dma_buf),
+                     exported->offset, mem.size());
+      return;
+    }
+    event.AndThen([event, result = std::move(result),
+                   device_buffer = std::move(device_buffer),
+                   dma_buf = std::move(exported->dma_buf),
+                   offset = exported->offset, size = mem.size()]() mutable {
+      if (event.IsError()) {
+        result.SetError(event.GetError());
+        return;
+      }
+      result.emplace(std::move(device_buffer), std::move(dma_buf), offset,
+                     size);
+    });
+  });
   return result;
 }
 

@@ -136,6 +136,17 @@ class SlicedRawSEDeviceMemory : public RawSEDeviceMemory {
     LOG(FATAL) << "SlicedRawSEDeviceMemory cannot be donated.";
   }
 
+  // A slice is a view into `base_`, so it is defined when `base_` is.
+  absl::StatusOr<BufferSequencingEventRef> GetDefinitionEvent(
+      AsyncWorkRunner* async_work_runner, bool nullptr_if_past) const override {
+    return base_->GetDefinitionEvent(async_work_runner, nullptr_if_past);
+  }
+
+  absl::Status MaterializeDefinitionEvent(
+      AsyncWorkRunner* async_work_runner) const override {
+    return base_->MaterializeDefinitionEvent(async_work_runner);
+  }
+
  private:
   tsl::AsyncValueRef<RawSEDeviceMemory> base_;
 };

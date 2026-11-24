@@ -119,10 +119,14 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
 
   // Starts one external DMA access. This is the only way to get the buffer's
   // dma-buf location. The result becomes available once the buffer is
-  // allocated and its address is final, or carries an error if the buffer
-  // cannot be reached by external DMA (Unimplemented when the backend does not
-  // expose device memory as a dma-buf). Drop the reference as soon as the
-  // engine is finished; holding it keeps the memory in place.
+  // allocated, its address is final, and the device work that used this memory
+  // before the allocation has finished (the allocator can hand out memory that
+  // an earlier computation still uses). It does not wait for the work that
+  // defines the buffer's contents, so a reader must still wait for the buffer's
+  // definition event before it starts the engine. The result carries an error
+  // if the buffer cannot be reached by external DMA (Unimplemented when the
+  // backend does not expose device memory as a dma-buf). Drop the reference as
+  // soon as the engine is finished; holding it keeps the memory in place.
   tsl::AsyncValueRef<ExternalDmaAccess> AcquireExternalDmaAccess();
 
   void CopyTo(PjRtRawBufferRef dst_raw_buffer,
@@ -250,7 +254,9 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
 
   // Starts one external DMA access; see PjRtRawBufferInterface. Backends whose
   // device memory can move must keep this buffer in place from the moment the
-  // access is available until it is destroyed.
+  // access is available until it is destroyed. Backends whose allocator can
+  // hand out memory that an earlier computation still uses must not make the
+  // access available before that computation has finished.
   virtual tsl::AsyncValueRef<ExternalDmaAccess> AcquireExternalDmaAccess();
 
   // Copies directly into dst_raw_buffer. Must set definition_event_promise,

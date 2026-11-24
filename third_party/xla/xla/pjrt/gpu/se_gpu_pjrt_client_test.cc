@@ -3305,15 +3305,9 @@ TEST(StreamExecutorGpuClientTest, RawBuffer) {
   tsl::port::AlignedFree(dst2);
 }
 
-TEST(StreamExecutorGpuClientTest, ComputeSynchronizedAllocatorRace) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
-  PjRtDevice* const device = client->addressable_devices()[0];
-
-  std::unique_ptr<xla::PjRtBuffer> w;
-  {
-    static constexpr char const* kInitMatrixProgram =
-        R"(
+// Returns a 4096x4096 matrix of zeros.
+constexpr char kInitMatrixProgram[] =
+    R"(
 HloModule jit_init_matrix, input_output_alias={}, entry_computation_layout={()->f32[4096,4096]{1,0}}
 
 ENTRY main.5 {
@@ -3321,17 +3315,11 @@ ENTRY main.5 {
   ROOT %b = f32[4096,4096]{1,0} broadcast(%a), dimensions={}
 }
 )";
-    TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                            CompileExecutable(kInitMatrixProgram, *client));
-    std::vector<std::vector<PjRtBuffer*>> input_ptrs = {{}};
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto results,
-        executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
-    w = std::move(results[0][0]);
-  }
 
-  static constexpr char const* kSlowCheckProgram =
-      R"(
+// Runs a slow computation on its first argument, and only then reads the
+// first element of its second argument.
+constexpr char kSlowCheckProgram[] =
+    R"(
 HloModule jit_slow_verify, input_output_alias={}, entry_computation_layout={(f32[4096,4096]{1,0}, s32[4194304]{0})->(f32[4096,4096]{1,0}, s32[])}
 
 ENTRY main.5 {
@@ -3348,6 +3336,23 @@ ENTRY main.5 {
   ROOT %tuple.1 = (f32[4096,4096]{1,0}, s32[]) tuple(%optimization_barrier.6, %squeeze.1)
 }
 )";
+
+TEST(StreamExecutorGpuClientTest, ComputeSynchronizedAllocatorRace) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  PjRtDevice* const device = client->addressable_devices()[0];
+
+  std::unique_ptr<xla::PjRtBuffer> w;
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                            CompileExecutable(kInitMatrixProgram, *client));
+    std::vector<std::vector<PjRtBuffer*>> input_ptrs = {{}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto results,
+        executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+    w = std::move(results[0][0]);
+  }
+
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kSlowCheckProgram, *client));
 
@@ -5200,6 +5205,114 @@ TEST(StreamExecutorGpuClientTest, AcquireExternalDmaAccessKeepsBufferAlive) {
   ASSERT_OK_AND_ASSIGN(tsl::AllocatorStats released_stats,
                        device->GetAllocatorStats());
   EXPECT_EQ(released_stats.bytes_in_use, baseline_stats.bytes_in_use);
+}
+
+// Writes into newly allocated buffers from outside PJRT, once the external DMA
+// access of each buffer is available. The allocator can return memory that an
+// earlier computation is still reading, so the access must not be available
+// before that computation has finished. If `use_slice` is true, the access is
+// taken on a slice of the buffer.
+void WriteThroughExternalDmaAccessAfterEarlierComputation(bool use_slice) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  PjRtDevice* const device = client->addressable_devices()[0];
+  auto* raw_client = absl::down_cast<CommonPjRtClient*>(client.get())
+                         ->raw_client()
+                         ->down_cast<PjRtStreamExecutorRawClient>();
+  ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState * local_device_state,
+      raw_client->GetLocalDeviceState(device->local_device_id()));
+
+  std::unique_ptr<PjRtBuffer> w;
+  {
+    ASSERT_OK_AND_ASSIGN(auto executable,
+                         CompileExecutable(kInitMatrixProgram, *client));
+    std::vector<std::vector<PjRtBuffer*>> input_ptrs = {{}};
+    ASSERT_OK_AND_ASSIGN(
+        auto results,
+        executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+    w = std::move(results[0][0]);
+  }
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       CompileExecutable(kSlowCheckProgram, *client));
+
+  constexpr size_t kWriteSize = 4 * 1024;
+  std::vector<int32_t> host_data(kWriteSize / sizeof(int32_t), 0);
+  Shape shape =
+      ShapeUtil::MakeShape(S32, {static_cast<int64_t>(kWriteSize * 1024)});
+
+  void* last_device_ptr = nullptr;
+  bool memory_reused = false;
+  std::vector<std::unique_ptr<PjRtBuffer>> check_results;
+  for (int32_t i = 0; i < 5; ++i) {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> buffer,
+        client->CreateUninitializedBuffer(shape, device->memory_spaces()[0]));
+    ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef raw,
+                         PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
+    void* device_ptr = raw->OpaqueDeviceMemoryDataPointer();
+    if (device_ptr == last_device_ptr) {
+      memory_reused = true;
+    }
+    last_device_ptr = device_ptr;
+    if (use_slice) {
+      ASSERT_OK_AND_ASSIGN(raw, raw->Slice(0, kWriteSize));
+    }
+
+    tsl::AsyncValueRef<PjRtRawBufferInterface::ExternalDmaAccess> access =
+        AcquireExternalDmaAccessSync(*raw);
+    if (access.IsError() &&
+        access.GetError().code() == absl::StatusCode::kUnimplemented) {
+      GTEST_SKIP() << "dma-buf export is not supported on this GPU.";
+    }
+    ASSERT_TRUE(access.IsConcrete()) << access.GetError();
+
+    // Write to the device memory on a separate stream, like an external engine
+    // does. Nothing in PJRT orders this write against earlier device work.
+    {
+      host_data[0] = i;
+      std::unique_ptr<se::Stream> stream =
+          local_device_state->BorrowStreamFromPool();
+      se::DeviceAddressBase dst(device_ptr, kWriteSize);
+      ASSERT_OK(stream->Memcpy(&dst, host_data.data(), kWriteSize));
+      ASSERT_OK(stream->BlockHostUntilDone());
+      local_device_state->ReturnStreamToPool(std::move(stream));
+    }
+    access.reset();
+
+    // The slow computation reads `buffer` at its end. `buffer` is freed at the
+    // end of this iteration, while the computation is still running, so the
+    // next iteration can get the same memory.
+    std::vector<std::vector<PjRtBuffer*>> input_ptrs = {
+        {w.get(), buffer.get()}};
+    ASSERT_OK_AND_ASSIGN(
+        auto results,
+        executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+    w = std::move(results[0][0]);
+    check_results.push_back(std::move(results[0][1]));
+  }
+
+  std::vector<int32_t> expected;
+  std::vector<int32_t> actual;
+  for (int32_t i = 0; i < static_cast<int32_t>(check_results.size()); ++i) {
+    ASSERT_OK_AND_ASSIGN(auto literal, check_results[i]->ToLiteral().Await());
+    expected.push_back(i);
+    actual.push_back(literal->data<int32_t>()[0]);
+  }
+  // Each computation read the value that was written for it.
+  EXPECT_EQ(expected, actual);
+  // The check above only means something if the memory was reused.
+  EXPECT_TRUE(memory_reused);
+}
+
+TEST(StreamExecutorGpuClientTest,
+     AcquireExternalDmaAccessWaitsForEarlierComputation) {
+  WriteThroughExternalDmaAccessAfterEarlierComputation(/*use_slice=*/false);
+}
+
+TEST(StreamExecutorGpuClientTest,
+     AcquireExternalDmaAccessOnSliceWaitsForEarlierComputation) {
+  WriteThroughExternalDmaAccessAfterEarlierComputation(/*use_slice=*/true);
 }
 
 }  // namespace

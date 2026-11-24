@@ -116,10 +116,12 @@ typedef struct PJRT_ExternalDmaAccess_FunctionTable {
   // Ends the access. Call it exactly once, when the engine is finished with
   // the buffer, including when the event carries an error.
   void (*destroy)(PJRT_ExternalDmaAccess* access);
-  // Returns the event that becomes ready once the buffer is allocated and its
-  // location inside the dma-buf is final, or carries the error if the buffer
-  // cannot be reached by external DMA. The access owns the returned reference;
-  // it is valid until `destroy`.
+  // Returns the event that becomes ready once the buffer is allocated, its
+  // location inside the dma-buf is final, and the device work that used this
+  // memory before the allocation has finished. It does not wait for the work
+  // that defines the buffer's contents. The event carries the error if the
+  // buffer cannot be reached by external DMA. The access owns the returned
+  // reference; it is valid until `destroy`.
   PJRT_DeviceEvent (*get_event)(const PJRT_ExternalDmaAccess* access);
   // Returns the dma-buf fd, byte offset and byte size of the buffer behind
   // `access`. `offset` is measured from the start of the dma-buf, including
