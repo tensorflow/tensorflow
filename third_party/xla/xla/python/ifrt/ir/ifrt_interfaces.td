@@ -186,9 +186,14 @@ def Ifrt_CallOpInterface
     `ifrt.CallLoadedExecutable`) sharing callee references, `io_aliases`,
     `donated_input_indices`, and argument/result attribute dictionaries.
     Verified operations have valid `io_aliases` and `donated_input_indices`
-    (in-bounds, unique, and compatible dtypes and per-shard shapes), and when
+    (in-bounds, unique, XLA array element types excluding `!ifrt.token` and
+    `!ifrt.string`, matching devices, and matching memory kinds), and when
     present, `arg_attrs` and `res_attrs` match `getInputs().size()` and
-    `getOutputs().size()`, respectively.
+    `getOutputs().size()`, respectively. Physical per-shard byte-size
+    compatibility depends on target-specific layout tiling and packing and is
+    verified during atom-program compilation (e.g., XLA after layout
+    assignment) or by the underlying IFRT runtime when executing externally
+    bound executables.
   }];
 
   let verify = [{

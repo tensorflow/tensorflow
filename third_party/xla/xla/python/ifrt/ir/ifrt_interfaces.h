@@ -73,7 +73,7 @@ mlir::LogicalResult VerifyPairwiseArrayOp(mlir::Operation* op);
 
 // Verifies invariants shared by `IfrtCallOpInterface` operations
 // (`arg_attrs`/`res_attrs` arity and `io_aliases`/`donated_input_indices`
-// bounds, uniqueness, and dtype/per-shard shape compatibility).
+// compatibility; see `IfrtCallOpInterface` in `ifrt_interfaces.td`).
 mlir::LogicalResult VerifyCallOp(mlir::Operation* op);
 
 template <typename OpT>

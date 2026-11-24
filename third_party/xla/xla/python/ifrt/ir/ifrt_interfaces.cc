@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -31,14 +32,18 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/memory.h"
 
 // Generated definitions.
 
@@ -59,43 +64,47 @@ bool IsInOperandRange(unsigned operand_num, mlir::OperandRange inputs) {
 }
 
 // Verifies that `io_alias` references valid input/output indices on `op` and
-// aliases arrays with matching element types and per-shard shapes.
+// satisfies `IfrtCallOpInterface`'s `io_aliases` compatibility rules.
 mlir::LogicalResult VerifyIoAlias(mlir::Operation* op, IoAlias io_alias,
                                   mlir::OperandRange inputs,
                                   mlir::ResultRange outputs) {
+  auto emit_alias_error = [&]() {
+    return op->emitOpError() << "can't alias input #" << io_alias.input_index
+                             << " to output #" << io_alias.output_index;
+  };
   if (io_alias.input_index < 0 || io_alias.input_index >= inputs.size()) {
-    return op->emitOpError()
-           << "can't alias input #" << io_alias.input_index << " to output #"
-           << io_alias.output_index << " as only having " << inputs.size()
-           << " inputs";
+    return emit_alias_error()
+           << " as only having " << inputs.size() << " inputs";
   }
   if (io_alias.output_index < 0 || io_alias.output_index >= outputs.size()) {
-    return op->emitOpError()
-           << "can't alias input #" << io_alias.input_index << " to output #"
-           << io_alias.output_index << " as only having " << outputs.size()
-           << " outputs";
+    return emit_alias_error()
+           << " as only having " << outputs.size() << " outputs";
   }
   const IfrtArrayType aliased_input =
       GetArrayType(inputs[io_alias.input_index]);
   const IfrtArrayType aliased_output =
       GetArrayType(outputs[io_alias.output_index]);
-  if (aliased_input != aliased_output) {
-    // TODO(b/382761415): Relax this aliasing check to allow for different
-    // per-shard shapes as long as the byte size is the same. We cannot do this
-    // now because we do not have layout information.
-    if (aliased_input.getShape().getElementType() !=
-        aliased_output.getShape().getElementType()) {
-      return op->emitOpError() << "can't alias input #" << io_alias.input_index
-                               << " to output #" << io_alias.output_index
-                               << " with different dtypes: " << aliased_input
-                               << " vs. " << aliased_output;
-    }
-    if (mlir::failed(
-            VerifyPerShardShapesAreEqual(op, aliased_input, aliased_output))) {
-      return op->emitOpError() << "can't alias input #" << io_alias.input_index
-                               << " to output #" << io_alias.output_index;
+  for (const IfrtArrayType array : {aliased_input, aliased_output}) {
+    // `IfrtArrayType::verify` guarantees every element type is `!ifrt.token`,
+    // `!ifrt.string`, or an XLA array type.
+    const mlir::Type element_type = array.getShape().getElementType();
+    if (llvm::isa<IfrtTokenType, IfrtStringType>(element_type)) {
+      return emit_alias_error() << ": unsupported element type " << element_type
+                                << " in " << array;
     }
   }
+  if (aliased_input.getDevicesAttr() != aliased_output.getDevicesAttr()) {
+    return emit_alias_error() << " with different devices: " << aliased_input
+                              << " vs. " << aliased_output;
+  }
+  if (aliased_input.MemoryKind() != aliased_output.MemoryKind()) {
+    return emit_alias_error()
+           << " with different memory kinds: " << aliased_input << " vs. "
+           << aliased_output;
+  }
+  // Physical per-shard byte-size compatibility depends on target-specific
+  // layout tiling and packing and is verified during atom-program compilation
+  // (e.g., XLA after layout assignment) or by the underlying IFRT runtime.
   return mlir::success();
 }
 

@@ -43,6 +43,9 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::testing::Contains;
+using ::testing::Pair;
+
 typedef absl::flat_hash_map<std::string, xla::CompiledMemoryStats>
     MpmdCompiledMemoryStats;
 typedef absl::flat_hash_map<std::string, absl::Span<Device* const>>
@@ -59,6 +62,31 @@ class ProgramMemoryTracerTest
                      CompileProgram(source, devices));
     return std::static_pointer_cast<IfrtIrLoadedExecutable>(
         std::move(executable));
+  }
+
+  struct CompiledProgramMemoryStats {
+    DeviceListRef devices;
+    IfrtIrProgramMemoryStats program_stats;
+    MpmdCompiledMemoryStats executable_stats;
+  };
+
+  // Compiles an IFRT IR program on `device_count` devices and returns its
+  // device list, program memory stats, and per-executable compiled memory
+  // stats.
+  absl::StatusOr<CompiledProgramMemoryStats> CompileAndGetMemoryStats(
+      absl::string_view source, int device_count) {
+    ABSL_ASSIGN_OR_RETURN(DeviceListRef devices, PickDevices(device_count));
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
+                     GetIfrtIrExecutable(source, devices));
+    ABSL_ASSIGN_OR_RETURN(IfrtIrProgramMemoryStats program_stats,
+                     executable->GetIfrtIrProgramMemoryStats());
+    ABSL_ASSIGN_OR_RETURN(MpmdCompiledMemoryStats executable_stats,
+                     executable->GetMpmdCompiledMemoryStats());
+    return CompiledProgramMemoryStats{
+        .devices = std::move(devices),
+        .program_stats = std::move(program_stats),
+        .executable_stats = std::move(executable_stats),
+    };
   }
 };
 
@@ -363,6 +391,48 @@ module @sin_from_offloaded_arg {
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
 }
 
+TEST_F(ProgramMemoryTracerTest,
+       IfrtIrProgramMemoryStatsWithAliasedOffloadedArray) {
+  std::string source = R"mlir(
+!array_host = !ifrt.array<tensor<2048xf32>,
+                          #ifrt.sharding_param<2 to [0] on 2>, [0, 1],
+                          memory_kind = "pinned_host">
+module @aliased_offloaded_arg {
+  func.func public @main(%arg0: !array_host {ifrt.donated}) -> (!array_host)
+      attributes {ifrt.function} {
+    %out, %ctrl = ifrt.Call @identity::@main(%arg0) on devices [0, 1]
+      <io_aliases = [array<i32: 0, 0>]> : (!array_host) -> !array_host
+    return %out : !array_host
+  }
+
+  module @identity <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<2048xf32> {mhlo.memory_kind = "pinned_host"})
+        -> (tensor<2048xf32> {mhlo.memory_kind = "pinned_host"}) {
+      return %arg0 : tensor<2048xf32>
+    }
+  }
+}
+  )mlir";
+  constexpr int64_t kExpectedHostBytes = 1024 * sizeof(float);
+  ASSERT_OK_AND_ASSIGN(CompiledProgramMemoryStats stats,
+                       CompileAndGetMemoryStats(source, /*device_count=*/2));
+  EXPECT_EQ(stats.program_stats.argument_size_in_bytes, 0);
+  EXPECT_EQ(stats.program_stats.output_size_in_bytes, 0);
+  EXPECT_EQ(stats.program_stats.host_argument_size_in_bytes,
+            kExpectedHostBytes);
+  EXPECT_EQ(stats.program_stats.host_output_size_in_bytes, kExpectedHostBytes);
+  ASSERT_EQ(stats.executable_stats.size(), 1);
+  const xla::CompiledMemoryStats& exec_stats =
+      stats.executable_stats.begin()->second;
+  EXPECT_EQ(exec_stats.alias_size_in_bytes, 0);
+  EXPECT_EQ(exec_stats.host_alias_size_in_bytes, kExpectedHostBytes);
+  const int64_t expected_exec_bytes =
+      exec_stats.temp_size_in_bytes + exec_stats.generated_code_size_in_bytes;
+  EXPECT_THAT(stats.program_stats.device_to_peak_bytes_used,
+              Contains(Pair(stats.devices->devices().front()->Id().value(),
+                            expected_exec_bytes)));
+}
+
 TEST_F(ProgramMemoryTracerTest, IfrtIrProgramMemoryStatsWithPaddingAndLayout) {
   std::string source = R"mlir(
 !array0 = !ifrt.array<tensor<12x16xf32>,
@@ -386,6 +456,54 @@ module @padded_arrays_with_layouts {
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 11264);
   // The second dimension is padded to 128.
   EXPECT_EQ(memory_stats.output_size_in_bytes, 3072);
+}
+
+TEST_F(ProgramMemoryTracerTest,
+       IfrtIrProgramMemoryStatsWithAliasedDifferentDtypeShapeAndLayout) {
+  std::string source = R"mlir(
+!array0 = !ifrt.array<tensor<512x128xf32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1],
+                      layout = "{1,0}">
+!array1 = !ifrt.array<tensor<256x256xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1],
+                      layout = "{0,1}">
+module @aliased_different_dtype_shape_and_layout {
+  func.func public @main(%arg0: !array0 {ifrt.donated}) -> (!array1)
+      attributes {ifrt.function} {
+    %out, %ctrl = ifrt.Call @convert::@main(%arg0) on devices [0, 1]
+      <io_aliases = [array<i32: 0, 0>]> : (!array0) -> !array1
+    return %out : !array1
+  }
+
+  module @convert <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<512x128xf32> {mhlo.layout_mode = "{1,0}"})
+        -> (tensor<256x256xi32> {mhlo.layout_mode = "{0,1}"}) {
+      %0 = stablehlo.reshape %arg0
+        : (tensor<512x128xf32>) -> tensor<256x256xf32>
+      %1 = stablehlo.bitcast_convert %0
+        : (tensor<256x256xf32>) -> tensor<256x256xi32>
+      return %1 : tensor<256x256xi32>
+    }
+  }
+}
+  )mlir";
+  constexpr int64_t kExpectedArrayBytes = 256 * 128 * sizeof(float);
+  ASSERT_OK_AND_ASSIGN(CompiledProgramMemoryStats stats,
+                       CompileAndGetMemoryStats(source, /*device_count=*/2));
+  EXPECT_EQ(stats.program_stats.argument_size_in_bytes, kExpectedArrayBytes);
+  EXPECT_EQ(stats.program_stats.output_size_in_bytes, kExpectedArrayBytes);
+  EXPECT_EQ(stats.program_stats.host_argument_size_in_bytes, 0);
+  EXPECT_EQ(stats.program_stats.host_output_size_in_bytes, 0);
+  ASSERT_EQ(stats.executable_stats.size(), 1);
+  const xla::CompiledMemoryStats& exec_stats =
+      stats.executable_stats.begin()->second;
+  EXPECT_EQ(exec_stats.alias_size_in_bytes, kExpectedArrayBytes);
+  EXPECT_EQ(exec_stats.host_alias_size_in_bytes, 0);
+  const int64_t expected_exec_bytes =
+      exec_stats.temp_size_in_bytes + exec_stats.generated_code_size_in_bytes;
+  EXPECT_THAT(stats.program_stats.device_to_peak_bytes_used,
+              Contains(Pair(stats.devices->devices().front()->Id().value(),
+                            kExpectedArrayBytes + expected_exec_bytes)));
 }
 
 TEST_F(ProgramMemoryTracerTest, IfrtIrProgramMemoryStatsWithSubByteTypes) {

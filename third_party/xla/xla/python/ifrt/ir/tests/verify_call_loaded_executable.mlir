@@ -269,30 +269,6 @@ ifrt.LoadedExecutable @callee on devices [0,1]
 
 // -----
 
-func.func @io_aliases_should_have_same_type(
-    %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
-                       [0,1]>)
-    attributes {ifrt.function} {
-  // expected-error@+2 {{'ifrt.CallLoadedExecutable' op Arrays have different per-shard shapes:}}
-  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias input #0 to output #0}}
-  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0)
-    <io_aliases=[array<i32: 0, 0>]>
-    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
-                   [0,1]>)
-    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
-                   [0,1]>
-  return
-}
-
-ifrt.LoadedExecutable @callee on devices [0,1]
-    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
-                   [0,1]>)
-    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
-                   [0,1]>
-
-
-// -----
-
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
 func.func @donate_one_arg_and_alias_another_arg(%arg0: !array, %arg1: !array)
@@ -377,3 +353,98 @@ func.func @call_loaded_executable_requires_matching_res_attrs_arity(
 }
 
 ifrt.LoadedExecutable @callee on devices [0,1] : (!array) -> !array
+
+// -----
+
+!arr_d0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!arr_d1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+!arr_default = !ifrt.array<tensor<2x2xi32>,
+                           #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!arr_pinned = !ifrt.array<tensor<2x2xi32>,
+                          #ifrt.sharding_param<1x1 to [0] on 2>, [0,1],
+                          memory_kind = "pinned_host">
+!token = !ifrt.array<tensor<!ifrt.token>, #ifrt.sharding_param< to [0] on 2>,
+                     [0,1]>
+!string_arr = !ifrt.array<tensor<2x!ifrt.string>,
+                          #ifrt.sharding_param<1 to [0] on 2>, [0,1]>
+
+func.func @io_aliases_rejects_different_devices(%arg0: !arr_d0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias input #0 to output #0 with different devices:}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee_dev(%arg0)
+    <io_aliases=[array<i32: 0, 0>]> : (!arr_d0) -> !arr_d1
+  return
+}
+
+func.func @io_aliases_rejects_different_memory_kinds(%arg0: !arr_default)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias input #0 to output #0 with different memory kinds:}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee_mem(%arg0)
+    <io_aliases=[array<i32: 0, 0>]> : (!arr_default) -> !arr_pinned
+  return
+}
+
+func.func @io_aliases_rejects_token_to_token(%arg0: !token)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias input #0 to output #0: unsupported element type '!ifrt.token'}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee_tok(%arg0)
+    <io_aliases=[array<i32: 0, 0>]> : (!token) -> !token
+  return
+}
+
+func.func @io_aliases_rejects_string_to_string(%arg0: !string_arr)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias input #0 to output #0: unsupported element type '!ifrt.string'}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee_str(%arg0)
+    <io_aliases=[array<i32: 0, 0>]> : (!string_arr) -> !string_arr
+  return
+}
+
+ifrt.LoadedExecutable @callee_dev on devices [0,1] : (!arr_d0) -> !arr_d1
+ifrt.LoadedExecutable @callee_mem on devices [0,1] : (!arr_default) -> !arr_pinned
+ifrt.LoadedExecutable @callee_tok on devices [0,1] : (!token) -> !token
+ifrt.LoadedExecutable @callee_str on devices [0,1] : (!string_arr) -> !string_arr
+
+// -----
+
+!arr_default = !ifrt.array<tensor<2x2xi32>,
+                           #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!arr_device = !ifrt.array<tensor<2x2xi32>,
+                          #ifrt.sharding_param<1x1 to [0] on 2>, [0,1],
+                          memory_kind = "device">
+!arr_1x4_f32 = !ifrt.array<tensor<1x4xf32>,
+                           #ifrt.sharding_param<1x1 to [0] on 2>, [0,1],
+                           layout = "default">
+!arr_tiled_0 = !ifrt.array<tensor<12x16xf32>,
+                           #ifrt.sharding_param<2x1 to [0] on 2>, [0,1],
+                           layout = "{1,0:T(1,128)}">
+!arr_tiled_1 = !ifrt.array<tensor<12x6xi32>,
+                           #ifrt.sharding_param<2x1 to [0] on 2>, [0,1],
+                           layout = "{0,1:T(1,128)}">
+!arr_auto_large = !ifrt.array<tensor<4x4xf32>,
+                              #ifrt.sharding_param<1x1 to [0] on 2>, [0,1],
+                              layout = "auto">
+!arr_unspec = !ifrt.array<tensor<12x16xf32>, #ifrt.sharding_unspecified, [0,1]>
+func.func @io_aliases_allows_compatible_pairs(
+    %arg0: !arr_default, %arg1: !arr_tiled_0, %arg2: !arr_unspec)
+    attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee_mem(%arg0)
+    <io_aliases=[array<i32: 0, 0>]> : (!arr_default) -> !arr_device
+  %1, %ctrl_1 = ifrt.CallLoadedExecutable @callee_default(%arg0)
+    <io_aliases=[array<i32: 0, 0>]> : (!arr_default) -> !arr_1x4_f32
+  %2, %ctrl_2 = ifrt.CallLoadedExecutable @callee_tiled(%arg1)
+    <io_aliases=[array<i32: 0, 0>]> : (!arr_tiled_0) -> !arr_tiled_1
+  %3, %ctrl_3 = ifrt.CallLoadedExecutable @callee_auto(%arg0)
+    <io_aliases=[array<i32: 0, 0>]> : (!arr_default) -> !arr_auto_large
+  %4, %ctrl_4 = ifrt.CallLoadedExecutable @callee_unspec(%arg2)
+    <io_aliases=[array<i32: 0, 0>]> : (!arr_unspec) -> !arr_tiled_1
+  return
+}
+
+ifrt.LoadedExecutable @callee_mem on devices [0,1] : (!arr_default) -> !arr_device
+ifrt.LoadedExecutable @callee_default on devices [0,1] : (!arr_default) -> !arr_1x4_f32
+ifrt.LoadedExecutable @callee_tiled on devices [0,1] : (!arr_tiled_0) -> !arr_tiled_1
+ifrt.LoadedExecutable @callee_auto on devices [0,1] : (!arr_default) -> !arr_auto_large
+ifrt.LoadedExecutable @callee_unspec on devices [0,1] : (!arr_unspec) -> !arr_tiled_1

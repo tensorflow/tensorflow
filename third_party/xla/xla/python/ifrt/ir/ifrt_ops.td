@@ -241,11 +241,14 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
     a subset of these devices.
 
     `io_aliases` represents pairs of inputs and outputs, where the input buffer
-    may be aliased and used as the output buffer. The aliased pair must have the
-    same byte size. It's up to IFRT implementations whether to respect this
-    hint or not. Alternatively, if the index of an input is In
-    `donated_input_indices` then the input buffer might be donated to the
-    callee if an output with the same byte size is found.
+    may be aliased and used as the output buffer. The aliased pair must satisfy
+    `IfrtCallOpInterface`'s `io_aliases` compatibility rules (XLA array element
+    types, matching devices, and matching memory kind); physical byte-size
+    compatibility is verified during atom-program compilation or by the
+    underlying IFRT runtime. It's up to IFRT implementations whether to respect
+    this hint or not. Alternatively, if the index of an input is in
+    `donated_input_indices` then the input buffer might be donated to the callee
+    if an output with the same byte size is found.
   }];
 
   let arguments = (ins
@@ -285,11 +288,14 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
     be placed on a subset of these devices.
 
     `io_aliases` represents pairs of inputs and outputs, where the input buffer
-    may be aliased and used as the output buffer. The aliased pair must have the
-    same byte size. It's up to IFRT implementations whether to respect this
-    hint or not. Alternatively, if the index of an input is In
-    `donated_input_indices` then the input buffer might be donated to the
-    callee if an output with the same byte size is found.
+    may be aliased and used as the output buffer. The aliased pair must satisfy
+    `IfrtCallOpInterface`'s `io_aliases` compatibility rules (XLA array element
+    types, matching devices, and matching memory kind); physical byte-size
+    compatibility is verified during atom-program compilation or by the
+    underlying IFRT runtime. It's up to IFRT implementations whether to respect
+    this hint or not. Alternatively, if the index of an input is in
+    `donated_input_indices` then the input buffer might be donated to the callee
+    if an output with the same byte size is found.
   }];
 
   let arguments = (ins
