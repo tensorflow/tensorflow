@@ -620,6 +620,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_raft_u64_radix(false);
   opts.set_xla_gpu_experimental_enable_tensor_ir(false);
   opts.set_xla_gpu_experimental_enable_triton_scan(true);
+  opts.set_xla_gpu_experimental_enable_reduction_dimension_tiling(true);
   opts.set_xla_gpu_experimental_multi_phase_fusion(false);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
