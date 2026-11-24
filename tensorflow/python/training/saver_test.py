@@ -14,11 +14,13 @@
 # =============================================================================
 """Tests for tensorflow.python.training.saver.py."""
 
+import gc
 import glob
 import math
 import os
 import random
 import time
+import weakref
 
 import numpy as np
 
@@ -693,6 +695,53 @@ class SaverTest(test.TestCase):
       save.restore(sess, save_path)
       self.assertAllClose([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
                           self.evaluate(var))
+
+  @test_util.run_v1_only("train.Saver is V1 only API.")
+  def testResourceRestoreShape(self):
+    save_path = os.path.join(self.get_temp_dir(), "resource_restore_shape")
+    source_value = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    target_value = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+    with self.session(graph=ops_lib.Graph()) as sess:
+      var = resource_variable_ops.ResourceVariable(source_value)
+      save = saver_module.Saver([var])
+      self.evaluate(var.initializer)
+      save.save(sess, save_path)
+
+    for reshape, validate_shape, expected in [
+        (False, True, None),
+        (True, True, [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        (False, False, source_value),
+    ]:
+      with self.subTest(reshape=reshape, validate_shape=validate_shape):
+        with self.session(graph=ops_lib.Graph()) as sess:
+          var = resource_variable_ops.ResourceVariable(
+              target_value,
+              validate_shape=validate_shape,
+          )
+          save = saver_module.Saver([var], reshape=reshape)
+          if expected is None:
+            with self.assertRaisesRegex(
+                errors_impl.InvalidArgumentError,
+                "is not compatible with expected shape",
+            ):
+              save.restore(sess, save_path)
+          else:
+            save.restore(sess, save_path)
+            self.assertAllEqual(expected, self.evaluate(var))
+
+    with self.session(graph=ops_lib.Graph()) as sess:
+      var = resource_variable_ops.ResourceVariable(
+          target_value, collections=[], trainable=False, validate_shape=False
+      )
+      variable_ref = weakref.ref(var)
+      read_tensor = var.value()
+      del var
+      gc.collect()
+      self.assertIsNone(variable_ref())
+
+      save = saver_module.Saver([read_tensor])
+      save.restore(sess, save_path)
+      self.assertAllEqual(source_value, self.evaluate(read_tensor))
 
   @test_util.run_in_graph_and_eager_modes
   def testSaveWithGlobalStep(self, pad_step_number=False):

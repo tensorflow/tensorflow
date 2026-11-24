@@ -96,9 +96,13 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
   def __init__(self, var, slice_spec, name):
     self._var_device = var.device
     self._var_shape = var.shape
+    variable = var
     if isinstance(var, tensor_lib.Tensor):
       self.handle_op = var.op.inputs[0]
       tensor = var
+      # A graph Saver may receive a read tensor instead of its variable.
+      parent = getattr(self.handle_op, "_parent_trackable", None)
+      variable = parent() if parent is not None else None
     elif resource_variable_ops.is_resource_variable(var):
 
       def _read_variable_closure(v):
@@ -123,6 +127,8 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
       raise ValueError(
           "Saveable is neither a resource variable nor a read operation."
           f" Got: {repr(var)}")
+    # A standalone read tensor may have lost the variable's validation policy.
+    self._validate_shape = getattr(variable, "_validate_shape", False)
     spec = saveable_object.SaveSpec(tensor, slice_spec, name,
                                     dtype=var.dtype, device=var.device)
     super(ResourceVariableSaveable, self).__init__(var, [spec], name)
@@ -136,6 +142,11 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     with ops.device(self._var_device):
       restored_tensor = array_ops.identity(restored_tensor)
       try:
+        # The restore op can have an unknown static shape in a graph.
+        if (self._validate_shape and self._var_shape.rank is not None
+            and not restored_tensor.shape.is_fully_defined()):
+          restored_tensor = array_ops.ensure_shape(
+              restored_tensor, self._var_shape)
         assigned_variable = resource_variable_ops.shape_safe_assign_variable_handle(
             self.handle_op, self._var_shape, restored_tensor)
       except ValueError as e:
