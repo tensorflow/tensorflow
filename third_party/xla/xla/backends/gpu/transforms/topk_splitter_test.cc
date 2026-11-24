@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/transforms/topk_rewriter.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/xla_data.pb.h"
 
 namespace m = ::xla::match;
 
@@ -229,6 +230,120 @@ ENTRY cluster {
   // We expect idempotency - No change on the second run.
   EXPECT_THAT(RunHloPass(TopKSplitter(1024), module.get()),
               absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(HardwareIndependentTopkSplitterTest,
+       SplitsValueOnlyTopKWithTwoParamComparator) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+compare {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT gt = pred[] compare(a, b), direction=GT
+}
+
+ENTRY main {
+  x = f32[2097152]{0} parameter(0)
+  sorted = f32[2097152]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
+  ROOT first = f32[8]{0} slice(sorted), slice={[0:8]}
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(RunHloPass(TopkRewriter([](const HloSortInstruction*, int64_t) {
+                           return true;
+                         }),
+                         module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(RunHloPass(TopKSplitter(), module.get()),
+              absl_testing::IsOkAndHolds(true));
+  ASSERT_OK(verifier().Run(module.get()).status());
+
+  const HloInstruction* batch_topk = nullptr;
+  const HloInstruction* aggregated_sort = nullptr;
+  auto first_topk = m::CustomCall(&batch_topk, m::Reshape(m::Parameter(0)));
+  auto sorted = m::Sort(
+      &aggregated_sort, m::Reshape(m::GetTupleElement(first_topk, 0)),
+      m::Reshape(m::Add(m::GetTupleElement(first_topk, 1), m::Broadcast())));
+  ASSERT_TRUE(
+      Match(module->entry_computation()->root_instruction(),
+            m::GetTupleElement(
+                m::Tuple(m::Reshape(m::Slice(m::GetTupleElement(sorted, 0))),
+                         m::Reshape(m::Slice(m::GetTupleElement(sorted, 1)))),
+                0)));
+  ASSERT_NE(batch_topk, nullptr);
+  ASSERT_NE(aggregated_sort, nullptr);
+  const HloComputation* expanded = aggregated_sort->to_apply();
+  EXPECT_EQ(batch_topk->to_apply(), expanded);
+  EXPECT_EQ(expanded->num_parameters(), 4);
+  EXPECT_EQ(expanded->parameter_instruction(2)->shape().element_type(), S32);
+  EXPECT_EQ(expanded->parameter_instruction(3)->shape().element_type(), S32);
+}
+
+TEST_F(HardwareIndependentTopkSplitterTest,
+       SplitsMultipleTopKsSharingTwoParamComparator) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+compare {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT gt = pred[] compare(a, b), direction=GT
+}
+
+ENTRY main {
+  x = f32[2097152]{0} parameter(0)
+  y = f32[2097152]{0} parameter(1)
+  cc0 = (f32[8]{0}, s32[8]{0}) custom-call(x), custom_call_target="TopK", to_apply=compare
+  cc1 = (f32[8]{0}, s32[8]{0}) custom-call(y), custom_call_target="TopK", to_apply=compare
+  v0 = f32[8]{0} get-tuple-element(cc0), index=0
+  v1 = f32[8]{0} get-tuple-element(cc1), index=0
+  ROOT sum = f32[8]{0} add(v0, v1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(RunHloPass(TopKSplitter(), module.get()),
+              absl_testing::IsOkAndHolds(true));
+  ASSERT_OK(verifier().Run(module.get()).status());
+  const HloComputation* shared_comparator = nullptr;
+  int comparator_users = 0;
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    if (!inst->has_to_apply()) {
+      continue;
+    }
+    ++comparator_users;
+    if (shared_comparator == nullptr) {
+      shared_comparator = inst->to_apply();
+    } else {
+      EXPECT_EQ(inst->to_apply(), shared_comparator);
+    }
+  }
+  ASSERT_NE(shared_comparator, nullptr);
+  EXPECT_EQ(comparator_users, 4);
+  EXPECT_EQ(shared_comparator->num_parameters(), 4);
+}
+
+TEST_F(TopkSplitterTest, CompilesValueOnlyTopKFullGpuPipeline) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+compare {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT gt = pred[] compare(a, b), direction=GT
+}
+
+ENTRY main {
+  x = f32[2097152]{0} parameter(0)
+  sorted = f32[2097152]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
+  ROOT first = f32[8]{0} slice(sorted), slice={[0:8]}
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(test_runner().CreateExecutable(std::move(module),
+                                             /*run_hlo_passes=*/true),
+              absl_testing::IsOk());
 }
 
 }  // namespace

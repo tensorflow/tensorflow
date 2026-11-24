@@ -3687,12 +3687,14 @@ cc_library(
     hdrs = ["topk_splitter.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:dfs_hlo_visitor_with_default",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:hlo_creation_utils",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/numeric:bits",
@@ -3710,6 +3712,7 @@ xla_test(
     backends = GPU_DEFAULT_BACKENDS,
     deps = [
         ":topk_splitter",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

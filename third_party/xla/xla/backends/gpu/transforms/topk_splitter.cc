@@ -19,8 +19,11 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
@@ -39,6 +42,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -79,6 +83,12 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
     if (n <= split_threshold_) {
       return absl::OkStatus();
     }
+    TF_RET_CHECK(topk->called_computations().size() == 1)
+        << "Expected TopK custom call to have 1 called computation, got "
+        << topk->called_computations().size();
+    ABSL_ASSIGN_OR_RETURN(
+        HloComputation * sort_comparator,
+        GetOrCreateFourParamComparator(topk->to_apply(), comp->parent()));
     int new_batch =
         std::min(absl::bit_floor(n / split_threshold_), kMaximumBatchSize);
     int new_n = n / new_batch;
@@ -93,7 +103,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
          ShapeUtil::MakeShape(S32, {new_batch, k})});
     HloInstruction* batch_topk =
         comp->AddInstruction(HloInstruction::CreateCustomCall(
-            batch_topk_shape, {reshaped}, topk->to_apply(), "TopK",
+            batch_topk_shape, {reshaped}, sort_comparator, "TopK",
             topk->raw_backend_config_string()));
     // Fix indices, adding j*split_N to the j-th batch of indices.
     ABSL_ASSIGN_OR_RETURN(HloInstruction * indices,
@@ -127,7 +137,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
             linear_sort_shape, 0,
             {*MakeReshapeHlo(linear_shape, values),
              *MakeReshapeHlo(linear_index_shape, indices)},
-            topk->to_apply(), /*is_stable=*/true));
+            sort_comparator, /*is_stable=*/true));
     auto slice_tuple = [&](HloInstruction* sort, const size_t index) {
       return *MakeReshapeHlo(
           topk->shape().tuple_shapes(index),
@@ -141,7 +151,36 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
+  // Expands a 2-parameter value-only comparator into a 4-parameter comparator
+  // by appending two unused S32 scalar index parameters so it matches the arity
+  // required by two-operand (value, index) sort and TopK instructions.
+  absl::StatusOr<HloComputation*> GetOrCreateFourParamComparator(
+      HloComputation* comparator, HloModule* module) {
+    if (comparator->num_parameters() == 4) {
+      return comparator;
+    }
+    TF_RET_CHECK(comparator->num_parameters() == 2)
+        << "Expected TopK comparator to have 2 or 4 parameters, got "
+        << comparator->num_parameters();
+    HloComputation*& expanded = expanded_comparators_[comparator];
+    if (expanded != nullptr) {
+      return expanded;
+    }
+    Shape scalar_s32 = ShapeUtil::MakeScalarShape(S32);
+    std::unique_ptr<HloInstruction> lhs_idx =
+        HloInstruction::CreateParameter(2, scalar_s32, "p.1.lhs");
+    std::unique_ptr<HloInstruction> rhs_idx =
+        HloInstruction::CreateParameter(3, scalar_s32, "p.1.rhs");
+    std::vector<const HloInstruction*> extra_parameters = {lhs_idx.get(),
+                                                           rhs_idx.get()};
+    expanded = module->AddEmbeddedComputation(comparator->CloneWithReplacements(
+        /*replacements=*/nullptr, extra_parameters));
+    return expanded;
+  }
+
   size_t split_threshold_;
+  absl::flat_hash_map<const HloComputation*, HloComputation*>
+      expanded_comparators_;
 };
 
 }  // namespace
