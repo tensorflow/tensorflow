@@ -29,7 +29,7 @@ xla_aot_compile(
 
 """
 
-load("//xla:xla.default.bzl", "xla_compile_target_cpu")
+load("//xla:xla.default.bzl", "xla_compile_msan_flags", "xla_compile_target_cpu")
 load("//xla/backends/gpu/target_config:target_config_map.bzl", gpu_target_config_map = "target_config_map")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_newer_than")
 
@@ -86,7 +86,8 @@ def xla_aot_compile_cpu(
            " --platform=cpu" +
            " --target_cpu=" + target_cpu +
            " --target_triple=" + target_triple +
-           " --target_features=" + target_features)
+           " --target_features=" + target_features +
+           xla_compile_msan_flags())
 
     native.genrule(
         name = ("gen_" + name),

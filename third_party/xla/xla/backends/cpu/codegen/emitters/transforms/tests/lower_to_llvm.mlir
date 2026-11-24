@@ -292,7 +292,7 @@ func.func @wrap_comparator(
 }
 
 // CHECK-LABEL: func.func @wrap_comparator(
-// CHECK-SAME:    %[[PARAMS:[^:]+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> (i1 {llvm.zeroext}) attributes
+// CHECK-SAME:    %[[PARAMS:[^:]+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> (i1 {llvm.noundef, llvm.zeroext}) attributes
 // CHECK-SAME:  uwtable_kind = #llvm.uwtableKind<async>
 // CHECK-DAG:     %[[P0_PTR:.+]] = llvm.load %[[PARAMS]] : !llvm.ptr -> !llvm.ptr
 // CHECK-DAG:     %[[P0:.+]] = builtin.unrealized_conversion_cast %[[P0_PTR]] : !llvm.ptr to tensor<f32>

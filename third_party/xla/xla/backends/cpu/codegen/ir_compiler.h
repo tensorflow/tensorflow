@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/IR/FMF.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -76,6 +78,14 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
     bool disable_loop_unrolling = false;
     bool disable_platform_dependent_math = false;
 
+    // Instruments the generated code with msan. Code that runs in-process
+    // (i.e. JIT-compiled code) must be instrumented iff the host is; see
+    // HostMsanEnabled() and HostMsanTrackOrigins().
+    bool msan_enabled = false;
+    // Level of msan origin tracking (0 = off, 1 = without store history,
+    // 2 = with store history).
+    int msan_track_origins = 0;
+
     bool dfsan_enabled = false;
     std::vector<std::string> dfsan_abi_list_files;
   };
@@ -99,14 +109,37 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
   InferTargetMachine(const llvm::TargetOptions& target_options,
                      llvm::CodeGenOptLevel opt_level,
-                     const TargetMachineOptions& target_machine_options);
+                     const TargetMachineOptions& target_machine_options,
+                     bool msan_enabled = false);
 
   // Returns a target machine builder that uses `InferTargetMachine` defined
   // above to infer the target machine for the given options.
   static TargetMachineBuilder InferTargetMachineBuilder(
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOptLevel opt_level,
-      const TargetMachineOptions& target_machine_options);
+      const TargetMachineOptions& target_machine_options,
+      bool msan_enabled = false);
+
+  // Initializes the LLVM targets that XLA:CPU can compile for, unless already
+  // initialized. `InferTargetMachine` does this implicitly.
+  static void InitializeTargets();
+
+  // Returns true if the host is built with msan.
+  static bool HostMsanEnabled();
+
+  // Returns the host's msan origin tracking level, or 0 if the host is not
+  // built with msan.
+  static int HostMsanTrackOrigins();
+
+  // Adjusts `target_options` for msan-instrumented code.
+  static void AdjustTargetOptionsForMsan(llvm::TargetOptions& target_options);
+
+  // Returns the target features to append to `features` to work around LLVM
+  // bugs in msan-instrumented code for `cpu` on `triple`. Returns an empty
+  // vector if no workaround is needed.
+  static std::vector<std::string> MsanTargetFeatureOverrides(
+      const llvm::Triple& triple, absl::string_view cpu,
+      absl::string_view features);
 
   // Compiles a `module` to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(
@@ -146,6 +179,10 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   // otherwise any later pass would produce uninstrumented code.
   void RunSanitizerPasses(llvm::Module& module,
                           llvm::ModuleAnalysisManager& mam) const;
+
+  // Injects MSAN emulated TLS symbols into the module. This is needed for
+  // supporting MSAN in JIT'ed and AOT'ed code.
+  void InjectMsanEmulatedTls(llvm::Module& module) const;
 };
 
 }  // namespace xla::cpu
