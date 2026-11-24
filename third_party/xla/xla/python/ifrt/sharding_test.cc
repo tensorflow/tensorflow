@@ -47,6 +47,7 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::FieldsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::SizeIs;
 
 class ShardingTest : public testing::TestWithParam<test_util::DeviceTestParam> {
@@ -368,6 +369,15 @@ TEST_P(ConcreteShardingTest, GetShardShapeFailure) {
   EXPECT_THAT(sharding->GetShardShape(Shape({30})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("does not have a fixed shard shape")));
+  EXPECT_THAT(sharding->GetShardShape(Shape({40})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not have a fixed shard shape")));
+
+  ShardingRef fixed_sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), {Shape({15}), Shape({15})});
+  EXPECT_THAT(fixed_sharding->GetShardShape(Shape({40})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("has a shard shape for shape")));
 }
 
 TEST_P(ConcreteShardingTest, HasSamePartitioning) {
@@ -443,8 +453,8 @@ TEST_P(ConcreteShardingTest, HasSamePartitioning) {
         *sharding_with_index_domains1));
 
     std::vector<IndexDomain> index_domains1 = {
-        IndexDomain(Index({5}), Shape({10})),
-        IndexDomain(Index({15}), Shape({20})),
+        IndexDomain(Index({20}), Shape({10})),
+        IndexDomain(Index({0}), Shape({20})),
     };
     ShardingRef sharding_with_different_index_domains =
         ConcreteSharding::Create(device_list1, MemoryKind(), Shape({30}),
@@ -701,19 +711,388 @@ TEST_P(ConcreteShardingTest, IndexDomainsMissing) {
                                  "domain information")));
 }
 
-TEST_P(ConcreteShardingTest, IndexDomainsFails) {
-  auto device_list = GetDevices({0, 1, 2, 3, 4});
-  std::vector<Shape> shard_shapes(5, Shape({1}));
-  std::vector<IndexDomain> index_domains(5,
-                                         IndexDomain(Index({0}), Shape({1})));
-  ShardingRef sharding = ConcreteSharding::Create(
-      device_list, MemoryKind(), Shape({30}), shard_shapes, index_domains);
+TEST_P(ConcreteShardingTest, InvalidShardShapeCounts) {
+  DeviceListRef device_list = GetDevices({0, 1, 2, 3, 4});
+  // 5 total devices, 4 addressable; 3 shard shapes matches neither.
+  EXPECT_THAT(ConcreteSharding::CreateIfValid(
+                  device_list, MemoryKind(), Shape({30}),
+                  /*shard_shapes=*/std::vector<Shape>(3, Shape({1})),
+                  /*index_domains=*/std::nullopt),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("same number of shard shapes")));
+  EXPECT_DEATH((void)ConcreteSharding::Create(
+                   device_list, MemoryKind(), Shape({30}),
+                   /*shard_shapes=*/std::vector<Shape>(3, Shape({1}))),
+               "same number of shard shapes");
+  // 5 total devices, 4 addressable; dynamic shard shapes count mismatch.
+  ASSERT_OK_AND_ASSIGN(
+      DynamicShape dynamic_shape,
+      DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dynamic_shape,
+      DynamicShape::Create(Shape({1}), BoundedDynamicShapeTag({true})));
+  EXPECT_THAT(ConcreteSharding::CreateIfValid(
+                  device_list, MemoryKind(), dynamic_shape,
+                  /*shard_dynamic_shapes=*/
+                  std::vector<DynamicShape>(3, shard_dynamic_shape)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("same number of shard dynamic shapes")));
+  // Mixed counts (addressable shard_shapes with all index_domains, and vice
+  // versa) are rejected at construction.
+  EXPECT_THAT(
+      ConcreteSharding::CreateIfValid(
+          device_list, MemoryKind(), Shape({30}),
+          /*shard_shapes=*/std::vector<Shape>(4, Shape({1})),
+          /*index_domains=*/
+          std::vector<IndexDomain>(5, IndexDomain(Index({0}), Shape({1})))),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("index_domains size (5) to match "
+                         "shard_shapes size (4)")));
+  EXPECT_THAT(
+      ConcreteSharding::CreateIfValid(
+          device_list, MemoryKind(), Shape({30}),
+          /*shard_shapes=*/std::vector<Shape>(5, Shape({1})),
+          /*index_domains=*/
+          std::vector<IndexDomain>(4, IndexDomain(Index({0}), Shape({1})))),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("index_domains size (4) to match "
+                         "shard_shapes size (5)")));
+}
 
-  EXPECT_THAT(sharding->IndexDomains(Shape({1}),
+TEST_P(ConcreteShardingTest, InvalidIndexDomains) {
+  // Mismatched index_domains[0].shape() vs. shard_shapes[0].
+  EXPECT_THAT(
+      ConcreteSharding::CreateIfValid(
+          GetDevices({0, 1}), MemoryKind(), Shape({30}),
+          /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0}), Shape({15})),
+                                   IndexDomain(Index({10}), Shape({20}))}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not match shard_shapes")));
+  // Out-of-bounds index_domain ([15, 35) exceeds Shape({30})).
+  EXPECT_THAT(
+      ConcreteSharding::CreateIfValid(
+          GetDevices({0, 1}), MemoryKind(), Shape({30}),
+          /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({5}), Shape({10})),
+                                   IndexDomain(Index({15}), Shape({20}))}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("is not contained within shape")));
+  // Mismatched number of dimensions between index_domains and logical shape.
+  EXPECT_THAT(
+      ConcreteSharding::CreateIfValid(
+          GetDevices({0, 1}), MemoryKind(), Shape({30}),
+          /*shard_shapes=*/{Shape({5, 6}), Shape({5, 6})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0, 0}), Shape({5, 6})),
+                                   IndexDomain(Index({0, 0}), Shape({5, 6}))}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("mismatched numbers of dimensions")));
+  // Addressable-only sharding and all-shards sharding with an invalid
+  // non-addressable index_domain are also rejected at construction.
+  EXPECT_THAT(
+      ConcreteSharding::CreateIfValid(
+          GetDevices({0, 1, 4, 5}), MemoryKind(), Shape({30}),
+          /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0}), Shape({10})),
+                                   IndexDomain(Index({15}), Shape({20}))}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("is not contained within shape")));
+  EXPECT_THAT(
+      ConcreteSharding::CreateIfValid(
+          GetDevices({0, 4}), MemoryKind(), Shape({30}),
+          /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0}), Shape({10})),
+                                   IndexDomain(Index({15}), Shape({20}))}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("is not contained within shape")));
+  // Querying IndexDomains with a different shape than the sharding's shape.
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef valid_sharding,
+      ConcreteSharding::CreateIfValid(
+          GetDevices({0, 1}), MemoryKind(), Shape({30}),
+          /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0}), Shape({10})),
+                                   IndexDomain(Index({10}), Shape({20}))}));
+  EXPECT_THAT(valid_sharding->IndexDomains(
+                  Shape({40}), SingleDeviceShardSemantics::kAllShards),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("has index domains for shape")));
+}
+
+TEST_P(ConcreteShardingTest, WithDeviceAssignmentAddressability) {
+  ASSERT_OK_AND_ASSIGN(
+      DynamicShape dynamic_shape,
+      DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dyn_10,
+      DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
+  ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dyn_20,
+      DynamicShape::Create(Shape({20}), BoundedDynamicShapeTag({true})));
+
+  // Addressable-only static sharding accepts a remap with the same
+  // addressability mask and rejects shifted masks (even with the same
+  // addressable count) as well as different addressable counts.
+  std::vector<IndexDomain> addressable_domains = {
+      IndexDomain(Index({0}), Shape({10})),
+      IndexDomain(Index({10}), Shape({20})),
+  };
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef addressable_only_sharding,
+      ConcreteSharding::CreateIfValid(
+          GetDevices({0, 1, 4, 5}), MemoryKind(), Shape({30}),
+          /*shard_shapes=*/{Shape({10}), Shape({20})}, addressable_domains));
+  DeviceListRef same_mask_devices = GetDevices({2, 3, 4, 5});
+  ASSERT_OK_AND_ASSIGN(ShardingRef remapped_addressable_only,
+                       addressable_only_sharding->WithDeviceAssignment(
+                           same_mask_devices, /*memory_kind=*/std::nullopt));
+  using DisassembledShards = std::vector<std::pair<Shape, ShardingRef>>;
+  ASSERT_OK_AND_ASSIGN(
+      DisassembledShards remapped_shards,
+      remapped_addressable_only->Disassemble(
+          Shape({30}), SingleDeviceShardSemantics::kAddressableShards));
+  ASSERT_THAT(remapped_shards, SizeIs(2));
+  EXPECT_EQ(remapped_shards[0].first, Shape({10}));
+  EXPECT_EQ(*remapped_shards[0].second,
+            *SingleDeviceSharding::Create(same_mask_devices->devices()[0],
+                                          MemoryKind()));
+  EXPECT_EQ(remapped_shards[1].first, Shape({20}));
+  EXPECT_EQ(*remapped_shards[1].second,
+            *SingleDeviceSharding::Create(same_mask_devices->devices()[1],
+                                          MemoryKind()));
+  EXPECT_THAT(remapped_addressable_only->IndexDomains(
+                  Shape({30}), SingleDeviceShardSemantics::kAddressableShards),
+              IsOkAndHolds(ElementsAreArray(addressable_domains)));
+
+  EXPECT_THAT(addressable_only_sharding->WithDeviceAssignment(
+                  GetDevices({4, 5, 0, 1}), /*memory_kind=*/std::nullopt),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("matching device addressability")));
+  EXPECT_THAT(addressable_only_sharding->WithDeviceAssignment(
+                  GetDevices({0, 1, 2, 5}), /*memory_kind=*/std::nullopt),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("matching device addressability")));
+
+  // Addressable-only dynamic sharding enforces the same addressability mask.
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef dynamic_addressable_only_sharding,
+      ConcreteSharding::CreateIfValid(
+          GetDevices({0, 1, 4, 5}), MemoryKind(), dynamic_shape,
+          /*shard_dynamic_shapes=*/{shard_dyn_10, shard_dyn_20}));
+  EXPECT_OK(dynamic_addressable_only_sharding->WithDeviceAssignment(
+      same_mask_devices, /*memory_kind=*/std::nullopt));
+  EXPECT_THAT(dynamic_addressable_only_sharding->WithDeviceAssignment(
+                  GetDevices({4, 5, 0, 1}), /*memory_kind=*/std::nullopt),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("matching device addressability")));
+  EXPECT_THAT(dynamic_addressable_only_sharding->WithDeviceAssignment(
+                  GetDevices({0, 1, 2, 5}), /*memory_kind=*/std::nullopt),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("matching device addressability")));
+
+  // All-shards static and dynamic shardings allow changing addressability mask
+  // because every device slot has its own shard shape.
+  ASSERT_OK_AND_ASSIGN(ShardingRef all_shards_sharding,
+                       ConcreteSharding::CreateIfValid(
+                           GetDevices({0, 1, 4, 5}), MemoryKind(), Shape({30}),
+                           /*shard_shapes=*/
+                           {Shape({4}), Shape({6}), Shape({8}), Shape({12})},
+                           /*index_domains=*/std::nullopt));
+  DeviceListRef shifted_mask_devices = GetDevices({4, 5, 0, 1});
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef remapped_all_shards,
+      all_shards_sharding->WithDeviceAssignment(shifted_mask_devices,
+                                                /*memory_kind=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(
+      DisassembledShards remapped_all_addressable,
+      remapped_all_shards->Disassemble(
+          Shape({30}), SingleDeviceShardSemantics::kAddressableShards));
+  ASSERT_THAT(remapped_all_addressable, SizeIs(2));
+  EXPECT_EQ(remapped_all_addressable[0].first, Shape({8}));
+  EXPECT_EQ(*remapped_all_addressable[0].second,
+            *SingleDeviceSharding::Create(shifted_mask_devices->devices()[2],
+                                          MemoryKind()));
+  EXPECT_EQ(remapped_all_addressable[1].first, Shape({12}));
+  EXPECT_EQ(*remapped_all_addressable[1].second,
+            *SingleDeviceSharding::Create(shifted_mask_devices->devices()[3],
+                                          MemoryKind()));
+
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef all_shards_dynamic_sharding,
+      ConcreteSharding::CreateIfValid(
+          GetDevices({0, 1, 4, 5}), MemoryKind(), dynamic_shape,
+          /*shard_dynamic_shapes=*/
+          {shard_dyn_10, shard_dyn_20, shard_dyn_10, shard_dyn_20}));
+  EXPECT_OK(all_shards_dynamic_sharding->WithDeviceAssignment(
+      shifted_mask_devices, /*memory_kind=*/std::nullopt));
+}
+
+TEST_P(ConcreteShardingTest,
+       MultiHostInterleavedDevicesDisassembleAndIndexDomains) {
+  // Devices 0..3 are addressable; 4..5 are non-addressable.
+  DeviceListRef interleaved_devices = GetDevices({4, 0, 5, 1});
+  std::vector<Shape> all_shard_shapes = {Shape({5}), Shape({10}), Shape({5}),
+                                         Shape({10})};
+  std::vector<IndexDomain> all_index_domains = {
+      IndexDomain(Index({0}), Shape({5})),
+      IndexDomain(Index({5}), Shape({10})),
+      IndexDomain(Index({15}), Shape({5})),
+      IndexDomain(Index({20}), Shape({10})),
+  };
+  ShardingRef sharding =
+      ConcreteSharding::Create(interleaved_devices, MemoryKind(), Shape({30}),
+                               all_shard_shapes, all_index_domains);
+
+  EXPECT_THAT(sharding->GetShardShape(Shape({30})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not have a fixed shard shape")));
+  using DisassembledShards = std::vector<std::pair<Shape, ShardingRef>>;
+  ASSERT_OK_AND_ASSIGN(
+      DisassembledShards all_disassembled,
+      sharding->Disassemble(Shape({30}),
+                            SingleDeviceShardSemantics::kAllShards));
+  ASSERT_THAT(all_disassembled, SizeIs(4));
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(all_disassembled[i].first, all_shard_shapes[i]);
+    EXPECT_EQ(*all_disassembled[i].second,
+              *SingleDeviceSharding::Create(interleaved_devices->devices()[i],
+                                            MemoryKind()));
+  }
+  ASSERT_OK_AND_ASSIGN(
+      DisassembledShards addressable_disassembled,
+      sharding->Disassemble(Shape({30}),
+                            SingleDeviceShardSemantics::kAddressableShards));
+  ASSERT_THAT(addressable_disassembled, SizeIs(2));
+  EXPECT_EQ(addressable_disassembled[0].first, Shape({10}));
+  EXPECT_EQ(*addressable_disassembled[0].second,
+            *SingleDeviceSharding::Create(interleaved_devices->devices()[1],
+                                          MemoryKind()));
+  EXPECT_EQ(addressable_disassembled[1].first, Shape({10}));
+  EXPECT_EQ(*addressable_disassembled[1].second,
+            *SingleDeviceSharding::Create(interleaved_devices->devices()[3],
+                                          MemoryKind()));
+
+  EXPECT_THAT(sharding->IndexDomains(Shape({30}),
                                      SingleDeviceShardSemantics::kAllShards),
-              StatusIs(tsl::error::INVALID_ARGUMENT,
-                       HasSubstr("ConcreteSharding must have the same number "
-                                 "of index domains and addressable devices")));
+              IsOkAndHolds(ElementsAreArray(all_index_domains)));
+  EXPECT_THAT(
+      sharding->IndexDomains(Shape({30}),
+                             SingleDeviceShardSemantics::kAddressableShards),
+      IsOkAndHolds(ElementsAre(all_index_domains[1], all_index_domains[3])));
+  EXPECT_THAT(sharding->UniqueIndexDomains(Shape({30})),
+              IsOkAndHolds(ElementsAre(
+                  FieldsAre(all_index_domains[0], ElementsAre(0)),
+                  FieldsAre(all_index_domains[1], ElementsAre(1)),
+                  FieldsAre(all_index_domains[2], ElementsAre(2)),
+                  FieldsAre(all_index_domains[3], ElementsAre(3)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              IsOkAndHolds(ElementsAre(0, 1, 2, 3)));
+}
+
+TEST_P(ConcreteShardingTest, MultiHostInterleavedDevicesDynamicDisassemble) {
+  // Devices 0..3 are addressable; 4..5 are non-addressable.
+  DeviceListRef interleaved_devices = GetDevices({4, 0, 5, 1});
+  ASSERT_OK_AND_ASSIGN(
+      DynamicShape dynamic_shape,
+      DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dyn_5,
+      DynamicShape::Create(Shape({5}), BoundedDynamicShapeTag({true})));
+  ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dyn_10,
+      DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
+  std::vector<DynamicShape> all_dynamic_shard_shapes = {
+      shard_dyn_5, shard_dyn_10, shard_dyn_5, shard_dyn_10};
+  ShardingRef dynamic_sharding =
+      ConcreteSharding::Create(interleaved_devices, MemoryKind(), dynamic_shape,
+                               all_dynamic_shard_shapes);
+  using DisassembledDynamicShards =
+      std::vector<std::pair<DynamicShape, ShardingRef>>;
+  ASSERT_OK_AND_ASSIGN(
+      DisassembledDynamicShards all_dyn_disassembled,
+      dynamic_sharding->Disassemble(dynamic_shape,
+                                    SingleDeviceShardSemantics::kAllShards));
+  ASSERT_THAT(all_dyn_disassembled, SizeIs(4));
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(all_dyn_disassembled[i].first, all_dynamic_shard_shapes[i]);
+    EXPECT_EQ(*all_dyn_disassembled[i].second,
+              *SingleDeviceSharding::Create(interleaved_devices->devices()[i],
+                                            MemoryKind()));
+  }
+  ASSERT_OK_AND_ASSIGN(
+      DisassembledDynamicShards addressable_dyn_disassembled,
+      dynamic_sharding->Disassemble(
+          dynamic_shape, SingleDeviceShardSemantics::kAddressableShards));
+  ASSERT_THAT(addressable_dyn_disassembled, SizeIs(2));
+  EXPECT_EQ(addressable_dyn_disassembled[0].first, shard_dyn_10);
+  EXPECT_EQ(*addressable_dyn_disassembled[0].second,
+            *SingleDeviceSharding::Create(interleaved_devices->devices()[1],
+                                          MemoryKind()));
+  EXPECT_EQ(addressable_dyn_disassembled[1].first, shard_dyn_10);
+  EXPECT_EQ(*addressable_dyn_disassembled[1].second,
+            *SingleDeviceSharding::Create(interleaved_devices->devices()[3],
+                                          MemoryKind()));
+}
+
+TEST_P(ConcreteShardingTest, ZeroAddressableDevices) {
+  DeviceListRef non_addressable_devices = GetDevices({4, 5});
+  ASSERT_OK_AND_ASSIGN(ShardingRef zero_addressable_sharding,
+                       ConcreteSharding::CreateIfValid(
+                           non_addressable_devices, MemoryKind(), Shape({20}),
+                           /*shard_shapes=*/{},
+                           /*index_domains=*/std::vector<IndexDomain>{}));
+  EXPECT_THAT(zero_addressable_sharding->Disassemble(
+                  Shape({20}), SingleDeviceShardSemantics::kAddressableShards),
+              IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(zero_addressable_sharding->Disassemble(
+                  Shape({20}), SingleDeviceShardSemantics::kAllShards),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(zero_addressable_sharding->IndexDomains(
+                  Shape({20}), SingleDeviceShardSemantics::kAddressableShards),
+              IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(zero_addressable_sharding->IndexDomains(
+                  Shape({20}), SingleDeviceShardSemantics::kAllShards),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_OK(zero_addressable_sharding->WithDeviceAssignment(
+      GetDevices({4, 5}), /*memory_kind=*/std::nullopt));
+  EXPECT_THAT(zero_addressable_sharding->WithDeviceAssignment(
+                  GetDevices({0, 5}), /*memory_kind=*/std::nullopt),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("matching device addressability")));
+
+  ASSERT_OK_AND_ASSIGN(
+      DynamicShape dynamic_shape,
+      DynamicShape::Create(Shape({20}), BoundedDynamicShapeTag({true})));
+  ASSERT_OK_AND_ASSIGN(ShardingRef zero_addressable_dyn_sharding,
+                       ConcreteSharding::CreateIfValid(
+                           non_addressable_devices, MemoryKind(), dynamic_shape,
+                           /*shard_dynamic_shapes=*/{}));
+  EXPECT_THAT(
+      zero_addressable_dyn_sharding->Disassemble(
+          dynamic_shape, SingleDeviceShardSemantics::kAddressableShards),
+      IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(zero_addressable_dyn_sharding->Disassemble(
+                  dynamic_shape, SingleDeviceShardSemantics::kAllShards),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(ConcreteShardingTest, ProjectedSpecDifferentNumShards) {
+  // Projected ConcreteShardingSpecs with different total device counts must
+  // not report the same partitioning even when addressable shard shapes match.
+  ShardingRef four_device_sharding = ConcreteSharding::Create(
+      GetDevices({0, 1, 4, 5}), MemoryKind(), Shape({20}),
+      /*shard_shapes=*/{Shape({10}), Shape({10})});
+  ShardingRef three_device_sharding =
+      ConcreteSharding::Create(GetDevices({0, 1, 4}), MemoryKind(), Shape({20}),
+                               /*shard_shapes=*/{Shape({10}), Shape({10})});
+  EXPECT_FALSE(four_device_sharding->sharding_spec()->HasSamePartitioning(
+      *three_device_sharding->sharding_spec()));
 }
 
 TEST_P(ConcreteShardingTest, UniqueIndexDomains) {
@@ -754,8 +1133,8 @@ TEST_P(ConcreteShardingTest, Hash) {
       IndexDomain(Index({10}), Shape({20})),
   };
   std::vector<IndexDomain> index_domains1 = {
-      IndexDomain(Index({5}), Shape({10})),
-      IndexDomain(Index({15}), Shape({20})),
+      IndexDomain(Index({20}), Shape({10})),
+      IndexDomain(Index({0}), Shape({20})),
   };
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), Shape({30}),

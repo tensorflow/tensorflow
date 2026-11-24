@@ -359,16 +359,21 @@ class OpaqueSharding : public RTTIExtends<OpaqueSharding, Sharding> {
 class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
  public:
   // Creates a concrete sharding that may contain non-identical shard shapes.
-  // Returns `InvalidArgumentError` if `devices` is empty or if
-  // `shard_shapes.size()` exceeds `INT_MAX`.
+  // Returns `InvalidArgumentError` if `devices` is empty, if
+  // `shard_shapes.size()` matches neither
+  // `devices->AddressableDeviceList()->size()` nor `devices->size()`, or if
+  // `index_domains` is present and inconsistent with `shape` or `shard_shapes`
+  // (different size, mismatched shard shape, or not contained within `shape`).
   static absl::StatusOr<std::unique_ptr<ConcreteSharding>> CreateIfValid(
       DeviceListRef devices, MemoryKind memory_kind, Shape shape,
       std::vector<Shape> shard_shapes,
       std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains);
 
   // Creates a concrete sharding that may contain non-identical shard shapes.
-  // REQUIRES: devices->AddressableDeviceList()->size() == shard_shapes.size()
-  // REQUIRES: !devices->empty()
+  // REQUIRES: `!devices->empty()`, `shard_shapes.size()` equals either
+  // `devices->AddressableDeviceList()->size()` or `devices->size()`, and when
+  // `index_domains` is present, it matches `shard_shapes` in size and shapes
+  // and every entry is contained within `shape`.
   static std::unique_ptr<ConcreteSharding> Create(
       DeviceListRef devices, MemoryKind memory_kind, Shape shape,
       std::vector<Shape> shard_shapes,
@@ -377,16 +382,16 @@ class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
 
   // Creates a concrete sharding that may contain non-identical shard dynamic
   // shapes. Returns `InvalidArgumentError` if `devices` is empty or if
-  // `shard_dynamic_shapes.size()` exceeds `INT_MAX`.
+  // `shard_dynamic_shapes.size()` matches neither
+  // `devices->AddressableDeviceList()->size()` nor `devices->size()`.
   static absl::StatusOr<std::unique_ptr<ConcreteSharding>> CreateIfValid(
       DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
       std::vector<DynamicShape> shard_dynamic_shapes);
 
   // Creates a concrete sharding that may contain non-identical shard dynamic
   // shapes.
-  // REQUIRES: devices->AddressableDeviceList()->size() ==
-  // shard_dynamic_shapes.size()
-  // REQUIRES: !devices->empty()
+  // REQUIRES: `!devices->empty()`, and `shard_dynamic_shapes.size()` equals
+  // either `devices->AddressableDeviceList()->size()` or `devices->size()`.
   static std::unique_ptr<ConcreteSharding> Create(
       DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
       std::vector<DynamicShape> shard_dynamic_shapes);

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -274,6 +275,9 @@ ConcreteShardingSpec::CreateIfValid(
         "ConcreteShardingSpec shard_shapes size %d exceeds INT_MAX",
         shard_shapes.size()));
   }
+  if (index_domains.has_value()) {
+    ABSL_RETURN_IF_ERROR(ValidateIndexDomains(shape, shard_shapes, *index_domains));
+  }
   int num_shards = static_cast<int>(shard_shapes.size());
   return std::unique_ptr<ConcreteShardingSpec>(new ConcreteShardingSpec(
       num_shards, std::move(shape), std::move(shard_shapes),
@@ -325,27 +329,20 @@ ConcreteShardingSpec::ConcreteShardingSpec(
       shape_(std::move(shape)),
       shard_shapes_(std::move(shard_shapes)),
       index_domains_(std::move(index_domains)) {
-  // If all provided per-shard shapes (and index domains, when present) are
-  // identical, cache this shape for `GetShardShape()`. Under partial
-  // addressability, this uses the locally known addressable shards without
-  // guessing non-addressable shards on other processes. Ideally, users should
-  // have used `ConcreteEvenShardingSpec` for such a case, but there are
-  // existing use cases that instantiate `ConcreteShardingSpec` from a list of
-  // per-shard shapes without checking for identical per-shard shapes.
+  // If all provided per-shard shapes are identical, cache this shape for
+  // `GetShardShape()` (when `index_domains_` is present, each entry's shape
+  // already matches `shard_shapes_`). Under partial addressability, this uses
+  // the locally known addressable shards without guessing non-addressable
+  // shards on other processes. Ideally, users should have used
+  // `ConcreteEvenShardingSpec` for such a case, but there are existing use
+  // cases that instantiate `ConcreteShardingSpec` from a list of per-shard
+  // shapes without checking for identical per-shard shapes.
   const auto& static_shard_shapes = std::get<std::vector<Shape>>(shard_shapes_);
   bool identical = !static_shard_shapes.empty();
   for (size_t i = 1; i < static_shard_shapes.size(); ++i) {
     if (static_shard_shapes[i] != static_shard_shapes[0]) {
       identical = false;
       break;
-    }
-  }
-  if (identical && index_domains_.has_value()) {
-    for (const IndexDomain& index_domain : *index_domains_) {
-      if (index_domain.shape() != static_shard_shapes[0]) {
-        identical = false;
-        break;
-      }
     }
   }
   if (identical) {
@@ -378,12 +375,14 @@ absl::StatusOr<ShardingRef> ConcreteShardingSpec::ToSharding(
   const size_t num_shard_shapes = has_static_shape()
                                       ? shard_shapes().size()
                                       : shard_dynamic_shapes().size();
-  if (num_shard_shapes != num_shards_ &&
-      devices->AddressableDeviceList()->size() != num_shard_shapes) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "ConcreteShardingSpec requires %d addressable devices, but received %d "
-        "addressable devices",
-        num_shard_shapes, devices->AddressableDeviceList()->size()));
+  if (num_shard_shapes != num_shards_) {
+    const size_t num_addressable = devices->AddressableDeviceList()->size();
+    if (num_addressable != num_shard_shapes) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "ConcreteShardingSpec requires %d addressable devices, but received "
+          "%d addressable devices",
+          num_shard_shapes, num_addressable));
+    }
   }
   std::shared_ptr<const ConcreteShardingSpec> spec =
       std::static_pointer_cast<const ConcreteShardingSpec>(
@@ -398,11 +397,17 @@ absl::StatusOr<ShardingRef> ConcreteShardingSpec::ToSharding(
 
 absl::StatusOr<Shape> ConcreteShardingSpec::GetShardShape(
     const Shape& shape) const {
-  if (shard_shape_.has_value()) {
-    return *shard_shape_;
+  if (!shard_shape_.has_value()) {
+    return absl::InvalidArgumentError(
+        "ConcreteShardingSpec does not have a fixed shard shape");
   }
-  return absl::InvalidArgumentError(
-      "ConcreteShardingSpec does not have a fixed shard shape");
+  if (shape != std::get<Shape>(shape_)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec has a shard shape for shape %v, but was "
+        "asked to get a shard shape for shape %v",
+        std::get<Shape>(shape_), shape));
+  }
+  return *shard_shape_;
 }
 
 bool ConcreteShardingSpec::HasSamePartitioning(
@@ -481,6 +486,34 @@ ConcreteShardingSpec::Disassemble(const DynamicShape& dynamic_shape) const {
   return result;
 }
 
+absl::Status ConcreteShardingSpec::ValidateIndexDomains(
+    const Shape& shape, absl::Span<const Shape> shard_shapes,
+    absl::Span<const IndexDomain> index_domains) {
+  if (index_domains.size() != shard_shapes.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec requires index_domains size (%d) to match "
+        "shard_shapes size (%d)",
+        index_domains.size(), shard_shapes.size()));
+  }
+  const IndexDomain global_domain(shape);
+  for (size_t i = 0; i < index_domains.size(); ++i) {
+    if (index_domains[i].shape() != shard_shapes[i]) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "ConcreteShardingSpec index_domains[%d] shape %v does not match "
+          "shard_shapes[%d] %v",
+          i, index_domains[i].shape(), i, shard_shapes[i]));
+    }
+    ABSL_ASSIGN_OR_RETURN(bool contained, global_domain.Contains(index_domains[i]));
+    if (!contained) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "ConcreteShardingSpec index_domains[%d] %v is not contained "
+          "within shape %v",
+          i, index_domains[i], shape));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::vector<IndexDomain>> ConcreteShardingSpec::IndexDomains(
     const Shape& shape) const {
   if (!index_domains_.has_value()) {
@@ -492,6 +525,12 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteShardingSpec::IndexDomains(
         "ConcreteShardingSpec only has %d addressable index domains out of %d "
         "shards",
         index_domains_->size(), num_shards_));
+  }
+  if (this->shape() != shape) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec has index domains for shape %v, but was asked "
+        "to get index domains for shape %v",
+        this->shape(), shape));
   }
   return *index_domains_;
 }
@@ -508,7 +547,7 @@ ConcreteShardingSpec::UniqueIndexDomains(const Shape& shape) const {
         "shards",
         index_domains_->size(), num_shards_));
   }
-  if (has_static_shape() && this->shape() != shape) {
+  if (this->shape() != shape) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "ConcreteShardingSpec has index domains for shape %v, but was asked "
         "to get unique index domains for shape %v",

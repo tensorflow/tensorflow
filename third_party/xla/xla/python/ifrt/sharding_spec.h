@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -325,14 +326,18 @@ class ConcreteShardingSpec
  public:
   // Creates a concrete sharding spec that may contain non-identical shard
   // shapes. Returns `InvalidArgumentError` if `shard_shapes` is empty or
-  // exceeds `INT_MAX`.
+  // exceeds `INT_MAX`, or if `index_domains` is present and inconsistent with
+  // `shape` or `shard_shapes` (different size, mismatched shard shape, or not
+  // contained within `shape`).
   static absl::StatusOr<std::unique_ptr<ConcreteShardingSpec>> CreateIfValid(
       Shape shape, std::vector<Shape> shard_shapes,
       std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains);
 
   // Creates a concrete sharding spec that may contain non-identical shard
   // shapes.
-  // REQUIRES: `!shard_shapes.empty()` and `shard_shapes.size() <= INT_MAX`.
+  // REQUIRES: `!shard_shapes.empty()`, `shard_shapes.size() <= INT_MAX`, and
+  // when `index_domains` is present, it matches `shard_shapes` in size and
+  // shapes and every entry is contained within `shape`.
   static std::unique_ptr<ConcreteShardingSpec> Create(
       Shape shape, std::vector<Shape> shard_shapes,
       std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains =
@@ -427,6 +432,13 @@ class ConcreteShardingSpec
 
   ConcreteShardingSpec(int num_shards, DynamicShape dynamic_shape,
                        std::vector<DynamicShape> shard_dynamic_shapes);
+
+  // Validates that `index_domains` has the same size as `shard_shapes`, and
+  // that every entry matches the corresponding `shard_shapes` entry and is
+  // contained within `shape`.
+  static absl::Status ValidateIndexDomains(
+      const Shape& shape, absl::Span<const Shape> shard_shapes,
+      absl::Span<const xla::ifrt::IndexDomain> index_domains);
 
   std::string DebugString() const override;
 

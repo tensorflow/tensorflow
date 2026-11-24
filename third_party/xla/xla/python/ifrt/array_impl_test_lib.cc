@@ -1143,7 +1143,7 @@ TEST(ArrayImplTest,
                        client->MakeDeviceList(devices));
   ShardingRef sharding = ConcreteSharding::Create(
       std::move(device_list), MemoryKind(), shape,
-      /*shard_shapes=*/{shard_shape},
+      /*shard_shapes=*/{shard_shape, shard_shape},
       /*index_domains=*/
       std::vector<IndexDomain>{IndexDomain(Index({0, 0}), shard_shape),
                                IndexDomain(Index({1, 0}), shard_shape)});
@@ -1179,7 +1179,7 @@ TEST(ArrayImplTest,
                        client->MakeDeviceList(devices));
   ShardingRef sharding = ConcreteSharding::Create(
       std::move(device_list), MemoryKind(), shape,
-      /*shard_shapes=*/{shard_shape, shard_shape},
+      /*shard_shapes=*/{shard_shape, shard_shape, shard_shape, shard_shape},
       /*index_domains=*/
       std::vector<IndexDomain>{IndexDomain(Index({0, 0}), shard_shape),
                                IndexDomain(Index({0, 0}), shard_shape),

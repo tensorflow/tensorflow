@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 
 #include <cstddef>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -57,6 +57,29 @@ char ConcreteSharding::ID = 0;
 char ConcreteEvenSharding::ID = 0;
 
 char DeserializeShardingOptions::ID = 0;
+
+namespace {
+
+// Validates that `ConcreteSharding` shard-shape count matches `devices` (either
+// all shards or addressable shards).
+absl::Status ValidateConcreteShardingShardCount(const DeviceList& devices,
+                                                size_t num_shard_shapes,
+                                                absl::string_view shape_kind) {
+  const size_t num_devices = devices.size();
+  if (num_shard_shapes == num_devices) {
+    return absl::OkStatus();
+  }
+  const size_t num_addressable = devices.AddressableDeviceList()->size();
+  if (num_shard_shapes != num_addressable) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteSharding must have the same number of %s as addressable "
+        "devices (%d) or total devices (%d), but got %d",
+        shape_kind, num_addressable, num_devices, num_shard_shapes));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 Sharding::Sharding(DeviceListRef devices, MemoryKind memory_kind,
                    bool is_fully_replicated)
@@ -317,11 +340,11 @@ ConcreteSharding::CreateIfValid(
     return absl::InvalidArgumentError(
         "ConcreteSharding requires at least 1 device");
   }
-  if (shard_shapes.size() >
-      static_cast<size_t>(std::numeric_limits<int>::max())) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("ConcreteSharding shard_shapes size %d exceeds INT_MAX",
-                        shard_shapes.size()));
+  ABSL_RETURN_IF_ERROR(ValidateConcreteShardingShardCount(
+      *devices, shard_shapes.size(), "shard shapes"));
+  if (index_domains.has_value()) {
+    ABSL_RETURN_IF_ERROR(ConcreteShardingSpec::ValidateIndexDomains(
+        shape, shard_shapes, *index_domains));
   }
   int num_shards = devices->size();
   std::shared_ptr<const ConcreteShardingSpec> spec(new ConcreteShardingSpec(
@@ -350,12 +373,8 @@ ConcreteSharding::CreateIfValid(
     return absl::InvalidArgumentError(
         "ConcreteSharding requires at least 1 device");
   }
-  if (shard_dynamic_shapes.size() >
-      static_cast<size_t>(std::numeric_limits<int>::max())) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "ConcreteSharding shard_dynamic_shapes size %d exceeds INT_MAX",
-        shard_dynamic_shapes.size()));
-  }
+  ABSL_RETURN_IF_ERROR(ValidateConcreteShardingShardCount(
+      *devices, shard_dynamic_shapes.size(), "shard dynamic shapes"));
   int num_shards = devices->size();
   std::shared_ptr<const ConcreteShardingSpec> spec(new ConcreteShardingSpec(
       num_shards, std::move(dynamic_shape), std::move(shard_dynamic_shapes)));
@@ -407,11 +426,37 @@ absl::StatusOr<std::unique_ptr<Sharding>>
 ConcreteSharding::WithDeviceAssignment(
     std::optional<DeviceListRef> devices,
     std::optional<MemoryKind> memory_kind) const {
-  if (devices.has_value() && (*devices)->size() != devices_->size()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "ConcreteSharding should have the same number of devices as the "
-        "current sharding, but was asked to have %d devices",
-        (*devices)->size()));
+  if (devices.has_value()) {
+    if ((*devices)->size() != devices_->size()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "ConcreteSharding should have the same number of devices as the "
+          "current sharding, but was asked to have %d devices",
+          (*devices)->size()));
+    }
+    const size_t num_shard_shapes =
+        sharding_spec_->has_static_shape()
+            ? sharding_spec_->shard_shapes().size()
+            : sharding_spec_->shard_dynamic_shapes().size();
+    if (num_shard_shapes != devices_->size()) {
+      const absl::Span<Device* const> current_devices = devices_->devices();
+      const absl::Span<Device* const> new_devices = (*devices)->devices();
+      for (size_t i = 0; i < current_devices.size(); ++i) {
+        if (current_devices[i]->IsAddressable() !=
+            new_devices[i]->IsAddressable()) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "ConcreteSharding with addressable-only %s requires matching "
+              "device addressability at every index, but index %d changed from "
+              "%s to %s",
+              sharding_spec_->has_static_shape() ? "shard shapes"
+                                                 : "shard dynamic shapes",
+              i,
+              current_devices[i]->IsAddressable() ? "addressable"
+                                                  : "non-addressable",
+              new_devices[i]->IsAddressable() ? "addressable"
+                                              : "non-addressable"));
+        }
+      }
+    }
   }
   return std::unique_ptr<Sharding>(
       new ConcreteSharding(devices.value_or(devices_),
@@ -437,30 +482,41 @@ ConcreteSharding::Disassemble(
   std::vector<std::pair<Shape, ShardingRef>> result;
   const std::vector<Shape>& shard_shapes = this->shard_shapes();
 
-  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
-      devices_->size() != shard_shapes.size()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "SingleDeviceShardSemantics::kAllShards was requested, but the "
-        "ConcreteSharding contains non-addressable devices. Saw %d devices, "
-        "with %d addressable devices.",
-        devices_->size(), shard_shapes.size()));
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
+    // Addressable-only `ConcreteSharding` cannot satisfy `kAllShards`.
+    if (devices_->size() != shard_shapes.size()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "SingleDeviceShardSemantics::kAllShards was requested, but the "
+          "ConcreteSharding contains non-addressable devices. Saw %d devices, "
+          "with %d addressable devices.",
+          devices_->size(), shard_shapes.size()));
+    }
+    const absl::Span<Device* const> all_devices = devices_->devices();
+    result.reserve(all_devices.size());
+    for (int i = 0; i < all_devices.size(); ++i) {
+      result.push_back({shard_shapes[i], SingleDeviceSharding::Create(
+                                             all_devices[i], memory_kind_)});
+    }
+    return result;
   }
 
   const absl::Span<Device* const> addressable_devices =
       devices_->AddressableDeviceList()->devices();
-  if (shard_shapes.size() != addressable_devices.size()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "ConcreteSharding must have the same number of "
-        "shard shapes and addressable devices. Saw %d shard shapes, with %d "
-        "addressable devices.",
-        shard_shapes.size(), addressable_devices.size()));
-  }
-
   result.reserve(addressable_devices.size());
-  for (int i = 0; i < addressable_devices.size(); ++i) {
-    result.push_back(
-        {shard_shapes[i],
-         SingleDeviceSharding::Create(addressable_devices[i], memory_kind_)});
+  if (shard_shapes.size() == addressable_devices.size()) {
+    for (int i = 0; i < addressable_devices.size(); ++i) {
+      result.push_back(
+          {shard_shapes[i],
+           SingleDeviceSharding::Create(addressable_devices[i], memory_kind_)});
+    }
+  } else {
+    const absl::Span<Device* const> all_devices = devices_->devices();
+    for (int i = 0; i < all_devices.size(); ++i) {
+      if (all_devices[i]->IsAddressable()) {
+        result.push_back({shard_shapes[i], SingleDeviceSharding::Create(
+                                               all_devices[i], memory_kind_)});
+      }
+    }
   }
   return result;
 }
@@ -485,30 +541,43 @@ ConcreteSharding::Disassemble(
   const std::vector<DynamicShape>& shard_dynamic_shapes =
       this->shard_dynamic_shapes();
 
-  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
-      devices_->size() != shard_dynamic_shapes.size()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "SingleDeviceShardSemantics::kAllShards was requested, but the "
-        "ConcreteSharding contains non-addressable devices. Saw %d devices, "
-        "with %d addressable devices.",
-        devices_->size(), shard_dynamic_shapes.size()));
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
+    // Addressable-only `ConcreteSharding` cannot satisfy `kAllShards`.
+    if (devices_->size() != shard_dynamic_shapes.size()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "SingleDeviceShardSemantics::kAllShards was requested, but the "
+          "ConcreteSharding contains non-addressable devices. Saw %d devices, "
+          "with %d addressable devices.",
+          devices_->size(), shard_dynamic_shapes.size()));
+    }
+    const absl::Span<Device* const> all_devices = devices_->devices();
+    result.reserve(all_devices.size());
+    for (int i = 0; i < all_devices.size(); ++i) {
+      result.push_back(
+          {shard_dynamic_shapes[i],
+           SingleDeviceSharding::Create(all_devices[i], memory_kind_)});
+    }
+    return result;
   }
 
   const absl::Span<Device* const> addressable_devices =
       devices_->AddressableDeviceList()->devices();
-  if (shard_dynamic_shapes.size() != addressable_devices.size()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "ConcreteSharding must have the same number of "
-        "shard shapes and addressable devices. Saw %d shard shapes, with %d "
-        "addressable devices.",
-        shard_dynamic_shapes.size(), addressable_devices.size()));
-  }
-
   result.reserve(addressable_devices.size());
-  for (int i = 0; i < addressable_devices.size(); ++i) {
-    result.push_back(
-        {shard_dynamic_shapes[i],
-         SingleDeviceSharding::Create(addressable_devices[i], memory_kind_)});
+  if (shard_dynamic_shapes.size() == addressable_devices.size()) {
+    for (int i = 0; i < addressable_devices.size(); ++i) {
+      result.push_back(
+          {shard_dynamic_shapes[i],
+           SingleDeviceSharding::Create(addressable_devices[i], memory_kind_)});
+    }
+  } else {
+    const absl::Span<Device* const> all_devices = devices_->devices();
+    for (int i = 0; i < all_devices.size(); ++i) {
+      if (all_devices[i]->IsAddressable()) {
+        result.push_back(
+            {shard_dynamic_shapes[i],
+             SingleDeviceSharding::Create(all_devices[i], memory_kind_)});
+      }
+    }
   }
   return result;
 }
@@ -520,27 +589,40 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
     return absl::InvalidArgumentError(
         "ConcreteSharding does not have index domain information");
   }
-
-  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
-      devices_->size() != index_domains()->size()) {
+  const std::vector<IndexDomain>& domains = *index_domains();
+  if (shape != this->shape()) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "SingleDeviceShardSemantics::kAllShards was requested, but the "
-        "ConcreteSharding contains index domains from non-addressable devices. "
-        "Saw %d devices, with %d addressable devices.",
-        devices_->size(), index_domains()->size()));
+        "ConcreteSharding has index domains for shape %v, but was asked to "
+        "get index domains for shape %v",
+        this->shape(), shape));
+  }
+
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
+    // Addressable-only `ConcreteSharding` cannot satisfy `kAllShards`.
+    if (devices_->size() != domains.size()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "SingleDeviceShardSemantics::kAllShards was requested, but the "
+          "ConcreteSharding contains index domains from non-addressable "
+          "devices. Saw %d devices, with %d addressable devices.",
+          devices_->size(), domains.size()));
+    }
+    return domains;
   }
 
   const absl::Span<Device* const> addressable_devices =
       devices_->AddressableDeviceList()->devices();
-  if (index_domains()->size() != addressable_devices.size()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "ConcreteSharding must have the same number of "
-        "index domains and addressable devices. Saw %d index domains, with %d "
-        "addressable devices.",
-        index_domains()->size(), addressable_devices.size()));
+  if (domains.size() == addressable_devices.size()) {
+    return domains;
   }
-
-  return *index_domains();
+  std::vector<IndexDomain> result;
+  result.reserve(addressable_devices.size());
+  const absl::Span<Device* const> all_devices = devices_->devices();
+  for (int i = 0; i < all_devices.size(); ++i) {
+    if (all_devices[i]->IsAddressable()) {
+      result.push_back(domains[i]);
+    }
+  }
+  return result;
 }
 
 std::string ConcreteSharding::DebugString() const {

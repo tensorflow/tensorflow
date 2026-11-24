@@ -248,6 +248,91 @@ TEST_P(ShardingSerDesTest,
                HasSubstr("requires shape == shard_shape")));
 }
 
+TEST_P(ShardingSerDesTest,
+       RejectInvalidConcreteShardingShardShapesAndIndexDomains) {
+  {
+    // 2 devices, 1 shard shape.
+    ConcreteShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    GetDevices({0, 1})->ToProto(*proto.mutable_devices(), version());
+    Shape({10, 20}).ToProto(*proto.mutable_shape(), version());
+    *proto.add_shard_shapes() = Shape({5, 20}).ToProto(version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<ConcreteSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("same number of shard shapes")));
+  }
+  {
+    // 2 devices, 2 shard shapes, 1 index domain.
+    ConcreteShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    GetDevices({0, 1})->ToProto(*proto.mutable_devices(), version());
+    Shape({10, 20}).ToProto(*proto.mutable_shape(), version());
+    *proto.add_shard_shapes() = Shape({5, 20}).ToProto(version());
+    *proto.add_shard_shapes() = Shape({5, 20}).ToProto(version());
+    *proto.add_index_domains() =
+        IndexDomain(Index({0, 0}), Shape({5, 20})).ToProto(version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<ConcreteSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("index_domains size (1) to match "
+                           "shard_shapes size (2)")));
+  }
+  {
+    // 2 devices, 1 dynamic shard shape.
+    ConcreteShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    GetDevices({0, 1})->ToProto(*proto.mutable_devices(), version());
+    ASSERT_OK_AND_ASSIGN(
+        DynamicShape dynamic_shape,
+        DynamicShape::Create(Shape({10, 20}),
+                             BoundedDynamicShapeTag({true, false})));
+    ASSERT_OK_AND_ASSIGN(
+        DynamicShape shard_dynamic_shape,
+        DynamicShape::Create(Shape({5, 20}),
+                             BoundedDynamicShapeTag({true, false})));
+    dynamic_shape.ToProto(*proto.mutable_dynamic_shape(), version());
+    shard_dynamic_shape.ToProto(*proto.add_shard_dynamic_shapes(), version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<ConcreteSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("same number of shard dynamic shapes")));
+  }
+  {
+    // Out-of-bounds index_domain is rejected eagerly on deserialization.
+    ConcreteShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    GetDevices({0, 1})->ToProto(*proto.mutable_devices(), version());
+    Shape({10, 20}).ToProto(*proto.mutable_shape(), version());
+    *proto.add_shard_shapes() = Shape({5, 20}).ToProto(version());
+    *proto.add_shard_shapes() = Shape({5, 20}).ToProto(version());
+    *proto.add_index_domains() =
+        IndexDomain(Index({0, 0}), Shape({5, 20})).ToProto(version());
+    *proto.add_index_domains() =
+        IndexDomain(Index({8, 0}), Shape({5, 20})).ToProto(version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<ConcreteSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("is not contained within shape")));
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion_NumDevices, ShardingSerDesTest,
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),

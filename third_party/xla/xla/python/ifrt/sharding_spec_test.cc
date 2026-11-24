@@ -262,6 +262,17 @@ TEST_P(ConcreteShardingSpecTest, GetShardShapeFailure) {
       absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("ConcreteShardingSpec does not have a fixed shard shape")));
+  EXPECT_THAT(
+      sharding->GetShardShape(Shape({40})),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("ConcreteShardingSpec does not have a fixed shard shape")));
+
+  ShardingSpecRef fixed_sharding =
+      ConcreteShardingSpec::Create(Shape({30}), {Shape({15}), Shape({15})});
+  EXPECT_THAT(fixed_sharding->GetShardShape(Shape({40})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("has a shard shape for shape")));
 }
 
 TEST_P(ConcreteShardingSpecTest, HasSamePartitioning) {
@@ -315,8 +326,8 @@ TEST_P(ConcreteShardingSpecTest, HasSamePartitioning) {
         *sharding_with_index_domains1));
 
     std::vector<IndexDomain> index_domains1 = {
-        IndexDomain(Index({5}), Shape({10})),
-        IndexDomain(Index({15}), Shape({20})),
+        IndexDomain(Index({20}), Shape({10})),
+        IndexDomain(Index({0}), Shape({20})),
     };
     ShardingSpecRef sharding_with_different_index_domains =
         ConcreteShardingSpec::Create(Shape({30}), shard_shapes0,
@@ -392,6 +403,69 @@ TEST_P(ConcreteShardingSpecTest, DisassembleFailsForUnexpectedShape) {
                   HasSubstr("ConcreteShardingSpec can only disassemble")));
 }
 
+TEST_P(ConcreteShardingSpecTest, InvalidIndexDomains) {
+  // Size mismatch is rejected at construction.
+  EXPECT_THAT(
+      ConcreteShardingSpec::CreateIfValid(
+          Shape({30}), /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0}), Shape({10}))}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("index_domains size (1) to match "
+                         "shard_shapes size (2)")));
+  EXPECT_DEATH(
+      (void)ConcreteShardingSpec::Create(
+          Shape({30}), /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0}), Shape({10}))}),
+      "index_domains size \\(1\\) to match shard_shapes size \\(2\\)");
+
+  // Mismatched index_domains[0].shape() vs. shard_shapes[0].
+  EXPECT_THAT(
+      ConcreteShardingSpec::CreateIfValid(
+          Shape({30}), /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0}), Shape({15})),
+                                   IndexDomain(Index({10}), Shape({20}))}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not match shard_shapes")));
+
+  // Out-of-bounds index_domain ([15, 35) exceeds Shape({30})).
+  EXPECT_THAT(
+      ConcreteShardingSpec::CreateIfValid(
+          Shape({30}), /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({5}), Shape({10})),
+                                   IndexDomain(Index({15}), Shape({20}))}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("is not contained within shape")));
+
+  // Mismatched number of dimensions between index_domains and logical shape.
+  EXPECT_THAT(
+      ConcreteShardingSpec::CreateIfValid(
+          Shape({30}), /*shard_shapes=*/{Shape({5, 6}), Shape({5, 6})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0, 0}), Shape({5, 6})),
+                                   IndexDomain(Index({0, 0}), Shape({5, 6}))}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("mismatched numbers of dimensions")));
+
+  // Querying IndexDomains/UniqueIndexDomains with a different shape.
+  ASSERT_OK_AND_ASSIGN(
+      ShardingSpecRef valid_spec,
+      ConcreteShardingSpec::CreateIfValid(
+          Shape({30}), /*shard_shapes=*/{Shape({10}), Shape({20})},
+          /*index_domains=*/
+          std::vector<IndexDomain>{IndexDomain(Index({0}), Shape({10})),
+                                   IndexDomain(Index({10}), Shape({20}))}));
+  EXPECT_THAT(valid_spec->IndexDomains(Shape({40})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("has index domains for shape")));
+  EXPECT_THAT(valid_spec->UniqueIndexDomains(Shape({40})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("has index domains for shape")));
+}
+
 TEST_P(ConcreteShardingSpecTest, IndexDomains) {
   std::vector<Shape> shard_shapes = {Shape({1}), Shape({2})};
   std::vector<IndexDomain> index_domains{
@@ -465,8 +539,8 @@ TEST_P(ConcreteShardingSpecTest, Hash) {
       IndexDomain(Index({10}), Shape({20})),
   };
   std::vector<IndexDomain> index_domains1 = {
-      IndexDomain(Index({5}), Shape({10})),
-      IndexDomain(Index({15}), Shape({20})),
+      IndexDomain(Index({20}), Shape({10})),
+      IndexDomain(Index({0}), Shape({20})),
   };
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       *ConcreteShardingSpec::Create(Shape({30}), {Shape({10}), Shape({20})}),
