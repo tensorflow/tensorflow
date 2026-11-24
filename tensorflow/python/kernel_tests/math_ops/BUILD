@@ -269,6 +269,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_grad",
+        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],

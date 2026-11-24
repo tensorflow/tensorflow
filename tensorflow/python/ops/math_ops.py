@@ -938,6 +938,10 @@ def imag(input, name=None):
       return array_ops.zeros_like(input)
 
 
+tensor_lib.Tensor.real = property(real, doc="The real part of this tensor.")
+tensor_lib.Tensor.imag = property(imag, doc="The imaginary part of this tensor.")
+
+
 @tf_export("math.angle", v1=["math.angle", "angle"])
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support

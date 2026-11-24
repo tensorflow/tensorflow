@@ -41,6 +41,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member {
+    name: "imag"
+    mtype: "<class \'property\'>"
+  }
+  member {
     name: "initial_value"
     mtype: "<class \'property\'>"
   }
@@ -54,6 +58,10 @@ tf_class {
   }
   member {
     name: "op"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "real"
     mtype: "<class \'property\'>"
   }
   member {

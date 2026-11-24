@@ -1242,6 +1242,9 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     """The `DType` of this variable."""
     raise NotImplementedError
 
+  real = property(math_ops.real, doc="The real part of this variable.")
+  imag = property(math_ops.imag, doc="The imaginary part of this variable.")
+
   @property
   def op(self):
     """The `Operation` of this variable."""

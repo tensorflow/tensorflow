@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
 _ADD = lambda x, y: x + y
@@ -1084,6 +1085,21 @@ class ComplexMakeRealImagTest(test.TestCase):
         self._compareMake(real, imag, use_gpu)
         self._compareMake(real, 12.0, use_gpu)
         self._compareMake(23.0, imag, use_gpu)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRealImagProperties(self):
+    for dtype in (np.float32, np.complex64, np.complex128):
+      values = [3, -2] if dtype == np.float32 else [3 + 4j, -2 - 1j]
+      expected = np.array(values, dtype=dtype)
+      tensor = constant_op.constant(expected)
+      variable = resource_variable_ops.ResourceVariable(tensor)
+      if not ops.executing_eagerly_outside_functions():
+        self.evaluate(variable.initializer)
+      for x in (tensor, variable):
+        self.assertAllEqual(expected.real, self.evaluate(x.real))
+        self.assertAllEqual(expected.imag, self.evaluate(x.imag))
+        self.assertEqual(x.dtype.real_dtype, x.real.dtype)
+        self.assertEqual(x.dtype.real_dtype, x.imag.dtype)
 
   def testRealImagNumericType(self):
     for use_gpu in [True, False]:
