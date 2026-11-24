@@ -1790,7 +1790,11 @@ def floordiv(x, y, name=None):
   Mathematically, this is equivalent to floor(x / y). For example:
     floor(8.4 / 4.0) = floor(2.1) = 2.0
     floor(-8.4 / 4.0) = floor(-2.1) = -3.0
-  This is equivalent to the '//' operator in Python 3.0 and above.
+
+  The `//` operator on TensorFlow tensors calls this operation. On CPU, the
+  floating-point kernel floors the computed quotient, which can differ from
+  Python's `//` on floats. For example, `tf.math.floordiv(1.4, -float("inf"))`
+  returns `-0.0` on CPU, while `1.4 // -float("inf")` returns `-1.0`.
 
   Note: `x` and `y` must have the same type, and the result will have the same
   type as well.
