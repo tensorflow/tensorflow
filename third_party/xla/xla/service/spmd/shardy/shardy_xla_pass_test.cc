@@ -80,6 +80,7 @@ namespace sdy {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
@@ -1231,6 +1232,37 @@ ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
   EXPECT_TRUE(*RunFileCheck(
       module->ToString(HloPrintOptions{}.set_include_layout_in_shapes(false)),
       expected));
+}
+
+TEST_P(ShardyXLATest, PythonCallbackWithoutSharding) {
+  const char* const hloString = R"(
+HloModule python_callback_no_sharding, entry_computation_layout={(f64[2]{0})->f64[2]{0}}
+
+ENTRY %main.0 (Arg_0.0: f64[2]) -> f64[2] {
+  %Arg_0.0 = f64[2] parameter(0)
+  %constant.0 = s64[] constant(1)
+  ROOT %custom-call.0 = f64[2] custom-call(s64[] %constant.0, f64[2] %Arg_0.0),
+      custom_call_target="xla_ffi_python_cpu_callback",
+      operand_layout_constraints={s64[], f64[2]{0}},
+      api_version=API_VERSION_TYPED_FFI
+}
+)";
+  const char* const expected = R"(
+  // CHECK:               ENTRY %main.1 (Arg_0.1: f64[2]) -> f64[2] {
+  // CHECK-NEXT:            %constant.1 = s64[] constant(1)
+  // CHECK-NEXT:            %Arg_0.1 = f64[2] parameter(0), metadata={op_name="Arg_0.0"}
+  // CHECK-NEXT:            %custom-call.2 = (f64[2]) custom-call(%constant.1, %Arg_0.1), custom_call_target="xla_ffi_python_cpu_callback", operand_layout_constraints={s64[], f64[2]{0}}, api_version=API_VERSION_TYPED_FFI, metadata={op_name="custom-call.0"}, backend_config={}
+  // CHECK-NEXT:            ROOT %custom-call.3 = f64[2] get-tuple-element(%custom-call.2), index=0, metadata={op_name="custom-call.0"}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(
+                       HloPrintOptions{}.set_include_layout_in_shapes(false)),
+                   expected),
+      IsOkAndHolds(true));
 }
 
 TEST_P(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {

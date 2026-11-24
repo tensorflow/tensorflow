@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -62,8 +63,9 @@ void replaceCallbackWithTupleVersion(CustomCallOp customCall) {
   auto getTupleElement = mlir::stablehlo::GetTupleElementOp::create(
       rewriter, customCall.getLoc(), customCall->getResultTypes().front(),
       tupleCustomCall.getResult(0), rewriter.getI32IntegerAttr(0));
-  getTupleElement->setAttr(kXlaShardingAttr,
-                           customCall->getAttr(kXlaShardingAttr));
+  if (mlir::Attribute sharding = customCall->getAttr(kXlaShardingAttr)) {
+    getTupleElement->setAttr(kXlaShardingAttr, sharding);
+  }
   rewriter.replaceOp(customCall, getTupleElement);
 }
 

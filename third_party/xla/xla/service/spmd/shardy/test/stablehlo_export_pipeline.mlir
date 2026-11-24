@@ -460,6 +460,17 @@ func.func @callback_no_tuple_result_used(%arg0: tensor<2xf64>) -> tensor<2xf64> 
   return %0 : tensor<2xf64>
 }
 
+// CHECK-LABEL: @callback_no_sharding_used
+func.func @callback_no_sharding_used(%arg0: tensor<2xf64>) -> tensor<2xf64> {
+  // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
+  // CHECK-NEXT: %[[CALLBACK:.*]] = stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {{{.*}} : (tensor<i64>, tensor<2xf64>) -> tuple<tensor<2xf64>>
+  // CHECK-NEXT: %[[GET_TUPLE:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] : (tuple<tensor<2xf64>>) -> tensor<2xf64>
+  // CHECK-NEXT: return %[[GET_TUPLE]] : tensor<2xf64>
+  %c = stablehlo.constant dense<18990036333952> : tensor<i64>
+  %0 = stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "18990036333952", operand_layouts = [dense<> : tensor<0xindex>, dense<0> : tensor<1xindex>], result_layouts = [dense<0> : tensor<1xindex>], xla_shape = "(f64[2]{0})"} : (tensor<i64>, tensor<2xf64>) -> tensor<2xf64>
+  return %0 : tensor<2xf64>
+}
+
 // CHECK-LABEL: func @maximal_sharding_no_results
 // CHECK-SAME:      (%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 func.func @maximal_sharding_no_results(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
