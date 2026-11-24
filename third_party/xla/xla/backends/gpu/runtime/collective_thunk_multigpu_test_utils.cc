@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -64,6 +65,10 @@ bool IsAtLeastCuda12900(const se::StreamExecutor* executor) {
   }
   return std::min(desc.driver_version(), desc.compile_time_toolkit_version()) >=
          se::SemanticVersion(12, 9, 0);
+}
+
+bool IsROCm(const se::StreamExecutor* executor) {
+  return executor->GetDeviceDescription().gpu_compute_capability().IsRocm();
 }
 
 bool HasEnoughGpus(int num_devices) {

@@ -76,6 +76,9 @@ se::StreamExecutor* GetGpuExecutor(int ordinal);
 
 bool IsAtLeastCuda12900(const se::StreamExecutor* executor);
 
+// Returns true if `executor` is a ROCm device.
+bool IsROCm(const se::StreamExecutor* executor);
+
 bool HasEnoughGpus(int num_devices);
 
 DeviceAssignment MakeDeviceAssignment(int num_devices);

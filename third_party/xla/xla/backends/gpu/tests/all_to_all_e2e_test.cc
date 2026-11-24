@@ -381,6 +381,13 @@ TEST_F(AllToAllTest, TwentyAllToAllsInWhileLoopWithCudaGraphs) {
   if (!CheckDeviceCount(kNumReplicas)) {
     return;
   }
+  // ROCm has no equivalent of CUDA's conditional graph nodes, so
+  // CommandBufferConversionPass drops the WHILE command there and the while
+  // thunk stays outside of command buffers.
+  if (Capability().IsRocm()) {
+    GTEST_SKIP() << "Command buffers on ROCm do not support on-device control "
+                    "flow (while loops).";
+  }
 
   std::string body_ops;
   std::string prev = "acc";

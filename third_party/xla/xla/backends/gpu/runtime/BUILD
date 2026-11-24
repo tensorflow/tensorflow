@@ -2303,6 +2303,7 @@ cc_library(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream",

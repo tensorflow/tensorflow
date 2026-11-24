@@ -771,12 +771,18 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
 
   tsl::setenv("TF_CPP_VMODULE", "autotuner_pass=2,autotuner=2",
               /*overwrite=*/true);
+  // Pick the coordination service port dynamically: a hard-coded port makes
+  // the test fail whenever anything else on the machine happens to hold it.
+  const int coordination_port = tsl::testing::PickUnusedPortOrDie();
+
   tsl::SubProcess child[kNumNodes];
   for (int node_id = 0; node_id < kNumNodes; ++node_id) {
     std::vector<std::string> argv;
     argv.push_back(binary_name);
     argv.push_back("--xla_gpu_shard_autotuning");
     argv.push_back(absl::StrFormat("--node_id=%d", node_id));
+    argv.push_back(
+        absl::StrFormat("--coordination_port=%d", coordination_port));
     if (!tsl::kIsOpenSource) {
       argv.push_back("--logtostderr");
       argv.push_back("--vmodule=autotuner_pass=2,autotuner=2");
@@ -797,15 +803,17 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
   }
 }
 
-absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
+absl::Status ShardedAutotuningWorksTestBody(const int node_id,
+                                            const int coordination_port) {
   GpuClientOptions gpu_options;
   gpu_options.node_id = node_id;
   gpu_options.num_nodes = kNumNodes;
   gpu_options.allowed_devices = {node_id};
   ABSL_ASSIGN_OR_RETURN(
       PjRtEnvironment env,
-      xla::GetPjRtEnvironmentForGpu("127.0.0.1:12345", gpu_options,
-                                    /*init_timeout=*/absl::Seconds(120)));
+      xla::GetPjRtEnvironmentForGpu(
+          absl::StrFormat("127.0.0.1:%d", coordination_port), gpu_options,
+          /*init_timeout=*/absl::Seconds(120)));
   TF_RET_CHECK(env.kv_store != nullptr);
   TF_RET_CHECK(env.client->device_count() == kNumNodes);
   TF_RET_CHECK(env.client->addressable_device_count() == 1);
@@ -2727,16 +2735,20 @@ int main(int argc, char* argv[]) {
   // Save name of binary so that it may invoke itself.
   xla::binary_name = argv[0];
   int node_id = -1;
+  int coordination_port = 0;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("node_id", &node_id,
                 "Node ID for ShardedAutotuningWorks test."),
+      tsl::Flag("coordination_port", &coordination_port,
+                "Coordination service port for ShardedAutotuningWorks test."),
   };
   xla::AppendDebugOptionsFlags(&flag_list);
   std::string usage = tsl::Flags::Usage(argv[0], flag_list);
   tsl::Flags::Parse(&argc, argv, flag_list);
   testing::InitGoogleTest(&argc, argv);
   if (node_id >= 0) {
-    absl::Status status = xla::ShardedAutotuningWorksTestBody(node_id);
+    absl::Status status =
+        xla::ShardedAutotuningWorksTestBody(node_id, coordination_port);
     if (!status.ok()) {
       LOG(ERROR) << status;
       return 1;

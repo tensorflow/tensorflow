@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/layout.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/platform_util.h"
@@ -42,7 +43,9 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -134,8 +137,9 @@ class StreamExecutorAllocator : public tsl::Allocator {
   int64_t memory_space_;
 };
 
-// Creates a MultiDeviceAdapter with a BFC allocator for device memory (space 0)
-// and a passthrough StreamExecutor allocator for host pinned memory (space 5).
+// Creates a MultiDeviceAdapter with a BFC allocator for device memory (space
+// 0), a growth-only BFC allocator for collective memory (space 7) and a
+// passthrough StreamExecutor allocator for host pinned memory (space 5).
 std::pair<std::vector<std::unique_ptr<se::Stream>>,
           std::shared_ptr<se::MultiDeviceAdapter>>
 CreateGpuAllocators(const se::Platform* platform,
@@ -165,6 +169,33 @@ CreateGpuAllocators(const se::Platform* platform,
         absl::StrCat("XLA_backend_", ordinal, "_bfc"), opts);
     allocators.push_back(
         {std::move(bfc), stream_ptr, /*memory_space=*/0, ordinal});
+
+    // BFC allocator for the collective memory space. Buffer assignment colors
+    // buffers S(7) whenever symmetric-memory collectives are in play, or
+    // whenever the temp buffer uses the collective color (which happens for
+    // modules that span all visible devices), so this space must be backed even
+    // for runs that do not use collectives at all. With `allow_growth` the pool
+    // stays empty until space 7 is actually allocated from, so runs that never
+    // touch it pay nothing, while the pooling keeps asynchronous deallocation
+    // safe.
+    absl::StatusOr<std::unique_ptr<se::MemoryAllocator>>
+        collective_memory_allocator =
+            executor->CreateMemoryAllocator(se::MemorySpace::kCollective);
+    CHECK_OK(collective_memory_allocator)
+        << "Failed to create collective memory allocator for device "
+        << ordinal;
+    auto collective_sub = std::make_unique<se::StreamExecutorAllocator>(
+        *std::move(collective_memory_allocator),
+        /*memory_type=*/se::MemorySpace::kCollective, ordinal);
+    tsl::BFCAllocator::Options collective_opts;
+    collective_opts.allow_growth = true;
+    auto collective_alloc = std::make_shared<tsl::BFCAllocator>(
+        std::move(collective_sub), total_memory,
+        absl::StrCat("XLA_backend_", ordinal, "_collective_bfc"),
+        collective_opts);
+    allocators.push_back({std::move(collective_alloc), stream_ptr,
+                          /*memory_space=*/Layout::kCollectiveMemorySpace,
+                          ordinal});
 
     // Passthrough allocator for host memory space.
     auto host_alloc = std::make_shared<StreamExecutorAllocator>(

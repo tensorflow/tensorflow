@@ -62,6 +62,11 @@ TEST_F(AllToAllMultiProcessE2ETest, OneShotAllToAll2Processes) {
                                                      ->IsAtLeastAmpere()) {
     GTEST_SKIP() << "One-shot all-to-all requires Ampere+ for CUDA.";
   }
+  if (!desc.gpu_compute_capability().IsCuda()) {
+    // Cross-host one-shot collectives read peer pointers out of an
+    // NCCL load/store-accessible window, which only exists on CUDA.
+    GTEST_SKIP() << "Cross-host one-shot collectives require CUDA.";
+  }
 
   ASSERT_EQ(client()->addressable_device_count(), 1);
   ASSERT_EQ(client()->device_count(), num_ranks());

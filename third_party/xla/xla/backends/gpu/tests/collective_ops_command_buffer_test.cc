@@ -85,6 +85,14 @@ class CollectiveOpsCommandBufferPeerAccessTest
           << num_devices;
     }
 
+    // Ragged all-to-all in a command buffer synchronizes through the
+    // cross-device barrier. The barrier kernel reads peer pointers out of an
+    // NCCL symmetric memory window, which has no RCCL equivalent on ROCm.
+    if (Capability().IsRocm()) {
+      GTEST_SKIP() << "Skipping test suite: the NCCL-backed cross-device "
+                      "barrier is not supported on ROCm";
+    }
+
     ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                          stream_executor::PlatformManager::PlatformWithId(
                              stream_executor_platform_id()));
