@@ -49,6 +49,7 @@ namespace xla {
 namespace {
 
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
@@ -263,6 +264,25 @@ TEST_F(HloShardingTest, FromProtoFailsWithMoreLastTileDimsThanTileDims) {
   )pb");
   EXPECT_THAT(HloSharding::FromProto(proto).status().message(),
               ::testing::HasSubstr("last_tile_dims has 2 entries"));
+}
+
+TEST_F(HloShardingTest, FromProtoSubgroupWithLargePrimeIotaDims) {
+  // 2^61 - 1 is prime. Sorting the subgroup types transposes the iota tile
+  // assignment, which must not require factorizing its dimensions.
+  constexpr int64_t kPrime = (int64_t{1} << 61) - 1;
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: [ 2305843009213693951, 2, 2 ]
+    iota_reshape_dims: [ 4, 2305843009213693951 ]
+    iota_transpose_perm: [ 1, 0 ]
+    last_tile_dims: [ UNREDUCED, MANUAL ]
+  )pb");
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, HloSharding::FromProto(proto));
+  EXPECT_TRUE(sharding.tile_assignment().iota().has_value());
+  EXPECT_EQ(sharding.tile_assignment(),
+            TileAssignment({kPrime, 2, 2}, {2, 2, kPrime}, {2, 1, 0}));
+  EXPECT_THAT(sharding.subgroup_types(),
+              ElementsAre(OpSharding::MANUAL, OpSharding::UNREDUCED));
 }
 
 using TileTest = HloShardingTest;

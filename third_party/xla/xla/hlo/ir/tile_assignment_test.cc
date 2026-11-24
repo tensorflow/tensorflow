@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -41,7 +42,9 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 
 TEST(IotaTileAssignmentTest, Create) {
   // Test with dims only
@@ -263,6 +266,66 @@ TEST(IotaTileAssignmentTest, ValueAtAndIndexForExhaustive) {
           });
     });
   });
+}
+
+TEST(IotaTileAssignmentTest, TransposeExhaustive) {
+  constexpr int64_t kTotalSize = 24;
+  ForEachShape(kTotalSize, [&](std::vector<int64_t>& dims) {
+    ForEachShape(kTotalSize, [&](std::vector<int64_t>& reshape_dims) {
+      ForEachPermutation(
+          reshape_dims.size(), [&](absl::Span<const int> transpose_perm) {
+            IotaTileAssignment iota =
+                IotaTileAssignment::Create(dims, reshape_dims, transpose_perm);
+            ForEachPermutation(dims.size(), [&](absl::Span<const int> perm) {
+              SCOPED_TRACE(absl::StrFormat("iota = %s, perm = [%s]",
+                                           iota.ToString(),
+                                           absl::StrJoin(perm, ", ")));
+              std::optional<IotaTileAssignment> transposed =
+                  iota.Transpose(perm);
+              if (!transposed.has_value()) {
+                return;
+              }
+              Array<int64_t> expected = iota.ToArray();
+              expected.TransposeDimensions(perm);
+              EXPECT_EQ(transposed->ToArray(), expected);
+            });
+          });
+    });
+  });
+}
+
+TEST(IotaTileAssignmentTest, TransposeLargePrimeDims) {
+  // 2^61 - 1 is prime, so trial division to factorize it would be very slow.
+  constexpr int64_t kPrime = (int64_t{1} << 61) - 1;
+
+  // The tile dims [kPrime, 2] are incompatible with the transposed reshape dims
+  // [2, kPrime], so the result cannot be represented as an iota.
+  absl::StatusOr<IotaTileAssignment> iota =
+      IotaTileAssignment::TryCreate({kPrime, 2}, {kPrime, 2}, {1, 0});
+  ASSERT_THAT(iota, IsOk());
+  EXPECT_FALSE(iota->Transpose({1, 0}).has_value());
+
+  // [kPrime, 2, 2] is a refinement of the transposed reshape dims [kPrime, 4].
+  iota = IotaTileAssignment::TryCreate({kPrime, 2, 2}, {4, kPrime}, {1, 0});
+  ASSERT_THAT(iota, IsOk());
+  std::optional<IotaTileAssignment> transposed = iota->Transpose({2, 1, 0});
+  ASSERT_TRUE(transposed.has_value());
+  EXPECT_THAT(transposed->dims(), ElementsAre(2, 2, kPrime));
+  EXPECT_THAT(transposed->reshape_dims(), ElementsAre(2, 2, kPrime));
+  EXPECT_THAT(transposed->transpose_perm(), ElementsAre(1, 0, 2));
+}
+
+TEST(IotaTileAssignmentTest, ZeroElements) {
+  absl::StatusOr<IotaTileAssignment> iota =
+      IotaTileAssignment::TryCreate({0, 2}, {0, 2}, {1, 0});
+  ASSERT_THAT(iota, IsOk());
+  EXPECT_EQ(*iota, IotaTileAssignment::Create({0, 2}));
+  EXPECT_THAT(iota->reshape_dims(), ElementsAre(0));
+  EXPECT_THAT(iota->transpose_perm(), ElementsAre(0));
+
+  std::optional<IotaTileAssignment> transposed = iota->Transpose({1, 0});
+  ASSERT_TRUE(transposed.has_value());
+  EXPECT_EQ(*transposed, IotaTileAssignment::Create({2, 0}));
 }
 
 TEST(IotaTileAssignmentTest, ToString) {
@@ -597,6 +660,13 @@ TEST(IotaTileAssignmentTest, CopyAndMove) {
   EXPECT_TRUE(moved_to_2.dims().empty());
   EXPECT_TRUE(moved_to_2.reshape_dims().empty());
   EXPECT_TRUE(moved_to_2.transpose_perm().empty());
+}
+
+TEST(TileAssignmentTest, ExtractCommonFactorSequenceRejectsZero) {
+  EXPECT_THAT(ExtractCommonFactorSequence({0, 2}, {0}), IsEmpty());
+  EXPECT_THAT(ExtractCommonFactorSequence({2, 0}, {2, 0}), IsEmpty());
+  EXPECT_THAT(GetOrderedSubDims({0, 2}, {0}, {0}),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace
