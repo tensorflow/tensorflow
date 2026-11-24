@@ -1,4 +1,5 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Transforms/LoopInvariantCodeMotionUtils.h b/mlir/include/mlir/Transforms/LoopInvariantCodeMotionUtils.h
 --- a/mlir/include/mlir/Transforms/LoopInvariantCodeMotionUtils.h
 +++ b/mlir/include/mlir/Transforms/LoopInvariantCodeMotionUtils.h
 @@ -69,30 +69,9 @@
@@ -33,6 +34,7 @@ Auto generated patch. Do not edit or delete it, even if empty.
  /// Hoist loop-invariant tensor subsets (subset extraction and subset insertion
  /// ops) from loop-like ops. Extraction ops are moved before the loop. Insertion
  /// ops are moved after the loop. The loop body operates on newly added region
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Affine/Transforms/AffineLoopInvariantCodeMotion.cpp b/mlir/lib/Dialect/Affine/Transforms/AffineLoopInvariantCodeMotion.cpp
 --- a/mlir/lib/Dialect/Affine/Transforms/AffineLoopInvariantCodeMotion.cpp
 +++ b/mlir/lib/Dialect/Affine/Transforms/AffineLoopInvariantCodeMotion.cpp
 @@ -16,7 +16,6 @@
@@ -53,6 +55,7 @@ Auto generated patch. Do not edit or delete it, even if empty.
  }
  
  void LoopInvariantCodeMotion::runOnOperation() {
+diff -ruN --strip-trailing-cr a/mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp b/mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp
 --- a/mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp
 +++ b/mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp
 @@ -15,12 +15,9 @@
@@ -127,6 +130,7 @@ Auto generated patch. Do not edit or delete it, even if empty.
  }
  
  namespace {
+diff -ruN --strip-trailing-cr a/mlir/test/Dialect/Affine/affine-loop-invariant-code-motion.mlir b/mlir/test/Dialect/Affine/affine-loop-invariant-code-motion.mlir
 --- a/mlir/test/Dialect/Affine/affine-loop-invariant-code-motion.mlir
 +++ b/mlir/test/Dialect/Affine/affine-loop-invariant-code-motion.mlir
 @@ -134,11 +134,11 @@
@@ -390,6 +394,7 @@ Auto generated patch. Do not edit or delete it, even if empty.
 -  }
 -  return
 -}
+diff -ruN --strip-trailing-cr a/mlir/test/Dialect/SparseTensor/sparse_kernels_to_iterator.mlir b/mlir/test/Dialect/SparseTensor/sparse_kernels_to_iterator.mlir
 --- a/mlir/test/Dialect/SparseTensor/sparse_kernels_to_iterator.mlir
 +++ b/mlir/test/Dialect/SparseTensor/sparse_kernels_to_iterator.mlir
 @@ -95,8 +95,6 @@
@@ -444,6 +449,7 @@ Auto generated patch. Do not edit or delete it, even if empty.
  // CHECK:             memref.store %[[VAL_51]], %[[VAL_6]]{{\[}}%[[VAL_50]]] : memref<10xi32>
  // CHECK:           }
  // CHECK:           %[[VAL_52:.*]] = bufferization.to_tensor %[[VAL_6]] : memref<10xi32>
+diff -ruN --strip-trailing-cr a/mlir/test/Transforms/loop-invariant-code-motion.mlir b/mlir/test/Transforms/loop-invariant-code-motion.mlir
 --- a/mlir/test/Transforms/loop-invariant-code-motion.mlir
 +++ b/mlir/test/Transforms/loop-invariant-code-motion.mlir
 @@ -85,12 +85,12 @@
