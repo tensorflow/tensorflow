@@ -644,7 +644,8 @@ absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
                          [&](const HloInstruction* operand) -> bool {
                            return (special_convert_candidate == operand);
                          }) > 1;
-    if (convert_invalid(special_convert_candidate) || repeated) {
+    if (convert_invalid(special_convert_candidate) || repeated ||
+        special_convert_candidate->HasControlDependencies()) {
       continue;
     }
     // Check whether an identical candidate appears in other branches
@@ -653,7 +654,8 @@ absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
           conditional->branch_computation(others)->root_instruction();
       const HloInstruction* other_convert = others_root->operand(operand_num);
       if (other_convert->opcode() != HloOpcode::kConvert ||
-          convert_invalid(other_convert)) {
+          convert_invalid(other_convert) ||
+          other_convert->HasControlDependencies()) {
         replica = false;
         break;
       }
@@ -721,19 +723,18 @@ absl::Status RestructureConditionalInstruction(HloComputation* computation,
       OriginalValue::CreateFromInstruction(new_tuple));
   if (old_root == conditional) {
     computation->set_root_instruction(new_tuple);
-  } else {
-    std::vector<HloInstruction*> new_tuple_users;
-    for (auto conditional_user : conditional->users()) {
-      auto is_new_gte = absl::c_find_if(
-          new_operands,
-          [&](HloInstruction* instr) { return instr == conditional_user; });
-      if (is_new_gte == new_operands.end()) {
-        new_tuple_users.push_back(conditional_user);
-      }
+  }
+  // Always redirect pre-existing users of `conditional` to `new_tuple` (even
+  // when `conditional` was the root) so `conditional`'s only remaining users
+  // are the fresh per-index GTEs in `new_operands`.
+  std::vector<HloInstruction*> new_tuple_users;
+  for (HloInstruction* conditional_user : conditional->users()) {
+    if (!absl::c_linear_search(new_operands, conditional_user)) {
+      new_tuple_users.push_back(conditional_user);
     }
-    for (auto new_tuple_user : new_tuple_users) {
-      ABSL_RETURN_IF_ERROR(conditional->ReplaceUseWith(new_tuple_user, new_tuple));
-    }
+  }
+  for (HloInstruction* new_tuple_user : new_tuple_users) {
+    ABSL_RETURN_IF_ERROR(conditional->ReplaceUseWith(new_tuple_user, new_tuple));
   }
   VLOG(2) << "computation after root restructure:\n" << computation->ToString();
   return absl::OkStatus();
@@ -742,15 +743,17 @@ absl::Status RestructureConditionalInstruction(HloComputation* computation,
 absl::StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
                                         bool is_layout_sensitive) {
   int branch_count = conditional->branch_count();
-  if (branch_count <= 0) {
+  if (branch_count <= 0 || conditional->HasControlDependencies()) {
     return false;
   }
 
-  // Determining whether all branch roots are tuples
+  // Determining whether all branch roots are removable tuples
   for (int branch_num = 0; branch_num < branch_count; ++branch_num) {
     HloInstruction* branch_root =
         conditional->branch_computation(branch_num)->root_instruction();
-    if (branch_root->opcode() != HloOpcode::kTuple) {
+    if (branch_root->opcode() != HloOpcode::kTuple ||
+        branch_root->user_count() > 0 ||
+        branch_root->HasControlDependencies()) {
       return false;
     }
   }
@@ -1215,7 +1218,7 @@ class MoveOperandIntoBranch {
         ReplaceInputInUser(inst, user, new_operands, matching_tuple_indices));
     ABSL_RETURN_IF_ERROR(
         MoveInputIntoBranch(inst, user, new_operands, matching_tuple_indices));
-    if (inst->user_count() == 0) {
+    if (inst->IsDead()) {
       ABSL_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
     }
     return absl::OkStatus();
@@ -1740,6 +1743,12 @@ class GroupConnectedBoundaries {
     // of the parent computation (which contains the conditional) to be moved
     // inside the conditional.
     VLOG(1) << "Check Worth hoisting\n";
+    if (absl::c_any_of(b, [](const HloInstruction* inst) {
+          return inst->HasControlDependencies();
+        })) {
+      VLOG(1) << "Not moving instruction with control dependencies.";
+      return false;
+    }
     HloOpcode opcode = instruction->opcode();
     if (pos == Boundary::Position::kInsideBranch &&
         opcode == HloOpcode::kBroadcast) {
@@ -1772,6 +1781,10 @@ class GroupConnectedBoundaries {
     // Currently the optimization for moving operands inside branches changes
     // the shapes of tuples but does not modify their sharding annotations.
     if (pos == Boundary::Position::kOutsideBranchOperand) {
+      if (instruction->IsRoot()) {
+        VLOG(1) << "Not moving parent root operand into branches.";
+        return false;
+      }
       if (opcode == HloOpcode::kTuple && instruction->has_sharding()) {
         VLOG(1) << "Not moving operand because of sharding annotations.";
         return false;
@@ -2172,6 +2185,7 @@ class GroupConnectedBoundaries {
         }
       } else if (b.IsOutsideBranchOperand() &&
                  b[0]->opcode() == HloOpcode::kBroadcast &&
+                 !b[0]->HasControlDependencies() &&
                  connected_boundaries_.size() > 1 &&
                  absl::c_find(
                      b[0]->users(),
@@ -2203,30 +2217,41 @@ class GroupConnectedBoundaries {
     // contains all the users of the conditional.
     HloInstruction* inst = b[0];
     if (inst == conditional) {
-      int branch_count = inst->branch_count();
-      // Add conditional roots as a new boundary to visit.
-      Boundary boundary_in(Boundary::Position::kInsideBranch);
-      for (int i = 0; i < branch_count; i++) {
-        HloComputation* branch_computation = inst->branch_computation(i);
-        HloInstruction* root_inst = branch_computation->root_instruction();
-        CHECK(root_inst != nullptr);
-        boundary_in.push_back(root_inst);
-      }
-      new_boundaries_.push_back(boundary_in);
-      // Sort the users deterministically before pushing them onto boundaries to
-      // maintain stable order.
-      std::vector<HloInstruction*> sorted_users(inst->users().begin(),
-                                                inst->users().end());
-      absl::c_sort(sorted_users,
-                   [](const HloInstruction* a, const HloInstruction* b) {
-                     return a->unique_id() < b->unique_id();
-                   });
+      // Moving branch roots out or users in changes the conditional's output
+      // shape and rewires external GTE users, which is invalid when the
+      // conditional itself is the parent root.
+      if (!inst->IsRoot()) {
+        // MoveInstructionOut removes every existing GTE user of the
+        // conditional, so skip moving out if any user has control dependencies.
+        if (absl::c_none_of(inst->users(), [](const HloInstruction* user) {
+              return user->HasControlDependencies();
+            })) {
+          int branch_count = inst->branch_count();
+          // Add conditional roots as a new boundary to visit.
+          Boundary boundary_in(Boundary::Position::kInsideBranch);
+          for (int i = 0; i < branch_count; i++) {
+            HloComputation* branch_computation = inst->branch_computation(i);
+            HloInstruction* root_inst = branch_computation->root_instruction();
+            CHECK(root_inst != nullptr);
+            boundary_in.push_back(root_inst);
+          }
+          new_boundaries_.push_back(boundary_in);
+        }
+        // Sort the users deterministically before pushing them onto boundaries
+        // to maintain stable order.
+        std::vector<HloInstruction*> sorted_users(inst->users().begin(),
+                                                  inst->users().end());
+        absl::c_sort(sorted_users,
+                     [](const HloInstruction* a, const HloInstruction* b) {
+                       return a->unique_id() < b->unique_id();
+                     });
 
-      // Add conditional users as new boundaries to visit.
-      for (auto u : sorted_users) {
-        Boundary boundary_in(Boundary::Position::kOutsideBranchUser);
-        boundary_in.push_back(u);
-        new_boundaries_.push_back(boundary_in);
+        // Add conditional users as new boundaries to visit.
+        for (HloInstruction* u : sorted_users) {
+          Boundary boundary_in(Boundary::Position::kOutsideBranchUser);
+          boundary_in.push_back(u);
+          new_boundaries_.push_back(boundary_in);
+        }
       }
       // Add conditional operands as new boundaries to visit.
       for (int64_t opd_idx = 1; opd_idx < inst->operand_count(); opd_idx++) {

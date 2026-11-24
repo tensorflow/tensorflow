@@ -26,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -45,6 +46,7 @@ limitations under the License.
 namespace xla {
 namespace conditional_opt {
 
+using ::absl_testing::IsOkAndHolds;
 using ConditionalCodeMotionTest = HloHardwareIndependentTestBase;
 namespace op = xla::testing::opcode_matchers;
 
@@ -3301,6 +3303,383 @@ ENTRY main {
   const HloInstruction* side = FindInstruction(module.get(), "side");
   ASSERT_NE(side, nullptr);
   EXPECT_THAT(side->operand(0), op::GetTupleElement(op::Conditional(), 1));
+}
+
+TEST_F(ConditionalCodeMotionTest, DoNotMoveUserInWhenGteHasControlDep) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule ControlDepOnGte
+on_true {
+  p = (f32[10], f32[10]) parameter(0)
+  p0 = f32[10] get-tuple-element(p), index=0
+  p1 = f32[10] get-tuple-element(p), index=1
+  ROOT t = (f32[10], f32[10]) tuple(f32[10] add(p0, p1), f32[10] subtract(p0, p1))
+}
+on_false {
+  p = (f32[10], f32[10]) parameter(0)
+  p0 = f32[10] get-tuple-element(p), index=0
+  p1 = f32[10] get-tuple-element(p), index=1
+  ROOT t = (f32[10], f32[10]) tuple(f32[10] multiply(p0, p1), f32[10] divide(p0, p1))
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  arg = (f32[10], f32[10]) parameter(1)
+  cond = (f32[10], f32[10]) conditional(flag, arg, arg),
+      true_computation=on_true, false_computation=on_false
+  tok = token[] after-all()
+  gte0 = f32[10] get-tuple-element(cond), index=0, control-predecessors={tok}
+  gte1 = f32[10] get-tuple-element(cond), index=1
+  sq = f32[10] multiply(gte0, gte0)
+  ROOT out = (f32[10], f32[10]) tuple(sq, gte1)
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(false));
+}
+
+TEST_F(ConditionalCodeMotionTest,
+       DoNotMoveOutWhenConditionalUserHasControlDep) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule ControlDepOnConditionalUserBlocksMoveOut
+on_true {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  a = f32[10] add(g, g)
+  ROOT t = (f32[10]) tuple(a)
+}
+on_false {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  a = f32[10] add(g, g)
+  ROOT t = (f32[10]) tuple(a)
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  p1 = (f32[10]) parameter(1)
+  p2 = (f32[10]) parameter(2)
+  cond = (f32[10]) conditional(flag, p1, p2),
+      true_computation=on_true, false_computation=on_false
+  tok = token[] after-all()
+  gte = f32[10] get-tuple-element(cond), index=0, control-predecessors={tok}
+  ROOT out = f32[10] power(gte, gte)
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(false));
+}
+
+TEST_F(ConditionalCodeMotionTest,
+       DoNotReplicateControlDependentBroadcastOperand) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule ControlDepOnBroadcastOperand
+on_true {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  ROOT t = (f32[10]) tuple(g)
+}
+on_false {
+  p = (f32[10]) parameter(0)
+  c = f32[10] constant({0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+  ROOT t = (f32[10]) tuple(c)
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  s = f32[] parameter(1)
+  tok = token[] after-all()
+  b = f32[10] broadcast(s), dimensions={}, control-predecessors={tok}
+  neg = f32[10] negate(b)
+  arg = (f32[10]) tuple(neg)
+  cond = (f32[10]) conditional(flag, arg, arg),
+      true_computation=on_true, false_computation=on_false
+  gte = f32[10] get-tuple-element(cond), index=0
+  ROOT out = (f32[10], f32[10]) tuple(gte, b)
+})hlo"));
+  // `neg` moves into on_true, but the control-dependent `b` must not be
+  // replicated into the branch.
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(true));
+  std::vector<HloInstruction*> bcasts =
+      FindInstructions(module.get(), HloOpcode::kBroadcast);
+  ASSERT_EQ(bcasts.size(), 1);
+  EXPECT_EQ(bcasts[0]->parent(), module->entry_computation());
+}
+
+TEST_F(ConditionalCodeMotionTest,
+       ConvertSpecialMoveSkipsControlDepOnConditional) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule ConvertSpecialMoveControlDepOnCond
+on_true {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  c = bf16[10] convert(f32[10] add(g, g))
+  ROOT t = (bf16[10]) tuple(c)
+}
+on_false {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  c = bf16[10] convert(f32[10] multiply(g, g))
+  ROOT t = (bf16[10]) tuple(c)
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  p1 = (f32[10]) parameter(1)
+  p2 = (f32[10]) parameter(2)
+  tok = token[] after-all()
+  ROOT cond = (bf16[10]) conditional(flag, p1, p2),
+      true_computation=on_true, false_computation=on_false,
+      control-predecessors={tok}
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(false));
+}
+
+TEST_F(ConditionalCodeMotionTest,
+       ConvertSpecialMoveSkipsControlDepOnBranchConvert) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule ConvertSpecialMoveControlDepOnBranchConvert
+on_true {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  c = bf16[10] convert(f32[10] add(g, g))
+  ROOT t = (bf16[10]) tuple(c)
+}
+on_false {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  tok = token[] after-all()
+  c = bf16[10] convert(f32[10] multiply(g, g)), control-predecessors={tok}
+  ROOT t = (bf16[10]) tuple(c)
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  p1 = (f32[10]) parameter(1)
+  p2 = (f32[10]) parameter(2)
+  ROOT cond = (bf16[10]) conditional(flag, p1, p2),
+      true_computation=on_true, false_computation=on_false
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(false));
+}
+
+TEST_F(ConditionalCodeMotionTest,
+       ConvertSpecialMoveSkipsControlDepOnBranchRoot) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule ConvertSpecialMoveControlDepOnBranchRoot
+on_true {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  c = bf16[10] convert(f32[10] add(g, g))
+  tok = token[] after-all()
+  ROOT t = (bf16[10]) tuple(c), control-predecessors={tok}
+}
+on_false {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  c = bf16[10] convert(f32[10] multiply(g, g))
+  ROOT t = (bf16[10]) tuple(c)
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  p1 = (f32[10]) parameter(1)
+  p2 = (f32[10]) parameter(2)
+  ROOT cond = (bf16[10]) conditional(flag, p1, p2),
+      true_computation=on_true, false_computation=on_false
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(false));
+}
+
+TEST_F(ConditionalCodeMotionTest, ConvertSpecialMoveSkipsBranchRootWithUsers) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule ConvertSpecialMoveBranchRootWithUsers
+on_true {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  c = bf16[10] convert(f32[10] add(g, g))
+  ROOT t = (bf16[10]) tuple(c)
+  side = (bf16[10]) custom-call(t), custom_call_target="SideEffect", custom_call_has_side_effect=true
+}
+on_false {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  c = bf16[10] convert(f32[10] multiply(g, g))
+  ROOT t = (bf16[10]) tuple(c)
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  p1 = (f32[10]) parameter(1)
+  p2 = (f32[10]) parameter(2)
+  ROOT cond = (bf16[10]) conditional(flag, p1, p2),
+      true_computation=on_true, false_computation=on_false
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(false));
+}
+
+TEST_F(ConditionalCodeMotionTest, DoNotMoveUserInWhenConditionalIsRoot) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule ConditionalIsRootWithSideEffectUser
+on_true {
+  a = f32[10] parameter(0)
+  ROOT t = (f32[10]) tuple(f32[10] add(a, a))
+}
+on_false {
+  a = f32[10] parameter(0)
+  ROOT t = (f32[10]) tuple(f32[10] multiply(a, a))
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  x = f32[10] parameter(1)
+  ROOT cond = (f32[10]) conditional(flag, x, x),
+      true_computation=on_true, false_computation=on_false
+  gte = f32[10] get-tuple-element(cond), index=0
+  sq = f32[10] multiply(gte, gte)
+  side = f32[10] custom-call(sq), custom_call_target="SideEffect", custom_call_has_side_effect=true
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(false));
+  const HloInstruction* cond =
+      FindInstruction(module.get(), HloOpcode::kConditional);
+  ASSERT_NE(cond, nullptr);
+  EXPECT_TRUE(cond->IsRoot());
+  EXPECT_THAT(cond->branch_computation(0)->root_instruction(),
+              op::Tuple(op::Add()));
+}
+
+TEST_F(ConditionalCodeMotionTest,
+       ConvertSpecialMoveWhenConditionalIsRootWithOtherUsers) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule ConvertSpecialMoveRootWithOtherUser
+on_true {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  a = f32[10] add(g, g)
+  c = bf16[10] convert(a)
+  ROOT t = (bf16[10]) tuple(c)
+}
+on_false {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  m = f32[10] multiply(g, g)
+  c = bf16[10] convert(m)
+  ROOT t = (bf16[10]) tuple(c)
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  p1 = (f32[10]) parameter(1)
+  p2 = (f32[10]) parameter(2)
+  ROOT cond = (bf16[10]) conditional(flag, p1, p2),
+      true_computation=on_true, false_computation=on_false
+  gte = bf16[10] get-tuple-element(cond), index=0
+  side = bf16[10] custom-call(gte), custom_call_target="SideEffect", custom_call_has_side_effect=true
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::Convert(op::GetTupleElement(op::Conditional(), 0))));
+  const HloInstruction* side = FindInstruction(module.get(), "side");
+  ASSERT_NE(side, nullptr);
+  EXPECT_THAT(side->operand(0),
+              op::Convert(op::GetTupleElement(op::Conditional(), 0)));
+}
+
+TEST_F(ConditionalCodeMotionTest, DoNotMoveRootOperandIntoBranch) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule RootOperand
+on_true {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  ROOT t = (f32[10]) tuple(g)
+}
+on_false {
+  p = (f32[10]) parameter(0)
+  c = f32[10] constant({0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+  ROOT t = (f32[10]) tuple(c)
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  x = f32[10] parameter(1)
+  ROOT op = f32[10] add(x, x)
+  arg = (f32[10]) tuple(op)
+  cond = (f32[10]) conditional(flag, arg, arg),
+      true_computation=on_true, false_computation=on_false
+  gte = f32[10] get-tuple-element(cond), index=0
+  side = f32[10] custom-call(gte), custom_call_target="SideEffect", custom_call_has_side_effect=true
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(false));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Add());
+}
+
+TEST_F(ConditionalCodeMotionTest, MoveOperandInDoesNotDeleteRootBroadcast) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule RootBroadcastOperand
+on_true {
+  p = (f32[10]) parameter(0)
+  g = f32[10] get-tuple-element(p), index=0
+  ROOT t = (f32[10]) tuple(g)
+}
+on_false {
+  p = (f32[10]) parameter(0)
+  c = f32[10] constant({0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+  ROOT t = (f32[10]) tuple(c)
+}
+ENTRY main {
+  flag = pred[] parameter(0)
+  s = f32[] parameter(1)
+  ROOT b = f32[10] broadcast(s), dimensions={}
+  neg = f32[10] negate(b)
+  arg = (f32[10]) tuple(neg)
+  cond = (f32[10]) conditional(flag, arg, arg),
+      true_computation=on_true, false_computation=on_false
+  gte = f32[10] get-tuple-element(cond), index=0
+  side = f32[10] custom-call(gte), custom_call_target="SideEffect", custom_call_has_side_effect=true
+})hlo"));
+  EXPECT_THAT(
+      ConditionalCodeMotion(/*is_layout_sensitive=*/true,
+                            /*pursue_full_conditional_code_motion=*/true)
+          .Run(module.get()),
+      IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Broadcast());
 }
 
 }  // namespace conditional_opt
