@@ -239,7 +239,9 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["cumulative_logsumexp_test.py"],
     deps = [
+        "//tensorflow/python/eager:forwardprop",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:map_fn",

@@ -16,8 +16,10 @@
 
 import numpy as np
 
+from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import map_fn
@@ -95,6 +97,26 @@ class CumulativeLogsumexpTest(test.TestCase):
                            reverse=reverse, exclusive=exclusive)
         self._testGradient(x, use_gpu=True,
                            reverse=reverse, exclusive=exclusive)
+
+  @test_util.run_v2_only
+  def testSecondDerivativeWithNestedForwardAccumulators(self):
+    x = ops.convert_to_tensor(
+        [[-40., 41., -22.], [80., -37., -10.]], dtype=dtypes.float64
+    )
+    direction = ops.convert_to_tensor(
+        [[1., -1., 0.5], [-2., 1., 0.25]], dtype=x.dtype
+    )
+    with forwardprop.ForwardAccumulator(x, direction) as outer:
+      with forwardprop.ForwardAccumulator(x, direction) as inner:
+        suffixes = math_ops.cumulative_logsumexp(x, axis=-1, reverse=True)
+        y = math_ops.reduce_sum(suffixes * [[1., 2., -1.], [3., 1., -2.]])
+      first = inner.jvp(y)
+
+    # Reference: sum the softmax-weighted variance of the directions for
+    # each suffix, using the same weights as the forward reduction.
+    self.assertAllClose(
+        outer.jvp(first), 1.0572349592992632e-12, atol=5e-14, rtol=0
+    )
 
   def _logSumExpMap(self, x):
     return map_fn.map_fn(

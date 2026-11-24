@@ -2115,37 +2115,65 @@ def _CumprodGrad(op: ops.Operation, grad):
 
 # pylint: disable=missing-function-docstring
 @ops.RegisterGradient("CumulativeLogsumexp")
-def _CumulativeLogsumexpGrad(op: ops.Operation, grad):
+def _CumulativeLogsumexpGrad(op: ops.Operation, grad, recompute_result=False):
   x = op.inputs[0]
   axis = op.inputs[1]
   cumulative_logsumexp = op.outputs[0]
 
   exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
+  if recompute_result:
+    cumulative_logsumexp = _CumulativeLogsumexpGradScan(
+        x, axis=axis, reverse=reverse, exclusive=exclusive
+    )
 
-  # Split the incoming gradient into positive and negative part
-  # in order to take logs. This is required for stable results.
+  # Split the incoming gradient by sign for the two log-space scans. Avoid
+  # log(0) even on masked entries, since its gradient can contaminate a JVP.
+  abs_grad = math_ops.abs(grad)
+  log_abs_grad = math_ops.log(array_ops.where_v2(abs_grad > 0, abs_grad, 1))
   log_grad_positive = array_ops.where_v2(
       math_ops.greater(grad, 0),
-      math_ops.log(grad),
+      log_abs_grad,
       grad.dtype.min)
 
   log_grad_negative = array_ops.where_v2(
       math_ops.less(grad, 0),
-      math_ops.log(-grad),
+      log_abs_grad,
       grad.dtype.min)
 
   output_pos = math_ops.exp(
-      math_ops.cumulative_logsumexp(
+      _CumulativeLogsumexpGradScan(
           log_grad_positive - cumulative_logsumexp,
           axis=axis, reverse=not reverse, exclusive=exclusive) + x)
 
   output_neg = math_ops.exp(
-      math_ops.cumulative_logsumexp(
+      _CumulativeLogsumexpGradScan(
           log_grad_negative - cumulative_logsumexp,
           axis=axis, reverse=not reverse, exclusive=exclusive) + x)
 
   return [output_pos - output_neg, None]
+
+
+def _CumulativeLogsumexpGradScan(x, axis, reverse, exclusive):
+  # A graph scan created by the adjoint uses a distinct rule when it is itself
+  # differentiated. Recomputing there keeps its normalization on the path
+  # from its input through nested JVP traces. The public op's gradient can
+  # still reuse its forward result and do just the two adjoint scans.
+  if context.executing_eagerly():
+    return math_ops.cumulative_logsumexp(
+        x, axis=axis, reverse=reverse, exclusive=exclusive
+    )
+  with ops.get_default_graph().gradient_override_map(
+      {"CumulativeLogsumexp": "CumulativeLogsumexpGradScan"}
+  ):
+    return math_ops.cumulative_logsumexp(
+        x, axis=axis, reverse=reverse, exclusive=exclusive
+    )
+
+
+@ops.RegisterGradient("CumulativeLogsumexpGradScan")
+def _CumulativeLogsumexpGradScanGrad(op: ops.Operation, grad):
+  return _CumulativeLogsumexpGrad(op, grad, recompute_result=True)
 
 
 @ops.RegisterGradient("NextAfter")
