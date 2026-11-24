@@ -36,8 +36,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 
-// NOLINTBEGIN(clang-diagnostic-pre-c++20-compat)
-
 namespace xla::parallel {
 namespace {
 
@@ -345,5 +343,3 @@ TEST_F(LinkingTest, LinkedNamesDoNotCollideWithClonedComputations) {
 
 }  // namespace
 }  // namespace xla::parallel
-
-// NOLINTEND(clang-diagnostic-pre-c++20-compat)

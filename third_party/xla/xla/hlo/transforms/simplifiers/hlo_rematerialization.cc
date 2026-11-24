@@ -3343,7 +3343,6 @@ HloRematerialization::PeakPrioritySubPass(
   // Update peak memory used by computation.
   computation_peak_memory_[computation] = peak_memory_during_remat;
   RematSubpassResult remat_subpass_result{
-      // NOLINTNEXTLINE (-Wpre-c++20-compat-pedantic)
       .status = RematSubpassStatus::kUnchanged,
       .peak_memory_during_remat = peak_memory_during_remat,
       .peak_memory_instruction = peak_memory_instruction,

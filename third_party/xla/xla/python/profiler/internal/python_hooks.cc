@@ -375,7 +375,6 @@ std::vector<PerThreadConsumeData> PythonHookContext::Consume() {
   std::vector<PerThreadConsumeData> consumed_data;
   consumed_data.reserve(harvested.size());
   for (HarvestedEvents& h : harvested) {
-    // NOLINTNEXTLINE(clang-diagnostic-pre-c++20-compat)
     VLOG(1) << "Consuming " << h.events.size() << " events on thread "
             << h.thread_id;
     PerThreadConsumeData& thread_data = consumed_data.emplace_back();

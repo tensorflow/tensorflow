@@ -934,7 +934,6 @@ optional<Range> MatchLoopRangeWithKnownValues(
                /*is_linear=*/true};
 }
 
-// NOLINTBEGIN(clang-diagnostic-pre-c++20-compat)
 optional<int64_t> MatchTrivialLoopInductionStep(const HloInstruction* while_op,
                                                 int64_t indvar_tuple_idx) {
   // Check that `i` goes as `i += k` in the while body where k is a natural
@@ -999,7 +998,6 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
             << indvar_init.ToString();
     return nullopt;
   }
-  // NOLINTEND(clang-diagnostic-pre-c++20-compat)
 
   optional<int64_t> step =
       MatchTrivialLoopInductionStep(while_op, indvar_tuple_idx);

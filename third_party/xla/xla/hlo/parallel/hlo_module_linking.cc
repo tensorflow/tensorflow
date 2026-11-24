@@ -39,8 +39,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/compilation_environments.h"
 
-// NOLINTBEGIN(clang-diagnostic-pre-c++20-compat)
-
 namespace xla::parallel {
 
 namespace {
@@ -223,5 +221,3 @@ absl::StatusOr<std::unique_ptr<HloModule>> LinkComputation(
 }
 
 }  // namespace xla::parallel
-
-// NOLINTEND(clang-diagnostic-pre-c++20-compat)

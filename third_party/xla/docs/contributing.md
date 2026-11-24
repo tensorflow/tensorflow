@@ -184,7 +184,7 @@ see the [GPU AOT compatibility guide](gpu_aot_compatibility.md).
     examine pre-existing code and to try to follow the patterns already in place
     in OpenXLA (see also
     [`xla/AGENTS.md`](https://github.com/openxla/xla/blob/main/xla/AGENTS.md)
-    for C++17, HLO/MLIR, and unit-testing conventions).
+    for C++20, HLO/MLIR, and unit-testing conventions).
 
 
 ### Review Process

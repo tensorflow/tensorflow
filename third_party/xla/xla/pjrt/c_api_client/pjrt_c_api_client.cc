@@ -2722,9 +2722,8 @@ absl::StatusOr<std::shared_ptr<HloModule>> PjRtCApiExecutable::GetHloModule()
 
   if (program_format == ::pjrt::kMlirFormat) {
     mlir::MLIRContext ctx;
-    ABSL_ASSIGN_OR_RETURN(  // NOLINT(clang-diagnostic-pre-c++20-compat)
-        mlir::OwningOpRef<mlir::ModuleOp> module,
-        ParseMlirModuleString(code, ctx));
+    ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                     ParseMlirModuleString(code, ctx));
     mlir::PassManager pm(&ctx);
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     if (mlir::failed(pm.run(module.get())))

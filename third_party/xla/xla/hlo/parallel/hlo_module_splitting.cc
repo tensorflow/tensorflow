@@ -44,8 +44,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/status_macros.h"
 
-// NOLINTBEGIN(clang-diagnostic-pre-c++20-compat)
-
 namespace xla::parallel {
 namespace {
 
@@ -361,5 +359,3 @@ absl::StatusOr<const HloComputation*> HloModuleSplitGroup::GetClonedComputation(
 }
 
 }  // namespace xla::parallel
-
-// NOLINTEND(clang-diagnostic-pre-c++20-compat)

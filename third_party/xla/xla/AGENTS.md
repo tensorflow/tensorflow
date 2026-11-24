@@ -135,18 +135,18 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
         *   Instead of `cc_test` use `xla_cc_test` (or `xla_test` when the test
             requires a real hardware backend).
 
-7.  **Strict C++17 (`-std=c++17`), Control Flow, and Explicit Typing**:
-    *   **C++17 only**: The codebase compiles with `-std=c++17` and
-        `-Wc++17-compat-pedantic`. Do not use C++20/23 features:
-        *   Use `absl::Span` (`absl/types/span.h`), never `std::span`.
-        *   Do not call `.contains()` on `std::map`, `std::set`,
-            `std::unordered_map`, or `std::unordered_set` (use
-            `absl::flat_hash_map` / `absl::flat_hash_set` or
-            `.find(k) != .end()`).
-        *   Use `absl::StartsWith` / `absl::EndsWith` (`absl/strings/match.h`),
-            never `std::string::starts_with` / `ends_with`.
-        *   Use `absl::StrCat` / `absl::StrFormat`, never `std::format`.
-        *   Use `absl::bit_cast` (`absl/base/casts.h`), never `std::bit_cast`.
+7.  **C++20 (`-std=c++20`), Control Flow, and Explicit Typing**:
+    *   **C++20 standard**: The codebase compiles with `-std=c++20` and
+        `-Wc++20-compat-pedantic`. Do not use C++23 or later features, and
+        continue using Abseil equivalents for style-restricted or non-portable
+        C++20 library headers:
+        *   Use `absl::Span` (`absl/types/span.h`), never `std::span` (`<span>`).
+        *   Use `absl::StrCat` / `absl::StrFormat`, never `std::format`
+            (`<format>`).
+        *   Use Abseil container algorithms (`absl::c_*`), never `std::ranges`
+            (`<ranges>`).
+        *   Prefer `absl::bit_cast` (`absl/base/casts.h`) over `std::bit_cast`
+            for portability across older `libstdc++` sysroots (e.g., GCC 10).
     *   **Braces and early returns**: Always enclose `if`, `for`, and `while`
         bodies in `{}` braces, even for single-line statements (preventing macro
         expansion bugs with `ABSL_RETURN_IF_ERROR`), and prefer early returns or
