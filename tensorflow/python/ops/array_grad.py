@@ -778,18 +778,6 @@ def _GatherV2Grad(op: ops.Operation, grad):
   indices_size = array_ops.expand_dims(array_ops.size(indices), 0)
   axis = op.inputs[2]
   axis_static = tensor_util.constant_value(axis)
-  batch_dims = int(op.get_attr("batch_dims"))
-
-  if batch_dims < 0:
-    if indices.shape.ndims is None:
-      raise ValueError(
-          "Currently, it is unsupported to take the gradient of tf.gather "
-          "when batch_dims < 0 and the rank of the indices is unknown. Please "
-          "pass a positive batch_dims or use tf.ensure_shape to update the "
-          "shape of indices when calling tf.gather. Got "
-          f"batch_dims={batch_dims} and indices={indices}"
-      )
-    batch_dims += indices.shape.ndims
 
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
@@ -807,6 +795,18 @@ def _GatherV2Grad(op: ops.Operation, grad):
         values, indices, params_shape
     )
   else:
+    batch_dims = int(op.get_attr("batch_dims"))
+    if batch_dims < 0:
+      if indices.shape.ndims is None:
+        raise ValueError(
+            "Currently, it is unsupported to take the gradient of tf.gather "
+            "when batch_dims < 0 and the rank of the indices is unknown. "
+            "Please pass a positive batch_dims or use tf.ensure_shape "
+            "to update the shape of indices when calling tf.gather. Got "
+            f"batch_dims={batch_dims} and indices={indices}"
+        )
+      batch_dims += indices.shape.ndims
+
     # Handle axis by transposing the axis dimension to be the first non-batch
     # dimension, compute the gradient and transpose the result back.
     outer_shape = params_shape[:axis]
