@@ -1492,9 +1492,9 @@ def function(
   `tf.function` can distinguish which variable arguments refer to the same
   variable. It may reuse a trace when an argument changes from referring to a
   captured variable to referring to a different variable. If a
-  `tf.GradientTape` inside the function watches an argument that can also be
-  accessed through a capture, pass the variables used in the differentiated
-  computation explicitly instead:
+  `tf.GradientTape` inside the function watches that argument, the reused trace
+  can return a gradient for the wrong variable. To avoid this, pass the
+  variables used in the differentiated computation explicitly:
 
   >>> @tf.function(autograph=False)
   ... def derivative(a, b, target):
