@@ -363,8 +363,8 @@ std::vector<Interval> ExtendIntervals(const std::vector<Interval>& intervals,
 
 // Computes contiguous intervals, for the expression of type f(thread_x) + g(s).
 std::vector<Interval> FindContiguousIntervals(
-    const PartitionedExpr& partitioned_expr, const IndexingMap& indexing_map) {
-  constexpr int64_t kNumThreadsPerWarp = 32;
+    const PartitionedExpr& partitioned_expr, const IndexingMap& indexing_map,
+    int64_t num_threads_per_warp) {
   MLIRContext* mlir_context = indexing_map.GetMLIRContext();
   SymbolicExpr thread_x = CreateDimExpr(0, mlir_context);
   SymbolicExpr range = CreateSymbolExpr(
@@ -373,7 +373,7 @@ std::vector<Interval> FindContiguousIntervals(
   // Case 1: f(thread_x) = thread_x * multiplier.
   // Case 1.1: multiplier == 1.
   if (partitioned_expr.func_of_d0 == thread_x) {
-    return {Interval{0, kNumThreadsPerWarp - 1}};
+    return {Interval{0, num_threads_per_warp - 1}};
   }
   if (partitioned_expr.func_of_d0.GetType() == SymbolicExprType::kMul) {
     auto mul = partitioned_expr.func_of_d0;
@@ -381,7 +381,7 @@ std::vector<Interval> FindContiguousIntervals(
       auto multiplier = mul.GetRHS();
       // Case 1.2: multiplier == -1.
       if (multiplier.GetValue() == -1) {
-        return {Interval{0, kNumThreadsPerWarp - 1}};
+        return {Interval{0, num_threads_per_warp - 1}};
       }
       // Case 1.3: |multiplier| != 1 and g(s) = s.
       if (partitioned_expr.func_of_s0 == range) {
@@ -390,11 +390,12 @@ std::vector<Interval> FindContiguousIntervals(
         // In this case we get a single interval, because the ranges that every
         // thread is reading overlap.
         if (num_elems >= std::abs(multiplier.GetValue())) {
-          return {Interval{0, multiplier.GetValue() * (kNumThreadsPerWarp - 1) +
-                                  num_elems - 1}};
+          return {
+              Interval{0, multiplier.GetValue() * (num_threads_per_warp - 1) +
+                              num_elems - 1}};
         }
         std::vector<Interval> intervals;
-        for (int64_t i = 0, dm = 0; i < kNumThreadsPerWarp;
+        for (int64_t i = 0, dm = 0; i < num_threads_per_warp;
              ++i, dm += multiplier.GetValue()) {
           intervals.push_back(
               {range_interval.lower + dm, range_interval.upper + dm});
@@ -403,7 +404,7 @@ std::vector<Interval> FindContiguousIntervals(
       }
       // Case 1.4: |multiplier| != 1 and g(s) != s.
       std::vector<Interval> intervals;
-      for (int64_t i = 0, dm = 0; i < kNumThreadsPerWarp;
+      for (int64_t i = 0, dm = 0; i < num_threads_per_warp;
            ++i, dm += multiplier.GetValue()) {
         intervals.push_back({dm, dm});
       }
@@ -423,7 +424,8 @@ std::vector<Interval> FindContiguousIntervals(
 }
 
 bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
-                         PrimitiveType element_type) {
+                         PrimitiveType element_type,
+                         int64_t num_threads_per_warp) {
   // Undefined indexing maps, i.e. those for which we don't know the indexing
   // are assumed to be uncoalesced.
   if (thread_x_to_linearized_input.IsUndefined()) {
@@ -436,19 +438,19 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
   // Replace RTVars with the feasible values.
   AssignValuesToRTVars(&thread_x_to_linearized_input);
 
-  // Compute the indexing map for the first [0, 31] threads. This should be
+  // Compute the indexing map for the threads of the first warp. This should be
   // extended to sampling several warps.
   MLIRContext* mlir_context = thread_x_to_linearized_input.GetMLIRContext();
   SymbolicExpr thread_x_dim = CreateDimExpr(
       MlirKernelFusion::kIndexingMapThreadIdxDims[0], mlir_context);
   SymbolicExpr c0 = CreateSymbolicConstant(0, mlir_context);
-  IndexingMap thread_x_first_32_elements{
+  IndexingMap thread_x_first_warp{
       SymbolicMap::Get(mlir_context, 1, 0, {thread_x_dim, c0, c0, c0, c0, c0}),
-      {IndexingMap::Variable{{0, 31}}},
+      {IndexingMap::Variable{{0, num_threads_per_warp - 1}}},
       /*range_vars=*/{},
       /*rt_vars=*/{}};
   IndexingMap thread_x_to_input_sample =
-      thread_x_first_32_elements * thread_x_to_linearized_input;
+      thread_x_first_warp * thread_x_to_linearized_input;
   thread_x_to_input_sample.Simplify();
   thread_x_to_input_sample.RescaleSymbols();
   thread_x_to_input_sample.RemoveUnusedSymbols();
@@ -484,7 +486,8 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
     }
   }
   return EstimateCoalescingViaMemoryTransactionsCount(
-      FindContiguousIntervals(*partitioned_expr, thread_x_to_input_sample),
+      FindContiguousIntervals(*partitioned_expr, thread_x_to_input_sample,
+                              num_threads_per_warp),
       element_type);
 }
 
@@ -520,6 +523,8 @@ std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
         thread_id_to_input_memory_layouts);
   }
 
+  const int64_t num_threads_per_warp =
+      fusion_analysis.device_info().threads_per_warp();
   CoalescingMap coalescing_per_operand;
   for (const HloInstruction* operand : operands) {
     if (operand->shape().dimensions().empty()) {
@@ -536,7 +541,8 @@ std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
     }
     for (IndexingMap operand_indexing_map : operand_indexing_maps->second) {
       bool is_coalesced = IsIndexingCoalesced(operand_indexing_map,
-                                              operand->shape().element_type());
+                                              operand->shape().element_type(),
+                                              num_threads_per_warp);
       auto [it, inserted] =
           coalescing_per_operand.insert({operand, is_coalesced});
       if (!inserted) {

@@ -189,6 +189,30 @@ TEST_F(CoalescingTest, Transpose) {
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
 }
 
+TEST_F(CoalescingTest, SampledWarpMatchesDeviceWarpSize) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      p0 = bf16[8, 64] parameter(0)
+      ROOT slice = bf16[8, 32] slice(p0), slice={[0:8], [0:32]}
+    }
+
+    ENTRY entry {
+      p0 = bf16[8, 64] parameter(0)
+      ROOT fusion = bf16[8, 32] fusion(p0), kind=kLoop, calls=fusion
+  })";
+  // thread_x to linearized input mapping
+  //   (thread_x) -> ((thread_x floordiv 32) * 64 + thread_x mod 32)
+  // A 32 thread warp reads one contiguous range.
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+
+  // A 64 thread warp reads two ranges with a gap.
+  device_info_ = TestGpuDeviceInfo::AMDMI350DeviceInfo();
+  ASSERT_EQ(device_info_.threads_per_warp(), 64);
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(false));
+}
+
 TEST_F(CoalescingTest, ConcatenateInLoopEmitter) {
   absl::string_view ir = R"(
     HloModule module
