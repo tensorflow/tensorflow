@@ -95,13 +95,36 @@ struct Plan {
     std::unique_ptr<Plan> step2;
   };
 
-  // Transposes a `[b_elems, a_elems]` tile in `a` (row stride `lda` bytes,
-  // contiguous along `a_elems`) into `[a_elems, b_elems]` in `b` (row stride
-  // `ldb` bytes, contiguous along `b_elems`).
+  // Transposes a `[b_elems, a_elems]` tile of `elem_size`-byte elements in `a`
+  // (row stride `lda` bytes, contiguous along `a_elems`) into `[a_elems,
+  // b_elems]` in `b` (row stride `ldb` bytes, contiguous along `b_elems`).
+  // `inner_block_elems` is the SIMD microkernel block size (1 for scalar).
   struct Transpose2D {
+    int elem_size;
+    int inner_block_elems;
     int a_elems;
     int b_elems;
     int64_t lda;
+    int64_t ldb;
+  };
+
+  // Merges `k` rows of `a_elems` `elem_size`-byte elements in `a` (`lda` bytes
+  // apart) element by element into one contiguous run of `k * a_elems` elements
+  // in `b`, i.e., `b[k * i + j] = a[j][i]`.
+  struct Interleave {
+    int elem_size;
+    int k;
+    int a_elems;
+    int64_t lda;
+  };
+
+  // Splits one contiguous run of `k * b_elems` `elem_size`-byte elements in `a`
+  // into `k` rows of `b_elems` elements in `b` (`ldb` bytes apart), i.e.,
+  // `b[j][i] = a[k * i + j]`.
+  struct Deinterleave {
+    int elem_size;
+    int k;
+    int b_elems;
     int64_t ldb;
   };
 
@@ -129,11 +152,14 @@ struct Plan {
     int64_t doubles;
   };
 
-  std::variant<Noop, Seq, Offset, Loop, Pipe, Transpose2D, Copy1D, Fill1D,
-               PackSubbyte, ConvertEf57>
+  std::variant<Noop, Seq, Offset, Loop, Pipe, Transpose2D, Interleave,
+               Deinterleave, Copy1D, Fill1D, PackSubbyte, ConvertEf57>
       node;
 
   bool IsNoop() const { return std::holds_alternative<Noop>(node); }
+
+  // Appends a human-readable indented tree representation of `*this` to `*out`.
+  void Format(int indent, std::string* out) const;
 
   static Plan MakeNoop();
   static Plan MakeSeq(std::vector<Plan> parts);
@@ -141,8 +167,14 @@ struct Plan {
   static Plan MakeOffset(int64_t da, int64_t db, Plan body);
   static Plan MakeLoop(int64_t count, int64_t da, int64_t db, Plan body);
   static Plan MakePipe(int64_t bytes, Plan step1, Plan step2);
-  static Plan MakeTranspose2D(int a_elems, int b_elems, int64_t lda,
-                              int64_t ldb);
+  // Decomposes tiles into full power-of-two SIMD blocks (halving
+  // `inner_block_elems` down to 16-byte rows and `bs >= 4` for smaller or
+  // remainder tiles) plus scalar remainder strips so every `Transpose2D` leaf
+  // carries its resolved block size and maps 1-to-1 to a single `TransposeOp`.
+  static Plan MakeTranspose2D(int elem_size, int inner_block_elems, int a_elems,
+                              int b_elems, int64_t lda, int64_t ldb);
+  static Plan MakeInterleave(int elem_size, int k, int a_elems, int64_t lda);
+  static Plan MakeDeinterleave(int elem_size, int k, int b_elems, int64_t ldb);
   static Plan MakeCopy1D(int64_t bytes);
   static Plan MakeFill1D(int64_t bytes, uint8_t value);
   static Plan MakePackSubbyte(int bits_per_element, int64_t elems);
@@ -253,11 +285,63 @@ Plan Plan::MakePipe(int64_t bytes, Plan step1, Plan step2) {
                    std::make_unique<Plan>(std::move(step2))}};
 }
 
-Plan Plan::MakeTranspose2D(int a_elems, int b_elems, int64_t lda, int64_t ldb) {
+// Returns true if a tile or remainder strip may use a `bs x bs` SIMD kernel
+// given a plan's primary `inner_block_elems` and `elem_size`.
+// Secondary (halved) remainder blocks require at least 4 elements and 16 byte
+// rows so the extra kernel pass beats a single scalar loop.
+constexpr bool IsSupportedSimdBlockSize(int bs, int inner_block_elems,
+                                        int elem_size) {
+  return bs > 1 &&
+         (bs == inner_block_elems || (bs >= 4 && bs * elem_size >= 16));
+}
+
+Plan Plan::MakeTranspose2D(int elem_size, int inner_block_elems, int a_elems,
+                           int b_elems, int64_t lda, int64_t ldb) {
   if (a_elems <= 0 || b_elems <= 0) {
     return MakeNoop();
   }
-  return Plan{Transpose2D{a_elems, b_elems, lda, ldb}};
+  if (inner_block_elems > 1) {
+    int bs = inner_block_elems;
+    while (bs > 1 && (a_elems < bs || b_elems < bs)) {
+      bs /= 2;
+    }
+    if (IsSupportedSimdBlockSize(bs, inner_block_elems, elem_size)) {
+      if (a_elems % bs != 0 || b_elems % bs != 0) {
+        const int done_a = (a_elems / bs) * bs;
+        const int done_b = (b_elems / bs) * bs;
+        std::vector<Plan> pieces;
+        pieces.reserve(3);
+        pieces.push_back(
+            Plan{Transpose2D{elem_size, bs, done_a, done_b, lda, ldb}});
+        pieces.push_back(
+            MakeOffset(done_b * lda, int64_t{done_b} * elem_size,
+                       MakeTranspose2D(elem_size, inner_block_elems, done_a,
+                                       b_elems - done_b, lda, ldb)));
+        pieces.push_back(
+            MakeOffset(int64_t{done_a} * elem_size, done_a * ldb,
+                       MakeTranspose2D(elem_size, inner_block_elems,
+                                       a_elems - done_a, b_elems, lda, ldb)));
+        return MakeSeq(std::move(pieces));
+      }
+      return Plan{Transpose2D{elem_size, bs, a_elems, b_elems, lda, ldb}};
+    }
+  }
+  return Plan{Transpose2D{elem_size, /*inner_block_elems=*/1, a_elems, b_elems,
+                          lda, ldb}};
+}
+
+Plan Plan::MakeInterleave(int elem_size, int k, int a_elems, int64_t lda) {
+  if (a_elems <= 0 || k <= 0) {
+    return MakeNoop();
+  }
+  return Plan{Interleave{elem_size, k, a_elems, lda}};
+}
+
+Plan Plan::MakeDeinterleave(int elem_size, int k, int b_elems, int64_t ldb) {
+  if (b_elems <= 0 || k <= 0) {
+    return MakeNoop();
+  }
+  return Plan{Deinterleave{elem_size, k, b_elems, ldb}};
 }
 
 Plan Plan::MakeCopy1D(int64_t bytes) {
@@ -288,24 +372,7 @@ Plan Plan::MakeConvertEf57(int64_t doubles) {
   return Plan{ConvertEf57{doubles}};
 }
 
-// Returns whether to use the `kind` interleave/deinterleave kernel for `k` and
-// `elem_size`-byte elements instead of the default 2D transpose (see
-// `InterleaveKernelIsFaster` and `DeinterleaveKernelIsFaster` in
-// transpose_kernels.h). Among the selected cases, 16-byte interleave at k = 6
-// and 7 is up to 6% slower on some x86 CPUs.
-constexpr bool SmallDimKernelIsFaster(InnerKernelKind kind, int64_t k,
-                                      int64_t elem_size) {
-  if (kind == InnerKernelKind::kInterleave) {
-    return InterleaveKernelIsFaster(elem_size, k);
-  }
-  return DeinterleaveKernelIsFaster(elem_size, k);
-}
-
-// Appends a human-readable indented tree representation of `plan` to `*out`
-// (used by `Planner::ToString`).
-void FormatPlan(const Plan& plan, int indent, int64_t elem_size_in_bytes,
-                InnerKernelKind inner_kernel_kind, int interleave_size,
-                std::string* out) {
+void Plan::Format(int indent, std::string* out) const {
   auto pad = [&](int n) { out->append(n, ' '); };
   std::visit(
       [&](const auto& node) {
@@ -320,32 +387,27 @@ void FormatPlan(const Plan& plan, int indent, int64_t elem_size_in_bytes,
             if (i > 0) {
               absl::StrAppend(out, ",\n");
             }
-            FormatPlan(node.parts[i], indent + 2, elem_size_in_bytes,
-                       inner_kernel_kind, interleave_size, out);
+            node.parts[i].Format(indent + 2, out);
           }
           absl::StrAppend(out, ")");
         } else if constexpr (std::is_same_v<NodeT, Plan::Offset>) {
           pad(indent);
           absl::StrAppendFormat(out, "Offset(da=%d, db=%d,\n", node.da,
                                 node.db);
-          FormatPlan(*node.body, indent + 2, elem_size_in_bytes,
-                     inner_kernel_kind, interleave_size, out);
+          node.body->Format(indent + 2, out);
           absl::StrAppend(out, ")");
         } else if constexpr (std::is_same_v<NodeT, Plan::Loop>) {
           pad(indent);
           absl::StrAppendFormat(out, "Loop(count=%d, da=%d, db=%d,\n",
                                 node.count, node.da, node.db);
-          FormatPlan(*node.body, indent + 2, elem_size_in_bytes,
-                     inner_kernel_kind, interleave_size, out);
+          node.body->Format(indent + 2, out);
           absl::StrAppend(out, ")");
         } else if constexpr (std::is_same_v<NodeT, Plan::Pipe>) {
           pad(indent);
           absl::StrAppendFormat(out, "Pipe(bytes=%d,\n", node.bytes);
-          FormatPlan(*node.step1, indent + 2, elem_size_in_bytes,
-                     inner_kernel_kind, interleave_size, out);
+          node.step1->Format(indent + 2, out);
           absl::StrAppend(out, ",\n");
-          FormatPlan(*node.step2, indent + 2, elem_size_in_bytes,
-                     inner_kernel_kind, interleave_size, out);
+          node.step2->Format(indent + 2, out);
           absl::StrAppend(out, ")");
         } else if constexpr (std::is_same_v<NodeT, Plan::Copy1D>) {
           pad(indent);
@@ -361,114 +423,58 @@ void FormatPlan(const Plan& plan, int indent, int64_t elem_size_in_bytes,
         } else if constexpr (std::is_same_v<NodeT, Plan::ConvertEf57>) {
           pad(indent);
           absl::StrAppendFormat(out, "ConvertEf57(doubles=%d)", node.doubles);
+        } else if constexpr (std::is_same_v<NodeT, Plan::Interleave>) {
+          pad(indent);
+          absl::StrAppendFormat(
+              out, "Interleave<elem_size=%d,K=%d>(a_elems=%d, lda=%d)",
+              node.elem_size, node.k, node.a_elems, node.lda);
+        } else if constexpr (std::is_same_v<NodeT, Plan::Deinterleave>) {
+          pad(indent);
+          absl::StrAppendFormat(
+              out, "Deinterleave<elem_size=%d,K=%d>(b_elems=%d, ldb=%d)",
+              node.elem_size, node.k, node.b_elems, node.ldb);
         } else {
           static_assert(std::is_same_v<NodeT, Plan::Transpose2D>);
           pad(indent);
-          if (inner_kernel_kind == InnerKernelKind::kInterleave) {
-            absl::StrAppendFormat(
-                out, "Interleave<elem_size=%d,K=%d>(a_elems=%d, lda=%d)",
-                elem_size_in_bytes, interleave_size, node.a_elems, node.lda);
-          } else if (inner_kernel_kind == InnerKernelKind::kDeinterleave) {
-            absl::StrAppendFormat(
-                out, "Deinterleave<elem_size=%d,K=%d>(b_elems=%d, ldb=%d)",
-                elem_size_in_bytes, interleave_size, node.b_elems, node.ldb);
-          } else {
-            absl::StrAppendFormat(
-                out,
-                "Transpose2D<elem_size=%d>(a_elems=%d, b_elems=%d, lda=%d, "
-                "ldb=%d)",
-                elem_size_in_bytes, node.a_elems, node.b_elems, node.lda,
-                node.ldb);
-          }
+          absl::StrAppendFormat(
+              out,
+              "Transpose2D<elem_size=%d,bs=%d>(a_elems=%d, b_elems=%d, lda=%d, "
+              "ldb=%d)",
+              node.elem_size, node.inner_block_elems, node.a_elems,
+              node.b_elems, node.lda, node.ldb);
         }
       },
-      plan.node);
+      node);
 }
 
-// Returns true if a tile or remainder strip may use a `bs x bs` SIMD kernel
-// given a plan's primary `inner_block_elems` and `elem_size_in_bytes`.
-// Secondary (halved) remainder blocks require at least 4 elements and 16 byte
-// rows so the extra kernel pass beats a single scalar loop.
-constexpr bool IsSupportedSimdBlockSize(int bs, int inner_block_elems,
-                                        int64_t elem_size_in_bytes) {
-  return bs > 1 && (bs == inner_block_elems ||
-                    (bs >= 4 && bs * elem_size_in_bytes >= 16));
-}
-
-// Picks the execution function for a 2D transpose of `elem_size_in_bytes`
-// bytes with extents (`a_elems`, `b_elems`), given the plan's kernel kind,
-// vectorized microkernel block size `inner_block_elems`, and interleave factor
-// `interleave_size`. Partially divisible tiles are decomposed into power of two
-// SIMD blocks and scalar remainder strips by `BuildChunkPlan` before reaching
-// here.
-//
-// Examples (with `elem_size_in_bytes = 4`):
-//   - `kind = kDefault, inner_block_elems = 8`:
-//     - `(16, 16)` -> `GetTransposeMacroKernelOp(4, 8)`
-//     - `(16, 4)`  -> `GetTransposeMacroKernelOp(4, 4)`
-//     - `(2, 16)`  -> `GetScalarTranspose2DOp(4)` (below 16 byte row)
-//   - `kind = kInterleave, interleave_size = 3`:
-//     - `(64, 3)`  -> `GetInterleaveOp(4, 3)`
-//   - `kind = kDeinterleave, interleave_size = 3`:
-//     - `(3, 64)`  -> `GetDeinterleaveOp(4, 3)`
-template <int kElemSize>
-TransposeOp::Fn SelectTranspose2DOpTyped(InnerKernelKind kind,
-                                         int inner_block_elems,
-                                         int interleave_size, int a_elems,
-                                         int b_elems) {
+// Returns whether to use the `kind` interleave/deinterleave kernel for `k` and
+// `elem_size`-byte elements instead of the default 2D transpose (see
+// `InterleaveKernelIsFaster` and `DeinterleaveKernelIsFaster` in
+// transpose_kernels.h). Among the selected cases, 16-byte interleave at k = 6
+// and 7 is up to 6% slower on some x86 CPUs.
+constexpr bool SmallDimKernelIsFaster(InnerKernelKind kind, int64_t k,
+                                      int64_t elem_size) {
   if (kind == InnerKernelKind::kInterleave) {
-    DCHECK_EQ(b_elems, interleave_size);
-    TransposeOp::Fn fn = GetInterleaveOp(kElemSize, interleave_size);
-    CHECK(fn != nullptr) << "Unsupported interleave kernel: elem_size="
-                         << kElemSize << " k=" << interleave_size;
-    return fn;
+    return InterleaveKernelIsFaster(elem_size, k);
   }
-  if (kind == InnerKernelKind::kDeinterleave) {
-    DCHECK_EQ(a_elems, interleave_size);
-    TransposeOp::Fn fn = GetDeinterleaveOp(kElemSize, interleave_size);
-    CHECK(fn != nullptr) << "Unsupported deinterleave kernel: elem_size="
-                         << kElemSize << " k=" << interleave_size;
-    return fn;
-  }
-  DCHECK(kind == InnerKernelKind::kDefault);
-  int bs = inner_block_elems;
-  while (bs > 1 && (a_elems % bs != 0 || b_elems % bs != 0)) {
-    bs /= 2;
-  }
-  if (!IsSupportedSimdBlockSize(bs, inner_block_elems, kElemSize)) {
-    return GetScalarTranspose2DOp(kElemSize);
-  }
-  TransposeOp::Fn fn = GetTransposeMacroKernelOp(kElemSize, bs);
-  CHECK(fn != nullptr) << "Invalid block size " << bs
-                       << " for elem_size=" << kElemSize;
-  return fn;
+  return DeinterleaveKernelIsFaster(elem_size, k);
 }
 
-// Dispatches `SelectTranspose2DOpTyped` on the runtime `elem_size_in_bytes`
-// (1, 2, 4, 8, or 16 bytes).
-TransposeOp::Fn SelectTranspose2DOp(int64_t elem_size_in_bytes,
-                                    InnerKernelKind kind, int inner_block_elems,
-                                    int interleave_size, int a_elems,
-                                    int b_elems) {
-  switch (elem_size_in_bytes) {
-    case 1:
-      return SelectTranspose2DOpTyped<1>(kind, inner_block_elems,
-                                         interleave_size, a_elems, b_elems);
-    case 2:
-      return SelectTranspose2DOpTyped<2>(kind, inner_block_elems,
-                                         interleave_size, a_elems, b_elems);
-    case 4:
-      return SelectTranspose2DOpTyped<4>(kind, inner_block_elems,
-                                         interleave_size, a_elems, b_elems);
-    case 8:
-      return SelectTranspose2DOpTyped<8>(kind, inner_block_elems,
-                                         interleave_size, a_elems, b_elems);
-    case 16:
-      return SelectTranspose2DOpTyped<16>(kind, inner_block_elems,
-                                          interleave_size, a_elems, b_elems);
-    default:
-      LOG(FATAL) << "Unimplemented element size " << elem_size_in_bytes;
+// Picks the execution function for a `Plan::Transpose2D` leaf whose
+// `inner_block_elems` has already been resolved by `Plan::MakeTranspose2D`
+// (`1` for scalar, or the SIMD microkernel block size dividing both `a_elems`
+// and `b_elems`).
+TransposeOp::Fn SelectTranspose2DOp(int elem_size, int inner_block_elems,
+                                    int a_elems, int b_elems) {
+  if (inner_block_elems <= 1) {
+    return GetScalarTranspose2DOp(elem_size);
   }
+  DCHECK_EQ(a_elems % inner_block_elems, 0);
+  DCHECK_EQ(b_elems % inner_block_elems, 0);
+  TransposeOp::Fn fn = GetTransposeMacroKernelOp(elem_size, inner_block_elems);
+  CHECK(fn != nullptr) << "Invalid block size " << inner_block_elems
+                       << " for elem_size=" << elem_size;
+  return fn;
 }
 
 // Returns the `OpPackSubbyteHwy` specialization for `bits_per_element` (1, 2,
@@ -527,10 +533,6 @@ std::optional<CopyRowMatch> MatchCopySeqRow(const Plan::Seq& seq) {
 }
 
 struct PlanFlattener {
-  int64_t elem_size_in_bytes;
-  InnerKernelKind inner_kernel_kind;
-  int inner_block_elems;
-  int interleave_size;
   std::vector<TransposeOp>& ops;
 
   void EmitPendingLoop(int64_t count, int64_t da, int64_t db) {
@@ -563,8 +565,8 @@ struct PlanFlattener {
 
   // Emits `plan` with an optional pending outer loop `(count, da, db)` from an
   // enclosing `Plan::Loop` (`count == 1` when unlooped). Ops with a built-in
-  // loop (all 5 leaves, `Pipe`, and `Copy2D` patterns) absorb it directly;
-  // other ops flush an `OpLoop` first. Returns the peak scratch memory in bytes
+  // loop (all leaves, `Pipe`, and `Copy2D` patterns) absorb it directly; other
+  // ops flush an `OpLoop` first. Returns the peak scratch memory in bytes
   // needed by this subtree.
   int64_t Emit(const Plan& plan, int64_t count = 1, int64_t da = 0,
                int64_t db = 0) {
@@ -577,8 +579,7 @@ struct PlanFlattener {
             DCHECK_LE(node.a_elems, std::numeric_limits<uint16_t>::max());
             DCHECK_LE(node.b_elems, std::numeric_limits<uint16_t>::max());
             TransposeOp op;
-            op.fn = SelectTranspose2DOp(elem_size_in_bytes, inner_kernel_kind,
-                                        inner_block_elems, interleave_size,
+            op.fn = SelectTranspose2DOp(node.elem_size, node.inner_block_elems,
                                         node.a_elems, node.b_elems);
             op.count = count;
             op.da = da;
@@ -586,6 +587,42 @@ struct PlanFlattener {
             op.lda = node.lda;
             op.ldb = node.ldb;
             op.a_elems = static_cast<uint16_t>(node.a_elems);
+            op.b_elems = static_cast<uint16_t>(node.b_elems);
+            ops.push_back(op);
+            return 0;
+          } else if constexpr (std::is_same_v<NodeT, Plan::Interleave>) {
+            DCHECK_LE(node.a_elems, std::numeric_limits<uint16_t>::max());
+            DCHECK_LE(node.k, std::numeric_limits<uint16_t>::max());
+            TransposeOp::Fn fn = GetInterleaveOp(node.elem_size, node.k);
+            CHECK(fn != nullptr)
+                << "Unsupported interleave kernel: elem_size=" << node.elem_size
+                << " k=" << node.k;
+            TransposeOp op;
+            op.fn = fn;
+            op.count = count;
+            op.da = da;
+            op.db = db;
+            op.lda = node.lda;
+            op.ldb = int64_t{node.k} * node.elem_size;
+            op.a_elems = static_cast<uint16_t>(node.a_elems);
+            op.b_elems = static_cast<uint16_t>(node.k);
+            ops.push_back(op);
+            return 0;
+          } else if constexpr (std::is_same_v<NodeT, Plan::Deinterleave>) {
+            DCHECK_LE(node.k, std::numeric_limits<uint16_t>::max());
+            DCHECK_LE(node.b_elems, std::numeric_limits<uint16_t>::max());
+            TransposeOp::Fn fn = GetDeinterleaveOp(node.elem_size, node.k);
+            CHECK(fn != nullptr)
+                << "Unsupported deinterleave kernel: elem_size="
+                << node.elem_size << " k=" << node.k;
+            TransposeOp op;
+            op.fn = fn;
+            op.count = count;
+            op.da = da;
+            op.db = db;
+            op.lda = int64_t{node.k} * node.elem_size;
+            op.ldb = node.ldb;
+            op.a_elems = static_cast<uint16_t>(node.k);
             op.b_elems = static_cast<uint16_t>(node.b_elems);
             ops.push_back(op);
             return 0;
@@ -696,11 +733,8 @@ struct PlanFlattener {
 // trailing partial tiles), and returns the peak scratch memory in bytes needed
 // to execute `plan` (with each `Pipe` reservation rounded up to 64 bytes to
 // keep nested scratch pointers cache-line aligned).
-int64_t FlattenPlan(const Plan& plan, int64_t elem_size_in_bytes,
-                    InnerKernelKind inner_kernel_kind, int inner_block_elems,
-                    int interleave_size, std::vector<TransposeOp>& ops) {
-  PlanFlattener flattener{elem_size_in_bytes, inner_kernel_kind,
-                          inner_block_elems, interleave_size, ops};
+int64_t FlattenPlan(const Plan& plan, std::vector<TransposeOp>& ops) {
+  PlanFlattener flattener{ops};
   return flattener.Emit(plan);
 }
 
@@ -980,52 +1014,41 @@ struct ChunkPlanBuilder {
     return (n * l.ldb) / elements_per_byte;
   }
 
-  // Decomposes default kernel tiles into full power of two SIMD blocks (down
-  // to 16 byte rows for remainder tiles) plus a trailing scalar remainder strip
-  // so every `Plan::Transpose2D` leaf maps directly to a single `TransposeOp`.
-  Plan MakeTranspose2D(int a_elems, int b_elems, int64_t lda,
-                       int64_t ldb) const {
-    if (a_elems <= 0 || b_elems <= 0) {
-      return Plan::MakeNoop();
+  Plan MakeInnerLeaf(int a_elems, int b_elems, int64_t lda, int64_t ldb) const {
+    switch (plan.inner_kernel_kind) {
+      case InnerKernelKind::kInterleave:
+        DCHECK_EQ(b_elems, plan.interleave_size);
+        DCHECK_EQ(ldb, int64_t{plan.interleave_size} * plan.elem_size_in_bytes);
+        return Plan::MakeInterleave(plan.elem_size_in_bytes,
+                                    plan.interleave_size, a_elems, lda);
+      case InnerKernelKind::kDeinterleave:
+        DCHECK_EQ(a_elems, plan.interleave_size);
+        DCHECK_EQ(lda, int64_t{plan.interleave_size} * plan.elem_size_in_bytes);
+        return Plan::MakeDeinterleave(plan.elem_size_in_bytes,
+                                      plan.interleave_size, b_elems, ldb);
+      case InnerKernelKind::kDefault:
+        return Plan::MakeTranspose2D(plan.elem_size_in_bytes,
+                                     plan.inner_block_elems, a_elems, b_elems,
+                                     lda, ldb);
+      case InnerKernelKind::kMemcpy:
+        LOG(FATAL) << "Unexpected kMemcpy in MakeInnerLeaf";
     }
-    if (plan.inner_kernel_kind == InnerKernelKind::kDefault &&
-        plan.inner_block_elems > 1) {
-      int bs = plan.inner_block_elems;
-      while (bs > 1 && (a_elems < bs || b_elems < bs)) {
-        bs /= 2;
-      }
-      if (IsSupportedSimdBlockSize(bs, plan.inner_block_elems,
-                                   plan.elem_size_in_bytes) &&
-          (a_elems % bs != 0 || b_elems % bs != 0)) {
-        const int done_a = (a_elems / bs) * bs;
-        const int done_b = (b_elems / bs) * bs;
-        std::vector<Plan> pieces;
-        pieces.reserve(3);
-        pieces.push_back(Plan::MakeTranspose2D(done_a, done_b, lda, ldb));
-        pieces.push_back(Plan::MakeOffset(
-            done_b * lda, done_b * plan.elem_size_in_bytes,
-            MakeTranspose2D(done_a, b_elems - done_b, lda, ldb)));
-        pieces.push_back(Plan::MakeOffset(
-            done_a * plan.elem_size_in_bytes, done_a * ldb,
-            MakeTranspose2D(a_elems - done_a, b_elems, lda, ldb)));
-        return Plan::MakeSeq(std::move(pieces));
-      }
-    }
-    return Plan::MakeTranspose2D(a_elems, b_elems, lda, ldb);
+    LOG(FATAL) << "Unhandled InnerKernelKind "
+               << static_cast<int>(plan.inner_kernel_kind);
   }
 
   Plan BuildLeaf(int a_elems, int b_elems) const {
     switch (plan.transformation) {
       case Transformation::kNone:
-        return MakeTranspose2D(a_elems, b_elems, plan.sentinel_lda,
-                               plan.sentinel_ldb);
+        return MakeInnerLeaf(a_elems, b_elems, plan.sentinel_lda,
+                             plan.sentinel_ldb);
       case Transformation::kF64ToEf57: {
         DCHECK_EQ(a_elems % 2, 0);
         const int64_t tmp_lda = int64_t{a_elems} * sizeof(float);
         Plan step1 = Plan::MakeLoop(b_elems, plan.sentinel_lda, tmp_lda,
                                     Plan::MakeConvertEf57(a_elems / 2));
         Plan step2 =
-            MakeTranspose2D(a_elems, b_elems, tmp_lda, plan.sentinel_ldb);
+            MakeInnerLeaf(a_elems, b_elems, tmp_lda, plan.sentinel_ldb);
         return Plan::MakePipe(int64_t{b_elems} * tmp_lda, std::move(step1),
                               std::move(step2));
       }
@@ -1033,8 +1056,8 @@ struct ChunkPlanBuilder {
         DCHECK_EQ(plan.elem_size_in_bytes, 1);
         DCHECK_EQ(b_elems % elements_per_byte, 0);
         DCHECK_EQ(plan.sentinel_ldb % elements_per_byte, 0);
-        Plan step1 = MakeTranspose2D(a_elems, b_elems, plan.sentinel_lda,
-                                     /*ldb=*/b_elems);
+        Plan step1 = MakeInnerLeaf(a_elems, b_elems, plan.sentinel_lda,
+                                   /*ldb=*/b_elems);
         Plan step2 = Plan::MakeLoop(
             a_elems, /*da=*/b_elems, plan.sentinel_ldb / elements_per_byte,
             Plan::MakePackSubbyte(plan.bits_per_element, b_elems));
@@ -1885,13 +1908,10 @@ absl::Status Planner::Initialize() {
     Plan chunk_plan = BuildChunkPlan(chunk_id);
     if (vlog_plan) {
       std::string s = "thread:\n";
-      FormatPlan(chunk_plan, /*indent=*/4, elem_size_in_bytes,
-                 inner_kernel_kind, interleave_size, &s);
+      chunk_plan.Format(/*indent=*/4, &s);
       vlog_plans.push_back(std::move(s));
     }
-    const int64_t chunk_scratch =
-        FlattenPlan(chunk_plan, elem_size_in_bytes, inner_kernel_kind,
-                    inner_block_elems, interleave_size, chunk_ops[chunk_id]);
+    const int64_t chunk_scratch = FlattenPlan(chunk_plan, chunk_ops[chunk_id]);
     scratch_size = std::max(scratch_size, chunk_scratch);
   }
 
