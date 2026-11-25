@@ -156,8 +156,7 @@ class KernelRegistryBase {
             ExecutionStage s = stage,
             std::enable_if_t<s == ExecutionStage::kExecute>* = nullptr>
   Status Launch(const XLA_FFI_Kernel* kernel, XLA_FFI_LaunchDims launch_dims,
-                uint32_t shared_mem_bytes, bool uses_pdl,
-                const KernelArgSpan& args = {}) {
+                uint32_t shared_mem_bytes, const KernelArgSpan& args = {}) {
     if (kernel == nullptr) {
       return ErrorPolicy::FromErrorCode(
           XLA_FFI_Error_Code_INVALID_ARGUMENT,
@@ -177,7 +176,7 @@ class KernelRegistryBase {
         /*extension_start=*/nullptr,
         launch_dims,
         shared_mem_bytes,
-        static_cast<int32_t>(uses_pdl),
+        /*uses_pdl=*/0,
         &ffi_args,
     };
 

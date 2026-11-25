@@ -62,8 +62,8 @@ struct CanLaunch : std::false_type {};
 
 template <typename T>
 struct CanLaunch<T, std::void_t<decltype(std::declval<T>().Launch(
-                        nullptr, XLA_FFI_LaunchDims{}, 0, false))>>
-    : std::true_type {};
+                        nullptr, XLA_FFI_LaunchDims{}, 0))>> : std::true_type {
+};
 
 static_assert(CanRegister<PrepareKernelRegistry>::value);
 static_assert(CanRegister<InitializeKernelRegistry>::value);
@@ -165,7 +165,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
     EXPECT_EQ(args->launch_params->launch_dims.grid.x, 4);
     EXPECT_EQ(args->launch_params->launch_dims.block.x, 128);
     EXPECT_EQ(args->launch_params->shared_mem_bytes, 512u);
-    EXPECT_TRUE(args->launch_params->uses_pdl);
+    EXPECT_FALSE(args->launch_params->uses_pdl);
     EXPECT_EQ(args->launch_params->args->num_args, 2);
     EXPECT_EQ(args->launch_params->args->args[0].type,
               XLA_FFI_KernelArgType_DevicePtr);
@@ -221,7 +221,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
 
   auto exec_fn = [&](ExecuteKernelRegistry kernel_registry) -> Error {
     Error null_kernel_err = kernel_registry.Launch(
-        nullptr, {{4, 1, 1}, {128, 1, 1}}, 512, true, std::vector<KernelArg>{});
+        nullptr, {{4, 1, 1}, {128, 1, 1}}, 512, std::vector<KernelArg>{});
     EXPECT_TRUE(null_kernel_err.failure());
 
     std::vector<KernelArg> launch_args = {
@@ -229,7 +229,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
         HostValue{&host_val, sizeof(host_val)},
     };
     return kernel_registry.Launch(registered_kernel, {{4, 1, 1}, {128, 1, 1}},
-                                  512, true, launch_args);
+                                  512, launch_args);
   };
 
   auto init_handler = Ffi::BindInitialize().Ctx<KernelRegistry>().To(init_fn);

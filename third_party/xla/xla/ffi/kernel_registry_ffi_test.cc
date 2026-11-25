@@ -62,8 +62,8 @@ struct CanLaunch : std::false_type {};
 
 template <typename T>
 struct CanLaunch<T, std::void_t<decltype(std::declval<T>().Launch(
-                        nullptr, XLA_FFI_LaunchDims{}, 0, false))>>
-    : std::true_type {};
+                        nullptr, XLA_FFI_LaunchDims{}, 0))>> : std::true_type {
+};
 
 static_assert(CanRegister<PrepareKernelRegistry>::value);
 static_assert(CanRegister<InitializeKernelRegistry>::value);
@@ -197,7 +197,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
   auto exec_fn = [&](ExecuteKernelRegistry kernel_registry) -> absl::Status {
     std::vector<void*> ptr_args = {dev_ptr};
     return kernel_registry.Launch(registered_kernel, {{2, 1, 1}, {64, 1, 1}},
-                                  256, false, ptr_args);
+                                  256, ptr_args);
   };
 
   auto prepare_fn = [&](PrepareKernelRegistry kernel_registry) -> absl::Status {

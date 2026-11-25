@@ -1349,8 +1349,7 @@ TEST(CustomCallThunkTest, KernelRegistryInitializeExecuteAndRecord) {
                                              (*result).untyped_data()};
             return registry.Launch(registered_kernel,
                                    /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
-                                   /*shared_mem_bytes=*/0, /*uses_pdl=*/false,
-                                   args);
+                                   /*shared_mem_bytes=*/0, args);
           });
   bundle.record =
       ffi::Ffi::BindRecord()
@@ -1428,8 +1427,7 @@ TEST(CustomCallThunkTest, KernelRegistryPrepareAndExecute) {
                                              (*result).untyped_data()};
             return registry.Launch(registered_kernel,
                                    /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
-                                   /*shared_mem_bytes=*/0, /*uses_pdl=*/false,
-                                   args);
+                                   /*shared_mem_bytes=*/0, args);
           });
 
   ASSERT_OK_AND_ASSIGN(

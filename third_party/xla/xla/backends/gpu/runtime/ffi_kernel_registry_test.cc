@@ -125,9 +125,9 @@ class FfiKernelRegistryTest : public ::testing::Test {
     const std::vector<ffi::KernelArg> args = {first,
                                               ffi::DevicePointer{b_.opaque()},
                                               ffi::DevicePointer{c_.opaque()}};
-    ABSL_RETURN_IF_ERROR(ffi::ExecuteKernelRegistry(/*api=*/nullptr, &extension)
-                        .Launch(kernel, kOneBlockOf4Threads, shared_mem_bytes,
-                                /*uses_pdl=*/false, args));
+    ABSL_RETURN_IF_ERROR(
+        ffi::ExecuteKernelRegistry(/*api=*/nullptr, &extension)
+            .Launch(kernel, kOneBlockOf4Threads, shared_mem_bytes, args));
     std::vector<int32_t> c(4, 0);
     ABSL_RETURN_IF_ERROR(stream_->Memcpy(c.data(), c_, 4 * sizeof(int32_t)));
     ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
@@ -216,8 +216,7 @@ TEST_F(FfiKernelRegistryTest, LaunchWithDynamicSharedMemory) {
                                             ffi::DevicePointer{c_.opaque()}};
   ASSERT_OK(ffi::ExecuteKernelRegistry(/*api=*/nullptr, &extension)
                 .Launch(registered.kernel, kOneBlockOf4Threads,
-                        /*shared_mem_bytes=*/kCols * kRows,
-                        /*uses_pdl=*/false, args));
+                        /*shared_mem_bytes=*/kCols * kRows, args));
 
   std::vector<uint8_t> output(input.size(), 0);
   ASSERT_OK(stream_->Memcpy(output.data(), a_, output.size()));

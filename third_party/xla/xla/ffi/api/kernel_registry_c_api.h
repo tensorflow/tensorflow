@@ -43,7 +43,7 @@ extern "C" {
 //==============================================================================
 #define XLA_FFI_Extension_KernelRegistry 130
 #define XLA_FFI_Extension_KernelRegistry_MajorVersion 0
-#define XLA_FFI_Extension_KernelRegistry_MinorVersion 3
+#define XLA_FFI_Extension_KernelRegistry_MinorVersion 4
 
 //===----------------------------------------------------------------------===//
 // Kernel Registry Extension API
@@ -135,8 +135,8 @@ struct XLA_FFI_KernelRegistry_Launch_Args {
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Launch_Args, launch_params);
 
 // Launches a previously registered `XLA_FFI_Kernel*` on the current execution
-// stream using `args->launch_params`. `launch_params->uses_pdl` must match and
-// will be removed in the future.
+// stream using `args->launch_params`. PDL is fixed at registration time;
+// `launch_params->uses_pdl` is ignored.
 // Valid stages: Execute.
 // Lifetime:
 // - `launch_params` and its `args` array are copied before `launch_kernel`
@@ -184,8 +184,7 @@ typedef XLA_FFI_Error* XLA_FFI_KernelRegistry_Launch(
 // absl::Status MyExecute(ffi::ExecuteKernelRegistry registry,
 //                        ffi::RemainingArgs args, MyState* state) {
 //   return registry.Launch(state->kernel.load(std::memory_order_acquire),
-//                          launch_dims, shared_mem_bytes, /*uses_pdl=*/false,
-//                          kernel_args);
+//                          launch_dims, shared_mem_bytes, kernel_args);
 // }
 // ```
 typedef struct XLA_FFI_KernelRegistryApi {
