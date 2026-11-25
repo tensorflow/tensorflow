@@ -177,5 +177,21 @@ class RaggedCumsumTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                             reverse=reverse)
     self.assertAllEqual(baseline, expected)
 
+
+class RaggedEmptyInputsTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAddNEmptyInputs(self):
+    with self.assertRaisesRegex(
+        ValueError, 'tf.add_n: expected at least one input.'):
+      ragged_math_ops.add_n([])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testStringJoinEmptyInputs(self):
+    with self.assertRaisesRegex(
+        ValueError, 'tf.strings.join: expected at least one input.'):
+      ragged_string_ops.string_join([])
+
+
 if __name__ == '__main__':
   googletest.main()

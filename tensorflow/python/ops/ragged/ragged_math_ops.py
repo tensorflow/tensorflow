@@ -1113,7 +1113,7 @@ def softmax(logits: ragged_tensor.Ragged, axis=None, name=None):
 @dispatch.dispatch_for_api(math_ops.add_n)
 def add_n(inputs: typing.List[ragged_tensor.RaggedOrDense], name=None):
   """RaggedTensor implementation for tf.math.add_n."""
-  if len(inputs) < 0:
+  if not inputs:
     raise ValueError('tf.add_n: expected at least one input.')
   with ops.name_scope(name, 'RaggedAddN', inputs):
     return ragged_functional_ops.map_flat_values(math_ops.add_n, inputs)

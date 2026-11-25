@@ -943,7 +943,7 @@ def string_join(inputs: typing.List[ragged_tensor.RaggedOrDense],
                 separator="",
                 name=None):
   """RaggedTensor implementation for tf.strings.join."""
-  if len(inputs) < 0:
+  if not inputs:
     raise ValueError("tf.strings.join: expected at least one input.")
   with ops.name_scope(name, "RaggedStringJoin", inputs):
     return ragged_functional_ops.map_flat_values(string_ops.string_join, inputs,
