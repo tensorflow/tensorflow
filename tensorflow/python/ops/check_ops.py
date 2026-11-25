@@ -1640,6 +1640,9 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   ...  (scalar, ()),
   ... ])
 
+  To check that corresponding dimensions agree without specifying concrete
+  sizes, use the same dimension labels for both tensors:
+
   >>> tf.debugging.assert_shapes([
   ...   (x, ('N', 'D')),
   ...   (y, ('N', 'D'))
@@ -1883,16 +1886,19 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
         else:
           tensor_dim = i
 
-        if size_symbol in size_specifications or _has_known_value(size_symbol):
-          if _has_known_value(size_symbol):
+        has_explicit_size = _has_known_value(size_symbol)
+        if size_symbol in size_specifications or has_explicit_size:
+          if has_explicit_size:
             specified_size = int(size_symbol)
             size_check_message = 'Specified explicitly'
           else:
             specified_size, specified_by_y, specified_at_dim = (
                 size_specifications[size_symbol])
             size_check_message = (
-                'Specified by tensor %s dimension %d' %
-                (tensor_name(specified_by_y), specified_at_dim))
+                'Dimension %d of tensor %s and dimension %d of tensor %s '
+                'must have the same size (shape symbol %s)' %
+                (specified_at_dim, tensor_name(specified_by_y), tensor_dim,
+                 tensor_name(sizes.x), size_symbol))
 
           # This is extremely subtle. If actual_sizes is dynamic, we must
           # make sure a control dependency is inserted here so that this slice
@@ -1902,6 +1908,11 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
             actual_size = sizes.actual_sizes[tensor_dim]
           if _has_known_value(actual_size) and _has_known_value(specified_size):
             if int(actual_size) != int(specified_size):
+              if not has_explicit_size:
+                raise ValueError(
+                    '%s%s. Received sizes %d and %d.' %
+                    (message_prefix, size_check_message, specified_size,
+                     actual_size))
               raise ValueError(
                   '%s%s.  Tensor %s dimension %s must have size %d.  '
                   'Received size %d, shape %s' %
@@ -1916,12 +1927,18 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
               ops.convert_to_tensor(specified_size))
           data_ = data
           if data is None:
-            data_ = [
-                message_prefix, size_check_message,
-                'Tensor %s dimension' % tensor_name(sizes.x), tensor_dim,
-                'must have size', specified_size, 'Received shape: ',
-                array_ops.shape(sizes.x)
-            ]
+            if has_explicit_size:
+              data_ = [
+                  message_prefix, size_check_message,
+                  'Tensor %s dimension' % tensor_name(sizes.x), tensor_dim,
+                  'must have size', specified_size, 'Received shape: ',
+                  array_ops.shape(sizes.x)
+              ]
+            else:
+              data_ = [
+                  message_prefix, size_check_message, 'Received sizes',
+                  specified_size, 'and', actual_size
+              ]
           size_assertions.append(
               control_flow_assert.Assert(condition, data_, summarize=summarize))
         else:

@@ -1599,22 +1599,24 @@ class AssertShapesTest(test.TestCase):
         (x, ("N", "Q")),
         (y, ("N", "D")),
     ]
-    regex = (r"Specified by tensor .* dimension 0.  "
-             r"Tensor .* dimension 0 must have size 3.  "
-             r"Received size 2")
-    self.raises_static_error(shapes=shapes, regex=regex)
+    regex = (r"Dimension 0 of tensor .* and dimension 0 of tensor .* "
+             r"must have the same size \(shape symbol N\)\. "
+             r"Received sizes %d and %d\.")
+    self.raises_static_error(shapes=shapes, regex=regex % (3, 2))
+    self.raises_static_error(shapes=shapes[::-1], regex=regex % (2, 3))
 
   def test_raise_dynamic_shape_mismatch(self):
     with ops.Graph().as_default():
       x = array_ops.placeholder(dtypes.float32, [None, 2], name="x")
-      y = array_ops.placeholder(dtypes.float32, [None, 3], name="y")
+      y = array_ops.placeholder(dtypes.float32, [3, None], name="y")
       shapes = [
           (x, ("N", "Q")),
-          (y, ("N", "D")),
+          (y, ("D", "N")),
       ]
-      regex = (r"\[Specified by tensor x.* dimension 0\] "
-               r"\[Tensor y.* dimension\] \[0\] \[must have size\] \[3\]")
-      feed_dict = {x: np.ones([3, 2]), y: np.ones([2, 3])}
+      regex = (r"\[Dimension 0 of tensor x:0 and dimension 1 of tensor y:0 "
+               r"must have the same size \(shape symbol N\)\] "
+               r"\[Received sizes\] \[3\] \[and\] \[2\]")
+      feed_dict = {x: np.ones([3, 2]), y: np.ones([3, 2])}
       self.raises_dynamic_error(shapes=shapes, regex=regex, feed_dict=feed_dict)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1670,9 +1672,9 @@ class AssertShapesTest(test.TestCase):
     scalar = array_ops.constant(5, name="rank_zero")
     x = array_ops.ones([2, 2], name="x")
     shapes = [(scalar, ("a",)), (x, ("a", 2))]
-    regex = (r"Specified by tensor .* dimension 0.  "
-             r"Tensor .* dimension 0 must have size 1.  "
-             r"Received size 2")
+    regex = (r"Dimension 0 of tensor .* and dimension 0 of tensor .* "
+             r"must have the same size \(shape symbol a\)\. "
+             r"Received sizes 1 and 2\.")
     self.raises_static_error(shapes=shapes, regex=regex)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1814,9 +1816,8 @@ class AssertShapesTest(test.TestCase):
     for shapes in styles:
       self.raises_static_error(
           shapes=shapes,
-          regex=(r"Specified by tensor .* dimension 0.  "
-                 "Tensor .* dimension 0 must have size 2.  "
-                 "Received size 1"))
+          regex=(r"must have the same size \(shape symbol A\)\. "
+                 r"Received sizes 2 and 1\."))
 
   @test_util.run_in_graph_and_eager_modes
   def test_raise_explicit_mismatch_using_iterable_alternatives(self):
@@ -2035,7 +2036,9 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 30"):
+    with self.assertRaisesRegex(
+        ValueError, r"must have the same size \(shape symbol D\)\. "
+        r"Received sizes 30 and 40\."):
       assertion = check_ops.assert_shapes([(sparse_int, ["D", "D"])])
       with ops.control_dependencies([assertion]):
         out = array_ops.identity(sparse_int)
@@ -2067,7 +2070,9 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 30"):
+    with self.assertRaisesRegex(
+        ValueError, r"must have the same size \(shape symbol N\)\. "
+        r"Received sizes 30 and 40\."):
       assertion = check_ops.assert_shapes([(sparse_scalar, []),
                                            (sparse_2d, ["N", "N"])])
       with ops.control_dependencies([assertion]):
@@ -2094,7 +2099,9 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 30"):
+    with self.assertRaisesRegex(
+        ValueError, r"must have the same size \(shape symbol N\)\. "
+        r"Received sizes 30 and 40\."):
       assertion = check_ops.assert_shapes([(dense_scalar, []),
                                            (sparse_2d, ["N", "N"])])
       with ops.control_dependencies([assertion]):
