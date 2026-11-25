@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/range_sampler.h"
 
+#include <limits>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -184,6 +185,35 @@ TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
   sampler_.reset(test_sampler);
   EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
 }
+
+TEST_F(RangeSamplerTest, FixedUnigramRejectsNegativeFileWeight) {
+  Env* env = Env::Default();
+  const std::string fname =
+      io::JoinPath(testing::TmpDir(), "negative_unigram_weights");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "a,-2\nb,1\n"));
+  // Zero distortion would otherwise hide the negative weight.
+  FixedUnigramSampler sampler(2, 0.0, 0, 1, 0);
+  const absl::Status status = sampler.SetDistributionSampler(env, fname);
+  EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+}
+
+TEST_F(RangeSamplerTest, FixedUnigramRejectsInvalidVectorWeight) {
+  for (float weight : {-2.0f, std::numeric_limits<float>::infinity(),
+                       std::numeric_limits<float>::quiet_NaN()}) {
+    FixedUnigramSampler sampler(2, 0.0, 0, 1, 0);
+    const absl::Status status = sampler.SetDistributionSampler({weight, 1.0f});
+    EXPECT_TRUE(absl::IsInvalidArgument(status))
+        << "weight: " << weight << ", status: " << status;
+  }
+}
+
+TEST_F(RangeSamplerTest, FixedUnigramAcceptsZeroWeight) {
+  FixedUnigramSampler sampler(2, 1.0, 0, 1, 0);
+  TF_ASSERT_OK(sampler.SetDistributionSampler({0.0f, 3.0f}));
+  EXPECT_FLOAT_EQ(sampler.Probability(0), 0.0f);
+  EXPECT_FLOAT_EQ(sampler.Probability(1), 1.0f);
+}
+
 TEST_F(RangeSamplerTest, FixedUnigramChecksum) {
   Env* env = Env::Default();
   std::string fname = io::JoinPath(testing::TmpDir(), "vocab_file");

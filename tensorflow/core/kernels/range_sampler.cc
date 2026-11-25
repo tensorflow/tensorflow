@@ -249,7 +249,7 @@ FixedUnigramSampler::FixedUnigramSampler(int64_t range, float distortion,
 
 absl::Status FixedUnigramSampler::SetDistributionSampler(
     Env* env, const std::string& vocab_file) {
-  TF_RETURN_IF_ERROR(LoadFromFile(env, vocab_file, distortion_));
+  TF_RETURN_IF_ERROR(LoadFromFile(env, vocab_file));
   if (!TF_PREDICT_TRUE(FixedUnigramSampler::range() == weights_.size()))
     return (absl::InvalidArgumentError(
         absl::StrCat("range is ", FixedUnigramSampler::range(),
@@ -260,7 +260,7 @@ absl::Status FixedUnigramSampler::SetDistributionSampler(
 
 absl::Status FixedUnigramSampler::SetDistributionSampler(
     const std::vector<float>& unigrams) {
-  LoadFromUnigrams(unigrams, distortion_);
+  TF_RETURN_IF_ERROR(LoadFromUnigrams(unigrams));
   if (!TF_PREDICT_TRUE(FixedUnigramSampler::range() == weights_.size()))
     return (absl::InvalidArgumentError(
         absl::StrCat("range is ", FixedUnigramSampler::range(),
@@ -286,9 +286,19 @@ void FixedUnigramSampler::FillReservedIds(int32_t num_reserved_ids) {
   }
 }
 
+absl::Status FixedUnigramSampler::AddWeight(float weight) {
+  if (!std::isfinite(weight) || weight < 0.0f) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unigram weights must be finite and nonnegative, got ", weight));
+  }
+  const float distorted_weight = std::pow(weight, distortion_);
+  total_weight_ += distorted_weight;
+  weights_.push_back(distorted_weight);
+  return absl::OkStatus();
+}
+
 absl::Status FixedUnigramSampler::LoadFromFile(Env* env,
-                                               const std::string& vocab_file,
-                                               float distortion) {
+                                               const std::string& vocab_file) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(vocab_file, &file));
 
@@ -307,27 +317,24 @@ absl::Status FixedUnigramSampler::LoadFromFile(Env* env,
         return absl::InvalidArgumentError(
             absl::StrCat("Wrong vocabulary format at line: ", line));
       }
-      w = std::pow(w, distortion);
-      total_weight_ += w;
-      weights_.push_back(w);
+      TF_RETURN_IF_ERROR(AddWeight(w));
     }
     ++word_id;
   }
   return absl::OkStatus();
 }
 
-void FixedUnigramSampler::LoadFromUnigrams(const std::vector<float>& unigrams,
-                                           float distortion) {
+absl::Status FixedUnigramSampler::LoadFromUnigrams(
+    const std::vector<float>& unigrams) {
   int32_t word_id = weights_.size();
   for (float w : unigrams) {
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {
-      w = std::pow(w, distortion);
-      total_weight_ += w;
-      weights_.push_back(w);
+      TF_RETURN_IF_ERROR(AddWeight(w));
     }
     ++word_id;
   }
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -378,9 +378,9 @@ def fixed_unigram_candidate_sampler(true_classes,
     range_max: An `int`. The number of possible classes.
     vocab_file: Each valid line in this file (which should have a CSV-like
       format) corresponds to a valid word ID. IDs are in sequential order,
-      starting from num_reserved_ids. The last entry in each line is expected
-      to be a value corresponding to the count or relative probability. Exactly
-      one of `vocab_file` and `unigrams` needs to be passed to this operation.
+      starting from num_reserved_ids. The last entry in each line must be a
+      finite, nonnegative count or relative probability. Exactly one of
+      `vocab_file` and `unigrams` needs to be passed to this operation.
     distortion: The distortion is used to skew the unigram probability
       distribution.  Each weight is first raised to the distortion's power
       before adding to the internal unigram distribution. As a result,
@@ -398,9 +398,9 @@ def fixed_unigram_candidate_sampler(true_classes,
       in order to speed up the whole computation through parallelism. This
       parameter (together with `num_shards`) indicates the particular partition
       number of the operation, when partitioning is being used.
-    unigrams: A list of unigram counts or probabilities, one per ID in
-      sequential order. Exactly one of `vocab_file` and `unigrams` should be
-      passed to this operation.
+    unigrams: A list of finite, nonnegative unigram counts or probabilities,
+      one per ID in sequential order. Exactly one of `vocab_file` and
+      `unigrams` should be passed to this operation.
     seed: An `int`. An operation-specific seed. Default is 0.
     name: A name for the operation (optional).
 

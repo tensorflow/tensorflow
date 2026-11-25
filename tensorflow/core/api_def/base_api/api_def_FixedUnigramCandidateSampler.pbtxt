@@ -62,9 +62,9 @@ END
     description: <<END
 Each valid line in this file (which should have a CSV-like format)
 corresponds to a valid word ID. IDs are in sequential order, starting from
-num_reserved_ids. The last entry in each line is expected to be a value
-corresponding to the count or relative probability. Exactly one of vocab_file
-and unigrams needs to be passed to this op.
+num_reserved_ids. The last entry in each line must be a finite, nonnegative
+count or relative probability. Exactly one of vocab_file and unigrams needs to
+be passed to this op.
 END
   }
   attr {
@@ -106,8 +106,9 @@ END
   attr {
     name: "unigrams"
     description: <<END
-A list of unigram counts or probabilities, one per ID in sequential
-order. Exactly one of vocab_file and unigrams should be passed to this op.
+A list of finite, nonnegative unigram counts or probabilities, one per ID in
+sequential order. Exactly one of vocab_file and unigrams should be passed to this
+op.
 END
   }
   attr {

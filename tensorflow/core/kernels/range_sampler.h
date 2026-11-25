@@ -232,10 +232,11 @@ class FixedUnigramSampler : public RangeSampler {
   void FillReservedIds(int32_t num_reserved_ids);
   // Load IDs to sample from a CSV file. It is assumed that the last item of
   // each row contains a count or probability for the corresponding ID.
-  absl::Status LoadFromFile(Env* env, const std::string& vocab_file,
-                            float distortion);
+  absl::Status LoadFromFile(Env* env, const std::string& vocab_file);
   // Load from an in-memory array.
-  void LoadFromUnigrams(const std::vector<float>& unigrams, float distortion);
+  absl::Status LoadFromUnigrams(const std::vector<float>& unigrams);
+  // Validate the original weight before applying distortion.
+  absl::Status AddWeight(float weight);
 };
 
 }  // namespace tensorflow
