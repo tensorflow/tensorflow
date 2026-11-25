@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -442,9 +443,9 @@ absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
       std::move(buffers_future), std::move(on_done_with_buffer));
 }
 
-absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
+absl_nullable std::shared_ptr<const xla::PjRtLayout>
 BasicStringArray::pjrt_layout() const {
-  return absl::UnimplementedError("String arrays do not support PjRtLayout");
+  return nullptr;
 }
 
 LayoutRef BasicStringArray::layout() const { return nullptr; }

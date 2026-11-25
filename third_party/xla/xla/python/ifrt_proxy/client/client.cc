@@ -361,7 +361,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
       }
     }
     if (propagate_layout) {
-      ABSL_ASSIGN_OR_RETURN(layout, proxy_array->pjrt_layout());
+      layout = proxy_array->pjrt_layout();
     }
     uint64_t result_handle = rpc_helper_->NextHandle();
     new_arrays.push_back(

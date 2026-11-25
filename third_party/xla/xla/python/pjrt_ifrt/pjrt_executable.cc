@@ -1148,7 +1148,8 @@ absl::StatusOr<tsl::RCReference<Array>> ReconstituteRecoveredArray(
     PjRtClient* client, const ArrayRef& orig_array,
     PjRtArray::PjRtBuffers buffers) {
   auto* orig_pjrt_array = cast<PjRtArray>(orig_array.get());
-  auto layout = orig_pjrt_array->pjrt_layout().value_or(nullptr);
+  std::shared_ptr<const xla::PjRtLayout> layout =
+      orig_pjrt_array->pjrt_layout();
   UserContextScope user_context_scope(orig_pjrt_array->user_context());
   if (orig_pjrt_array->has_dynamic_shape()) {
     return PjRtArray::Create(client, orig_pjrt_array->dtype(),

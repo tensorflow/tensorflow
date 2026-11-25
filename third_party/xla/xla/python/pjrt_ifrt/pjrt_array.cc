@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -719,23 +720,23 @@ bool PjRtArray::IsDeleted() const {
 }
 
 std::string PjRtArray::DebugString() const {
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout_ptr =
-      pjrt_layout();
-  if (layout_ptr.ok() && *layout_ptr == nullptr) {
-    layout_ptr =
+  std::shared_ptr<const xla::PjRtLayout> layout_ptr = pjrt_layout();
+  if (layout_ptr == nullptr) {
+    absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> default_layout =
         [&]() -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
       ABSL_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
                        array_spec_.sharding->GetShardShape(array_spec_.shape));
-      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
-                       client_->GetDefaultPjRtLayout(
-                           array_spec_.dtype, shard_shape.dims(),
-                           array_spec_.sharding->devices()->devices().front(),
-                           array_spec_.sharding->memory_kind()));
-      return layout;
+      return client_->GetDefaultPjRtLayout(
+          array_spec_.dtype, shard_shape.dims(),
+          array_spec_.sharding->devices()->devices().front(),
+          array_spec_.sharding->memory_kind());
     }();
+    if (default_layout.ok()) {
+      layout_ptr = *std::move(default_layout);
+    }
   }
   std::string layout_str =
-      layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
+      layout_ptr != nullptr ? layout_ptr->ToString() : "<unknown>";
 
   return absl::StrFormat(
       "PjRtArray(dtype=%v; shape=%s; sharding=%v; layout=%s)",
@@ -745,7 +746,7 @@ std::string PjRtArray::DebugString() const {
       array_spec_.sharding, layout_str);
 }
 
-absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> PjRtArray::pjrt_layout()
+absl_nullable std::shared_ptr<const xla::PjRtLayout> PjRtArray::pjrt_layout()
     const {
   if constexpr (tsl::kIsDebugBuild) {
     if (!IsDeleted()) {

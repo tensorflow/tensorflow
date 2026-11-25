@@ -201,13 +201,11 @@ absl::StatusOr<absl::Span<const ArraySpec>> BasicBundle::GetArraySpecs() const {
       array_specs.reserve(values_.size());
       for (const ValueRef& value : values_) {
         if (auto* array = dyn_cast_or_null<Array>(value.get())) {
-          ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
-                           array->pjrt_layout());
           array_specs.push_back(ArraySpec{
               /*dtype=*/array->dtype(),
               /*shape=*/array->shape(),
               /*sharding=*/array->shared_ptr_sharding(),
-              /*layout=*/std::move(layout),
+              /*layout=*/array->pjrt_layout(),
           });
         } else {
           return absl::InvalidArgumentError(

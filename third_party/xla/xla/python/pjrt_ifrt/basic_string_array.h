@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
@@ -101,7 +102,7 @@ class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
     return array_spec_.sharding;
   }
 
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
+  absl_nullable std::shared_ptr<const xla::PjRtLayout> pjrt_layout()
       const override;
   LayoutRef layout() const override;
 

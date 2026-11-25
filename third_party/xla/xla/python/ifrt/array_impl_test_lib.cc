@@ -453,7 +453,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferDefaultLayout) {
             /*host_buffer_hold=*/nullptr));
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, array->pjrt_layout());
+    std::shared_ptr<const xla::PjRtLayout> layout = array->pjrt_layout();
     // `layout` should be either nullptr or a concrete default layout.
     if (layout != nullptr) {
       TF_ASSERT_OK_AND_ASSIGN(auto default_layout,
@@ -1357,7 +1357,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
 
   TF_ASSERT_OK(array->GetReadyFuture().Await());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result_layout, array->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> result_layout = array->pjrt_layout();
   ASSERT_NE(result_layout, nullptr);
   EXPECT_EQ(*result_layout, *layout);
 
@@ -1882,8 +1882,7 @@ TEST(ArrayImplTest, MakeErrorArraysWithCustomLayout) {
   for (const ArrayRef& array : arrays) {
     EXPECT_THAT(array->GetReadyFuture().Await(),
                 StatusIs(_, HasSubstr("injected error")));
-    ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> result_layout,
-                         array->pjrt_layout());
+    std::shared_ptr<const xla::PjRtLayout> result_layout = array->pjrt_layout();
     ASSERT_NE(result_layout, nullptr);
     EXPECT_EQ(*result_layout, *layout);
     EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
@@ -2199,8 +2198,8 @@ TEST(ArrayImplTest, BitcastArrays) {
   ASSERT_EQ(new_arrays->front()->shape(), new_array_spec.shape);
   ASSERT_EQ(new_arrays->front()->shared_ptr_sharding(),
             new_array_spec.sharding);
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const PjRtLayout> actual_pjrt_layout,
-                          new_arrays->front()->pjrt_layout());
+  std::shared_ptr<const PjRtLayout> actual_pjrt_layout =
+      new_arrays->front()->pjrt_layout();
   ASSERT_EQ(actual_pjrt_layout, new_array_spec.layout);
 
   // The data in the new array should be retrievable using the new spec.
@@ -2816,7 +2815,7 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
                           /*host_buffer_hold=*/nullptr));
       TF_ASSERT_OK(array->GetReadyFuture().Await());
 
-      TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->pjrt_layout());
+      std::shared_ptr<const xla::PjRtLayout> src_layout = array->pjrt_layout();
       // `layout` should be either nullptr or a concrete default layout.
       if (src_layout != nullptr) {
         TF_ASSERT_OK_AND_ASSIGN(
@@ -2831,7 +2830,8 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
                                               std::nullopt, dst_memory->Kind(),
                                               ArrayCopySemantics::kAlwaysCopy));
       ASSERT_THAT(new_arrays, SizeIs(1));
-      TF_ASSERT_OK_AND_ASSIGN(auto dst_layout, new_arrays[0]->pjrt_layout());
+      std::shared_ptr<const xla::PjRtLayout> dst_layout =
+          new_arrays[0]->pjrt_layout();
       // `layout` should be either nullptr or a concrete default layout.
       if (dst_layout != nullptr) {
         TF_ASSERT_OK_AND_ASSIGN(

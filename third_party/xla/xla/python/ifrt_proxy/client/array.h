@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -170,7 +171,7 @@ class Array final : public RTTIExtends<Array, xla::ifrt::Array> {
   ShardingRef shared_ptr_sharding() const override {
     return array_spec_.sharding;
   }
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
+  absl_nullable std::shared_ptr<const xla::PjRtLayout> pjrt_layout()
       const override {
     return array_spec_.layout;
   }

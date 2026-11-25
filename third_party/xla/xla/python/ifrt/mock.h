@@ -88,8 +88,8 @@ class MockArray : public RTTIExtends<MockArray, Array> {
   MOCK_METHOD(const Shape&, shape, (), (const, final));
   MOCK_METHOD(const Sharding&, sharding, (), (const, final));
   MOCK_METHOD(ShardingRef, shared_ptr_sharding, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,
-              pjrt_layout, (), (const, final));
+  MOCK_METHOD(absl_nullable std::shared_ptr<const xla::PjRtLayout>, pjrt_layout,
+              (), (const, final));
   MOCK_METHOD(LayoutRef, layout, (), (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::optional<int64_t>>, ByteSize, (),

@@ -1310,7 +1310,7 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
   // TODO(emilyaf): Remove the following logic once layout is plumbed through.
   std::shared_ptr<const xla::PjRtLayout> layout;
   if (!arrays.empty()) {
-    ABSL_ASSIGN_OR_RETURN(layout, arrays.front()->pjrt_layout());
+    layout = arrays.front()->pjrt_layout();
   }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers), std::move(layout));
@@ -1630,7 +1630,8 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
     ABSL_ASSIGN_OR_RETURN(ShardingRef new_sharding,
                      arrays[i]->shared_ptr_sharding()->WithDeviceAssignment(
                          dst_devices, memory_kind));
-    ABSL_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
+    std::shared_ptr<const xla::PjRtLayout> new_layout =
+        arrays[i]->pjrt_layout();
     ABSL_ASSIGN_OR_RETURN(
         new_arrays.emplace_back(),
         PjRtArray::Create(this, arrays[i]->dtype(), arrays[i]->shape(),
@@ -2228,6 +2229,10 @@ PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
 
   auto layout =
       [&]() -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
+    if (dtype.kind() == DType::kString) {
+      return absl::UnimplementedError(
+          "String arrays do not support PjRtLayout");
+    }
     static MemoryKind kUnpinnedHostMemoryKind(UnpinnedHostMemorySpace::kKind);
     if (memory_kind == kUnpinnedHostMemoryKind) {
       return std::make_shared<xla::PjRtLayout>(

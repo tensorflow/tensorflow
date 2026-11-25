@@ -404,8 +404,7 @@ TEST_P(ReshardTest, DifferentDestinationLayout) {
 
   // Make sure that the destination layout is actually different from the source
   // layout in order to ensure the test coverage.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> src_layout,
-                          src_array->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> src_layout = src_array->pjrt_layout();
   if (src_layout == nullptr) {
     TF_ASSERT_OK_AND_ASSIGN(
         Shape shard_shape,
@@ -428,7 +427,8 @@ TEST_P(ReshardTest, DifferentDestinationLayout) {
   EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
 
   // Verify that the destination array is created with the user-provided layout.
-  TF_ASSERT_OK_AND_ASSIGN(const auto dst_layout, dst_array->pjrt_layout());
+  const std::shared_ptr<const xla::PjRtLayout> dst_layout =
+      dst_array->pjrt_layout();
   ASSERT_NE(dst_layout, nullptr);
   EXPECT_EQ(dst_layout->xla_layout(), dst_array_spec.layout->xla_layout());
 
@@ -484,7 +484,8 @@ TEST_P(ReshardTest, DifferentSourceLayout) {
 
   // Make sure that the source layout is actually different from the destination
   // layout in order to ensure the test coverage.
-  ASSERT_OK_AND_ASSIGN(const auto actual_src_layout, src_array->pjrt_layout());
+  const std::shared_ptr<const xla::PjRtLayout> actual_src_layout =
+      src_array->pjrt_layout();
   ASSERT_NE(actual_src_layout, nullptr);
   EXPECT_EQ(actual_src_layout->xla_layout(), src_layout->xla_layout());
 
@@ -509,8 +510,7 @@ TEST_P(ReshardTest, DifferentSourceLayout) {
   EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
 
   // Verify that the destination array is created with the default layout.
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> dst_layout,
-                       dst_array->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> dst_layout = dst_array->pjrt_layout();
   if (dst_layout == nullptr) {
     ASSERT_OK_AND_ASSIGN(dst_layout,
                          client_->GetDefaultPjRtLayout(

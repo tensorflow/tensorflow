@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -432,7 +433,8 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
                           /*xla_input_layout=*/ifrt_layout));
 
   if (ifrt_layout) {
-    TF_ASSERT_OK_AND_ASSIGN(auto pjrt_layout, assembled_array->pjrt_layout());
+    std::shared_ptr<const xla::PjRtLayout> pjrt_layout =
+        assembled_array->pjrt_layout();
     ASSERT_NE(pjrt_layout, nullptr);
     auto minor_to_major = pjrt_layout->xla_layout().minor_to_major();
     std::vector<int64_t> expected_minor_to_major;

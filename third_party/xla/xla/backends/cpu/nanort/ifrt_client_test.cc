@@ -211,8 +211,7 @@ TEST(NanoIfrtClientTest, CopyArraysPreservesTransposedLayout) {
   ASSERT_OK_AND_ASSIGN(ifrt::ArrayRef output,
                        ExecuteTransposed3dProgram(client.get()));
 
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const PjRtLayout> source_layout,
-                       output->pjrt_layout());
+  std::shared_ptr<const PjRtLayout> source_layout = output->pjrt_layout();
   // Guards the test itself: if XLA ever stops assigning a non-default layout
   // to this program's result, the test below would pass vacuously.
   ASSERT_NE(source_layout, nullptr);
@@ -237,8 +236,7 @@ TEST(NanoIfrtClientTest, CopyArraysPreservesTransposedLayout) {
   EXPECT_EQ(result_data, Transposed3dExpectedData());
 
   // And the mechanism behind it.
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const PjRtLayout> copy_layout,
-                       copies[0]->pjrt_layout());
+  std::shared_ptr<const PjRtLayout> copy_layout = copies[0]->pjrt_layout();
   ASSERT_NE(copy_layout, nullptr);
   EXPECT_EQ(*copy_layout, *source_layout);
 }

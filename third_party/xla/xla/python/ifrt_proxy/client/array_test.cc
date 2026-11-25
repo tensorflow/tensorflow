@@ -167,15 +167,14 @@ TEST_F(ArrayTest, GetDefaultPjRtLayoutSuccess) {
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
       sharding_, ArrayHandle{1234}, /*layout=*/nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, array->pjrt_layout());
-  EXPECT_EQ(layout_1, nullptr);
+  EXPECT_EQ(array->pjrt_layout(), nullptr);
 }
 
 TEST_F(ArrayTest, GetCustomLayoutSuccess) {
   auto array = tsl::MakeRef<Array>(mock_client_.get(), rpc_helper_,
                                    DType(DType::Kind::kBF16), Shape({}),
                                    sharding_, ArrayHandle{1234}, kLayout1);
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, array->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout_1 = array->pjrt_layout();
   ASSERT_NE(layout_1, nullptr);
   EXPECT_EQ(*layout_1, *kLayout1);
 }
@@ -219,10 +218,12 @@ TEST_F(ArrayTest, MakeArraysFromHostBufferShardsSuccess) {
       mock_client_.get(), rpc_helper_, absl::MakeSpan(specs),
       xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall);
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout_1 =
+      result.value().at(0)->pjrt_layout();
   ASSERT_NE(layout_1, nullptr);
   EXPECT_EQ(*layout_1, *kLayout1);
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_2, result.value().at(1)->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout_2 =
+      result.value().at(1)->pjrt_layout();
   ASSERT_NE(layout_2, nullptr);
   EXPECT_EQ(*layout_2, *kLayout2);
 }
@@ -244,7 +245,8 @@ TEST_F(ArrayTest, MakeErrorArraysSuccess) {
                                        absl::InternalError("test error"),
                                        absl::MakeSpan(specs));
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value().at(0)->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout =
+      result.value().at(0)->pjrt_layout();
   ASSERT_NE(layout, nullptr);
   EXPECT_EQ(*layout, *kLayout1);
 }
@@ -274,7 +276,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysSuccess) {
       sharding_, absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
       SingleDeviceShardSemantics::kAllShards);
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout = result.value()->pjrt_layout();
   ASSERT_NE(layout, nullptr);
   EXPECT_EQ(*layout, *kLayout1);
 }
@@ -305,8 +307,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultPjRtLayoutSuccess) {
       sharding_, absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
       SingleDeviceShardSemantics::kAllShards);
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->pjrt_layout());
-  EXPECT_EQ(layout, nullptr);
+  EXPECT_EQ(result.value()->pjrt_layout(), nullptr);
 }
 
 TEST_F(ArrayTest, RemapArraysSuccess) {
@@ -353,10 +354,12 @@ TEST_F(ArrayTest, RemapArraysSuccess) {
                          ArrayCopySemantics::kAlwaysCopy);
 
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout_1 =
+      result.value().at(0)->pjrt_layout();
   ASSERT_NE(layout_1, nullptr);
   EXPECT_EQ(*layout_1, *kLayout2);
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_2, result.value().at(1)->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout_2 =
+      result.value().at(1)->pjrt_layout();
   ASSERT_NE(layout_2, nullptr);
   EXPECT_EQ(*layout_2, *kLayout1);
 }
@@ -386,7 +389,8 @@ TEST_F(ArrayTest, BitcastArraysSuccess) {
   TF_ASSERT_OK(result.status());
   EXPECT_EQ(result.value().at(0)->dtype(), DType(DType::Kind::kF32));
   EXPECT_EQ(result.value().at(0)->shape(), Shape({1}));
-  TF_ASSERT_OK_AND_ASSIGN(auto new_layout, result.value().at(0)->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> new_layout =
+      result.value().at(0)->pjrt_layout();
   ASSERT_NE(new_layout, nullptr);
   EXPECT_EQ(*new_layout, *kLayout2);
 }

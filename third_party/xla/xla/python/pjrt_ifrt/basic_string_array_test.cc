@@ -36,8 +36,10 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/future.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/cleanup.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -1243,6 +1245,28 @@ TEST(CopyToHostBufferTest, FailsWithNonAddressableSingleDeviceArray) {
                   .Await(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(data_read, ElementsAre("sentinel"));
+}
+
+TEST(BasicStringArrayTest, PjRtLayoutIsNullAndDefaultPjRtLayoutUnimplemented) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client,
+                          test_util::GetClient());
+  Device* const device = client->addressable_devices().at(0);
+
+  auto [buffers, on_done_with_buffer] = MakeBuffersAndOnDoneWithBuffer({"a"});
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef array,
+      CreateTestArray(client.get(),
+                      tsl::Future<BasicStringArray::Buffers>(buffers),
+                      std::move(on_done_with_buffer)));
+  EXPECT_EQ(array->pjrt_layout(), nullptr);
+
+  EXPECT_THAT(client->GetDefaultPjRtLayout(DType(DType::kString), /*dims=*/{1},
+                                           device, MemoryKind()),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+  EXPECT_THAT(
+      client->GetDefaultPjRtLayout(DType(DType::kString), /*dims=*/{1}, device,
+                                   MemoryKind(UnpinnedHostMemorySpace::kKind)),
+      absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 }  // namespace

@@ -84,10 +84,12 @@ class Array : public RTTIExtends<Array, Value> {
   virtual const Sharding& sharding() const = 0;
   virtual ShardingRef shared_ptr_sharding() const = 0;
   // The device memory layout for each shard of the Array. All shards are
-  // assumed to have the same layout. `nullptr` indicates a default layout; the
-  // user can obtain a concrete layout by calling
-  // `Client::GetDefaultPjRtLayout()`.
-  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
+  // assumed to have the same layout. `nullptr` indicates either a default
+  // layout (in which case the user can obtain a concrete layout by calling
+  // `Client::GetDefaultPjRtLayout()`) or a dtype that has no `PjRtLayout`
+  // (e.g., `DType::kString`, in which case `Client::GetDefaultPjRtLayout()`
+  // returns `UnimplementedError`).
+  virtual absl_nullable std::shared_ptr<const xla::PjRtLayout> pjrt_layout()
       const = 0;
   virtual LayoutRef layout() const = 0;
 

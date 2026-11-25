@@ -82,13 +82,6 @@ TEST_P(XlaArrayImplHashTest, HashValuesDifferentLayouts) {
           layout0, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
 
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> actual_layout0 =
-      array0->pjrt_layout();
-  if (absl::IsUnimplemented(actual_layout0.status())) {
-    GTEST_SKIP() << "Custom layout not supported";
-  }
-  ASSERT_OK(actual_layout0.status());
-
   // Array 1: Column-major layout
   std::shared_ptr<const xla::ifrt::PjRtLayout> layout1;
   {
@@ -113,13 +106,6 @@ TEST_P(XlaArrayImplHashTest, HashValuesDifferentLayouts) {
                                        MemoryKind()),
           layout1, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
-
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> actual_layout1 =
-      array1->pjrt_layout();
-  if (absl::IsUnimplemented(actual_layout1.status())) {
-    GTEST_SKIP() << "Custom layout not supported";
-  }
-  ASSERT_OK(actual_layout1.status());
 
   absl::StatusOr<std::vector<uint64_t>> result0 =
       client->HashValues({array0}, hash_mode).Await();

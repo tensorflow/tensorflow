@@ -295,12 +295,8 @@ TEST_P(ClientTest, CopyArraysDefaultLayoutSuccess) {
       client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(2));
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_1,
-                          copied_arrays[0].get()->pjrt_layout());
-  EXPECT_EQ(layout_1, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_2,
-                          copied_arrays[1].get()->pjrt_layout());
-  EXPECT_EQ(layout_2, nullptr);
+  EXPECT_EQ(copied_arrays[0].get()->pjrt_layout(), nullptr);
+  EXPECT_EQ(copied_arrays[1].get()->pjrt_layout(), nullptr);
 }
 
 TEST_P(ClientTest, CopyArraysMemoryKindCombinations) {
@@ -376,11 +372,11 @@ TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
       client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(2));
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_1,
-                          copied_arrays[0].get()->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout_1 =
+      copied_arrays[0].get()->pjrt_layout();
   EXPECT_EQ(layout_1->ToString(), layout_1_->ToString());
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_2,
-                          copied_arrays[1].get()->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout_2 =
+      copied_arrays[1].get()->pjrt_layout();
   EXPECT_EQ(layout_2->ToString(), layout_2_->ToString());
 }
 
@@ -409,9 +405,7 @@ TEST_P(ClientTest, CopyArraysCustomLayoutResetForCpuDestination) {
       client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(1));
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout,
-                          copied_arrays[0].get()->pjrt_layout());
-  EXPECT_EQ(layout, nullptr);
+  EXPECT_EQ(copied_arrays[0].get()->pjrt_layout(), nullptr);
 }
 
 TEST_P(ClientTest, CopyArraysCustomLayoutResetForCpuSource) {
@@ -440,9 +434,7 @@ TEST_P(ClientTest, CopyArraysCustomLayoutResetForCpuSource) {
       client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(1));
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout,
-                          copied_arrays[0].get()->pjrt_layout());
-  EXPECT_EQ(layout, nullptr);
+  EXPECT_EQ(copied_arrays[0].get()->pjrt_layout(), nullptr);
 }
 
 TEST_P(ClientTest, CopyArraysFailsWithNonProxyArray) {
@@ -550,8 +542,8 @@ TEST_P(ClientTest, ReshardArraysSuccess) {
       client_->ReshardArrays(absl::MakeSpan(arrays), absl::MakeSpan(specs),
                              ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(reshared_arrays, SizeIs(1));
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout,
-                          reshared_arrays[0]->pjrt_layout());
+  std::shared_ptr<const xla::PjRtLayout> layout =
+      reshared_arrays[0]->pjrt_layout();
   EXPECT_EQ(layout->ToString(), layout_2_->ToString());
 }
 

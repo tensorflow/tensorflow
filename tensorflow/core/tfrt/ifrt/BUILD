@@ -753,6 +753,7 @@ tf_cc_test(
         "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/ir:hlo",
+        "@xla//xla/pjrt:pjrt_layout",
         "@xla//xla/python/ifrt",
         "@xla//xla/python/ifrt:test_util",
         "@xla//xla/python/pjrt_ifrt:xla_ifrt",
