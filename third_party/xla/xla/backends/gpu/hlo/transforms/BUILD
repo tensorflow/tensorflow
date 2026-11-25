@@ -3293,6 +3293,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/libraries/cub:cub_scratch_size_deviceless_lookup",
+        "//xla/backends/gpu/libraries/cub:cub_sort_types",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:sort_utils",

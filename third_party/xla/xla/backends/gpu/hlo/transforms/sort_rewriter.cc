@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/libraries/cub/cub_scratch_size_deviceless_lookup.h"
+#include "xla/backends/gpu/libraries/cub/cub_sort_types.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -226,40 +227,7 @@ std::optional<SortComputationAnalysis> AnalyzeSortOp(
 // Returns whether the sort operation is supported by CUB.
 bool AreOperandTypesSupportedByCub(
     const SortComputationAnalysis& sort_analysis) {
-  PrimitiveType key_type = sort_analysis.key_type;
-  std::optional<PrimitiveType> value_type = sort_analysis.value_type;
-  if (!value_type.has_value()) {
-    switch (key_type) {
-      case BF16:
-      case F16:
-      case F32:
-      case F64:
-      case S8:
-      case S16:
-      case S32:
-      case S64:
-      case U8:
-      case U16:
-      case U32:
-      case U64:
-        return true;
-      default:
-        return false;
-    }
-  }
-  auto value_bitwidth = primitive_util::BitWidth(*value_type);
-  switch (key_type) {
-    case U8:
-    case U16:
-    case S32:
-    case U32:
-    case U64:
-    case F32:
-      return value_bitwidth == 16 || value_bitwidth == 32 ||
-             value_bitwidth == 64;
-    default:
-      return false;
-  }
+  return IsCubSortSupported(sort_analysis.key_type, sort_analysis.value_type);
 }
 
 // Build the sort result in operand order. The radix sort stores the key first,
