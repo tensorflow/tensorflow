@@ -92,6 +92,97 @@ class SetOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           constant_op.constant([812, 390], dtypes.int64))
       self.evaluate(sets.set_size(sparse_data, validate_indices=False))
 
+  @parameterized.named_parameters(
+      ("NegativeGroupIndex2D", [[-1, 0]], [2, 2]),
+      ("NegativeSetIndex2D", [[0, -1]], [2, 2]),
+      ("NegativeGroupIndex3D", [[1, -1, 0]], [2, 3, 4]),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_set_size_negative_indices(self, indices, shape):
+    for dtype in _DTYPES:
+      sparse_data = sparse_tensor_lib.SparseTensor(
+          constant_op.constant(indices, dtypes.int64),
+          _constant([1], dtype),
+          constant_op.constant(shape, dtypes.int64),
+      )
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError), "and >= 0"
+      ):
+        self.evaluate(sets.set_size(sparse_data, validate_indices=False))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_set_size_rank_1(self):
+    for dtype in _DTYPES:
+      sparse_data = sparse_tensor_lib.SparseTensor(
+          constant_op.constant([[0]], dtypes.int64),
+          _constant([1], dtype),
+          constant_op.constant([2], dtypes.int64),
+      )
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError), "Invalid rank 1"
+      ):
+        self.evaluate(sets.set_size(sparse_data, validate_indices=False))
+
+  @parameterized.named_parameters(
+      ("NegativeGroupIndex", [[-1, 0]], [[1, 0]]),
+      ("Int64MinVsOne", [[-(2**63), 0]], [[1, 0]]),
+      ("OneVsInt64Min", [[1, 0]], [[-(2**63), 0]]),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_set_union_sparse_sparse_invalid_indices(self, a_indices, b_indices):
+    for dtype in _DTYPES:
+      a = sparse_tensor_lib.SparseTensor(
+          constant_op.constant(a_indices, dtypes.int64),
+          _constant([1], dtype),
+          constant_op.constant([2, 2], dtypes.int64),
+      )
+      b = sparse_tensor_lib.SparseTensor(
+          constant_op.constant(b_indices, dtypes.int64),
+          _constant([2], dtype),
+          constant_op.constant([2, 2], dtypes.int64),
+      )
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError), "and >= 0"
+      ):
+        self.evaluate(sets.set_union(a, b, validate_indices=False))
+
+  @parameterized.named_parameters(
+      ("NegativeGroupIndex", [[-1, 0]]),
+      ("OutOfRangeGroupIndex", [[5, 0]]),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_set_union_dense_sparse_invalid_indices(self, sparse_indices):
+    for dtype in _DTYPES:
+      dense = _constant([[1, 2], [3, 4]], dtype)
+      sparse = sparse_tensor_lib.SparseTensor(
+          constant_op.constant(sparse_indices, dtypes.int64),
+          _constant([1], dtype),
+          constant_op.constant([2, 2], dtypes.int64),
+      )
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError), "and >= 0"
+      ):
+        self.evaluate(sets.set_union(dense, sparse, validate_indices=False))
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError), "and >= 0"
+      ):
+        self.evaluate(sets.set_union(sparse, dense, validate_indices=False))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_set_union_dense_sparse_out_of_order_indices(self):
+    for dtype in _DTYPES:
+      dense = _constant([[1, 2], [3, 4]], dtype)
+      sparse = sparse_tensor_lib.SparseTensor(
+          constant_op.constant([[1, 0], [0, 0]], dtypes.int64),
+          _constant([1, 2], dtype),
+          constant_op.constant([2, 2], dtypes.int64),
+      )
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError),
+          "out of order or do not match",
+      ):
+        self.evaluate(sets.set_union(dense, sparse, validate_indices=False))
+
   @test_util.run_deprecated_v1
   def test_set_size_duplicates_2d(self):
     for dtype in _DTYPES:

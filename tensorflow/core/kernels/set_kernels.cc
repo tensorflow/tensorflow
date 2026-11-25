@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -51,11 +52,12 @@ using ShapeArray = sparse::SparseTensor::ShapeArray;
 using VarDimArray = sparse::SparseTensor::VarDimArray;
 
 // Validate rank >= 2.
-void CheckRankAtLeast2(OpKernelContext* ctx, const TensorShape& shape) {
+absl::Status CheckRankAtLeast2(const TensorShape& shape) {
   const auto rank = shape.dims();
-  OP_REQUIRES(
-      ctx, rank >= 2,
-      absl::InvalidArgumentError(absl::StrCat("Invalid rank ", rank, ".")));
+  if (rank < 2) {
+    return absl::InvalidArgumentError(absl::StrCat("Invalid rank ", rank, "."));
+  }
+  return absl::OkStatus();
 }
 
 // Return group shape, which is the 1st n-1 dimensions of shape.
@@ -86,7 +88,7 @@ absl::Status SparseTensorFromContext(OpKernelContext* ctx,
   }
   TF_RETURN_IF_ERROR(
       TensorShape::BuildTensorShape(shape_tensor.vec<int64_t>(), &shape));
-  CheckRankAtLeast2(ctx, shape);
+  TF_RETURN_IF_ERROR(CheckRankAtLeast2(shape));
   std::vector<int64_t> order(shape.dims());
   std::iota(order.begin(), order.end(), 0);
 
@@ -98,8 +100,10 @@ absl::Status SparseTensorFromContext(OpKernelContext* ctx,
   return tensor->IndicesValid();
 }
 
-// TODO(ptucker): CheckGroup is just a redundant check on the result of
-// SparseTensor.group, consider removing.
+// Validates the sign and range of the indices in `group`. When
+// `validate_indices` is false, `SparseTensor::IndicesValid` is skipped, so this
+// is the only check that keeps negative or out-of-range indices from being used
+// to compute output offsets.
 // `sparse_tensor_shape` is the shape of the `SparseTensor` from which group
 // was created, and is used to validate the indices in `group'.
 template <typename T>
@@ -126,16 +130,16 @@ absl::Status CheckGroup(const sparse::Group& group,
   }
   for (int32_t j = 0; j < expected_rank; ++j) {
     const auto dim_size = sparse_tensor_shape[j];
-    if (dim_size <= 0) {
+    if (dim_size < 0) {
       return absl::InternalError(
           absl::StrCat("Invalid dim_size[", j, "] = ", dim_size, "."));
     }
     for (int64_t i = 0; i < num_values; ++i) {
       const auto index = indices(i, j);
-      if (dim_size <= index) {
-        return absl::InternalError(absl::StrCat("indices[", i, ", ", j,
-                                                "] expected < ", dim_size,
-                                                ", got ", index, "."));
+      if (index < 0 || dim_size <= index) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("indices[", i, ", ", j, "] expected < ", dim_size,
+                         " and >= 0, got ", index, "."));
       }
     }
   }
@@ -229,15 +233,15 @@ bool ValidateIndicesFromContext(OpKernelConstruction* ctx) {
 // multiple times, and is used to calculate the flat index into `input_tensor`
 // values.
 template <typename T>
-void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
-                            const VarDimArray& input_strides,
-                            const std::vector<int64_t>& group_indices,
-                            absl::flat_hash_set<T>* result) {
-  OP_REQUIRES(
-      ctx, group_indices.size() == input_strides.size() - 1,
-      absl::InternalError(absl::StrCat(
-          "group_indices.size ", group_indices.size(),
-          ", !=  input_strides.size-1 ", input_strides.size() - 1, ".")));
+absl::Status PopulateFromDenseGroup(const Tensor& input_tensor,
+                                    const VarDimArray& input_strides,
+                                    const std::vector<int64_t>& group_indices,
+                                    absl::flat_hash_set<T>* result) {
+  if (group_indices.size() != input_strides.size() - 1) {
+    return absl::InternalError(absl::StrCat(
+        "group_indices.size ", group_indices.size(),
+        ", !=  input_strides.size-1 ", input_strides.size() - 1, "."));
+  }
   result->clear();
   auto input_flat = input_tensor.flat<T>();
   const auto start = std::inner_product(
@@ -247,6 +251,7 @@ void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
   for (int64_t i = start; i < end; ++i) {
     result->insert(input_flat(i));
   }
+  return absl::OkStatus();
 }
 
 // Populate `result` set from `group`. `sparse_tensor_shape` is the shape of the
@@ -514,10 +519,12 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
   for (int64_t flat_group_index = 0; flat_group_index < num_elements;
        ++flat_group_index) {
     PopulateGroupIndices(flat_group_index, group_shape, &group_indices);
-    PopulateFromDenseGroup<T>(ctx, set1_t, set1_strides, group_indices,
-                              &set1_group_set);
-    PopulateFromDenseGroup<T>(ctx, set2_t, set2_strides, group_indices,
-                              &set2_group_set);
+    OP_REQUIRES_OK(
+        ctx, PopulateFromDenseGroup<T>(set1_t, set1_strides, group_indices,
+                                       &set1_group_set));
+    OP_REQUIRES_OK(
+        ctx, PopulateFromDenseGroup<T>(set2_t, set2_strides, group_indices,
+                                       &set2_group_set));
 
     absl::btree_set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
@@ -574,8 +581,9 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
     PopulateGroupIndices(flat_group_index, group_shape, &group_indices);
 
     // Get values from set1.
-    PopulateFromDenseGroup<T>(ctx, set1_t, set1_strides, group_indices,
-                              &set1_group_set);
+    OP_REQUIRES_OK(
+        ctx, PopulateFromDenseGroup<T>(set1_t, set1_strides, group_indices,
+                                       &set1_group_set));
 
     // Get values from set2, if applicable.
     set2_group_set.clear();
@@ -612,6 +620,17 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
     }
   }
 
+  // Any set2 group left unconsumed has negative, out-of-range, or out-of-order
+  // group indices, since it never matched a dense group.
+  if (set2_group_it != set2_grouper.end()) {
+    OP_REQUIRES_OK(ctx, CheckGroup<T>(*set2_group_it, set2_st.shape()));
+  }
+  OP_REQUIRES(ctx, set2_group_it == set2_grouper.end(),
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Sparse group indices [",
+                  absl::StrJoin((*set2_group_it).group(), ","),
+                  "] are out of order or do not match any dense group.")));
+
   TensorShape output_shape;
   OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
   OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(max_set_size));
@@ -625,28 +644,36 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 // Return 0 if both groups are empty, or both non-empty with the same values.
 // Return <0 if set1 <= set2, or set2 is empty.
 // Return >0 if set2 <= set1, or set1 is empty.
-void CompareGroups(OpKernelContext* ctx,
-                   const std::vector<int64_t>& set1_group_indices,
-                   const std::vector<int64_t>& set2_group_indices,
-                   int64_t* result) {
+absl::Status CompareGroups(const std::vector<int64_t>& set1_group_indices,
+                           const std::vector<int64_t>& set2_group_indices,
+                           int64_t* result) {
   if (set1_group_indices.empty()) {
     *result = set2_group_indices.empty() ? 0 : 1;
-    return;
+    return absl::OkStatus();
   }
   if (set2_group_indices.empty()) {
     *result = set1_group_indices.empty() ? 0 : -1;
-    return;
+    return absl::OkStatus();
   }
-  OP_REQUIRES(ctx, set1_group_indices.size() == set2_group_indices.size(),
-              absl::InvalidArgumentError(absl::StrCat(
-                  "Mismatched group dims ", set1_group_indices.size(), " vs ",
-                  set2_group_indices.size(), ".")));
+  if (set1_group_indices.size() != set2_group_indices.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Mismatched group dims ", set1_group_indices.size(),
+                     " vs ", set2_group_indices.size(), "."));
+  }
+  // Compare with `<` and `>` rather than subtracting, since unvalidated indices
+  // (e.g. INT64_MIN) could overflow.
+  *result = 0;
   for (int32_t i = 0; i < set1_group_indices.size(); ++i) {
-    *result = set1_group_indices[i] - set2_group_indices[i];
-    if (*result != 0) {
-      return;
+    if (set1_group_indices[i] < set2_group_indices[i]) {
+      *result = -1;
+      return absl::OkStatus();
+    }
+    if (set1_group_indices[i] > set2_group_indices[i]) {
+      *result = 1;
+      return absl::OkStatus();
     }
   }
+  return absl::OkStatus();
 }
 
 // `ctx` contains set1 and set2 sparse tensors.
@@ -697,7 +724,8 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
                                               : (*set2_group_it).group();
 
     int64_t compare_groups;
-    CompareGroups(ctx, set1_group_indices, set2_group_indices, &compare_groups);
+    OP_REQUIRES_OK(ctx, CompareGroups(set1_group_indices, set2_group_indices,
+                                      &compare_groups));
     const std::vector<int64_t>* group_indices = nullptr;
 
     // Get values from set1, if applicable.
