@@ -113,7 +113,8 @@ def rocm_lib_import(name, interface_library, data, deps):
     ]
     cc_import(
         name = name + "_interface",
-        shared_library = interface_library,
+        interface_library = interface_library,
+        system_provided = True,
         tags = tags,
         visibility = ["//visibility:private"],
     )
