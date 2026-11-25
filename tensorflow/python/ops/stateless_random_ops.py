@@ -436,7 +436,9 @@ def stateless_random_binomial(
   """Outputs deterministic pseudorandom values from a binomial distribution.
 
   The generated values follow a binomial distribution with specified count and
-  probability of success parameters.
+  probability of success parameters. A successful call does not guarantee
+  that these parameters are valid: values outside their documented domains
+  are not necessarily rejected.
 
   This is a stateless version of `tf.random.Generator.binomial`: if run twice
   with the same seeds and shapes, it will produce the same pseudorandom numbers.
@@ -470,16 +472,24 @@ def stateless_random_binomial(
       shape=shape, seed=[123, 456], counts=counts, probs=probs)
   ```
 
+  In this example, zero trials give zero successes. With five trials,
+  probabilities of zero and one give zero and five successes, respectively.
+
+  >>> tf.random.stateless_binomial(
+  ...     shape=[3], seed=[123, 456], counts=[0., 5., 5.],
+  ...     probs=[0.5, 0., 1.]).numpy()
+  array([0, 0, 5], dtype=int32)
+
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
       dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
-    counts: Tensor. The counts of the binomial distribution. Must be
-      broadcastable with `probs`, and broadcastable with the rightmost
-      dimensions of `shape`.
-    probs: Tensor. The probability of success for the binomial distribution.
-      Must be broadcastable with `counts` and broadcastable with the rightmost
-      dimensions of `shape`.
+    counts: A floating-point tensor of nonnegative, integer-valued trial
+      counts. Must have the same dtype as `probs` and be broadcastable with
+      `probs` and the rightmost dimensions of `shape`.
+    probs: A floating-point tensor of success probabilities in `[0, 1]`.
+      Must be broadcastable with `counts` and the rightmost dimensions of
+      `shape`.
     output_dtype: The type of the output. Default: tf.int32
     name: A name for the operation (optional).
 

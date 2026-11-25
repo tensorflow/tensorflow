@@ -16,15 +16,15 @@ END
   in_arg {
     name: "counts"
     description: <<END
-The counts of the binomial distribution. Must be broadcastable with `probs`,
-and broadcastable with the rightmost dimensions of `shape`.
+Nonnegative, integer-valued trial counts. Must be broadcastable with `probs`
+and the rightmost dimensions of `shape`.
 END
   }
   in_arg {
     name: "probs"
     description: <<END
-The probability of success for the binomial distribution. Must be broadcastable
-with `counts` and broadcastable with the rightmost dimensions of `shape`.
+Success probabilities in `[0, 1]`. Must be broadcastable with `counts` and the
+rightmost dimensions of `shape`.
 END
   }
   out_arg {
@@ -44,5 +44,8 @@ END
 Outputs random values from a binomial distribution.
 
 The outputs are a deterministic function of `shape`, `seed`, `counts`, and `probs`.
+
+Values outside the stated domains for `counts` and `probs` are not
+necessarily rejected.
 END
 }
