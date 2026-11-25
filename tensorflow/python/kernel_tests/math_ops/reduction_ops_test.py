@@ -278,8 +278,7 @@ class SumReductionTest(BaseReductionTest):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float16)
       self._compareAllAxes(np_arr)
 
-    # test that mean doesn't overflow
-    # only on GPU, since it has the more accurate implementation
+    # Test the separate GPU implementation of float16 mean accumulation.
     if not test.is_gpu_available():
       return
 
@@ -291,6 +290,13 @@ class SumReductionTest(BaseReductionTest):
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
       tf_out_mean = self.evaluate(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)
+
+  @test_util.run_deprecated_v1
+  def testFloat16Accumulation(self):
+    with self.session(use_gpu=False):
+      x = constant_op.constant(10000.0, dtype=dtypes.float16, shape=[3, 2])
+      # The true sum is representable, but rounding partial sums loses bits.
+      self.assertAllClose(self.evaluate(math_ops.reduce_sum(x)), 60000.0)
 
   @test_util.run_deprecated_v1
   def testBfloat16(self):
@@ -588,6 +594,15 @@ class MeanReductionTest(BaseReductionTest):
       self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1
+  def testFloat16Accumulation(self):
+    with self.session(use_gpu=False):
+      # The mean fits in float16 even when the intermediate sum does not.
+      for size in (6, 10):
+        with self.subTest(size=size):
+          x = constant_op.constant(10000.0, dtype=dtypes.float16, shape=[size])
+          self.assertAllClose(self.evaluate(math_ops.reduce_mean(x)), 10000.0)
+
+  @test_util.run_deprecated_v1
   def testBFloat16(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16)
@@ -674,6 +689,15 @@ class EuclideanNormReductionTest(BaseReductionTest, parameterized.TestCase):
     for dtype in [np.float32, np.float64]:
       np_arr = np.array([-1.]).astype(dtype)
       self._compareAll(np_arr, None)
+
+  @test_util.run_deprecated_v1
+  def testFloat16Accumulation(self):
+    with self.session(use_gpu=False):
+      x = constant_op.constant(200.0, dtype=dtypes.float16, shape=[4])
+      # The norm is representable even though the sum of squares overflows.
+      self.assertAllClose(
+          self.evaluate(math_ops.reduce_euclidean_norm(x)), 400.0
+      )
 
   @parameterized.parameters(
       dtypes.bfloat16,
