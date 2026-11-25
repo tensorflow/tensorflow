@@ -1907,7 +1907,9 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
           with ops.control_dependencies(rank_assertions):
             actual_size = sizes.actual_sizes[tensor_dim]
           if _has_known_value(actual_size) and _has_known_value(specified_size):
-            if int(actual_size) != int(specified_size):
+            actual_size = int(actual_size)
+            specified_size = int(specified_size)
+            if actual_size != specified_size:
               if not has_explicit_size:
                 raise ValueError(
                     '%s%s. Received sizes %d and %d.' %
