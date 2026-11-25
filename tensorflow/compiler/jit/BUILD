@@ -364,6 +364,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@xla//xla:executable_run_options",
+        "@xla//xla/backends/gpu/runtime:gpu_executable_run_options",
         "@xla//xla/client:client_library",
         "@xla//xla/client:local_client",
         "@xla//xla/hlo/ir:hlo",
@@ -372,7 +373,6 @@ cc_library(
         "@xla//xla/service:compiler",
         "@xla//xla/service:executable",
         "@xla//xla/service:stream_pool",
-        "@xla//xla/service/gpu:gpu_executable_run_options",
         "@xla//xla/stream_executor:platform_manager",
         "@xla//xla/stream_executor:stream",
         "@xla//xla/stream_executor/host:host_platform_id",
@@ -385,7 +385,7 @@ cc_library(
 check_deps(
     name = "xla_device_check_deps",
     disallowed_deps = [
-        "@xla//xla/service/gpu:gpu_compiler",
+        "@xla//xla/backends/gpu:gpu_compiler",
         "@xla//xla/service/cpu:cpu_compiler",
     ],
     deps = [":xla_device"],

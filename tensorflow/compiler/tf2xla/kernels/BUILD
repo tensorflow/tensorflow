@@ -45,7 +45,7 @@ check_deps(
     name = "xla_ops_check_deps",
     disallowed_deps = [
         "@xla//xla/service/cpu:cpu_compiler",
-        "@xla//xla/service/gpu:gpu_compiler",
+        "@xla//xla/backends/gpu:gpu_compiler",
     ],
     deps = [":xla_ops"],
 )
