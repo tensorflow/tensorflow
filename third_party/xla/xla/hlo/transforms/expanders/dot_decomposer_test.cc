@@ -253,6 +253,68 @@ TEST_F(DotDecomposerTest, CanonicalizeBatchDims) {
                                 op::Shape("f32[32,8,64,128]"))));
 }
 
+// The lhs batch dimension is dynamic and the rhs one is static. The canonical
+// rhs must stay static (https://github.com/openxla/xla/issues/49340).
+TEST_F(DotDecomposerTest, CanonicalizeKeepsBatchDimDynamismOfEachOperand) {
+  absl::string_view module_string = R"(
+  ENTRY main {
+    p0 = f32[<=16,<=16,8] parameter(0)
+    p1 = f32[4,16,8,1] parameter(1)
+    ROOT dot = f32[<=16,<=16,4,1] dot(p0, p1), lhs_batch_dims={0},
+                                               lhs_contracting_dims={2},
+                                               rhs_batch_dims={1},
+                                               rhs_contracting_dims={2}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::Reshape(AllOf(
+                  op::Dot(AllOf(op::Reshape(), op::Shape("f32[<=16,<=16,8]")),
+                          AllOf(op::Reshape(), op::Shape("f32[16,8,4]")),
+                          /*lhs_contracting_dim=*/2,
+                          /*rhs_contracting_dim=*/1),
+                  op::Shape("f32[<=16,<=16,4]"))));
+  // op::Shape ignores dynamism, so check it explicitly.
+  const HloInstruction* dot = root->operand(0);
+  EXPECT_TRUE(dot->operand(0)->shape().is_dynamic_dimension(0));
+  EXPECT_TRUE(dot->operand(1)->shape().is_static());
+  EXPECT_TRUE(dot->shape().is_dynamic_dimension(0));
+}
+
+TEST_F(DotDecomposerTest, CanonicalizeKeepsOrderOfDynamicBatchDims) {
+  absl::string_view module_string = R"(
+  ENTRY main {
+    p0 = f32[<=2,3,5,7] parameter(0)
+    p1 = f32[3,<=2,7,11] parameter(1)
+    ROOT dot = f32[3,<=2,5,11] dot(p0, p1), lhs_batch_dims={1,0},
+                                            lhs_contracting_dims={3},
+                                            rhs_batch_dims={0,1},
+                                            rhs_contracting_dims={2}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+                                              /*lhs_contracting_dim=*/3,
+                                              /*rhs_contracting_dim=*/2),
+                                      op::Shape("f32[3,<=2,5,11]"))));
+  // The batch dimensions are not reshaped, so the dynamic one stays in place.
+  const HloInstruction* dot = root->operand(0);
+  for (const HloInstruction* instr : {dot, dot->operand(0), dot->operand(1)}) {
+    EXPECT_FALSE(instr->shape().is_dynamic_dimension(0)) << instr->ToString();
+    EXPECT_TRUE(instr->shape().is_dynamic_dimension(1)) << instr->ToString();
+  }
+}
+
 TEST_F(DotDecomposerTest, RunOnComputation) {
   absl::string_view module_string = R"(
   HloModule module
