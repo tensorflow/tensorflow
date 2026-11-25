@@ -9,8 +9,7 @@ END
   out_arg {
     name: "output"
     description: <<END
-Contains the same data as `input`, but has one or more dimensions of
-size 1 removed.
+Contains the same data as `input` after removing the selected dimensions.
 END
   }
   attr {
@@ -28,6 +27,9 @@ Given a tensor `input`, this operation returns a tensor of the same type with
 all dimensions of size 1 removed. If you don't want to remove all size 1
 dimensions, you can remove specific size 1 dimensions by specifying
 `squeeze_dims`.
+
+With XLA compilation and no explicit axes, dimensions whose sizes are still
+dynamic at compile time are kept, even if their size is 1 at runtime.
 
 For example:
 

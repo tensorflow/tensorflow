@@ -4407,6 +4407,24 @@ def squeeze_v2(input, axis=None, name=None):
   # shape of tf.squeeze(x): <unknown>
   ```
 
+  With `tf.function(jit_compile=True)`, XLA determines the output rank at
+  compile time. If `axis` is omitted, dimensions whose sizes are still dynamic
+  at compile time are kept, even if their size is 1 at runtime.
+
+  For example, `tf.where(mask)` on a vector returns a tensor of shape
+  `[num_matches, 1]`. Use `axis=1` to remove the coordinate dimension and
+  keep the result a vector in both compiled and uncompiled code, even when
+  there is only one match:
+
+  ```python
+  @tf.function(jit_compile=True)
+  def matching_indices(mask):
+    return tf.squeeze(tf.where(mask), axis=1)
+
+  matching_indices(tf.constant([False, True, False])).numpy().tolist()  # [1]
+  matching_indices(tf.constant([True, False, True])).numpy().tolist()   # [0, 2]
+  ```
+
   Args:
     input: A `Tensor`. The `input` to squeeze.
     axis: An optional list of `ints`. Defaults to `[]`. If specified, only
@@ -4418,8 +4436,7 @@ def squeeze_v2(input, axis=None, name=None):
 
   Returns:
     A `Tensor`. Has the same type as `input`.
-    Contains the same data as `input`, but has one or more dimensions of
-    size 1 removed.
+    Contains the same data as `input` after removing the selected dimensions.
 
   Raises:
     ValueError: The input cannot be converted to a tensor, or the specified
