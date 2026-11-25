@@ -62,7 +62,7 @@ class GpuTargetConfigWrapper {
   int64_t core_count() const { return config_.device_description.core_count(); }
 
   int64_t smem_capacity_bytes() const {
-    return config_.device_description.shared_memory_per_core();
+    return config_.device_description.shared_memory_per_block_optin();
   }
 
  private:
