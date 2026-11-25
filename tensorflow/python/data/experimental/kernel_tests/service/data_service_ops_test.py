@@ -1306,6 +1306,26 @@ class DataServiceOpsGrpcDataTransferTest(
     )
     self.assertDatasetProduces(ds, list(range(num_elements)))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testDistributeIncompleteConsumerConfig(self):
+    cluster = self.make_test_cluster(num_workers=1)
+    with self.assertRaisesRegex(
+        ValueError,
+        "Must either set both `consumer_index` and `num_consumers`, or"
+        " neither.",
+    ):
+      self.make_distributed_range_dataset(
+          10, cluster, job_name="job", consumer_index=0, num_consumers=None
+      )
+    with self.assertRaisesRegex(
+        ValueError,
+        "Must either set both `consumer_index` and `num_consumers`, or"
+        " neither.",
+    ):
+      self.make_distributed_range_dataset(
+          10, cluster, job_name="job", consumer_index=None, num_consumers=2
+      )
+
 
 if __name__ == "__main__":
   test.main()

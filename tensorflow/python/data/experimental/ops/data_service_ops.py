@@ -334,7 +334,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         service worker. Consumers of a shared job must use the same
         `target_workers`. Defaults to `"AUTO"`.
     """
-    if consumer_index is None != num_consumers is None:
+    if (consumer_index is None) != (num_consumers is None):
       raise ValueError(
           "Must either set both `consumer_index` and `num_consumers`, "
           "or neither. ",
