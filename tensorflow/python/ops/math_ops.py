@@ -6073,10 +6073,19 @@ def rsqrt(x, name=None):
 
   For example:
 
-  >>> x = tf.constant([2., 0., -2.])
-  >>> tf.math.rsqrt(x)
-  <tf.Tensor: shape=(3,), dtype=float32,
-  numpy=array([0.707, inf, nan], dtype=float32)>
+  >>> x = tf.constant([4., 0., -4.])
+  >>> tf.math.rsqrt(x).numpy()
+  array([0.5, inf, nan], dtype=float32)
+
+  On backends that treat subnormal inputs as zero, positive `float32` values
+  below the smallest positive normal `float32` may return `inf` or `NaN`
+  instead of a finite result. To preserve such values, create or compute the
+  input in `float64` from the start. Casting an existing `float32` input to
+  `float64` may itself flush the value to zero.
+
+  >>> x = tf.constant([1e-40], dtype=tf.float64)
+  >>> tf.math.rsqrt(x).numpy()
+  array([1.e+20])
 
   Args:
     x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`,
