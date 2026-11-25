@@ -56,8 +56,6 @@ class GpuExecutor : public StreamExecutorCommon {
         "CreateMulticastMemory is not implemented.");
   };
 
-  virtual bool is_multicast_supported() const { return false; }
-
   // Returns whether this device supports exporting device memory as a Linux
   // dma-buf file descriptor.
   virtual bool is_dma_buf_supported() const { return false; }

@@ -104,7 +104,8 @@ class FfiKernelRegistryTest : public ::testing::Test {
     KernelRegistrationExtension extension(registry_.get(), executor_,
                                           /*pdl_enabled=*/true);
     return ffi::InitializeKernelRegistry(/*api=*/nullptr, &extension.raw())
-        .Register(name, data, size, format, uses_pdl);
+        .Register(name, data, size, format, uses_pdl,
+                  ffi::RequiredFeatures::None());
   }
 
   absl::StatusOr<ffi::RegisterResult> RegisterFatbinKernel(
@@ -304,9 +305,29 @@ TEST_F(FfiKernelRegistryTest, UsesPdlIsFixedAtRegistration) {
       ffi::InitializeKernelRegistry(/*api=*/nullptr, &pdl_disabled_ext.raw())
           .Register("AddI32", fatbin_.data(), fatbin_.size(),
                     ffi::SourceFormat::kCubin, /*uses_pdl=*/true,
-                    pdl_res.kernel));
+                    ffi::RequiredFeatures::None(), pdl_res.kernel));
   EXPECT_EQ(gated_res.kernel, no_pdl_res.kernel);
   EXPECT_TRUE(gated_res.already_cached);
+}
+
+TEST_F(FfiKernelRegistryTest, RequiredFeaturesMultimemMatchesDeviceSupport) {
+  KernelRegistrationExtension ext(registry_.get(), executor_,
+                                  /*pdl_enabled=*/true);
+  auto reg = [&](const XLA_FFI_Kernel* cached) {
+    return ffi::InitializeKernelRegistry(/*api=*/nullptr, &ext.raw())
+        .Register("AddI32", fatbin_.data(), fatbin_.size(),
+                  ffi::SourceFormat::kCubin, /*uses_pdl=*/false,
+                  ffi::RequiredFeatures::Multimem(), cached);
+  };
+  if (executor_->is_multicast_supported()) {
+    ASSERT_OK_AND_ASSIGN(ffi::RegisterResult first, reg(nullptr));
+    EXPECT_FALSE(first.already_cached);
+    ASSERT_OK_AND_ASSIGN(ffi::RegisterResult second, reg(first.kernel));
+    EXPECT_EQ(second.kernel, first.kernel);
+    EXPECT_TRUE(second.already_cached);
+  } else {
+    EXPECT_THAT(reg(nullptr), StatusIs(absl::StatusCode::kFailedPrecondition));
+  }
 }
 
 class FakeKernel : public stream_executor::Kernel {
@@ -348,7 +369,7 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
                 const XLA_FFI_Kernel* cached) {
     return ffi::InitializeKernelRegistry(/*api=*/nullptr, &ext.raw())
         .Register(name, bytes, sizeof(kBytesA), ffi::SourceFormat::kCubin,
-                  uses_pdl, cached);
+                  uses_pdl, ffi::RequiredFeatures::None(), cached);
   };
   ASSERT_OK_AND_ASSIGN(ffi::RegisterResult res_a,
                        reg(ext0, "k", kBytesA, /*uses_pdl=*/true, nullptr));
@@ -453,6 +474,78 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
       });
     }
   }
+}
+
+TEST(FfiKernelRegistryCachedTest, RequiredFeaturesValidationRunsBeforeCache) {
+  using ::testing::Return;
+  FfiKernelRegistry registry(/*num_devices=*/2);
+  stream_executor::MockStreamExecutor e0, e1;
+  ON_CALL(e0, device_ordinal).WillByDefault(Return(0));
+  ON_CALL(e0, is_multicast_supported).WillByDefault(Return(false));
+  EXPECT_CALL(e0, LoadKernel).Times(1).WillOnce([] {
+    return std::make_unique<FakeKernel>();
+  });
+  ON_CALL(e1, device_ordinal).WillByDefault(Return(1));
+  ON_CALL(e1, is_multicast_supported).WillByDefault(Return(true));
+  EXPECT_CALL(e1, LoadKernel).Times(1).WillOnce([] {
+    return std::make_unique<FakeKernel>();
+  });
+
+  constexpr char kBytes[] = "cubin_bytes";
+  KernelRegistrationExtension ext0(&registry, &e0, /*pdl_enabled=*/true);
+  KernelRegistrationExtension ext1(&registry, &e1, /*pdl_enabled=*/true);
+  auto reg = [&](const KernelRegistrationExtension& ext,
+                 const XLA_FFI_Kernel* cached, ffi::RequiredFeatures features) {
+    return ffi::InitializeKernelRegistry(/*api=*/nullptr, &ext.raw())
+        .Register("k", kBytes, sizeof(kBytes), ffi::SourceFormat::kCubin,
+                  /*uses_pdl=*/false, features, cached);
+  };
+
+  constexpr ffi::RequiredFeatures kUnknown{uint32_t{1} << 31};
+  // Cold-path feature failures do not load the kernel.
+  EXPECT_THAT(reg(ext0, nullptr, ffi::RequiredFeatures::Multimem()),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(registry.Register(&e0, "k", kBytes, sizeof(kBytes),
+                                XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false,
+                                XLA_FFI_KERNEL_FEATURE_MULTIMEM),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(reg(ext0, nullptr, ffi::RequiredFeatures::Multimem() | kUnknown),
+              StatusIs(absl::StatusCode::kUnimplemented));
+  // Malformed specs fail with INVALID_ARGUMENT even on unsupported devices.
+  EXPECT_THAT(registry.Register(&e0, "", kBytes, sizeof(kBytes),
+                                XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false,
+                                XLA_FFI_KERNEL_FEATURE_MULTIMEM),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Registering without required features loads the kernel once on e0.
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult loaded,
+                       reg(ext0, nullptr, ffi::RequiredFeatures::None()));
+  EXPECT_FALSE(loaded.already_cached);
+
+  // Fast-path calls with cached_kernel still validate required features.
+  EXPECT_THAT(reg(ext0, loaded.kernel, ffi::RequiredFeatures::Multimem()),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(reg(ext0, loaded.kernel, kUnknown),
+              StatusIs(absl::StatusCode::kUnimplemented));
+
+  // Supported device (e1) succeeds on cold, fast, and direct paths.
+  ASSERT_OK_AND_ASSIGN(
+      ffi::RegisterResult e1_loaded,
+      reg(ext1, loaded.kernel, ffi::RequiredFeatures::Multimem()));
+  EXPECT_EQ(e1_loaded.kernel, loaded.kernel);
+  EXPECT_FALSE(e1_loaded.already_cached);
+  ASSERT_OK_AND_ASSIGN(
+      ffi::RegisterResult e1_fast,
+      reg(ext1, loaded.kernel, ffi::RequiredFeatures::Multimem()));
+  EXPECT_EQ(e1_fast.kernel, loaded.kernel);
+  EXPECT_TRUE(e1_fast.already_cached);
+  ASSERT_OK_AND_ASSIGN(
+      FfiKernelRegistry::RegisterResult e1_direct,
+      registry.Register(&e1, "k", kBytes, sizeof(kBytes),
+                        XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false,
+                        XLA_FFI_KERNEL_FEATURE_MULTIMEM));
+  EXPECT_EQ(e1_direct.kernel, loaded.kernel);
+  EXPECT_TRUE(e1_direct.already_cached);
 }
 
 }  // namespace

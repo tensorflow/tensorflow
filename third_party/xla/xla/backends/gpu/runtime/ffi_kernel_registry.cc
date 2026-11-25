@@ -127,6 +127,30 @@ absl::Status CheckStruct(const T* absl_nullable value, size_t min_size,
   return absl::OkStatus();
 }
 
+constexpr XLA_FFI_KernelFeatures kKnownKernelFeatures =
+    XLA_FFI_KERNEL_FEATURE_MULTIMEM;
+
+absl::Status ValidateRequiredFeatures(
+    const stream_executor::StreamExecutor* absl_nonnull executor,
+    XLA_FFI_KernelFeatures required_features) {
+  if (required_features == 0) {
+    return absl::OkStatus();
+  }
+  if (const XLA_FFI_KernelFeatures unknown =
+          required_features & ~kKnownKernelFeatures;
+      unknown != 0) {
+    return absl::UnimplementedError(absl::StrFormat(
+        "Unsupported required kernel feature bits: 0x%x", unknown));
+  }
+  if ((required_features & XLA_FFI_KERNEL_FEATURE_MULTIMEM) != 0 &&
+      !executor->is_multicast_supported()) {
+    return absl::FailedPreconditionError(
+        "System does not support multicast memory; multimem instructions "
+        "cannot be used.");
+  }
+  return absl::OkStatus();
+}
+
 stream_executor::Kernel* absl_nullable LookupPublishedKernel(
     const XLA_FFI_Kernel& kernel, int device_ordinal) {
   const XLA_FFI_Kernel::DeviceKernel* slot =
@@ -266,7 +290,8 @@ bool FfiKernelRegistry::Contains(
 absl::StatusOr<FfiKernelRegistry::RegisterResult> FfiKernelRegistry::Register(
     stream_executor::StreamExecutor* absl_nullable executor,
     absl::string_view name, const void* absl_nullable data, size_t size,
-    XLA_FFI_SourceFormat format, bool use_pdl) {
+    XLA_FFI_SourceFormat format, bool use_pdl,
+    XLA_FFI_KernelFeatures required_features) {
   if (executor == nullptr) {
     return absl::InvalidArgumentError("StreamExecutor cannot be null");
   }
@@ -282,6 +307,7 @@ absl::StatusOr<FfiKernelRegistry::RegisterResult> FfiKernelRegistry::Register(
         "FfiKernelRegistry only supports PTX and CUBIN kernels, got format %d",
         format));
   }
+  ABSL_RETURN_IF_ERROR(ValidateRequiredFeatures(executor, required_features));
   const absl::string_view binary(static_cast<const char*>(data), size);
   const size_t binary_hash = absl::HashOf(binary);
   const Impl::KernelKey lookup_key{name, binary, binary_hash, format, use_pdl};
@@ -367,14 +393,16 @@ absl::Status KernelRegistrationExtension::RegisterImpl(
       state->registry->Contains(state->executor->device_ordinal(), cached) &&
       cached->name == name && cached->binary.size() == spec->size &&
       cached->format == spec->format && cached->use_pdl == use_pdl) {
+    ABSL_RETURN_IF_ERROR(
+        ValidateRequiredFeatures(state->executor, args->required_features));
     args->result->kernel = cached;
     args->result->already_cached = 1;
     return absl::OkStatus();
   }
-  ABSL_ASSIGN_OR_RETURN(
-      FfiKernelRegistry::RegisterResult result,
-      state->registry->Register(state->executor, name, spec->data, spec->size,
-                                spec->format, use_pdl));
+  ABSL_ASSIGN_OR_RETURN(FfiKernelRegistry::RegisterResult result,
+                   state->registry->Register(state->executor, name, spec->data,
+                                             spec->size, spec->format, use_pdl,
+                                             args->required_features));
   args->result->kernel = result.kernel;
   args->result->already_cached = static_cast<int32_t>(result.already_cached);
   return absl::OkStatus();

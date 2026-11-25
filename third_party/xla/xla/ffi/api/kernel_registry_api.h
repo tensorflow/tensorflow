@@ -32,6 +32,26 @@ limitations under the License.
 // C++ wrapper for the XLA FFI Kernel Registry API.
 namespace xla::ffi {
 
+// Bitmask of hardware or runtime features required by a registered kernel.
+// Registration fails if the target device does not support a requested feature.
+struct RequiredFeatures {
+  XLA_FFI_KernelFeatures bits = 0;
+
+  static constexpr RequiredFeatures None() { return {0}; }
+  static constexpr RequiredFeatures Multimem() {
+    return {XLA_FFI_KERNEL_FEATURE_MULTIMEM};
+  }
+
+  constexpr RequiredFeatures operator|(RequiredFeatures other) const {
+    return {bits | other.bits};
+  }
+  constexpr RequiredFeatures& operator|=(RequiredFeatures other) {
+    bits |= other.bits;
+    return *this;
+  }
+  constexpr bool Empty() const { return bits == 0; }
+};
+
 // Result of registering a device kernel with `KernelRegistry::Register`.
 struct RegisterResult {
   const XLA_FFI_Kernel* kernel = nullptr;
@@ -71,8 +91,9 @@ class KernelRegistryBase {
                              s == ExecutionStage::kInitialize>* = nullptr>
   StatusOr<RegisterResult> Register(std::string_view name, const void* data,
                                     size_t size, SourceFormat format,
-                                    bool uses_pdl) {
-    return Register(name, data, size, format, uses_pdl,
+                                    bool uses_pdl,
+                                    RequiredFeatures required_features) {
+    return Register(name, data, size, format, uses_pdl, required_features,
                     /*cached_kernel=*/nullptr);
   }
 
@@ -82,6 +103,7 @@ class KernelRegistryBase {
   StatusOr<RegisterResult> Register(std::string_view name, const void* data,
                                     size_t size, SourceFormat format,
                                     bool uses_pdl,
+                                    RequiredFeatures required_features,
                                     const XLA_FFI_Kernel* cached_kernel) {
     if (data == nullptr) {
       return ErrorPolicy::FromErrorCode(
@@ -113,6 +135,7 @@ class KernelRegistryBase {
     args.uses_pdl = static_cast<int32_t>(uses_pdl);
     args.cached_kernel = cached_kernel;
     args.result = &result;
+    args.required_features = required_features.bits;
 
     if (XLA_FFI_Error* err = extension_->api->register_kernel(&args)) {
       return ErrorPolicy::TakeError(api_, err);

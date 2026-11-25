@@ -111,6 +111,7 @@ class MockStreamExecutor : public StreamExecutor {
               (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<MemoryAllocator>>,
               CreateMemoryAllocator, (MemorySpace memory_space), (override));
+  MOCK_METHOD(bool, is_multicast_supported, (), (const, override));
 };
 
 }  // namespace stream_executor

@@ -79,11 +79,12 @@ class FfiKernelRegistry {
 
   // Registers (or reuses) a kernel handle and loads it on `executor`'s device.
   // `data` is copied when needed; matching (name, binary, format, `use_pdl`)
-  // share one handle.
+  // share one handle. Fails if `executor` does not support `required_features`.
   absl::StatusOr<RegisterResult> Register(
       stream_executor::StreamExecutor* absl_nullable executor,
       absl::string_view name, const void* absl_nullable data, size_t size,
-      XLA_FFI_SourceFormat format, bool use_pdl);
+      XLA_FFI_SourceFormat format, bool use_pdl,
+      XLA_FFI_KernelFeatures required_features);
 
   // Returns true if `kernel` has been registered on `device_ordinal` in this
   // registry. Lock-free and thread-safe.

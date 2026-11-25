@@ -249,6 +249,9 @@ class StreamExecutor {
     return absl::UnimplementedError("Not implemented for this executor.");
   }
 
+  // Returns whether this device supports hardware multicast memory.
+  virtual bool is_multicast_supported() const { return false; }
+
   virtual bool HostMemoryUnregister(void* location) { return false; };
   virtual bool HostMemoryRegister(void* location, uint64_t size) {
     return false;

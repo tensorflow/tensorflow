@@ -43,7 +43,7 @@ extern "C" {
 //==============================================================================
 #define XLA_FFI_Extension_KernelRegistry 130
 #define XLA_FFI_Extension_KernelRegistry_MajorVersion 0
-#define XLA_FFI_Extension_KernelRegistry_MinorVersion 2
+#define XLA_FFI_Extension_KernelRegistry_MinorVersion 3
 
 //===----------------------------------------------------------------------===//
 // Kernel Registry Extension API
@@ -53,6 +53,15 @@ extern "C" {
 // Used to maintain per-invocation registration and execution context between
 // XLA and the client.
 typedef struct XLA_FFI_KernelRegistryState XLA_FFI_KernelRegistryState;
+
+// Bit flags for hardware or runtime features required by a registered kernel.
+enum XLA_FFI_KernelFeatureBits {
+  // Kernel uses CUDA multicast / multimem instructions. Validates device and
+  // driver multicast capability (not runtime clique or mapping setup).
+  XLA_FFI_KERNEL_FEATURE_MULTIMEM = 1u << 0,
+};
+
+typedef uint32_t XLA_FFI_KernelFeatures;
 
 // Output for registering a device kernel with the XLA runtime.
 // `kernel` is the opaque executable-owned handle. `already_cached` is 0 for the
@@ -75,6 +84,9 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Register_Result,
 // `kernel_spec` describes the kernel name, binary payload (PTX or CUBIN), size,
 // and format. `uses_pdl` is a flag (0 = off, non-zero = on) that says whether
 // the kernel is launched with Programmatic Dependent Launch (PDL).
+// `required_features` is a bitmask of `XLA_FFI_KernelFeatureBits` that the
+// target device must support; registration fails if any requested feature is
+// unsupported.
 struct XLA_FFI_KernelRegistry_Register_Args {
   size_t struct_size;
   XLA_FFI_InternalExtension* extension_start;
@@ -84,9 +96,11 @@ struct XLA_FFI_KernelRegistry_Register_Args {
   int32_t uses_pdl;
   const XLA_FFI_Kernel* cached_kernel;             // in, optional
   XLA_FFI_KernelRegistry_Register_Result* result;  // out
+  XLA_FFI_KernelFeatures required_features;        // in, optional (0 = none)
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Register_Args, result);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Register_Args,
+                             required_features);
 
 // Registers a device kernel (PTX or CUBIN) for the current device and writes
 // the opaque `XLA_FFI_Kernel*` handle and cache status to `args->result`. Call
@@ -160,7 +174,7 @@ typedef XLA_FFI_Error* XLA_FFI_KernelRegistry_Launch(
 //       ffi::RegisterResult result,
 //       registry.Register("my_kernel", kPtxData, kPtxSize,
 //                         ffi::SourceFormat::kPtx, /*uses_pdl=*/false,
-//                         cached));
+//                         ffi::RequiredFeatures::None(), cached));
 //   if (cached == nullptr) {
 //     state->kernel.store(result.kernel, std::memory_order_release);
 //   }

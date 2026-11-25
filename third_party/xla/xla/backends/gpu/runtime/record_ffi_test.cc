@@ -306,7 +306,8 @@ TEST(RecordFfiTest, KernelLaunchWithRegisteredKernel) {
   ASSERT_OK_AND_ASSIGN(
       FfiKernelRegistry::RegisterResult registered,
       registry.Register(executor, "AddI32", binary.data(), binary.size(),
-                        XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false));
+                        XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false,
+                        /*required_features=*/0));
   const XLA_FFI_Kernel* kernel = registered.kernel;
 
   std::unique_ptr<ffi::Ffi> handler =
@@ -520,7 +521,8 @@ TEST(RecordFfiTest, RecordCommandsResolveContextAndExplicitDependencies) {
   ASSERT_OK_AND_ASSIGN(
       FfiKernelRegistry::RegisterResult registered,
       registry.Register(&mock_executor, "k0", kDummyCubin, sizeof(kDummyCubin),
-                        XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false));
+                        XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false,
+                        /*required_features=*/0));
   const XLA_FFI_Kernel* kernel = registered.kernel;
   ASSERT_OK_AND_ASSIGN(se::Kernel * se_kernel,
                        FindDeviceKernel(kernel, /*device_ordinal=*/0));
