@@ -77,9 +77,7 @@ limitations under the License.
 #include <memory>
 #include <new>
 #include <optional>
-#include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
@@ -241,26 +239,20 @@ void TransposePlan::Execute(
 
 absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     Options o) {
-  if (o.input_layout.has_value()) {
-    if (const auto* t = std::get_if<Tiling>(&*o.input_layout)) {
-      o.input_tiling = *t;
-    } else if (const auto* s = std::get_if<Striding>(&*o.input_layout)) {
-      o.input_striding = *s;
-    }
-  }
-
   transpose_internal::PlanOptions plan_options;
   plan_options.elem_size_in_bytes = o.elem_size_in_bytes;
   plan_options.dims = o.dims;
   plan_options.permutation = o.permutation;
-  if (o.input_tiling.has_value()) {
-    plan_options.input_tiling = o.input_tiling->tiling;
+  plan_options.input_tiling.reserve(o.input_tiling.size());
+  for (const auto& t : o.input_tiling) {
+    plan_options.input_tiling.push_back(t.tiling);
   }
   if (o.input_striding.has_value()) {
     plan_options.input_striding = o.input_striding->strides_in_bytes;
   }
-  if (o.output_tiling.has_value()) {
-    plan_options.output_tiling = o.output_tiling->tiling;
+  plan_options.output_tiling.reserve(o.output_tiling.size());
+  for (const auto& t : o.output_tiling) {
+    plan_options.output_tiling.push_back(t.tiling);
   }
   plan_options.transformation =
       static_cast<transpose_internal::Transformation>(o.transformation);
@@ -340,17 +332,17 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
   absl::c_copy(o.dims, key.dims.begin());
   key.permutation.resize(o.permutation.size());
   absl::c_copy(o.permutation, key.permutation.begin());
-  if (o.input_tiling) {
-    key.input_tiling.emplace(o.input_tiling->tiling.begin(),
-                             o.input_tiling->tiling.end());
+  key.input_tiling.reserve(o.input_tiling.size());
+  for (const auto& t : o.input_tiling) {
+    key.input_tiling.emplace_back(t.tiling.begin(), t.tiling.end());
   }
   if (o.input_striding) {
     key.input_striding.emplace(o.input_striding->strides_in_bytes.begin(),
                                o.input_striding->strides_in_bytes.end());
   }
-  if (o.output_tiling) {
-    key.output_tiling.emplace(o.output_tiling->tiling.begin(),
-                              o.output_tiling->tiling.end());
+  key.output_tiling.reserve(o.output_tiling.size());
+  for (const auto& t : o.output_tiling) {
+    key.output_tiling.emplace_back(t.tiling.begin(), t.tiling.end());
   }
   TransposePlan::Transformation transformation = o.transformation;
   if (o.dest_bits_per_element.has_value() &&

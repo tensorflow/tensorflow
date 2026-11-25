@@ -182,7 +182,7 @@ TiledLinearizer::CreateChunkedTransposePlan(
       input_strides.push_back(stride);
     }
     options.input_striding = TransposePlan::Striding{input_strides};
-    options.output_tiling = TransposePlan::Tiling{device_tiling};
+    options.output_tiling = {TransposePlan::Tiling{device_tiling}};
     options.chunk_contiguity = TransposePlan::ChunkContiguity::kOutput;
     options.tile_padding = uint8_t{0};
   } else {
@@ -200,7 +200,7 @@ TiledLinearizer::CreateChunkedTransposePlan(
     for (auto it = host_m2m.rbegin(); it != host_m2m.rend(); ++it) {
       permutation.push_back(logical_to_phys[*it]);
     }
-    options.input_tiling = TransposePlan::Tiling{device_tiling};
+    options.input_tiling = {TransposePlan::Tiling{device_tiling}};
     options.chunk_contiguity = TransposePlan::ChunkContiguity::kInput;
   }
   options.dims = plan_dims;

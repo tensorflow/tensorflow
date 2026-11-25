@@ -599,7 +599,9 @@ absl::InlinedVector<int64_t, 2> GetResolvedTopLevelTiling(
   options.dims = dims;
   options.permutation = permutation;
   options.input_striding = TransposePlan::Striding{input_strides};
-  options.output_tiling = TransposePlan::Tiling{output_tiling_vec};
+  if (!output_tiling_vec.empty()) {
+    options.output_tiling = {TransposePlan::Tiling{output_tiling_vec}};
+  }
   options.transformation = transformation;
   if (!has_subtile_packing && bits_per_pack < 8) {
     options.dest_bits_per_element = bits_per_pack;
@@ -933,8 +935,9 @@ absl::Status DelinearizeUsingTranspose(
   options.elem_size_in_bytes = byte_width;
   options.dims = input_dims;
   options.permutation = permutation;
-  options.input_tiling = TransposePlan::Tiling{input_tiling_vec};
-  options.output_tiling = TransposePlan::Tiling{};
+  if (!input_tiling_vec.empty()) {
+    options.input_tiling = {TransposePlan::Tiling{input_tiling_vec}};
+  }
   options.transformation = TransposePlan::Transformation::kNone;
   options.num_threads = parallelism_options.max_parallelism;
   std::shared_ptr<TransposePlan> plan;

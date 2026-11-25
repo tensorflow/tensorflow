@@ -32,7 +32,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -59,23 +58,28 @@ class TransposePlan {
   // elements).
   //
   // A Tiling is a tiling specification for the input or output array. May
-  // have fewer dimensions that `dims`, in which case the tiling applies to the
+  // have fewer dimensions than `dims`, in which case the tiling applies to the
   // minormost dimensions and any remaining dimensions are left untiled (i.e.,
-  // tile size 1). An empty tiling corresponds to an untiled dense
+  // tile size 1). An empty tiling vector corresponds to an untiled dense
   // major-to-minor layout.
+  //
+  // Multiple tiling levels may be listed from largest (outermost) to smallest
+  // (innermost), where each level evenly divides the one around it (matching
+  // XLA's `Layout::tiles()`). For example, `{Tiling{{8, 128}}, Tiling{{2, 1}}}`
+  // splits a 2D array into 8x128 blocks, and then splits each 8x128 block into
+  // four 2x128 strips of 2x1 pairs so vertically adjacent pairs of elements sit
+  // next to each other in memory. At most one of the input and output may be
+  // tiled.
   //
   // For more information about tiling, see
   // https://www.tensorflow.org/xla/tiled_layout
-  // This class supports a single level of tiling. In addition, the same
-  // dimension currently cannot have different non-trivial tiling values in
-  // both the input and output.
   //
   // The size of the plan may be exponential in the number of non-trivial
   // tiled dimensions. This is acceptable because in the intended use case for
   // this code we expect at most 2 tiled dimensions on input and output.
   //
   // The input may have both a tiling and a striding. If both are present,
-  // the striding determines the strides between tiles (in bytes).
+  // the striding determines the strides between outermost tiles (in bytes).
   //
   //
   // num_threads: is the number of threads requested. The actual number of
@@ -118,9 +122,9 @@ class TransposePlan {
     size_t elem_size_in_bytes;
     absl::Span<int64_t const> dims;
     absl::Span<int64_t const> permutation;
-    std::optional<Tiling> input_tiling = std::nullopt;
+    std::vector<Tiling> input_tiling;
     std::optional<Striding> input_striding = std::nullopt;
-    std::optional<Tiling> output_tiling = std::nullopt;
+    std::vector<Tiling> output_tiling;
     Transformation transformation = Transformation::kNone;
     // If set, controls the subbyte packing ratio. Only 1, 2, 4 is supported.
     // nullopt is equivalent to 8 (no subbyte packing). Packing happens after
@@ -141,11 +145,6 @@ class TransposePlan {
     // are repeated for each padded sub-byte element and any unused high bits in
     // the final byte. Zero-element transposes remain a no-op.
     std::optional<uint8_t> tile_padding = std::nullopt;
-
-    // DEPRECATED: Use input_tiling or input_striding instead.
-    // This field is only present for backward compatibility.
-    // TODO(phawkins): remove me.
-    std::optional<std::variant<Tiling, Striding>> input_layout = std::nullopt;
   };
 
   static absl::StatusOr<std::unique_ptr<TransposePlan>> Create(Options options);
@@ -283,9 +282,9 @@ struct TransposePlanCacheKey {
   size_t elem_size_in_bytes;
   absl::InlinedVector<int64_t, 4> dims;
   absl::InlinedVector<int64_t, 4> permutation;
-  std::optional<absl::InlinedVector<int64_t, 4>> input_tiling;
+  absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 2> input_tiling;
   std::optional<absl::InlinedVector<int64_t, 4>> input_striding;
-  std::optional<absl::InlinedVector<int64_t, 4>> output_tiling;
+  absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 2> output_tiling;
   TransposePlan::Transformation transformation;
   std::optional<int> dest_bits_per_element;
   int num_threads;

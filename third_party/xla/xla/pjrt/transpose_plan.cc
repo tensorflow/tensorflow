@@ -783,23 +783,31 @@ struct Planner {
   absl::InlinedVector<int64_t, 4> a_dims;
   absl::InlinedVector<int64_t, 4> a_strides;
 
-  // Dimensions of the output array B.
-  std::vector<int64_t> b_dims;
-
   // Dimension permutation to apply to form B. For each dimension of B, what is
   // the corresponding dimension of A?
   absl::InlinedVector<int64_t, 4> permutation;
 
-  // Leading-dimension sizes (byte strides) of each dimension.
-  absl::InlinedVector<int64_t, 4> lda;       // Strides for tiles
-  absl::InlinedVector<int64_t, 4> lda_tile;  // Strides for tile interiors
-  absl::InlinedVector<int64_t, 4> ldb;       // Strides for tiles
-  absl::InlinedVector<int64_t, 4> ldb_tile;  // Strides for tile interiors
-
-  // Tile sizes in each dimension. Has size equal to the number of dimensions.
-  // A 1 entry means that dimension is not tiled.
-  absl::InlinedVector<int64_t, 4> a_tiling;
-  absl::InlinedVector<int64_t, 4> b_tiling;
+  // Leading-dimension sizes (byte strides) of each dimension at each tiling
+  // level: `lda[0]` / `ldb[0]` are strides across outermost tiles, and
+  // `lda[1..L]` / `ldb[1..L]` are strides for tile interiors (outermost to
+  // innermost). Size is always `tilings.size() + 1` (1 when untiled).
+  //
+  // Multi-level tile sizes in each dimension, outermost (level 0) to innermost
+  // (level L-1). Each level has size equal to the number of dimensions; a 1
+  // entry means that dimension is not tiled at that level. Empty means untiled.
+  //
+  // Running example: a 2D `[M, N]` array of 2-byte values with tiling
+  // `(8, 128)(2, 1)` (outer 8x128 tiles, each split into a 4x128 grid of 2x1
+  // pairs):
+  //   - `a_tilings` = `{{8, 128}, {2, 1}}`
+  //   - `lda[0]`    = `{ceil(N / 128) * 2048, 2048}` (across 8x128 tiles)
+  //   - `lda[1]`    = `{512, 4}`                     (across 2x1 pairs)
+  //   - `lda[2]`    = `{2, 2}`                       (within a 2x1 pair)
+  // If untiled, `a_tilings` is empty and `lda` has 1 level: `{{2 * N, 2}}`.
+  absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 3> lda;
+  absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 3> ldb;
+  absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 2> a_tilings;
+  absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 2> b_tilings;
   bool a_is_tiled = false;
   bool b_is_tiled = false;
   bool is_identity_permutation = false;
@@ -909,28 +917,101 @@ struct Planner {
 
 }  // namespace
 
+// Computes byte strides for a tiled array (with zero, one, or multiple tiling
+// levels), populating `strides` with `tilings.size() + 1` levels from
+// outermost (`strides[0]`) to innermost (`strides[L]`):
+//   - `strides[L]`: stride of 1 element along dimension `d` inside an
+//     innermost `tilings[L - 1]` tile.
+//   - `strides[l]` (`1 <= l < L`): stride from one `tilings[l]` block to the
+//     next along dimension `d` inside a `tilings[l - 1]` tile.
+//   - `strides[0]`: stride from one top-level `tilings[0]` tile to the next
+//     along dimension `d` (`ceil(dims[d] / tilings[0][d])` tiles).
+//
+// For example, on a 2D array `[M, N]` of 2-byte values with tiling `(8, 128)`
+// and inner tiling `(2, 1)`:
+//   - `strides[2]` = `{2, 2}`   (inside a `2 x 1` pair)
+//   - `strides[1]` = `{512, 4}` (across the `4 x 128` grid of `2 x 1` pairs
+//                                inside an `8 x 128` tile)
+//   - `strides[0]` = `{ceil(N / 128) * 2048, 2048}`
 static void ComputeStrides(
     int64_t elem_size_in_bytes, absl::Span<const int64_t> dims,
-    absl::Span<const int64_t> tiling,
-    absl::InlinedVector<int64_t, 4>& outer_tile_strides,
-    absl::InlinedVector<int64_t, 4>& inner_tile_strides) {
-  inner_tile_strides.resize(dims.size());
+    absl::Span<const absl::InlinedVector<int64_t, 4>> tilings,
+    absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 3>& strides) {
+  const int ndim = static_cast<int>(dims.size());
+  const int num_levels = static_cast<int>(tilings.size());
+  strides.resize(num_levels + 1);
   int64_t acc = elem_size_in_bytes;
-  for (int d = static_cast<int>(dims.size()) - 1; d >= 0; --d) {
-    inner_tile_strides[d] = acc;
-    acc *= tiling[d];
+  for (int l = num_levels; l >= 1; --l) {
+    strides[l].resize(ndim);
+    for (int d = ndim - 1; d >= 0; --d) {
+      strides[l][d] = acc;
+      const int64_t next_t = (l < num_levels) ? tilings[l][d] : 1;
+      acc *= tilings[l - 1][d] / next_t;
+    }
   }
-  outer_tile_strides.resize(dims.size());
-  for (int d = static_cast<int>(dims.size()) - 1; d >= 0; --d) {
-    outer_tile_strides[d] = acc;
-    acc *= CeilOfRatio(dims[d], tiling[d]);
+  strides[0].resize(ndim);
+  for (int d = ndim - 1; d >= 0; --d) {
+    strides[0][d] = acc;
+    const int64_t outer_t = (num_levels > 0) ? tilings[0][d] : 1;
+    acc *= CeilOfRatio(dims[d], outer_t);
   }
 }
 
+// Returns the byte stride between two adjacent elements along dimension `d`.
+//
+// A dimension can have tile size > 1 at an outer level and tile size 1 at
+// deeper levels. For example, with `(8, 128)` and `(2, 1)` on 2-byte values,
+// dimension 1 has tile size 128 at level 0 and tile size 1 at level 1, so
+// moving by 1 element along dimension 1 steps to the next `2 x 1` pair at
+// level 1 (`strides[1][1] = 4` bytes), not `strides[2][1]`. We therefore
+// return `strides[l + 1][d]` from the deepest level `l` where
+// `tilings[l][d] > 1`, or `strides[0][d]` if dimension `d` is not tiled.
+static int64_t InnermostStride(
+    int d, absl::Span<const absl::InlinedVector<int64_t, 4>> strides,
+    absl::Span<const absl::InlinedVector<int64_t, 4>> tilings) {
+  for (int l = static_cast<int>(tilings.size()) - 1; l >= 0; --l) {
+    if (tilings[l][d] > 1) {
+      return strides[l + 1][d];
+    }
+  }
+  return strides[0][d];
+}
+
+static bool HasNonTrivialTiling(
+    absl::Span<const absl::InlinedVector<int64_t, 4>> tilings) {
+  return absl::c_any_of(tilings, [](const auto& level) {
+    return absl::c_any_of(level, [](int64_t x) { return x != 1; });
+  });
+}
+
+static std::string FormatLevels(
+    absl::Span<const absl::InlinedVector<int64_t, 4>> levels) {
+  if (levels.empty()) {
+    return "none";
+  }
+  return absl::StrJoin(
+      levels, "",
+      [](std::string* out, const absl::InlinedVector<int64_t, 4>& v) {
+        absl::StrAppend(out, "(", absl::StrJoin(v, ","), ")");
+      });
+}
+
+// Maximum number of valid (unpadded) iterations along `l` in a single pass.
+static int64_t MaxValidTripCount(const Loop& l) {
+  if (l.is_partial() && l.tile_level > 0) {
+    return std::min(l.full_extent, CeilOfRatio(l.dim_size, l.unit_size));
+  }
+  return l.full_extent;
+}
+
+// Only the outermost tiling level affects the padded element count because
+// each deeper level evenly divides its enclosing level (rearranging elements
+// within an outer tile without adding further padding).
 int64_t Planner::InputNumElems() const {
   int64_t size = 1;
   for (size_t i = 0; i < a_dims.size(); ++i) {
-    size *= RoundUpTo(a_dims[i], a_tiling[i]);
+    const int64_t t0 = a_tilings.empty() ? 1 : a_tilings[0][i];
+    size *= RoundUpTo(a_dims[i], t0);
   }
   return size;
 }
@@ -938,29 +1019,48 @@ int64_t Planner::InputNumElems() const {
 int64_t Planner::OutputNumElems() const {
   int64_t size = 1;
   for (size_t i = 0; i < a_dims.size(); ++i) {
-    size *= RoundUpTo(a_dims[permutation[i]], b_tiling[i]);
+    const int64_t t0 = b_tilings.empty() ? 1 : b_tilings[0][i];
+    size *= RoundUpTo(a_dims[permutation[i]], t0);
   }
   return size;
 }
 
-// Parses and validates a tiling specification, and populates `tiling`.
+// Parses and validates a multi-level tiling specification, and populates
+// `tilings` (each level padded on the left with 1s to length `ndim`).
 static absl::Status ParseTilingSpecification(
-    int ndim, const std::optional<absl::Span<int64_t const>>& tiling_opt,
-    bool nonstandard_layout, absl::InlinedVector<int64_t, 4>& tiling) {
-  tiling.resize(ndim, 1);
-  if (!tiling_opt) {
+    int ndim, absl::Span<const absl::Span<int64_t const>> tilings_spec,
+    bool nonstandard_layout,
+    absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 2>& tilings) {
+  tilings.clear();
+  if (tilings_spec.empty()) {
     return absl::OkStatus();
   }
-  absl::Span<int64_t const> tiling_spec = *tiling_opt;
-  if (tiling_spec.size() > ndim) {
-    return InvalidArgument(
-        "Tiling (%s) must have at most as many dimensions as the array (%d)",
-        absl::StrJoin(tiling_spec, ","), ndim);
-  }
-  if (absl::c_find_if(tiling_spec, [](int64_t d) { return d < 1; }) !=
-      tiling_spec.end()) {
-    return InvalidArgument("Tiling sizes (%s) must be >= 1",
-                           absl::StrJoin(tiling_spec, ","));
+  absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 2> parsed;
+  parsed.reserve(tilings_spec.size());
+  for (size_t level = 0; level < tilings_spec.size(); ++level) {
+    absl::Span<int64_t const> tiling_spec = tilings_spec[level];
+    if (tiling_spec.size() > static_cast<size_t>(ndim)) {
+      return InvalidArgument(
+          "Tiling (%s) must have at most as many dimensions as the array (%d)",
+          absl::StrJoin(tiling_spec, ","), ndim);
+    }
+    absl::InlinedVector<int64_t, 4> t(ndim, 1);
+    int offset = ndim - static_cast<int>(tiling_spec.size());
+    for (size_t i = 0; i < tiling_spec.size(); ++i) {
+      int64_t d = tiling_spec[i];
+      if (d < 1) {
+        return InvalidArgument("Tiling sizes (%s) must be >= 1",
+                               absl::StrJoin(tiling_spec, ","));
+      }
+      if (!parsed.empty() && parsed.back()[offset + i] % d != 0) {
+        return InvalidArgument(
+            "Subtiling (%s) must divide enclosing tiling (%s) at dimension %d",
+            absl::StrJoin(tiling_spec, ","),
+            absl::StrJoin(tilings_spec[level - 1], ","), offset + i);
+      }
+      t[offset + i] = d;
+    }
+    parsed.push_back(std::move(t));
   }
   if (ndim == 1 && !nonstandard_layout) {
     // Tiling doesn't do anything for a rank-1 array with default strides,
@@ -970,33 +1070,39 @@ static absl::Status ParseTilingSpecification(
     // done here.
     return absl::OkStatus();
   }
-  int offset = ndim;
-  offset -= tiling_spec.size();
-  absl::c_copy(tiling_spec, tiling.begin() + offset);
-
+  tilings = std::move(parsed);
   return absl::OkStatus();
 }
 
 std::string Loop::ToString() const {
+  std::string level_tag;
+  if (tile_level > 0) {
+    level_tag = absl::StrFormat("[tile:%d]", tile_level);
+  }
   return absl::StrFormat(
-      "%d%s[dim_size=%d,tile_size=%d,start=%d,end=%d,is_inner_dim_in_a=%d,is_"
-      "inner_dim_in_b=%d,lda=%d,ldb=%d,parallelism=%d,contiguity=%d,has_"
-      "partial_tile=%d)",
-      dim_in_a, tile_interior ? "[tile]" : "", dim_size, tile_size, start, end,
+      "%d%s[dim_size=%d,unit=%d,ext=%d,start=%d,end=%d,is_inner_dim_in_a=%d,"
+      "is_inner_dim_in_b=%d,lda=%d,ldb=%d,parallelism=%d,contiguity=%d,"
+      "has_partial_tile=%d)",
+      dim_in_a, level_tag, dim_size, unit_size, full_extent, start, end,
       is_inner_dim_in_a, is_inner_dim_in_b, lda, ldb, parallelism, contiguity,
       has_partial_tile);
 }
 
 bool Loop::operator==(const Loop& other) const {
-  return dim_in_a == other.dim_in_a && tile_interior == other.tile_interior &&
-         dim_size == other.dim_size && tile_size == other.tile_size &&
-         lda == other.lda && ldb == other.ldb &&
-         is_inner_dim_in_a == other.is_inner_dim_in_a &&
+  return dim_in_a == other.dim_in_a && tile_level == other.tile_level &&
+         dim_size == other.dim_size && unit_size == other.unit_size &&
+         full_extent == other.full_extent && lda == other.lda &&
+         ldb == other.ldb && is_inner_dim_in_a == other.is_inner_dim_in_a &&
          is_inner_dim_in_b == other.is_inner_dim_in_b &&
          parallelism == other.parallelism && start == other.start &&
          end == other.end;
 }
 
+// Builds the execution `Plan` for a single chunk
+// (`plan.chunk_loops[chunk_id]`): `BuildTransfer` copies/transposes/transforms
+// the valid (unpadded) array elements from `a` into `b`, and invokes
+// `BuildPadding` at `*pad_idx` (the first sub-tile loop) to fill trailing
+// padding slots in partial output tiles while each tile is still hot in cache.
 struct ChunkPlanBuilder {
   const Planner& plan;
   absl::Span<const Loop> chunk_loops;
@@ -1026,8 +1132,10 @@ struct ChunkPlanBuilder {
       return;
     }
     int64_t tile_bytes = plan.elem_size_in_bytes;
-    for (int64_t t : plan.b_tiling) {
-      tile_bytes *= t;
+    if (!plan.b_tilings.empty()) {
+      for (int64_t t : plan.b_tilings[0]) {
+        tile_bytes *= t;
+      }
     }
     // Stop at the first loop whose output stride is smaller than one full tile
     // (for example, on `float[4096, 130]` tiled `{8, 128}`, `tile_bytes = 4096`
@@ -1105,8 +1213,18 @@ struct ChunkPlanBuilder {
                << static_cast<int>(plan.transformation);
   }
 
+  // First pass: builds the `Plan` that transfers (copies, transposes, or
+  // transforms) the valid array elements from `a` to `b` for
+  // `chunk_loops[idx..]`. Unused padding slots in partial output tiles are
+  // left for `BuildPadding`.
+  //
+  // `rem_elems[d]` is the number of valid (unpadded) elements along input
+  // dimension `d` inside the enclosing tile currently being visited. It starts
+  // at `plan.a_dims[d]`. When a partial tiled loop splits into tiles of size
+  // `loop.unit_size`, full tiles recurse with `loop.unit_size` elements and any
+  // trailing partial tile recurses with `rem_elems[d] % loop.unit_size`.
   Plan BuildTransfer(size_t idx, int a_elems, int b_elems,
-                     absl::InlinedVector<bool, 4>& partial) const {
+                     absl::InlinedVector<int64_t, 4>& rem_elems) const {
     if (idx == chunk_loops.size()) {
       DCHECK(!plan.inner_kernel_is_memcpy());
       DCHECK_GT(a_elems, 0);
@@ -1115,145 +1233,157 @@ struct ChunkPlanBuilder {
     }
 
     const Loop& loop = chunk_loops[idx];
-    const int a_dim = loop.dim_in_a;
 
-    if (!loop.tile_interior && loop.tile_size > 1) {
-      // Exterior loop over tiles of a dimension that has a trailing partial
-      // tile. Split into complete tiles and (if covered by this chunk) the
-      // trailing partial tile.
-      DCHECK_NE(loop.dim_size % loop.tile_size, 0);
-      DCHECK_EQ(loop.inc, 1);
-      DCHECK(!loop.is_inner_dim_in_a && !loop.is_inner_dim_in_b);
-      const int64_t num_complete = loop.dim_size / loop.tile_size;
-      const int64_t complete_count =
-          std::min<int64_t>(num_complete, loop.end) - loop.start;
-      const bool saved_partial = partial[a_dim];
-      partial[a_dim] = false;
-      Plan full_plan =
-          (complete_count > 0)
-              ? Plan::MakeLoop(
-                    complete_count, loop.lda, StepB(loop, 1),
-                    BuildTransfer(idx + 1, a_elems, b_elems, partial))
-              : Plan::MakeNoop();
-      Plan rem_plan = Plan::MakeNoop();
-      if (loop.start <= num_complete && num_complete < loop.end) {
-        partial[a_dim] = true;
-        const int64_t offset = num_complete - loop.start;
-        rem_plan =
-            Plan::MakeOffset(offset * loop.lda, StepB(loop, offset),
-                             BuildTransfer(idx + 1, a_elems, b_elems, partial));
+    // Emits `count` full (non-partial) tiles/elements of `loop`:
+    //   - Innermost memcpy loop -> single `Copy1D` or `PackSubbyte` leaf.
+    //   - Inner 2D-kernel axis  -> `loop.inc`-wide full blocks + remainder.
+    //   - Any other loop        -> plain `Plan::Loop` (`loop.inc == 1`).
+    auto emit_full_tiles = [&](int64_t count) -> Plan {
+      if (count <= 0) {
+        return Plan::MakeNoop();
       }
-      partial[a_dim] = saved_partial;
-      return Plan::MakeSeq(std::move(full_plan), std::move(rem_plan));
-    }
-
-    if (loop.tile_interior) {
-      DCHECK_EQ(loop.start, 0);
-      DCHECK_EQ(loop.end, loop.tile_size);
-    }
-    const int64_t count =
-        loop.tile_interior
-            ? (partial[a_dim] ? (loop.dim_size % loop.tile_size)
-                              : loop.tile_size)
-            : std::max<int64_t>(
-                  0, std::min<int64_t>(loop.dim_size, loop.end) - loop.start);
-    if (count <= 0) {
-      return Plan::MakeNoop();
-    }
+      if (plan.inner_kernel_is_memcpy() && loop.is_inner_dim_in_a) {
+        DCHECK_EQ(idx + 1, chunk_loops.size());
+        if (plan.transformation == Transformation::kPackSubbyte) {
+          DCHECK_EQ(count % elements_per_byte, 0);
+          return Plan::MakePackSubbyte(plan.bits_per_element, count);
+        }
+        return Plan::MakeCopy1D(count * plan.elem_size_in_bytes);
+      }
+      if (!plan.inner_kernel_is_memcpy() &&
+          (loop.is_inner_dim_in_a || loop.is_inner_dim_in_b)) {
+        const int64_t block = loop.inc;
+        DCHECK_GT(block, 0);
+        const int64_t full_blocks = count / block;
+        const int64_t rem = count % block;
+        auto build_child = [&](int width) -> Plan {
+          const int next_a = loop.is_inner_dim_in_a ? width : a_elems;
+          const int next_b = loop.is_inner_dim_in_b ? width : b_elems;
+          return BuildTransfer(idx + 1, next_a, next_b, rem_elems);
+        };
+        Plan full_plan =
+            (full_blocks > 0)
+                ? Plan::MakeLoop(full_blocks, block * loop.lda,
+                                 StepB(loop, block),
+                                 build_child(static_cast<int>(block)))
+                : Plan::MakeNoop();
+        const int64_t rem_start = full_blocks * block;
+        Plan rem_plan =
+            (rem > 0)
+                ? Plan::MakeOffset(rem_start * loop.lda, StepB(loop, rem_start),
+                                   build_child(static_cast<int>(rem)))
+                : Plan::MakeNoop();
+        return Plan::MakeSeq(std::move(full_plan), std::move(rem_plan));
+      }
+      DCHECK_EQ(loop.inc, 1);
+      return Plan::MakeLoop(
+          count, loop.lda, StepB(loop, 1),
+          BuildTransfer(idx + 1, a_elems, b_elems, rem_elems));
+    };
 
     Plan transfer;
-    if (plan.inner_kernel_is_memcpy() && loop.is_inner_dim_in_a) {
-      DCHECK_EQ(idx + 1, chunk_loops.size());
-      if (plan.transformation == Transformation::kPackSubbyte) {
-        DCHECK_EQ(count % elements_per_byte, 0);
-        transfer = Plan::MakePackSubbyte(plan.bits_per_element, count);
-      } else {
-        transfer = Plan::MakeCopy1D(count * plan.elem_size_in_bytes);
-      }
-    } else if (!plan.inner_kernel_is_memcpy() &&
-               (loop.is_inner_dim_in_a || loop.is_inner_dim_in_b)) {
-      const int64_t block = loop.inc;
-      DCHECK_GT(block, 0);
-      const int64_t full_blocks = count / block;
-      const int64_t rem = count % block;
-      auto build_child = [&](int width) -> Plan {
-        const int next_a = loop.is_inner_dim_in_a ? width : a_elems;
-        const int next_b = loop.is_inner_dim_in_b ? width : b_elems;
-        return BuildTransfer(idx + 1, next_a, next_b, partial);
-      };
-      Plan full_plan =
-          (full_blocks > 0)
-              ? Plan::MakeLoop(full_blocks, block * loop.lda,
-                               StepB(loop, block),
-                               build_child(static_cast<int>(block)))
-              : Plan::MakeNoop();
-      const int64_t rem_start = full_blocks * block;
-      Plan rem_plan =
-          (rem > 0)
-              ? Plan::MakeOffset(rem_start * loop.lda, StepB(loop, rem_start),
-                                 build_child(static_cast<int>(rem)))
-              : Plan::MakeNoop();
-      transfer = Plan::MakeSeq(std::move(full_plan), std::move(rem_plan));
-    } else {
-      DCHECK_EQ(loop.inc, 1);
+    if (!loop.is_partial()) {
       transfer =
-          Plan::MakeLoop(count, loop.lda, StepB(loop, 1),
-                         BuildTransfer(idx + 1, a_elems, b_elems, partial));
+          emit_full_tiles(std::min(loop.full_extent, loop.end) - loop.start);
+    } else {
+      const int a_dim = loop.dim_in_a;
+      DCHECK_LT(a_dim, static_cast<int>(plan.a_dims.size()));
+      DCHECK_GE(loop.start, 0);
+      const int64_t avail = rem_elems[a_dim];
+      const int64_t unit = loop.unit_size;
+      const int64_t num_full = avail / unit;
+      const int64_t partial_rem = avail % unit;
+
+      rem_elems[a_dim] = unit;
+      Plan full_plan =
+          emit_full_tiles(std::min(loop.end, num_full) - loop.start);
+
+      Plan partial_plan = Plan::MakeNoop();
+      if (partial_rem > 0 && loop.start <= num_full && num_full < loop.end) {
+        DCHECK(!loop.is_inner_dim_in_a && !loop.is_inner_dim_in_b);
+        rem_elems[a_dim] = partial_rem;
+        const int64_t offset = num_full - loop.start;
+        partial_plan = Plan::MakeOffset(
+            offset * loop.lda, StepB(loop, offset),
+            BuildTransfer(idx + 1, a_elems, b_elems, rem_elems));
+      }
+
+      rem_elems[a_dim] = avail;
+      transfer = Plan::MakeSeq(std::move(full_plan), std::move(partial_plan));
     }
 
     if (pad_idx == idx) {
-      return Plan::MakeSeq(std::move(transfer), BuildPadding(idx, partial));
+      return Plan::MakeSeq(std::move(transfer), BuildPadding(idx, rem_elems));
     }
     return transfer;
   }
 
   Plan PadFrom(absl::Span<const Loop> loops, size_t idx, bool is_padding,
-               absl::InlinedVector<bool, 4>& in_partial) const {
+               absl::InlinedVector<int64_t, 4>& rem_pad) const {
     if (idx == loops.size()) {
       return is_padding
                  ? Plan::MakeFill1D(plan.elem_size_in_bytes, *plan.tile_padding)
                  : Plan::MakeNoop();
     }
     const Loop& loop = loops[idx];
-    auto sub_loop = [&](int64_t count, bool sub_padding) {
-      if (count <= 0) {
+    const int64_t chunk_count =
+        std::max<int64_t>(0, std::min(loop.end, loop.full_extent) - loop.start);
+    if (is_padding) {
+      return Plan::MakeLoop(
+          chunk_count, /*da=*/0, loop.ldb,
+          PadFrom(loops, idx + 1, /*is_padding=*/true, rem_pad));
+    }
+    if (!loop.is_partial()) {
+      if (idx + 1 == loops.size()) {
         return Plan::MakeNoop();
       }
-      return Plan::MakeLoop(count, /*da=*/0, loop.ldb,
-                            PadFrom(loops, idx + 1, sub_padding, in_partial));
-    };
-    if (!loop.tile_interior) {
-      const int64_t full = loop.dim_size / loop.tile_size;
-      const bool saved = in_partial[loop.dim_in_a];
-      in_partial[loop.dim_in_a] = false;
-      Plan full_plan =
-          sub_loop(std::min(loop.end, full) - loop.start, is_padding);
-      Plan rem_plan = Plan::MakeNoop();
-      if (loop.start <= full && full < loop.end) {
-        in_partial[loop.dim_in_a] = true;
-        rem_plan =
-            Plan::MakeOffset(/*da=*/0, (full - loop.start) * loop.ldb,
-                             PadFrom(loops, idx + 1, is_padding, in_partial));
+      return Plan::MakeLoop(
+          chunk_count, /*da=*/0, loop.ldb,
+          PadFrom(loops, idx + 1, /*is_padding=*/false, rem_pad));
+    }
+
+    const int a_dim = loop.dim_in_a;
+    const int64_t saved_avail = rem_pad[a_dim];
+    const int64_t unit = loop.unit_size;
+    const int64_t num_full = saved_avail / unit;
+    const int64_t rem = saved_avail % unit;
+    const int64_t full_in_chunk = std::max<int64_t>(
+        0, std::min(loop.end, num_full) - std::max<int64_t>(loop.start, 0));
+
+    std::vector<Plan> parts;
+    if (full_in_chunk > 0 && idx + 1 < loops.size()) {
+      rem_pad[a_dim] = unit;
+      parts.push_back(Plan::MakeLoop(
+          full_in_chunk, /*da=*/0, loop.ldb,
+          PadFrom(loops, idx + 1, /*is_padding=*/false, rem_pad)));
+    }
+    if (rem > 0 && loop.start <= num_full && num_full < loop.end &&
+        idx + 1 < loops.size()) {
+      rem_pad[a_dim] = rem;
+      parts.push_back(Plan::MakeOffset(
+          /*da=*/0, (num_full - loop.start) * loop.ldb,
+          PadFrom(loops, idx + 1, /*is_padding=*/false, rem_pad)));
+    }
+    rem_pad[a_dim] = saved_avail;
+
+    const int64_t used = num_full + (rem > 0 ? 1 : 0);
+    if (loop.tile_level > 0 && used < loop.full_extent) {
+      const int64_t pad_start = std::max(loop.start, used);
+      const int64_t pad_end = std::min(loop.end, loop.full_extent);
+      if (pad_start < pad_end) {
+        parts.push_back(Plan::MakeOffset(
+            /*da=*/0, (pad_start - loop.start) * loop.ldb,
+            Plan::MakeLoop(
+                pad_end - pad_start, /*da=*/0, loop.ldb,
+                PadFrom(loops, idx + 1, /*is_padding=*/true, rem_pad))));
       }
-      in_partial[loop.dim_in_a] = saved;
-      return Plan::MakeSeq(std::move(full_plan), std::move(rem_plan));
     }
-    DCHECK_EQ(loop.start, 0);
-    DCHECK_EQ(loop.end, loop.tile_size);
-    if (!in_partial[loop.dim_in_a] || is_padding) {
-      return sub_loop(loop.tile_size, is_padding);
-    }
-    const int64_t rem = loop.dim_size % loop.tile_size;
-    return Plan::MakeSeq(
-        sub_loop(rem, /*sub_padding=*/false),
-        Plan::MakeOffset(
-            /*da=*/0, rem * loop.ldb,
-            sub_loop(loop.tile_size - rem, /*sub_padding=*/true)));
+    return Plan::MakeSeq(std::move(parts));
   }
 
-  // Builds the padding fills for `chunk_loops[start_idx..]` using `partial` to
-  // identify which enclosing dimensions (from `chunk_loops[0..start_idx)`) are
-  // currently on their trailing partial tile.
+  // Builds the `Fill1D` padding plan for unused slots inside partial output
+  // tiles of `chunk_loops[start_idx..]`, using `rem_pad` to track remaining
+  // valid elements from enclosing loops in `chunk_loops[0..start_idx)`.
   //
   // For example, a partial row-major 8x128 tile with 3 valid rows and 5 valid
   // columns has an L-shaped padding region. We cut the L horizontally so the
@@ -1271,12 +1401,12 @@ struct ChunkPlanBuilder {
   // Sorting the chunk's loops from largest to smallest output stride gives this
   // cut in N dimensions: at each partial-tile interior loop, `[0, rem)`
   // recurses with `is_padding=false` to pad any inner partial dimensions while
-  // `[rem, tile_size)` recurses with `is_padding=true`. Recursing through inner
-  // loops ensures that any inner loop partitioned across chunks only fills its
-  // `[loop.start, loop.end)` slice, while `Plan::MakeLoop` coalesces unsplit
-  // inner loops into a single `Fill1D`.
+  // `[rem, full_extent)` recurses with `is_padding=true`. Recursing through
+  // inner loops ensures that any inner loop partitioned across chunks only
+  // fills its `[loop.start, loop.end)` slice, while `Plan::MakeLoop` coalesces
+  // unsplit inner loops into a single `Fill1D`.
   Plan BuildPadding(size_t start_idx,
-                    absl::InlinedVector<bool, 4>& partial) const {
+                    absl::InlinedVector<int64_t, 4>& rem_pad) const {
     std::vector<Loop> loops;
     loops.reserve(chunk_loops.size() - start_idx);
     for (size_t i = start_idx; i < chunk_loops.size(); ++i) {
@@ -1286,11 +1416,11 @@ struct ChunkPlanBuilder {
       }
     }
     absl::c_sort(loops, [](const Loop& a, const Loop& b) {
-      return std::make_tuple(a.ldb, !a.tile_interior) >
-             std::make_tuple(b.ldb, !b.tile_interior);
+      return std::make_tuple(a.ldb, -a.tile_level) >
+             std::make_tuple(b.ldb, -b.tile_level);
     });
 
-    Plan pad_plan = PadFrom(loops, /*idx=*/0, /*is_padding=*/false, partial);
+    Plan pad_plan = PadFrom(loops, /*idx=*/0, /*is_padding=*/false, rem_pad);
     if (elements_per_byte > 1) {
       ScalePlanOutputBytes(pad_plan, elements_per_byte);
     }
@@ -1300,12 +1430,11 @@ struct ChunkPlanBuilder {
 
 // Builds the execution `Plan` for `chunk_id`.
 Plan Planner::BuildChunkPlan(int chunk_id) const {
-  const int ndim = static_cast<int>(a_dims.size());
-  DCHECK_GT(ndim, 0);
+  DCHECK(!a_dims.empty());
   ChunkPlanBuilder builder(*this, chunk_id);
-  absl::InlinedVector<bool, 4> partial(ndim, false);
+  absl::InlinedVector<int64_t, 4> rem_elems(a_dims.begin(), a_dims.end());
   return builder.BuildTransfer(/*idx=*/0, /*a_elems=*/0, /*b_elems=*/0,
-                               partial);
+                               rem_elems);
 }
 
 FlattenedPlan Planner::ToFlattenedPlan() {
@@ -1379,21 +1508,20 @@ absl::StatusOr<FlattenedPlan> BuildTransposePlan(const PlanOptions& o) {
   ABSL_RETURN_IF_ERROR(ParseTilingSpecification(
       ndim, o.output_tiling,
       /*nonstandard_layout=*/output_contiguity || o.tile_padding.has_value(),
-      plan.b_tiling));
+      plan.b_tilings));
 
   // Temporary vectors to hold un-permuted attributes
-  absl::InlinedVector<int64_t, 4> temp_lda, temp_lda_tile, temp_a_tiling;
+  absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 3> temp_lda;
+  absl::InlinedVector<absl::InlinedVector<int64_t, 4>, 2> temp_a_tilings;
 
   // Parse the tile and stride specifications.
   ABSL_RETURN_IF_ERROR(ParseTilingSpecification(
       ndim, o.input_tiling,
       /*nonstandard_layout=*/o.input_striding.has_value() || input_contiguity,
-      temp_a_tiling));
-  ComputeStrides(plan.elem_size_in_bytes, o.dims, temp_a_tiling, temp_lda,
-                 temp_lda_tile);
+      temp_a_tilings));
+  ComputeStrides(plan.elem_size_in_bytes, o.dims, temp_a_tilings, temp_lda);
 
-  // Determine tile (outer) strides
-  absl::InlinedVector<int64_t, 4> input_outer_strides;
+  // Override outer tile strides if explicit input_striding is provided.
   if (o.input_striding) {
     absl::Span<int64_t const> input_strides_in_bytes = *o.input_striding;
     if (input_strides_in_bytes.size() != o.dims.size()) {
@@ -1402,10 +1530,8 @@ absl::StatusOr<FlattenedPlan> BuildTransposePlan(const PlanOptions& o) {
           "got %d and %d",
           o.dims.size(), input_strides_in_bytes.size());
     }
-    input_outer_strides.assign(input_strides_in_bytes.begin(),
-                               input_strides_in_bytes.end());
-  } else {
-    input_outer_strides = temp_lda;
+    temp_lda[0].assign(input_strides_in_bytes.begin(),
+                       input_strides_in_bytes.end());
   }
 
   // Sort the dimensions from slowest-varying (largest strides) to
@@ -1415,22 +1541,24 @@ absl::StatusOr<FlattenedPlan> BuildTransposePlan(const PlanOptions& o) {
   absl::c_iota(dim_order, 0);
 
   auto cost = [&](int k) {
-    int64_t stride = input_outer_strides.at(k);
+    const int64_t outer_stride = temp_lda[0].at(k);
+    const int64_t inner_stride = InnermostStride(k, temp_lda, temp_a_tilings);
     // If there is a dimension with size equal to the element size, sort it
     // last. This ensures that we place any stride-1 dimension last.
-    bool is_stride1 = stride == o.elem_size_in_bytes;
+    const bool is_stride1 = inner_stride == plan.elem_size_in_bytes;
     // If there are multiple stride-1 dimensions, we'd prefer the one that
     // matches the stride-1 dimension of the output.
     // Failing that, we'd just prefer the largest stride-1 dimension last.
-    bool is_trailing_dim_in_b = o.permutation.back() == k;
+    const bool is_trailing_dim_in_b = o.permutation.back() == k;
 
-    // If we are applying ef57 conversion, we want a size-2 stride-1
+    // If we are applying ef57 conversion, we want an even-sized stride-1
     // dimension last.
-    bool ef57_even =
+    const bool ef57_even =
         (is_stride1 && o.transformation == Transformation::kF64ToEf57 &&
-         o.dims[k] == 2);
+         o.dims[k] % 2 == 0);
 
-    return std::make_tuple(is_stride1, -std::abs(stride), ef57_even,
+    return std::make_tuple(is_stride1, -std::abs(outer_stride),
+                           -std::abs(inner_stride), ef57_even,
                            is_trailing_dim_in_b, o.dims[k]);
   };
   absl::c_stable_sort(dim_order,
@@ -1440,31 +1568,36 @@ absl::StatusOr<FlattenedPlan> BuildTransposePlan(const PlanOptions& o) {
   // dim_order maps new input dim -> old input dim, we need its inverse to
   // compute the new permutation.
   auto inv_dim_order = InversePermutation(dim_order);
-  plan.lda.reserve(ndim);
-  plan.lda_tile.reserve(ndim);
   plan.a_dims.reserve(ndim);
   plan.permutation.reserve(ndim);
-  plan.a_tiling.reserve(ndim);
+  plan.lda.resize(temp_lda.size());
+  for (auto& level : plan.lda) {
+    level.reserve(ndim);
+  }
+  plan.a_tilings.resize(temp_a_tilings.size());
+  for (auto& level : plan.a_tilings) {
+    level.reserve(ndim);
+  }
 
   for (int i = 0; i < ndim; ++i) {
     int old_idx = dim_order[i];
-    plan.lda.push_back(input_outer_strides.at(old_idx));
-    plan.lda_tile.push_back(temp_lda_tile.at(old_idx));
     plan.a_dims.push_back(o.dims[old_idx]);
     plan.permutation.push_back(inv_dim_order[o.permutation[i]]);
-    plan.a_tiling.push_back(temp_a_tiling[old_idx]);
+    for (size_t l = 0; l < temp_lda.size(); ++l) {
+      plan.lda[l].push_back(temp_lda[l][old_idx]);
+    }
+    for (size_t l = 0; l < temp_a_tilings.size(); ++l) {
+      plan.a_tilings[l].push_back(temp_a_tilings[l][old_idx]);
+    }
   }
 
-  auto is_not_one = [](int64_t x) { return x != 1; };
-  plan.a_is_tiled =
-      (absl::c_find_if(plan.a_tiling, is_not_one) != plan.a_tiling.end());
-  plan.b_is_tiled =
-      (absl::c_find_if(plan.b_tiling, is_not_one) != plan.b_tiling.end());
+  plan.a_is_tiled = HasNonTrivialTiling(plan.a_tilings);
+  plan.b_is_tiled = HasNonTrivialTiling(plan.b_tilings);
   if (plan.a_is_tiled && plan.b_is_tiled) {
     return Unimplemented(
         "Only one of the input and output may have a non-trivial tiling, "
         "got tilings: %s and %s",
-        absl::StrJoin(plan.a_tiling, ","), absl::StrJoin(plan.b_tiling, ","));
+        FormatLevels(plan.a_tilings), FormatLevels(plan.b_tilings));
   }
 
   plan.bits_per_element = o.elem_size_in_bytes * 8;
@@ -1492,7 +1625,8 @@ absl::StatusOr<FlattenedPlan> BuildTransposePlan(const PlanOptions& o) {
             sizeof(float), o.elem_size_in_bytes);
       }
       if (plan.a_dims.empty() || plan.a_dims.back() % 2 != 0 ||
-          plan.lda.back() != sizeof(float)) {
+          InnermostStride(ndim - 1, plan.lda, plan.a_tilings) !=
+              sizeof(float)) {
         return InvalidArgument(
             "EF57 conversion requires a stride-%d dimension whose size is a "
             "multiple of 2",
@@ -1519,20 +1653,11 @@ absl::StatusOr<FlattenedPlan> BuildTransposePlan(const PlanOptions& o) {
               "got %d",
               bits);
         }
+        plan.bits_per_element = bits;
         if (plan.tile_padding.has_value()) {
           const uint8_t mask = (1u << bits) - 1u;
           plan.tile_padding = static_cast<uint8_t>((*plan.tile_padding & mask) *
                                                    (0xffu / mask));
-        }
-        std::vector<int64_t> output_dims = Permute(o.dims, o.permutation);
-        int elements_per_byte = 8 / bits;
-        plan.bits_per_element = bits;
-        if (output_dims.empty() ||
-            output_dims.back() % elements_per_byte != 0 ||
-            (plan.b_is_tiled &&
-             plan.b_tiling.back() % elements_per_byte != 0)) {
-          plan.transformation = Transformation::kNone;
-          plan.use_fallback_pack = true;
         }
       }
       break;
@@ -1588,21 +1713,25 @@ void PartitionLoops(
           chunk_loop.start * chunk_loop.ldb;
     }
 
-    // Set has_partial_tile for tile interior loops.
-    // First pass: find which dimensions' exterior loops include the last tile.
-    std::vector<bool> dims_with_partial(num_dims, false);
-    for (const Loop& loop : result[chunk_id]) {
-      if (!loop.tile_interior && loop.dim_size % loop.tile_size != 0) {
-        int64_t full_tiles = CeilOfRatio(loop.dim_size, loop.tile_size);
-        if (loop.end >= full_tiles) {
-          dims_with_partial[loop.dim_in_a] = true;
+    // Set has_partial_tile on exterior and interior loops touching the trailing
+    // partial tile of any dimension.
+    std::vector<bool> has_exterior_loop(num_dims, false);
+    std::vector<bool> exterior_hits_partial(num_dims, false);
+    for (Loop& loop : result[chunk_id]) {
+      if (loop.tile_level == 0) {
+        has_exterior_loop[loop.dim_in_a] = true;
+        if (loop.is_partial() && loop.end >= loop.full_extent) {
+          exterior_hits_partial[loop.dim_in_a] = true;
+          loop.has_partial_tile = true;
         }
       }
     }
-    // Second pass: set has_partial_tile on interior loops.
     for (Loop& loop : result[chunk_id]) {
-      if (loop.tile_interior && dims_with_partial[loop.dim_in_a]) {
-        loop.has_partial_tile = true;
+      if (loop.tile_level > 0 && loop.is_partial()) {
+        if (!has_exterior_loop[loop.dim_in_a] ||
+            exterior_hits_partial[loop.dim_in_a]) {
+          loop.has_partial_tile = true;
+        }
       }
     }
   }
@@ -1614,145 +1743,83 @@ absl::Status Planner::Initialize() {
   if (num_elems == 0) {
     return absl::OkStatus();
   }
+  if (a_dims.empty()) {
+    a_dims.push_back(1);
+    permutation.push_back(0);
+    for (auto& level : lda) {
+      level.push_back(elem_size_in_bytes);
+    }
+    for (auto& level : a_tilings) {
+      level.push_back(1);
+    }
+    for (auto& level : b_tilings) {
+      level.push_back(1);
+    }
+  }
+
   // permutation maps dimensions of b to a
   // inverse_permutation maps dimensions of a to b
   std::vector<int64_t> inverse_permutation = InversePermutation(permutation);
-
-  int ndim = a_dims.size();
-
-  // Returns the inner of the strides for dimension `d`. If the dimension is
-  // tiled, that's the tile stride, and if it is not, that is the untiled
-  // stride.
-  auto inner_stride = [&](int d, absl::Span<int64_t const> strides,
-                          absl::Span<int64_t const> tile_strides,
-                          absl::Span<int64_t const> tiling) {
-    return tiling[d] > 1 ? tile_strides[d] : strides[d];
-  };
-
-  // If the plan is 0-dimensional, or the innermost dimension of A is not of
-  // stride 1, adds a trivial size 1 dimension. The transpose kernels rely on
-  // the presence of a stride-1 innermost dimension in the input.
-  int pos_stride1a_in_a = ndim - 1;
-  if (lda.empty() ||
-      inner_stride(ndim - 1, lda, lda_tile, a_tiling) != elem_size_in_bytes) {
-    int dim = static_cast<int>(a_dims.size());
-    permutation.push_back(dim);
-    inverse_permutation.push_back(dim);
-    a_dims.push_back(1);
-    lda.push_back(elem_size_in_bytes);
-    lda_tile.push_back(1);
-    a_tiling.push_back(1);
-    b_tiling.push_back(1);
-    ++ndim;
-    ++pos_stride1a_in_a;
-  }
+  int ndim = static_cast<int>(a_dims.size());
 
   is_identity_permutation = true;
-  for (int i = 0; i < permutation.size(); ++i) {
+  for (int i = 0; i < ndim; ++i) {
     if (permutation[i] != i) {
       is_identity_permutation = false;
       break;
     }
   }
 
-  b_dims = Permute(a_dims, permutation);
+  std::vector<int64_t> b_dims = Permute(a_dims, permutation);
+  ComputeStrides(elem_size_in_bytes, b_dims, b_tilings, ldb);
 
-  ComputeStrides(elem_size_in_bytes, b_dims, b_tiling, ldb, ldb_tile);
-
-  // Find the innermost dimension of B that is stride 1 element. We know such a
-  // dimension exists, because we do not accept arbitrary stridings for B, but
-  // it may not be the last dimension in the presence of tiling.
-  int pos_stride1b_in_b = -1;
-  for (int i = ndim - 1; i >= 0; --i) {
-    if (inner_stride(i, ldb, ldb_tile, b_tiling) == elem_size_in_bytes) {
-      pos_stride1b_in_b = i;
-      break;
-    }
-  }
-  CHECK_GE(pos_stride1b_in_b, 0);
-
-  int pos_stride1b_in_a = permutation[pos_stride1b_in_b];
-  if (transformation == Transformation::kPackSubbyte) {
-    int elements_per_byte = 8 / bits_per_element;
-    int64_t b_stride1_tile_size =
-        std::max(a_tiling[pos_stride1b_in_a], b_tiling[pos_stride1b_in_b]);
-    if (b_dims[pos_stride1b_in_b] % elements_per_byte != 0 ||
-        (b_stride1_tile_size > 1 &&
-         b_stride1_tile_size % elements_per_byte != 0)) {
-      transformation = Transformation::kNone;
-      use_fallback_pack = true;
-    }
-  }
-
-  int64_t stride_pos1a =
-      inner_stride(pos_stride1a_in_a, lda, lda_tile, a_tiling);
-  int64_t stride_pos1b =
-      inner_stride(pos_stride1b_in_b, ldb, ldb_tile, b_tiling);
-
-  inner_kernel_kind = (pos_stride1b_in_a == pos_stride1a_in_a) &&
-                              (stride_pos1a == elem_size_in_bytes) &&
-                              (stride_pos1b == elem_size_in_bytes)
-                          ? InnerKernelKind::kMemcpy
-                          : InnerKernelKind::kDefault;
-
-  if (inner_kernel_is_memcpy() && transformation != Transformation::kNone &&
-      transformation != Transformation::kPackSubbyte) {
-    return InvalidArgument(
-        "Memcpy-based plans cannot be used with transformations.");
-  }
-
-  // Calculate sentinel strides.
-  if (!inner_kernel_is_memcpy()) {
-    int pos_stride1a_in_b = inverse_permutation[pos_stride1a_in_a];
-    sentinel_lda = inner_stride(pos_stride1b_in_a, lda, lda_tile, a_tiling);
-    sentinel_ldb = inner_stride(pos_stride1a_in_b, ldb, ldb_tile, b_tiling);
-  }
-
-  // Order to traverse dimensions, from slowest-varying to fastest-varying.
+  // 1. Turn each dimension into its outer tile loop (level 0) plus any inner
+  //    tile loops (levels 1..L). At most one of A and B is tiled, so at each
+  //    level `l` at most one of `a_tilings[l]` and `b_tilings[l]` is > 1.
   std::vector<Loop> loop_order;
+  const int num_a_levels = static_cast<int>(a_tilings.size());
+  const int num_b_levels = static_cast<int>(b_tilings.size());
+  const int num_levels = std::max(num_a_levels, num_b_levels);
 
-  loop_order.reserve(ndim);
   for (int i = 0; i < ndim; ++i) {
-    Loop loop;
-    loop.dim_in_a = i;
-    loop.tile_interior = false;
-    int64_t dim_size = a_dims[i];
-    int64_t tile_size = std::max(a_tiling[i], b_tiling[inverse_permutation[i]]);
-    bool has_partial_tile = (dim_size % tile_size != 0);
-    if (has_partial_tile) {
-      // We only need to track tile interiors correctly if there are partial
-      // tiles.
-      loop.dim_size = dim_size;
-      loop.tile_size = tile_size;
-    } else {
-      loop.dim_size = dim_size / tile_size;
-      loop.tile_size = 1;
-    }
+    const int b_dim = inverse_permutation[i];
+    const int64_t dim_size = a_dims[i];
 
-    loop.lda = lda[i];
-    if (a_tiling[i] == 1) {
-      loop.lda *= tile_size;
-    }
-    loop.ldb = ldb[inverse_permutation[i]];
-    if (b_tiling[inverse_permutation[i]] == 1) {
-      loop.ldb *= tile_size;
-    }
-    loop.is_inner_dim_in_a = (tile_size == 1) && (i == pos_stride1a_in_a);
-    loop.is_inner_dim_in_b = (tile_size == 1) && (i == pos_stride1b_in_a);
-    loop_order.push_back(loop);
-
-    if (tile_size > 1) {
-      loop.tile_interior = has_partial_tile;
-      if (!has_partial_tile) {
-        loop.dim_size = tile_size;
-        loop.tile_size = 1;
+    auto level_tile_size = [&](int l) -> int64_t {
+      if (l >= num_levels) {
+        return 1;
       }
-      loop.lda = a_is_tiled ? lda_tile[i] : lda[i];
-      loop.ldb = b_is_tiled ? ldb_tile[inverse_permutation[i]]
-                            : ldb[inverse_permutation[i]];
-      loop.is_inner_dim_in_a = (i == pos_stride1a_in_a);
-      loop.is_inner_dim_in_b = (i == pos_stride1b_in_a);
-      loop_order.push_back(loop);
+      const int64_t ta = (l < num_a_levels) ? a_tilings[l][i] : 1;
+      const int64_t tb = (l < num_b_levels) ? b_tilings[l][b_dim] : 1;
+      return std::max(ta, tb);
+    };
+
+    const int64_t t0 = level_tile_size(0);
+    loop_order.push_back(Loop{
+        /*dim_in_a=*/i,
+        /*tile_level=*/0,
+        /*dim_size=*/dim_size,
+        /*unit_size=*/t0,
+        /*full_extent=*/CeilOfRatio(dim_size, t0),
+        /*lda=*/lda[0][i] * (a_is_tiled ? 1 : t0),
+        /*ldb=*/ldb[0][b_dim] * (b_is_tiled ? 1 : t0),
+    });
+
+    for (int l = 0; l < num_levels; ++l) {
+      const int64_t parent_u = level_tile_size(l);
+      const int64_t child_u = level_tile_size(l + 1);
+      if (parent_u == child_u) {
+        continue;
+      }
+      loop_order.push_back(Loop{
+          /*dim_in_a=*/i,
+          /*tile_level=*/l + 1,
+          /*dim_size=*/dim_size,
+          /*unit_size=*/child_u,
+          /*full_extent=*/parent_u / child_u,
+          /*lda=*/a_is_tiled ? lda[l + 1][i] : (lda[0][i] * child_u),
+          /*ldb=*/b_is_tiled ? ldb[l + 1][b_dim] : (ldb[0][b_dim] * child_u),
+      });
     }
   }
 
@@ -1762,132 +1829,213 @@ absl::Status Planner::Initialize() {
     });
   };
 
+  // 2. Drop size-1 loops and merge back-to-back contiguous loops BEFORE
+  //    choosing the inner leaf operation, so leaf selection sees the real
+  //    contiguous run lengths (for example, two full tiles of 3 on a size-6
+  //    dimension merge back into a single loop of 6).
   VLOG(5) << "Before RemoveTrivialLoops: " << loops_to_string(loop_order);
   RemoveTrivialLoops(loop_order);
+  if (loop_order.empty()) {
+    loop_order.push_back(Loop{/*dim_in_a=*/0, /*tile_level=*/0, /*dim_size=*/1,
+                              /*unit_size=*/1, /*full_extent=*/1,
+                              /*lda=*/elem_size_in_bytes,
+                              /*ldb=*/elem_size_in_bytes});
+  }
   VLOG(5) << "After RemoveTrivialLoops: " << loops_to_string(loop_order);
+  // TODO(phawkins): Use the coalesced stride-1 extents for default 2D block
+  // sizing once loop cache blocking lands. Without blocking, picking larger 2D
+  // blocks on coalesced shapes (e.g. [64, 224, 224, 3] perm [1, 2, 3, 0])
+  // regresses Arm.
+  int64_t a_stride1_bound = 1;
+  int64_t b_stride1_bound = 1;
+  for (const Loop& l : loop_order) {
+    if (l.unit_size == 1 && l.lda == elem_size_in_bytes) {
+      a_stride1_bound = MaxValidTripCount(l);
+    }
+    if (l.unit_size == 1 && l.ldb == elem_size_in_bytes) {
+      b_stride1_bound = MaxValidTripCount(l);
+    }
+  }
   CoalesceLoops(loop_order);
   VLOG(5) << "After CoalesceLoops: " << loops_to_string(loop_order);
 
-  // Bound the block sizes so they are smaller than the stride-1 dimension
-  // size.
-  int64_t a_stride1_size =
-      std::max(a_tiling[pos_stride1a_in_a],
-               b_tiling[inverse_permutation[pos_stride1a_in_a]]);
-  if (a_stride1_size == 1) {
-    a_stride1_size = a_dims[pos_stride1a_in_a];
-  } else {
-    // If there's only one tile, we should use the dimension size.
-    a_stride1_size = std::min(a_dims[pos_stride1a_in_a], a_stride1_size);
+  // Locate the stride-1 loops in A and B.
+  int loop_b_idx = -1;
+  for (int i = static_cast<int>(loop_order.size()) - 1; i >= 0; --i) {
+    if (loop_order[i].unit_size == 1 &&
+        loop_order[i].ldb == elem_size_in_bytes) {
+      loop_b_idx = i;
+      break;
+    }
   }
-  int64_t b_stride1_size = std::max(a_tiling[permutation[pos_stride1b_in_b]],
-                                    b_tiling[pos_stride1b_in_b]);
-  if (b_stride1_size == 1) {
-    b_stride1_size = b_dims[pos_stride1b_in_b];
-  } else {
-    b_stride1_size = std::min(b_stride1_size, b_dims[pos_stride1b_in_b]);
-  }
+  CHECK_GE(loop_b_idx, 0);
 
-  // For kInterleave and kDeinterleave, the trip count of the large side's
-  // stride-1 loop.
-  int64_t large_loop_size = 0;
-  if (!inner_kernel_is_memcpy() && transformation == Transformation::kNone) {
-    const auto loop_a_it = absl::c_find_if(
-        loop_order, [](const Loop& l) { return l.is_inner_dim_in_a; });
-    const auto loop_b_it = absl::c_find_if(
-        loop_order, [](const Loop& l) { return l.is_inner_dim_in_b; });
-    DCHECK(loop_a_it != loop_order.end());
-    DCHECK(loop_b_it != loop_order.end());
-    // loop_a and loop_b iterate over A's and B's stride-1 dimensions (or their
-    // tile interiors).
-    const Loop& loop_a = *loop_a_it;
-    const Loop& loop_b = *loop_b_it;
-    DCHECK_EQ(loop_a.lda, elem_size_in_bytes);
-    DCHECK_EQ(loop_b.ldb, elem_size_in_bytes);
-    DCHECK_EQ(loop_a.ldb, sentinel_ldb);
-    DCHECK_EQ(loop_b.lda, sentinel_lda);
-    const auto trip_count = [](const Loop& l) {
-      return l.tile_interior ? std::min(l.tile_size, l.dim_size) : l.dim_size;
-    };
-    const int64_t loop_a_size = trip_count(loop_a);
-    const int64_t loop_b_size = trip_count(loop_b);
-    // Returns whether to use the `kind` kernel with K = small.dim_size, where
-    // `small` is the stride-1 loop of the small side.
-    const auto use_kernel = [&](InnerKernelKind kind, const Loop& small,
-                                int64_t group_stride, int64_t large_size) {
-      DCHECK_EQ(small.tile_size == 1, !small.tile_interior);
-      const int64_t k = small.dim_size;
-      // With a partial tile, the trip count is not a constant K.
-      const bool no_partial_tile = !small.tile_interior;
-      // The K-groups are back to back, so the small side is one contiguous run.
-      const bool contiguous = group_stride == k * elem_size_in_bytes;
-      // Faster than the default kernel for this K and element size.
-      const bool faster = SmallDimKernelIsFaster(kind, k, elem_size_in_bytes);
-      const bool large_side_is_long = large_size >= 8;
-      return no_partial_tile && contiguous && faster && large_side_is_long;
-    };
-    if (use_kernel(InnerKernelKind::kInterleave, loop_b, sentinel_ldb,
-                   loop_a_size)) {
-      inner_kernel_kind = InnerKernelKind::kInterleave;
-      interleave_size = loop_b.dim_size;
-      large_loop_size = loop_a_size;
-    } else if (use_kernel(InnerKernelKind::kDeinterleave, loop_a, sentinel_lda,
-                          loop_b_size)) {
-      inner_kernel_kind = InnerKernelKind::kDeinterleave;
-      interleave_size = loop_a.dim_size;
-      large_loop_size = loop_b_size;
+  int loop_a_idx = -1;
+  if (loop_order[loop_b_idx].lda == elem_size_in_bytes) {
+    loop_a_idx = loop_b_idx;
+  } else {
+    for (int i = static_cast<int>(loop_order.size()) - 1; i >= 0; --i) {
+      if (loop_order[i].unit_size == 1 &&
+          loop_order[i].lda == elem_size_in_bytes) {
+        loop_a_idx = i;
+        break;
+      }
     }
   }
 
-  if (inner_kernel_is_memcpy()) {
+  // Fallback to whole-array PackIntN when sub-byte output strides or extents
+  // are not byte-aligned.
+  if (transformation == Transformation::kPackSubbyte) {
+    const int elements_per_byte = 8 / bits_per_element;
+    const Loop& inner = loop_order[loop_b_idx];
+    bool aligned = inner.full_extent % elements_per_byte == 0 &&
+                   inner.dim_size % elements_per_byte == 0;
+    if (aligned) {
+      for (int i = 0; i < static_cast<int>(loop_order.size()); ++i) {
+        if (i != loop_b_idx && loop_order[i].ldb != 0 &&
+            loop_order[i].ldb % elements_per_byte != 0) {
+          aligned = false;
+          break;
+        }
+      }
+    }
+    if (!aligned) {
+      transformation = Transformation::kNone;
+      use_fallback_pack = true;
+    }
+  }
+
+  // If A has no stride-1 loop (e.g. strided or negative-stride input), append a
+  // synthetic size-1 stride-1 loop for A.
+  if (loop_a_idx < 0) {
+    loop_a_idx = static_cast<int>(loop_order.size());
+    loop_order.push_back(Loop{/*dim_in_a=*/ndim, /*tile_level=*/0,
+                              /*dim_size=*/1, /*unit_size=*/1,
+                              /*full_extent=*/1, /*lda=*/elem_size_in_bytes,
+                              /*ldb=*/0});
+    a_dims.push_back(1);
+    permutation.push_back(ndim);
+    for (auto& level : lda) {
+      level.push_back(elem_size_in_bytes);
+    }
+    for (auto& level : ldb) {
+      level.push_back(0);
+    }
+    for (auto& level : a_tilings) {
+      level.push_back(1);
+    }
+    for (auto& level : b_tilings) {
+      level.push_back(1);
+    }
+    ++ndim;
+  }
+
+  loop_order[loop_a_idx].is_inner_dim_in_a = true;
+  loop_order[loop_b_idx].is_inner_dim_in_b = true;
+
+  const bool is_memcpy = (loop_a_idx == loop_b_idx);
+  const int output_elements_per_byte =
+      (transformation == Transformation::kPackSubbyte) ? (8 / bits_per_element)
+                                                       : 1;
+  if (is_memcpy) {
+    if (transformation == Transformation::kF64ToEf57) {
+      return InvalidArgument(
+          "Memcpy-based plans cannot be used with transformations.");
+    }
+    inner_kernel_kind = InnerKernelKind::kMemcpy;
     inner_block_elems = -1;
     outer_block_elems_a = -1;
     outer_block_elems_b = -1;
+    if (transformation == Transformation::kPackSubbyte) {
+      loop_order[loop_a_idx].inc = output_elements_per_byte;
+    }
   } else {
-    // What are the smallest and largest block sizes for which we have a
-    // vectorized kernel for this element size?
+    sentinel_lda = loop_order[loop_b_idx].lda;
+    sentinel_ldb = loop_order[loop_a_idx].ldb;
+
+    const Loop& la = loop_order[loop_a_idx];
+    const Loop& lb = loop_order[loop_b_idx];
+    const int64_t a_full = la.full_extent;
+    const int64_t b_full = lb.full_extent;
+    const int64_t a_trip = MaxValidTripCount(la);
+    const int64_t b_trip = MaxValidTripCount(lb);
+
     const int max_outer_block_elems =
-        kMaxOuterBlockSizeBytes / elem_size_in_bytes;
+        std::max<int>(1, kMaxOuterBlockSizeBytes / elem_size_in_bytes);
     const int max_inner_block_bytes =
         GetMaxTransposeInnerBlockSizeBytes(elem_size_in_bytes);
-    const int min_inner_block_elems = 1;
     const int max_inner_block_elems = std::min<int>(
         max_outer_block_elems, max_inner_block_bytes / elem_size_in_bytes);
-    if (inner_kernel_kind == InnerKernelKind::kInterleave ||
-        inner_kernel_kind == InnerKernelKind::kDeinterleave) {
-      // Cap the auto vectorized interleave strip size at the 32 byte block
-      // scale (at most 2048 elements for 1 byte types, or 28 KiB across input
-      // and output at K = 7) so strips fit in L1D and kF64ToEf57 scratch stays
-      // within kStackScratchBytes (4 KiB).
-      constexpr int kMaxInterleaveBlockBytes = 32;
-      const int max_interleave_block_elems =
-          std::min(max_inner_block_bytes, kMaxInterleaveBlockBytes) /
-          elem_size_in_bytes;
-      const int64_t strip_elems = std::min<int64_t>(
-          large_loop_size, max_interleave_block_elems * max_outer_block_elems);
-      inner_block_elems = 1;
-      outer_block_elems_a =
-          (inner_kernel_kind == InnerKernelKind::kInterleave) ? strip_elems : 1;
-      outer_block_elems_b =
-          (inner_kernel_kind == InnerKernelKind::kDeinterleave) ? strip_elems
-                                                                : 1;
-    } else {
-      inner_block_elems = max_inner_block_elems;
-      while (inner_block_elems > std::min(a_stride1_size, b_stride1_size)) {
-        inner_block_elems /= 2;
-      }
-      if (inner_block_elems < min_inner_block_elems) {
-        // Size is smaller than our smallest vectorized kernel. Use the scalar
-        // path.
+    // Cap the auto vectorized interleave strip size at the 32 byte block
+    // scale (at most 2048 elements for 1 byte types, or 28 KiB across input
+    // and output at K = 7) so strips fit in L1D and kF64ToEf57 scratch stays
+    // within kStackScratchBytes (4 KiB).
+    constexpr int kMaxInterleaveBlockBytes = 32;
+    const int max_interleave_block_elems =
+        std::min(max_inner_block_bytes, kMaxInterleaveBlockBytes) /
+        elem_size_in_bytes;
+
+    const int64_t interleave_stride = b_full * elem_size_in_bytes;
+    const int64_t deinterleave_stride = a_full * elem_size_in_bytes;
+
+    // Direct 2D interleave or deinterleave when one array's small innermost
+    // loop (`K`) sits right next to the other array's innermost loop in memory.
+    inner_kernel_kind = InnerKernelKind::kDefault;
+    if (transformation == Transformation::kNone) {
+      if (!lb.is_partial() && sentinel_ldb == interleave_stride &&
+          SmallDimKernelIsFaster(InnerKernelKind::kInterleave, b_full,
+                                 elem_size_in_bytes) &&
+          a_trip >= 8) {
+        const int k = static_cast<int>(b_full);
+        inner_kernel_kind = InnerKernelKind::kInterleave;
+        interleave_size = k;
         inner_block_elems = 1;
+        outer_block_elems_a = std::min<int64_t>(
+            a_trip, max_interleave_block_elems * max_outer_block_elems);
+        outer_block_elems_b = 1;
+        loop_order[loop_a_idx].inc = outer_block_elems_a;
+        loop_order[loop_b_idx].inc = k;
+      } else if (!la.is_partial() && sentinel_lda == deinterleave_stride &&
+                 SmallDimKernelIsFaster(InnerKernelKind::kDeinterleave, a_full,
+                                        elem_size_in_bytes) &&
+                 b_trip >= 8) {
+        const int k = static_cast<int>(a_full);
+        inner_kernel_kind = InnerKernelKind::kDeinterleave;
+        interleave_size = k;
+        inner_block_elems = 1;
+        outer_block_elems_a = 1;
+        outer_block_elems_b = std::min<int64_t>(
+            b_trip, max_interleave_block_elems * max_outer_block_elems);
+        loop_order[loop_a_idx].inc = k;
+        loop_order[loop_b_idx].inc = outer_block_elems_b;
       }
-      outer_block_elems_a = FloorOfRatio<int64_t>(
-          std::min<int64_t>(max_outer_block_elems, a_stride1_size),
-          inner_block_elems);
-      outer_block_elems_a = std::max<int64_t>(outer_block_elems_a, 1);
-      outer_block_elems_b = FloorOfRatio<int64_t>(
-          std::min<int64_t>(max_outer_block_elems, b_stride1_size),
-          inner_block_elems);
-      outer_block_elems_b = std::max<int64_t>(outer_block_elems_b, 1);
+    }
+
+    if (inner_kernel_kind == InnerKernelKind::kDefault) {
+      const int64_t a_bound = std::min(a_trip, a_stride1_bound);
+      const int64_t b_bound = std::min(b_trip, b_stride1_bound);
+      int inner_bs = max_inner_block_elems;
+      while (inner_bs > 1 && inner_bs > std::min(a_bound, b_bound)) {
+        inner_bs /= 2;
+      }
+      inner_bs = std::max(inner_bs, 1);
+      inner_block_elems = inner_bs;
+      outer_block_elems_a = std::max<int64_t>(
+          1, FloorOfRatio<int64_t>(
+                 std::min<int64_t>(max_outer_block_elems, a_bound), inner_bs));
+      outer_block_elems_b = std::max<int64_t>(
+          1, FloorOfRatio<int64_t>(
+                 std::min<int64_t>(max_outer_block_elems, b_bound), inner_bs));
+      const int64_t default_a_align =
+          (transformation == Transformation::kF64ToEf57) ? 2 : 1;
+      const int64_t default_b_align =
+          (transformation == Transformation::kPackSubbyte)
+              ? output_elements_per_byte
+              : 1;
+      loop_order[loop_a_idx].inc =
+          RoundUpTo<int64_t>(inner_bs * outer_block_elems_a, default_a_align);
+      loop_order[loop_b_idx].inc =
+          RoundUpTo<int64_t>(inner_bs * outer_block_elems_b, default_b_align);
     }
   }
 
@@ -1897,32 +2045,11 @@ absl::Status Planner::Initialize() {
   // the target chunk size.
   IdentifyContiguousLoops(loop_order);
   ChooseLoopOrder(loop_order, inner_kernel_is_memcpy(), chunk_contiguity,
-                  is_identity_permutation, inner_block_elems,
-                  outer_block_elems_a, outer_block_elems_b);
+                  is_identity_permutation, output_elements_per_byte);
 
-  for (Loop& loop : loop_order) {
-    if (loop.tile_interior || loop.tile_size == 1) {
-      if (inner_kernel_is_memcpy()) {
-        if (transformation == Transformation::kPackSubbyte &&
-            loop.is_inner_dim_in_a) {
-          loop.inc = 8 / bits_per_element;
-        }
-      } else if (loop.is_inner_dim_in_a) {
-        loop.inc = (inner_kernel_kind == InnerKernelKind::kDeinterleave)
-                       ? loop.dim_size
-                       : inner_block_elems * outer_block_elems_a;
-      } else if (loop.is_inner_dim_in_b) {
-        loop.inc = (inner_kernel_kind == InnerKernelKind::kInterleave)
-                       ? loop.dim_size
-                       : inner_block_elems * outer_block_elems_b;
-      }
-    }
-  }
-
-  // It is a required invariant of the loop order that tile interiors always
-  // appear after the corresponding tile exterior. This is a consequence of the
-  // heuristic above, because the tile interior must have smaller strides in
-  // both input and output.
+  // It is a required invariant of the loop order that inner tile levels always
+  // appear after any enclosing loop of the same dimension. This is enforced
+  // by the hard constraint in ChooseLoopOrder.
 
   // The stride-1 loop must be innermost for a memcpy loop.
   DCHECK(!inner_kernel_is_memcpy() || loop_order.back().is_inner_dim_in_a)
@@ -1961,52 +2088,61 @@ absl::Status Planner::Initialize() {
 
 void ChooseLoopOrder(std::vector<Loop>& loop_order, bool is_memcpy,
                      ChunkContiguity chunk_contiguity,
-                     bool is_identity_permutation, int inner_block_elems,
-                     int outer_block_elems_a, int outer_block_elems_b) {
+                     bool is_identity_permutation,
+                     int output_elements_per_byte) {
   // Loop order heuristic: try to make loops with small strides innermost.
   // We use a greedy selection to pick loops from slowest-varying to
   // fastest-varying, subject to hard constraints:
   // 1. If the inner kernel is a memcpy, the stride-1 dimension MUST be
   //    innermost.
-  // 2. A tile interior MUST come after its corresponding tile exterior.
+  // 2. Every inner tile level MUST come after any enclosing loop of the same
+  //    dimension.
   std::vector<Loop> remaining = std::move(loop_order);
   loop_order.clear();
   loop_order.reserve(remaining.size());
 
-  // Computes a sort key for each candidate loop, returning a 3-tuple:
-  //   <contiguity, -miss_cost, -stride_tie_breaker>
+  // Computes a sort key for each candidate loop, returning a 4-tuple:
+  //   <contiguity, -miss_cost, tile_level, -stride_tie_breaker>
   // Lexicographical ordering selects the smallest tuple first, placing that
   // loop into an outer position (from slowest-varying to fastest-varying):
   // 1. Contiguity category (non-contiguous loops placed in outer loops).
   // 2. Primary cost: cache-line misses (higher miss cost placed in outer
-  // loops).
-  // 3. Secondary tie-breaker: when cache misses tie (e.g. both loops have
-  //    strides >= 128B), the loop with larger minimum stride goes outer to
-  //    favor better locality in at least one buffer for the inner loop.
-  auto soft_cost = [&](const Loop& l) -> std::tuple<int, double, double> {
+  //    loops).
+  // 3. Tile level: prefer outer tile levels before inner tile levels on ties.
+  // 4. Secondary tie-breaker: when cache misses and tile level tie, the loop
+  //    with larger minimum stride goes outer to favor better locality in at
+  //    least one buffer for the inner loop.
+  auto soft_cost = [&](const Loop& l) -> std::tuple<int, double, int, double> {
     int64_t a_stride = std::abs(l.lda);
     if (!is_memcpy && l.is_inner_dim_in_a) {
-      a_stride *= inner_block_elems * outer_block_elems_a;
+      a_stride *= l.inc;
     }
     int64_t b_stride = std::abs(l.ldb);
     if (!is_memcpy && l.is_inner_dim_in_b) {
-      b_stride *= inner_block_elems * outer_block_elems_b;
+      b_stride *= l.inc;
     }
+
+    const double a_bytes = static_cast<double>(a_stride);
+    const double b_bytes =
+        static_cast<double>(b_stride) / output_elements_per_byte;
 
     switch (chunk_contiguity) {
       case ChunkContiguity::kOutput:
-        return std::make_tuple(0, -b_stride, 0.0);
+        return std::make_tuple(
+            0, -static_cast<double>(std::abs(l.ldb)) / output_elements_per_byte,
+            l.tile_level, 0.0);
       case ChunkContiguity::kInput:
-        return std::make_tuple(0, -a_stride, 0.0);
+        return std::make_tuple(0, -static_cast<double>(std::abs(l.lda)),
+                               l.tile_level, 0.0);
       case ChunkContiguity::kNone: {
         constexpr double kOutputPenalty = 1.01;
         const double min_stride =
-            std::min<double>(a_stride * kOutputPenalty, b_stride);
+            std::min<double>(a_bytes * kOutputPenalty, b_bytes);
 
-        // Pure tile-packing identity linearizers/delinearizers preserve the
+        // For memcpy-based identity linearizers/delinearizers, preserve the
         // baseline std::min cost to keep 2D hardware tile pairings intact.
-        if (is_identity_permutation) {
-          return std::make_tuple(l.contiguity, -min_stride, 0.0);
+        if (is_identity_permutation && is_memcpy) {
+          return std::make_tuple(l.contiguity, -min_stride, 0, 0.0);
         }
 
         // Model the memory traffic of placing this loop in an inner position
@@ -2018,15 +2154,14 @@ void ChooseLoopOrder(std::vector<Loop>& loop_order, bool is_memcpy,
         // - Strides >= 128 bytes incur a full cache-line miss per iteration.
         constexpr double kCacheLineBytes = 128.0;
 
-        const double misses_a = std::min(1.0, a_stride / kCacheLineBytes);
-        const double misses_b = std::min(1.0, b_stride / kCacheLineBytes);
+        const double misses_a = std::min(1.0, a_bytes / kCacheLineBytes);
+        const double misses_b = std::min(1.0, b_bytes / kCacheLineBytes);
         const double base_cost = misses_a + misses_b * kOutputPenalty;
 
-        // Break ties among loops with full cache-line misses using the minimum
-        // stride across both buffers (favoring loops with better locality in
-        // at least one buffer, such as tile interior loops over tile exterior
-        // loops).
-        return std::make_tuple(l.contiguity, -base_cost, -min_stride);
+        // Break ties among loops with full cache-line misses using tile level
+        // and minimum stride across both buffers.
+        return std::make_tuple(l.contiguity, -base_cost, l.tile_level,
+                               -min_stride);
       }
     }
   };
@@ -2041,13 +2176,15 @@ void ChooseLoopOrder(std::vector<Loop>& loop_order, bool is_memcpy,
         continue;
       }
 
-      // Hard constraint 2: tile ordering.
-      // A tile interior MUST come after its corresponding tile exterior.
-      if (l.tile_interior) {
-        auto is_exterior = [&](const Loop& r) {
-          return !r.tile_interior && r.dim_in_a == l.dim_in_a;
+      // Hard constraint 2: keep outer tile levels before inner tile levels of
+      // the same dimension.
+      if (l.tile_level > 0) {
+        auto is_enclosing = [&](const Loop& r) {
+          return r.dim_in_a == l.dim_in_a &&
+                 std::make_pair(r.tile_level, -r.unit_size) <
+                     std::make_pair(l.tile_level, -l.unit_size);
         };
-        if (absl::c_any_of(remaining, is_exterior)) {
+        if (absl::c_any_of(remaining, is_enclosing)) {
           continue;
         }
       }
@@ -2067,32 +2204,24 @@ void ChooseLoopOrder(std::vector<Loop>& loop_order, bool is_memcpy,
                              absl::StrAppend(out, l.ToString());
                            });
 }
+
 int Planner::ChooseParallelizationStrategy(
     std::vector<Loop>& loop_order) const {
   int available_parallelism = num_chunks_requested;
 
   // Compute the number of iterations in `loop`.
   auto loop_iterations = [&](const Loop& loop) {
-    int64_t size = loop.tile_interior
-                       ? ((tile_padding.has_value() && b_is_tiled)
-                              ? loop.tile_size
-                              : std::min(loop.tile_size, loop.dim_size))
-                       : (CeilOfRatio(loop.dim_size, loop.tile_size));
+    int64_t size = (tile_padding.has_value() && b_is_tiled)
+                       ? loop.full_extent
+                       : MaxValidTripCount(loop);
     return CeilOfRatio<int64_t>(size, loop.inc);
   };
 
   // Estimate the number of bytes each iteration of each loop processes.
   absl::InlinedVector<int64_t, 4> work_in_bytes(loop_order.size());
   int64_t acc = elem_size_in_bytes;
-  if (inner_kernel_kind == InnerKernelKind::kInterleave ||
-      inner_kernel_kind == InnerKernelKind::kDeinterleave) {
-    acc *= interleave_size * inner_block_elems * outer_block_elems_a *
-           outer_block_elems_b;
-  } else if (!inner_kernel_is_memcpy()) {
-    acc *= inner_block_elems * inner_block_elems * outer_block_elems_a *
-           outer_block_elems_b;
-  } else if (transformation == Transformation::kPackSubbyte) {
-    acc *= 8 / bits_per_element;
+  for (const Loop& l : loop_order) {
+    acc *= l.inc;
   }
   auto work_it = work_in_bytes.rbegin();
   for (auto it = loop_order.rbegin(); it != loop_order.rend(); ++it) {
@@ -2111,8 +2240,7 @@ int Planner::ChooseParallelizationStrategy(
 
     // Initialize loop iteration bounds to full range in element units.
     loop.start = 0;
-    loop.end = loop.tile_interior ? loop.tile_size
-                                  : CeilOfRatio(loop.dim_size, loop.tile_size);
+    loop.end = loop.full_extent;
 
     int64_t iterations_without_blocking = loop.end - loop.start;
     int64_t iterations = loop_iterations(loop);
@@ -2121,7 +2249,7 @@ int Planner::ChooseParallelizationStrategy(
     // Tile interiors with partial tiles must not be parallelized since
     // otherwise we will not account for things like padding correctly when
     // calculating chunk sizes.
-    if (loop.contiguity > 1 || loop.tile_interior) {
+    if (loop.contiguity > 1 || (loop.tile_level > 0 && loop.is_partial())) {
       loop.parallelism = 1;
       if (chunk_contiguity != ChunkContiguity::kNone &&
           loop.parallelism < iterations_without_blocking) {
@@ -2187,43 +2315,40 @@ void Planner::ComputeChunkSizes() {
     int64_t input_min = 0, input_max = 0;
     int64_t output_min = 0, output_max = 0;
 
-    for (const Loop& loop : loops) {
-      if (loop.start >= loop.end) {
-        continue;  // Empty iteration range
-      }
-
-      int64_t first = loop.start;
+    // Accumulates `loop`'s min/max byte-offset contribution for one buffer
+    // (input or output).
+    auto accumulate_byte_range = [&](const Loop& loop, int64_t stride,
+                                     bool is_tiled, int64_t& min_offset,
+                                     int64_t& max_offset) {
+      const int64_t first = loop.start;
       int64_t last = loop.end - 1;  // Last iteration (exclusive end)
-
-      // For tile interior loops with partial tiles, use the full tile size.
-      int64_t input_last = last;
-      int64_t output_last = last;
-      if (loop.tile_interior && loop.has_partial_tile) {
-        int64_t partial_size = loop.dim_size % loop.tile_size;
-        if (a_is_tiled) {
-          input_last = loop.tile_size - 1;
+      if (loop.tile_level > 0 && loop.has_partial_tile) {
+        if (is_tiled) {
+          // On the tiled side, an incomplete tile still takes up its full
+          // padded tile size in memory.
+          last = loop.full_extent - 1;
         } else {
-          input_last = partial_size - 1;
-        }
-        // Output: if tiled, use full tile extent (no adjustment)
-        // If untiled, use partial size
-        if (b_is_tiled) {
-          output_last = loop.tile_size - 1;
-        } else {
-          output_last = partial_size - 1;
+          // On the untiled side, when this chunk includes the final incomplete
+          // tile, an inner tile loop only reaches the last real element inside
+          // that tile.
+          last = ((loop.dim_size - 1) % (loop.full_extent * loop.unit_size)) /
+                 loop.unit_size;
         }
       }
 
       // Accumulate min/max (strides can be negative)
-      int64_t input_first_offset = first * loop.lda;
-      int64_t input_last_offset = input_last * loop.lda;
-      input_min += std::min(input_first_offset, input_last_offset);
-      input_max += std::max(input_first_offset, input_last_offset);
+      const int64_t first_off = first * stride;
+      const int64_t last_off = last * stride;
+      min_offset += std::min(first_off, last_off);
+      max_offset += std::max(first_off, last_off);
+    };
 
-      int64_t output_first_offset = first * loop.ldb;
-      int64_t output_last_offset = output_last * loop.ldb;
-      output_min += std::min(output_first_offset, output_last_offset);
-      output_max += std::max(output_first_offset, output_last_offset);
+    for (const Loop& loop : loops) {
+      if (loop.start >= loop.end) {
+        continue;  // Empty iteration range
+      }
+      accumulate_byte_range(loop, loop.lda, a_is_tiled, input_min, input_max);
+      accumulate_byte_range(loop, loop.ldb, b_is_tiled, output_min, output_max);
     }
 
     input_chunk_offset_bytes[chunk_id] = input_min;
@@ -2307,8 +2432,8 @@ std::string Planner::ToString(
                                      ? absl::StrFormat("0x%02x", *tile_padding)
                                      : "none";
   return absl::StrFormat(
-      "elem_size=%d a_dims=%s b_dims=%s permutation=%s a_tiling=%s b_tiling=%s "
-      "lda=%s lda_tile=%s ldb=%s ldb_tile=%s "
+      "elem_size=%d a_dims=%s b_dims=%s permutation=%s a_tilings=%s "
+      "b_tilings=%s lda=%s ldb=%s "
       "outer_bs=[%d,%d] inner_bs=%d inner_kernel=%s "
       "transformation=%s tile_padding=%s scratch_size=%d "
       "num_chunks_requested=%d\n"
@@ -2316,12 +2441,11 @@ std::string Planner::ToString(
       "plans:\n%s",
       elem_size_in_bytes, absl::StrJoin(a_dims, ","),
       absl::StrJoin(Permute(a_dims, permutation), ","),
-      absl::StrJoin(permutation, ","), absl::StrJoin(a_tiling, ","),
-      absl::StrJoin(b_tiling, ","), absl::StrJoin(lda, ","),
-      absl::StrJoin(lda_tile, ","), absl::StrJoin(ldb, ","),
-      absl::StrJoin(ldb_tile, ","), outer_block_elems_a, outer_block_elems_b,
-      inner_block_elems, inner_kernel_str, transformation_str, tile_padding_str,
-      scratch_size, num_chunks_requested, chunk_loops_str, plans_str);
+      absl::StrJoin(permutation, ","), FormatLevels(a_tilings),
+      FormatLevels(b_tilings), FormatLevels(lda), FormatLevels(ldb),
+      outer_block_elems_a, outer_block_elems_b, inner_block_elems,
+      inner_kernel_str, transformation_str, tile_padding_str, scratch_size,
+      num_chunks_requested, chunk_loops_str, plans_str);
 }
 
 void Planner::IdentifyContiguousLoops(std::vector<Loop>& loop_order) const {
@@ -2339,8 +2463,10 @@ void Planner::IdentifyContiguousLoops(std::vector<Loop>& loop_order) const {
     std::vector<size_t> indices(loop_order.size());
     std::iota(indices.begin(), indices.end(), 0);
     auto cost = [&](const Loop& l) {
+      const bool is_partial_interior = l.tile_level > 0 && l.is_partial();
       int64_t stride = contiguous_stride(l);
-      return std::make_tuple(!l.tile_interior, stride);
+      return std::make_tuple(!is_partial_interior,
+                             is_partial_interior ? -l.tile_level : 0, stride);
     };
     absl::c_stable_sort(indices, [&](size_t a, size_t b) {
       return cost(loop_order[a]) < cost(loop_order[b]);
@@ -2350,8 +2476,7 @@ void Planner::IdentifyContiguousLoops(std::vector<Loop>& loop_order) const {
     for (size_t idx : indices) {
       Loop& loop = loop_order[idx];
       int64_t stride = contiguous_stride(loop);
-      if (stride == 0 ||
-          (!loop.tile_interior && loop.dim_size == loop.tile_size)) {
+      if (stride == 0 || (loop.full_extent == 1 && !loop.is_partial())) {
         continue;
       }
       if (stride >= target_chunk_bytes) {
@@ -2368,20 +2493,13 @@ void Planner::IdentifyContiguousLoops(std::vector<Loop>& loop_order) const {
 
 void RemoveTrivialLoops(std::vector<Loop>& loops) {
   auto it = std::remove_if(loops.begin(), loops.end(), [](const Loop& loop) {
-    // We must preserve the loop if it corresponds to the innermost dimension
-    // of the layout, because the kernels (especially TransposeConstStride1)
-    // rely on finding a node with is_inner_dim_in_a/b set to true.
+    // Preserve loops explicitly flagged as stride-1 inner dimensions (used by
+    // direct unit-test callers; `Planner::Initialize` assigns those flags after
+    // `RemoveTrivialLoops` and synthesizes a size-1 loop if needed).
     if (loop.is_inner_dim_in_a || loop.is_inner_dim_in_b) {
       return false;
     }
-    if (loop.tile_interior) {
-      return loop.tile_size == 1;
-    }
-    // Exterior loop.
-    // Trivial if dim_size == tile_size (1 complete tile, no partials). This
-    // also accounts for the case where the dimension is of size 1, since in
-    // that case the tile size is also 1.
-    return loop.dim_size == loop.tile_size;
+    return loop.full_extent == 1;
   });
   loops.erase(it, loops.end());
 }
@@ -2398,24 +2516,25 @@ void CoalesceLoops(std::vector<Loop>& loops) {
     Loop& outer = loops[write_pos];
     const Loop& inner = loops[read_pos];
 
-    int64_t inner_iter_size = inner.tile_interior
-                                  ? inner.tile_size
-                                  : (inner.dim_size / inner.tile_size);
+    const int64_t outer_iter_size = outer.full_extent;
+    const int64_t inner_iter_size = inner.full_extent;
 
     // Two loops can be coalesced if:
     // * neither has a partial tile
     // * the inner loop is a multiple of the outer loop.
-    bool coalescable = (outer.dim_size % outer.tile_size == 0) &&
-                       (inner.dim_size % inner.tile_size == 0) &&
-                       (outer.lda == inner.lda * inner_iter_size) &&
-                       (outer.ldb == inner.ldb * inner_iter_size);
+    const bool coalescable = !outer.is_partial() && !inner.is_partial() &&
+                             (outer.lda == inner.lda * inner_iter_size) &&
+                             (outer.ldb == inner.ldb * inner_iter_size);
     if (coalescable) {
-      if (outer.tile_interior) {
-        outer.tile_size *= inner.tile_size;
-        outer.dim_size *= inner.dim_size;
+      const int64_t merged_ext = outer_iter_size * inner_iter_size;
+      if (outer.dim_in_a == inner.dim_in_a) {
+        outer.unit_size = inner.unit_size;
+        outer.tile_level = std::min(outer.tile_level, inner.tile_level);
       } else {
-        outer.dim_size *= inner_iter_size;
+        outer.unit_size = 1;
       }
+      outer.full_extent = merged_ext;
+      outer.dim_size = merged_ext * outer.unit_size;
 
       outer.lda = inner.lda;
       outer.ldb = inner.ldb;

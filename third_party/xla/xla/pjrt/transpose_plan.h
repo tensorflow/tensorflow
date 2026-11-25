@@ -59,36 +59,50 @@ enum class InnerKernelKind {
 };
 
 // Represents one loop level in the planner's loop nest.
+//
+// For example, a dimension of size 13 with 2-level tiling `[8, 2]` turns into
+// three nested loops:
+//   - Level 0 (outer 8-element tiles):
+//       `unit_size = 8`, `full_extent = 2` (`ceil(13 / 8)`), `dim_size = 13`.
+//   - Level 1 (2-element sub-tiles inside an 8-element tile):
+//       `unit_size = 2`, `full_extent = 4` (`8 / 2`), `dim_size = 13`.
+//   - Level 2 (elements inside a 2-element sub-tile):
+//       `unit_size = 1`, `full_extent = 2` (`2 / 1`), `dim_size = 13`.
+// An untiled dimension of size 13 is a single level-0 loop with
+// `unit_size = 1`, `full_extent = 13`, `dim_size = 13`.
 struct Loop {
   // Dimension number in A from which this loop originated. This is mostly
   // for debugging the plan.
-  int dim_in_a;
+  int dim_in_a = 0;
 
-  // If true, the loop iterates over the interior of a tiled dimension that
-  // may have a trailing partial tile.
-  // For an untiled dimension or a tiled dimension whose tile size evenly
-  // divides the dimension size, this is always false. For a tiled dimension
-  // with a trailing partial tile, we will have two loops: one over the tile
-  // exteriors and one over the tile interiors.
-  bool tile_interior;
+  // Tiling depth: 0 for outer tiles (or an untiled dimension), 1..L for
+  // nested levels inside a tile from outermost to innermost.
+  int tile_level = 0;
 
-  // Size of the iteration space.
-  int64_t dim_size;
+  // Unpadded logical element count of this dimension. Needed alongside
+  // `full_extent` because `full_extent` is the padded trip count (e.g. a
+  // size-13 and size-16 dimension with tiling `[8, 2]` have the same
+  // `unit_size` and `full_extent` at every level, and differ only in
+  // `dim_size`). For non-partial loops (including coalesced loops), equals
+  // `full_extent * unit_size`.
+  int64_t dim_size = 0;
 
-  // Size of the tiles, if this a tiled dimension with a trailing partial
-  // tile.
-  // We do not set this for tiled dimensions without partial tiles, since in
-  // that case we can just use the dimension size, which affords more
-  // opportunities for loop optimizations.
-  int64_t tile_size;
+  // Number of elements along this dimension covered by a single iteration of
+  // this loop (the tile size at this level, or 1 at the innermost/untiled
+  // level).
+  int64_t unit_size = 1;
 
-  int64_t lda;  // Stride in A for this loop.
-  int64_t ldb;  // Stride in B for this loop.
+  // Padded trip count of this loop within one full enclosing tile (or across
+  // the whole dimension at level 0, i.e. `ceil(dim_size / unit_size)`).
+  int64_t full_extent = 0;
+
+  int64_t lda = 0;  // Stride in A for this loop.
+  int64_t ldb = 0;  // Stride in B for this loop.
 
   // Is this the innermost (stride 1) dimension in A or B? These dimensions
   // are special for the kernels.
-  bool is_inner_dim_in_a;
-  bool is_inner_dim_in_b;
+  bool is_inner_dim_in_a = false;
+  bool is_inner_dim_in_b = false;
 
   // Number of parallel threads to use for this loop.
   int64_t parallelism = -1;
@@ -114,6 +128,13 @@ struct Loop {
   // 2 = deep inner loop
   int contiguity = 0;
 
+  // True if this loop's padded span (`full_extent * unit_size`) does not evenly
+  // divide `dim_size`, meaning the last tile along this dimension is partial.
+  bool is_partial() const {
+    const int64_t span = full_extent * unit_size;
+    return span > 0 && dim_size % span != 0;
+  }
+
   bool operator==(const Loop& other) const;
   std::string ToString() const;
 };
@@ -122,9 +143,9 @@ struct PlanOptions {
   size_t elem_size_in_bytes = 0;
   absl::Span<int64_t const> dims;
   absl::Span<int64_t const> permutation;
-  std::optional<absl::Span<int64_t const>> input_tiling;
+  std::vector<absl::Span<int64_t const>> input_tiling;
   std::optional<absl::Span<int64_t const>> input_striding;
-  std::optional<absl::Span<int64_t const>> output_tiling;
+  std::vector<absl::Span<int64_t const>> output_tiling;
   Transformation transformation = Transformation::kNone;
   std::optional<int> dest_bits_per_element;
   int num_threads = 1;
@@ -194,8 +215,7 @@ void CoalesceLoops(std::vector<Loop>& loops);
 void ChooseLoopOrder(std::vector<Loop>& loop_order, bool is_memcpy,
                      ChunkContiguity chunk_contiguity = ChunkContiguity::kNone,
                      bool is_identity_permutation = false,
-                     int inner_block_elems = 1, int outer_block_elems_a = 4,
-                     int outer_block_elems_b = 4);
+                     int output_elements_per_byte = 1);
 
 // Builds a flattened transpose plan from `options`.
 absl::StatusOr<FlattenedPlan> BuildTransposePlan(const PlanOptions& options);

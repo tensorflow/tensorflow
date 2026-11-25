@@ -167,7 +167,6 @@ void StridedGather::CreateTransposePlan(
   options.permutation = permutation;
   options.input_striding =
       TransposePlan::Striding{/*strides_in_bytes=*/strides};
-  options.output_tiling = TransposePlan::Tiling{};
 
   create_fn(options);
 }
