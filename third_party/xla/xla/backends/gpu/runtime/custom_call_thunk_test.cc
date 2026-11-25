@@ -1328,11 +1328,12 @@ TEST(CustomCallThunkTest, KernelRegistryInitializeExecuteAndRecord) {
   bundle.initialize = ffi::Ffi::BindInitialize().Ctx<ffi::KernelRegistry>().To(
       [&](ffi::InitializeKernelRegistry registry) -> absl::Status {
         ABSL_ASSIGN_OR_RETURN(
-            registered_kernel,
+            ffi::RegisterResult registered,
             registry.Register("AddI32",
                               reinterpret_cast<const char*>(fatbin.data()),
                               fatbin.size(), ffi::SourceFormat::kCubin,
                               /*uses_pdl=*/false));
+        registered_kernel = registered.kernel;
         return absl::OkStatus();
       });
   bundle.execute =
@@ -1406,11 +1407,12 @@ TEST(CustomCallThunkTest, KernelRegistryPrepareAndExecute) {
   bundle.prepare = ffi::Ffi::BindPrepare().Ctx<ffi::KernelRegistry>().To(
       [&](ffi::PrepareKernelRegistry registry) -> absl::Status {
         ABSL_ASSIGN_OR_RETURN(
-            registered_kernel,
+            ffi::RegisterResult registered,
             registry.Register("AddI32",
                               reinterpret_cast<const char*>(fatbin.data()),
                               fatbin.size(), ffi::SourceFormat::kCubin,
                               /*uses_pdl=*/false));
+        registered_kernel = registered.kernel;
         return absl::OkStatus();
       });
   bundle.execute =

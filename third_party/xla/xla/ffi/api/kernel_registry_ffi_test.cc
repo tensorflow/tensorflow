@@ -71,9 +71,12 @@ static_assert(!CanRegister<ExecuteKernelRegistry>::value);
 static_assert(CanRegisterWithCache<PrepareKernelRegistry>::value);
 static_assert(CanRegisterWithCache<InitializeKernelRegistry>::value);
 static_assert(!CanRegisterWithCache<ExecuteKernelRegistry>::value);
+static_assert(XLA_FFI_KernelRegistry_Register_Result_STRUCT_SIZE ==
+              XLA_FFI_STRUCT_SIZE(XLA_FFI_KernelRegistry_Register_Result,
+                                  already_cached));
 static_assert(XLA_FFI_KernelRegistry_Register_Args_STRUCT_SIZE ==
               XLA_FFI_STRUCT_SIZE(XLA_FFI_KernelRegistry_Register_Args,
-                                  kernel));
+                                  result));
 
 static_assert(!CanLaunch<PrepareKernelRegistry>::value);
 static_assert(!CanLaunch<InitializeKernelRegistry>::value);
@@ -128,7 +131,14 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
     EXPECT_EQ(args->uses_pdl, 1);
     state->registered = true;
     state->last_cached_kernel = args->cached_kernel;
-    args->kernel = kExpectedKernel;
+    EXPECT_NE(args->result, nullptr);
+    if (args->result == nullptr) {
+      return nullptr;
+    }
+    EXPECT_EQ(args->result->struct_size,
+              XLA_FFI_KernelRegistry_Register_Result_STRUCT_SIZE);
+    args->result->kernel = kExpectedKernel;
+    args->result->already_cached = args->cached_kernel != nullptr ? 1 : 0;
     return nullptr;
   };
 
@@ -173,15 +183,16 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
                                  /*uses_pdl=*/true);
     EXPECT_TRUE(null_data_res.has_error());
 
-    auto kernel = kernel_registry.Register("my_kernel", "dummy_ptx", 9,
-                                           SourceFormat::kPtx,
-                                           /*uses_pdl=*/true);
-    if (kernel.has_error()) {
-      return kernel.error();
+    auto first = kernel_registry.Register("my_kernel", "dummy_ptx", 9,
+                                          SourceFormat::kPtx,
+                                          /*uses_pdl=*/true);
+    if (first.has_error()) {
+      return first.error();
     }
-    EXPECT_EQ(*kernel, kExpectedKernel);
+    EXPECT_EQ(first->kernel, kExpectedKernel);
+    EXPECT_FALSE(first->already_cached);
     EXPECT_EQ(state.last_cached_kernel, nullptr);
-    registered_kernel = *kernel;
+    registered_kernel = first->kernel;
 
     auto cached = kernel_registry.Register(
         "my_kernel", "dummy_ptx", 9, SourceFormat::kPtx,
@@ -189,7 +200,8 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
     if (cached.has_error()) {
       return cached.error();
     }
-    EXPECT_EQ(*cached, kExpectedKernel);
+    EXPECT_EQ(cached->kernel, kExpectedKernel);
+    EXPECT_TRUE(cached->already_cached);
     EXPECT_EQ(state.last_cached_kernel, kExpectedKernel);
     return Error::Success();
   };

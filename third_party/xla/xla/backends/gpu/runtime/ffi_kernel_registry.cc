@@ -263,7 +263,7 @@ bool FfiKernelRegistry::Contains(
          LookupPublishedKernel(*kernel, device_ordinal) != nullptr;
 }
 
-absl::StatusOr<const XLA_FFI_Kernel*> FfiKernelRegistry::Register(
+absl::StatusOr<FfiKernelRegistry::RegisterResult> FfiKernelRegistry::Register(
     stream_executor::StreamExecutor* absl_nullable executor,
     absl::string_view name, const void* absl_nullable data, size_t size,
     XLA_FFI_SourceFormat format, bool use_pdl) {
@@ -309,9 +309,11 @@ absl::StatusOr<const XLA_FFI_Kernel*> FfiKernelRegistry::Register(
   }
 
   const int device_ordinal = executor->device_ordinal();
+  bool loaded = false;
   ABSL_RETURN_IF_ERROR(kernel->per_device_kernel.GetOrCreateAndInitialize(
       device_ordinal,
-      [executor, kernel](XLA_FFI_Kernel::DeviceKernel* slot) -> absl::Status {
+      [executor, kernel,
+       &loaded](XLA_FFI_Kernel::DeviceKernel* slot) -> absl::Status {
         auto spec =
             kernel->format == XLA_FFI_SourceFormat_PTX
                 ? stream_executor::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
@@ -323,15 +325,16 @@ absl::StatusOr<const XLA_FFI_Kernel*> FfiKernelRegistry::Register(
                                   kernel->binary.data()),
                               kernel->binary.size()),
                           kernel->name, /*arity=*/0);
-        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<stream_executor::Kernel> loaded,
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<stream_executor::Kernel> loaded_kernel,
                          executor->LoadKernel(spec));
         // Set once before publication so concurrent launches only read it.
-        loaded->set_use_pdl(kernel->use_pdl);
-        slot->owned = std::move(loaded);
+        loaded_kernel->set_use_pdl(kernel->use_pdl);
+        slot->owned = std::move(loaded_kernel);
         slot->published.store(slot->owned.get(), std::memory_order_release);
+        loaded = true;
         return absl::OkStatus();
       }));
-  return kernel;
+  return RegisterResult{kernel, /*already_cached=*/!loaded};
 }
 
 absl::Status KernelRegistrationExtension::RegisterImpl(
@@ -339,7 +342,11 @@ absl::Status KernelRegistrationExtension::RegisterImpl(
   ABSL_RETURN_IF_ERROR(CheckStruct(args,
                               XLA_FFI_KernelRegistry_Register_Args_STRUCT_SIZE,
                               "XLA_FFI_KernelRegistry_Register_Args"));
-  args->kernel = nullptr;
+  ABSL_RETURN_IF_ERROR(CheckStruct(
+      args->result, XLA_FFI_KernelRegistry_Register_Result_STRUCT_SIZE,
+      "XLA_FFI_KernelRegistry_Register_Result"));
+  args->result->kernel = nullptr;
+  args->result->already_cached = 0;
   // NOLINTNEXTLINE(*-reinterpret-cast): `state` points to `State`.
   const auto* state = reinterpret_cast<const State*>(args->state);
   if (state == nullptr || state->registry == nullptr ||
@@ -360,12 +367,16 @@ absl::Status KernelRegistrationExtension::RegisterImpl(
       state->registry->Contains(state->executor->device_ordinal(), cached) &&
       cached->name == name && cached->binary.size() == spec->size &&
       cached->format == spec->format && cached->use_pdl == use_pdl) {
-    args->kernel = cached;
+    args->result->kernel = cached;
+    args->result->already_cached = 1;
     return absl::OkStatus();
   }
-  ABSL_ASSIGN_OR_RETURN(args->kernel, state->registry->Register(
-                                     state->executor, name, spec->data,
-                                     spec->size, spec->format, use_pdl));
+  ABSL_ASSIGN_OR_RETURN(
+      FfiKernelRegistry::RegisterResult result,
+      state->registry->Register(state->executor, name, spec->data, spec->size,
+                                spec->format, use_pdl));
+  args->result->kernel = result.kernel;
+  args->result->already_cached = static_cast<int32_t>(result.already_cached);
   return absl::OkStatus();
 }
 

@@ -304,9 +304,10 @@ TEST(RecordFfiTest, KernelLaunchWithRegisteredKernel) {
   ASSERT_OK_AND_ASSIGN(KernelBinary binary, GetKernelSpec());
   FfiKernelRegistry registry(platform->VisibleDeviceCount());
   ASSERT_OK_AND_ASSIGN(
-      const XLA_FFI_Kernel* kernel,
+      FfiKernelRegistry::RegisterResult registered,
       registry.Register(executor, "AddI32", binary.data(), binary.size(),
                         XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false));
+  const XLA_FFI_Kernel* kernel = registered.kernel;
 
   std::unique_ptr<ffi::Ffi> handler =
       MakeAddI32RecordHandler([kernel](ffi::RecordContext& record_ctx,
@@ -517,9 +518,10 @@ TEST(RecordFfiTest, RecordCommandsResolveContextAndExplicitDependencies) {
   FfiKernelRegistry registry(/*num_devices=*/1);
   constexpr char kDummyCubin[] = "cubin";
   ASSERT_OK_AND_ASSIGN(
-      const XLA_FFI_Kernel* kernel,
+      FfiKernelRegistry::RegisterResult registered,
       registry.Register(&mock_executor, "k0", kDummyCubin, sizeof(kDummyCubin),
                         XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false));
+  const XLA_FFI_Kernel* kernel = registered.kernel;
   ASSERT_OK_AND_ASSIGN(se::Kernel * se_kernel,
                        FindDeviceKernel(kernel, /*device_ordinal=*/0));
 

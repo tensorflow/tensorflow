@@ -6113,9 +6113,11 @@ xla_test(
     backends = GPU_DEFAULT_BACKENDS,
     deps = [
         ":ffi_kernel_registry",
+        "//xla/ffi:ffi_interop",
         "//xla/ffi:kernel_registry_ffi",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:kernel_api",
+        "//xla/ffi/api:kernel_registry_api",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel",

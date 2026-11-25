@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/ffi_kernel_registry.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -31,7 +32,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/ffi/api/kernel_api.h"
 #include "xla/ffi/api/kernel_c_api.h"
+#include "xla/ffi/api/kernel_registry_api.h"
 #include "xla/ffi/api/kernel_registry_c_api.h"
+#include "xla/ffi/ffi_interop.h"
 #include "xla/ffi/kernel_registry_ffi.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -94,17 +97,17 @@ class FfiKernelRegistryTest : public ::testing::Test {
   }
 
   // Registers a kernel through the FFI API, as a handler would in Initialize.
-  absl::StatusOr<const XLA_FFI_Kernel*> Register(absl::string_view name,
-                                                 const void* data, size_t size,
-                                                 ffi::SourceFormat format,
-                                                 bool uses_pdl) {
+  absl::StatusOr<ffi::RegisterResult> Register(absl::string_view name,
+                                               const void* data, size_t size,
+                                               ffi::SourceFormat format,
+                                               bool uses_pdl) {
     KernelRegistrationExtension extension(registry_.get(), executor_,
                                           /*pdl_enabled=*/true);
     return ffi::InitializeKernelRegistry(/*api=*/nullptr, &extension.raw())
         .Register(name, data, size, format, uses_pdl);
   }
 
-  absl::StatusOr<const XLA_FFI_Kernel*> RegisterFatbinKernel(
+  absl::StatusOr<ffi::RegisterResult> RegisterFatbinKernel(
       absl::string_view name, bool uses_pdl) {
     return Register(name, fatbin_.data(), fatbin_.size(),
                     ffi::SourceFormat::kCubin, uses_pdl);
@@ -144,17 +147,21 @@ class FfiKernelRegistryTest : public ::testing::Test {
 TEST_F(FfiKernelRegistryTest, RegisterCopiesAndDedupsBinary) {
   auto first_copy = std::make_unique<std::vector<uint8_t>>(fatbin_);
   ASSERT_OK_AND_ASSIGN(
-      const XLA_FFI_Kernel* kernel,
+      ffi::RegisterResult first,
       Register("AddI32", first_copy->data(), first_copy->size(),
                ffi::SourceFormat::kCubin, /*uses_pdl=*/false));
+  EXPECT_FALSE(first.already_cached);
   first_copy.reset();
-  EXPECT_THAT(RegisterFatbinKernel("AddI32", /*uses_pdl=*/false),
-              absl_testing::IsOkAndHolds(kernel));
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult second,
+                       RegisterFatbinKernel("AddI32", /*uses_pdl=*/false));
+  EXPECT_EQ(second.kernel, first.kernel);
+  EXPECT_TRUE(second.already_cached);
 
-  EXPECT_THAT(FindDeviceKernel(kernel, executor_->device_ordinal()), IsOk());
-  EXPECT_THAT(FindDeviceKernel(kernel, 999),
+  EXPECT_THAT(FindDeviceKernel(first.kernel, executor_->device_ordinal()),
+              IsOk());
+  EXPECT_THAT(FindDeviceKernel(first.kernel, 999),
               StatusIs(absl::StatusCode::kNotFound));
-  EXPECT_THAT(Run(kernel, ffi::DevicePointer{a_.opaque()},
+  EXPECT_THAT(Run(first.kernel, ffi::DevicePointer{a_.opaque()},
                   /*shared_mem_bytes=*/0),
               absl_testing::IsOkAndHolds(ElementsAre(11, 22, 33, 44)));
 }
@@ -171,28 +178,29 @@ TEST_F(FfiKernelRegistryTest, RegisterAndLaunchPtxKernel) {
   std::vector<char> un_terminated_ptx(ptx.begin(), ptx.end());
   un_terminated_ptx.push_back('X');
 
-  ASSERT_OK_AND_ASSIGN(const XLA_FFI_Kernel* kernel,
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult registered,
                        Register("AddI32", un_terminated_ptx.data(), ptx.size(),
                                 ffi::SourceFormat::kPtx, /*uses_pdl=*/false));
-  EXPECT_THAT(Run(kernel, ffi::DevicePointer{a_.opaque()},
+  EXPECT_THAT(Run(registered.kernel, ffi::DevicePointer{a_.opaque()},
                   /*shared_mem_bytes=*/0),
               absl_testing::IsOkAndHolds(ElementsAre(11, 22, 33, 44)));
 }
 
 TEST_F(FfiKernelRegistryTest, LaunchWithHostValue) {
-  ASSERT_OK_AND_ASSIGN(const XLA_FFI_Kernel* kernel,
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult registered,
                        RegisterFatbinKernel("IncI32", /*uses_pdl=*/false));
   const int32_t increment = 5;
-  EXPECT_THAT(Run(kernel, ffi::HostValue{&increment, sizeof(increment)},
-                  /*shared_mem_bytes=*/0),
-              absl_testing::IsOkAndHolds(ElementsAre(15, 25, 35, 45)));
+  EXPECT_THAT(
+      Run(registered.kernel, ffi::HostValue{&increment, sizeof(increment)},
+          /*shared_mem_bytes=*/0),
+      absl_testing::IsOkAndHolds(ElementsAre(15, 25, 35, 45)));
 }
 
 // DynShmemKernel reverses an n_cols x n_rows byte buffer through dynamic
 // shared memory, so this fails if `shared_mem_bytes` is not forwarded.
 TEST_F(FfiKernelRegistryTest, LaunchWithDynamicSharedMemory) {
   ASSERT_OK_AND_ASSIGN(
-      const XLA_FFI_Kernel* kernel,
+      ffi::RegisterResult registered,
       RegisterFatbinKernel("DynShmemKernel", /*uses_pdl=*/false));
   constexpr uint32_t kCols = 4, kRows = 2;
   const std::vector<uint8_t> input = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -206,7 +214,7 @@ TEST_F(FfiKernelRegistryTest, LaunchWithDynamicSharedMemory) {
                                             ffi::DevicePointer{b_.opaque()},
                                             ffi::DevicePointer{c_.opaque()}};
   ASSERT_OK(ffi::ExecuteKernelRegistry(/*api=*/nullptr, &extension)
-                .Launch(kernel, kOneBlockOf4Threads,
+                .Launch(registered.kernel, kOneBlockOf4Threads,
                         /*shared_mem_bytes=*/kCols * kRows,
                         /*uses_pdl=*/false, args));
 
@@ -276,27 +284,29 @@ TEST_F(FfiKernelRegistryTest, ExtensionOnlyExposesCallbacksForItsStage) {
 
 // PDL is fixed at registration.
 TEST_F(FfiKernelRegistryTest, UsesPdlIsFixedAtRegistration) {
-  ASSERT_OK_AND_ASSIGN(const XLA_FFI_Kernel* pdl_kernel,
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult pdl_res,
                        RegisterFatbinKernel("AddI32", /*uses_pdl=*/true));
-  ASSERT_OK_AND_ASSIGN(const XLA_FFI_Kernel* no_pdl_kernel,
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult no_pdl_res,
                        RegisterFatbinKernel("AddI32", /*uses_pdl=*/false));
-  EXPECT_NE(pdl_kernel, no_pdl_kernel);
+  EXPECT_NE(pdl_res.kernel, no_pdl_res.kernel);
   const int device = executor_->device_ordinal();
   ASSERT_OK_AND_ASSIGN(stream_executor::Kernel * se_pdl,
-                       FindDeviceKernel(pdl_kernel, device));
+                       FindDeviceKernel(pdl_res.kernel, device));
   ASSERT_OK_AND_ASSIGN(stream_executor::Kernel * se_no_pdl,
-                       FindDeviceKernel(no_pdl_kernel, device));
+                       FindDeviceKernel(no_pdl_res.kernel, device));
   EXPECT_TRUE(se_pdl->use_pdl());
   EXPECT_FALSE(se_no_pdl->use_pdl());
 
   KernelRegistrationExtension pdl_disabled_ext(registry_.get(), executor_,
                                                /*pdl_enabled=*/false);
   ASSERT_OK_AND_ASSIGN(
-      const XLA_FFI_Kernel* gated_kernel,
+      ffi::RegisterResult gated_res,
       ffi::InitializeKernelRegistry(/*api=*/nullptr, &pdl_disabled_ext.raw())
           .Register("AddI32", fatbin_.data(), fatbin_.size(),
-                    ffi::SourceFormat::kCubin, /*uses_pdl=*/true, pdl_kernel));
-  EXPECT_EQ(gated_kernel, no_pdl_kernel);
+                    ffi::SourceFormat::kCubin, /*uses_pdl=*/true,
+                    pdl_res.kernel));
+  EXPECT_EQ(gated_res.kernel, no_pdl_res.kernel);
+  EXPECT_TRUE(gated_res.already_cached);
 }
 
 class FakeKernel : public stream_executor::Kernel {
@@ -340,41 +350,58 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
         .Register(name, bytes, sizeof(kBytesA), ffi::SourceFormat::kCubin,
                   uses_pdl, cached);
   };
-  ASSERT_OK_AND_ASSIGN(const XLA_FFI_Kernel* kernel_a,
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult res_a,
                        reg(ext0, "k", kBytesA, /*uses_pdl=*/true, nullptr));
+  const XLA_FFI_Kernel* kernel_a = res_a.kernel;
+  EXPECT_FALSE(res_a.already_cached);
   EXPECT_TRUE(registry.Contains(0, kernel_a));
   EXPECT_FALSE(registry.Contains(1, kernel_a));
 
   // Same-device hit with matching metadata skips reading binary bytes.
-  EXPECT_THAT(reg(ext0, "k", kBytesB, /*uses_pdl=*/true, kernel_a),
-              absl_testing::IsOkAndHolds(kernel_a));
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult fast_hit,
+                       reg(ext0, "k", kBytesB, /*uses_pdl=*/true, kernel_a));
+  EXPECT_EQ(fast_hit.kernel, kernel_a);
+  EXPECT_TRUE(fast_hit.already_cached);
 
   // Unseen device (e1) misses Contains, checks kBytesB, and registers kernel_b.
-  ASSERT_OK_AND_ASSIGN(const XLA_FFI_Kernel* kernel_b,
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult res_b,
                        reg(ext1, "k", kBytesB, /*uses_pdl=*/true, kernel_a));
-  EXPECT_NE(kernel_b, kernel_a);
+  EXPECT_NE(res_b.kernel, kernel_a);
+  EXPECT_FALSE(res_b.already_cached);
 
-  // Concurrent per-device calls load kernel_a once on e1 and reuse thereafter.
+  // Concurrent calls racing on the same unloaded device (e1) report
+  // !already_cached to exactly one caller, while pre-loaded e0 reports 0.
+  std::atomic<int> e0_loads{0};
+  std::atomic<int> e1_loads{0};
   {
-    tsl::thread::ThreadPool pool(tsl::Env::Default(), "workers", 2);
-    for (int t = 0; t < 2; ++t) {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "workers", 4);
+    for (int t = 0; t < 4; ++t) {
       pool.Schedule([&, t] {
         const auto& ext = (t == 0) ? ext0 : ext1;
+        auto& loads = (t == 0) ? e0_loads : e1_loads;
         for (int i = 0; i < 16; ++i) {
-          EXPECT_THAT(reg(ext, "k", kBytesA, /*uses_pdl=*/true, kernel_a),
-                      absl_testing::IsOkAndHolds(kernel_a));
+          ASSERT_OK_AND_ASSIGN(
+              ffi::RegisterResult r,
+              reg(ext, "k", kBytesA, /*uses_pdl=*/true, kernel_a));
+          EXPECT_EQ(r.kernel, kernel_a);
+          if (!r.already_cached) {
+            loads.fetch_add(1, std::memory_order_relaxed);
+          }
         }
       });
     }
   }
+  EXPECT_EQ(e0_loads.load(std::memory_order_relaxed), 0);
+  EXPECT_EQ(e1_loads.load(std::memory_order_relaxed), 1);
   ASSERT_OK_AND_ASSIGN(stream_executor::Kernel * se1,
                        FindDeviceKernel(kernel_a, 1));
   EXPECT_TRUE(se1->use_pdl());
 
   // Metadata mismatch on e0 (uses_pdl=false) falls back and loads a 2nd kernel.
-  ASSERT_OK_AND_ASSIGN(const XLA_FFI_Kernel* no_pdl,
+  ASSERT_OK_AND_ASSIGN(ffi::RegisterResult no_pdl,
                        reg(ext0, "k", kBytesA, /*uses_pdl=*/false, kernel_a));
-  EXPECT_NE(no_pdl, kernel_a);
+  EXPECT_NE(no_pdl.kernel, kernel_a);
+  EXPECT_FALSE(no_pdl.already_cached);
 
   // Foreign registry handle misses Contains and falls back cleanly.
   FfiKernelRegistry other_registry(/*num_devices=*/2);
@@ -384,9 +411,30 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
   KernelRegistrationExtension other_ext(&other_registry, &e0,
                                         /*pdl_enabled=*/true);
   ASSERT_OK_AND_ASSIGN(
-      const XLA_FFI_Kernel* other_kernel,
+      ffi::RegisterResult other_kernel,
       reg(other_ext, "k", kBytesA, /*uses_pdl=*/true, kernel_a));
-  EXPECT_NE(other_kernel, kernel_a);
+  EXPECT_NE(other_kernel.kernel, kernel_a);
+  EXPECT_FALSE(other_kernel.already_cached);
+
+  // Missing or undersized result out-struct is rejected.
+  XLA_FFI_KernelSpec spec = {XLA_FFI_KernelSpec_STRUCT_SIZE,
+                             nullptr,
+                             {"k", 1},
+                             kBytesA,
+                             sizeof(kBytesA),
+                             XLA_FFI_SourceFormat_CUBIN};
+  XLA_FFI_KernelRegistry_Register_Result undersized_result{};
+  for (XLA_FFI_KernelRegistry_Register_Result* bad_result :
+       {static_cast<XLA_FFI_KernelRegistry_Register_Result*>(nullptr),
+        &undersized_result}) {
+    XLA_FFI_KernelRegistry_Register_Args args{};
+    args.struct_size = XLA_FFI_KernelRegistry_Register_Args_STRUCT_SIZE;
+    args.state = ext0.raw().state;
+    args.kernel_spec = &spec;
+    args.result = bad_result;
+    EXPECT_THAT(ffi::TakeError(ext0.raw().api->register_kernel(&args)),
+                StatusIs(absl::StatusCode::kInvalidArgument));
+  }
 
   // Concurrent distinct registrations + Contains on the same device ordinal.
   EXPECT_CALL(e0, LoadKernel).Times(16).WillRepeatedly([] {

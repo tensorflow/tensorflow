@@ -122,7 +122,14 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
     EXPECT_EQ(args->uses_pdl, 0);
     state->registered = true;
     state->last_cached_kernel = args->cached_kernel;
-    args->kernel = kExpectedKernel;
+    EXPECT_NE(args->result, nullptr);
+    if (args->result == nullptr) {
+      return nullptr;
+    }
+    EXPECT_EQ(args->result->struct_size,
+              XLA_FFI_KernelRegistry_Register_Result_STRUCT_SIZE);
+    args->result->kernel = kExpectedKernel;
+    args->result->already_cached = args->cached_kernel != nullptr ? 1 : 0;
     return nullptr;
   };
 
@@ -155,18 +162,20 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
 
   const XLA_FFI_Kernel* registered_kernel = nullptr;
   auto init_fn = [&](InitializeKernelRegistry kernel_registry) -> absl::Status {
-    ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Kernel* kernel,
+    ABSL_ASSIGN_OR_RETURN(RegisterResult first,
                      kernel_registry.Register("internal_kernel", "cubin!", 6,
                                               SourceFormat::kCubin,
                                               /*uses_pdl=*/false));
-    EXPECT_EQ(kernel, kExpectedKernel);
+    EXPECT_EQ(first.kernel, kExpectedKernel);
+    EXPECT_FALSE(first.already_cached);
     EXPECT_EQ(state.last_cached_kernel, nullptr);
-    registered_kernel = kernel;
-    ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Kernel* cached,
+    registered_kernel = first.kernel;
+    ABSL_ASSIGN_OR_RETURN(RegisterResult cached,
                      kernel_registry.Register(
                          "internal_kernel", "cubin!", 6, SourceFormat::kCubin,
                          /*uses_pdl=*/false, registered_kernel));
-    EXPECT_EQ(cached, kExpectedKernel);
+    EXPECT_EQ(cached.kernel, kExpectedKernel);
+    EXPECT_TRUE(cached.already_cached);
     EXPECT_EQ(state.last_cached_kernel, kExpectedKernel);
     return absl::OkStatus();
   };
@@ -178,11 +187,12 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
   };
 
   auto prepare_fn = [&](PrepareKernelRegistry kernel_registry) -> absl::Status {
-    ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Kernel* kernel,
+    ABSL_ASSIGN_OR_RETURN(RegisterResult result,
                      kernel_registry.Register("internal_kernel", "cubin!", 6,
                                               SourceFormat::kCubin,
                                               /*uses_pdl=*/false));
-    EXPECT_EQ(kernel, kExpectedKernel);
+    EXPECT_EQ(result.kernel, kExpectedKernel);
+    EXPECT_FALSE(result.already_cached);
     return absl::OkStatus();
   };
 
