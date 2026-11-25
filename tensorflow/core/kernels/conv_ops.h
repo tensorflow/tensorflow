@@ -129,7 +129,7 @@ struct Conv2DDimensions {
 absl::Status InitConv2DParameters(const OpKernelConstruction* context,
                                   Conv2DParameters* params);
 
-// Checks that the output channels can be split evenly among the groups.
+// Checks for a positive group count that divides the output channel count.
 absl::Status ValidateConvOutputDepthForGroups(int64_t out_depth,
                                               int64_t num_groups);
 

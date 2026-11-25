@@ -105,6 +105,9 @@ absl::Status InitConv2DParameters(const OpKernelConstruction* context,
 
 absl::Status ValidateConvOutputDepthForGroups(int64_t out_depth,
                                               int64_t num_groups) {
+  if (num_groups <= 0) {
+    return absl::InvalidArgumentError("Number of groups must be positive");
+  }
   if (num_groups > 1 && out_depth % num_groups != 0) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Depth of output must be a multiple of the number of groups: ",
@@ -158,8 +161,12 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
 
   // The last dimension for filter is out_depth.
   const int64_t out_depth_raw = GetFilterDim(filter, filter_format, 'O');
-  TF_RETURN_IF_ERROR(
-      ValidateConvOutputDepthForGroups(out_depth_raw, in_depth / patch_depth));
+  // Conv2D returns a zero-filled result for an empty input without launching
+  // a grouped convolution.
+  if (in_depth > 0) {
+    TF_RETURN_IF_ERROR(ValidateConvOutputDepthForGroups(
+        out_depth_raw, in_depth / patch_depth));
+  }
   const int out_depth = static_cast<int>(out_depth_raw);
 
   // The second dimension for input is rows/height.

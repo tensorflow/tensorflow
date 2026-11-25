@@ -1430,6 +1430,17 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     ):
       self.evaluate(nn_ops.convolution(inputs, filters, padding="VALID"))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConv3DRejectsZeroGroups(self):
+    inputs = constant_op.constant(1.0, shape=[1, 2, 2, 2, 0])
+    filters = constant_op.constant(1.0, shape=[1, 1, 1, 1, 2])
+
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"Number of groups must (?:be positive|not be 0)",
+    ):
+      self.evaluate(nn_ops.convolution(inputs, filters, padding="VALID"))
+
   @test_util.deprecated_graph_mode_only
   @test_util.run_gpu_only
   @test.disable_with_predicate(
