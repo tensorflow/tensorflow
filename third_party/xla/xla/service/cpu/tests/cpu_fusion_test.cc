@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -459,6 +461,225 @@ ENTRY main {
       {-1.0f, -2.0f, -3.0f, -4.0f, -5.0f, -6.0f, -7.0f, -8.0f, -9.0f, -10.0f,
        -11.0f, -12.0f, -13.0f, -14.0f, -15.0f, -16.0f},
       LiteralSlice(result, {1}), error_spec_);
+}
+
+TEST_F(CpuFusionTest, ScatterFusionZeroUpdates) {
+  // Run an unfused variadic zero update scatter through the full CPU HLO
+  // pipeline with algebraic simplification disabled so ScatterSimplifier,
+  // FusionWrapper, CopyInsertion, and CpuScatterFusion all handle it.
+  constexpr absl::string_view kUnfusedVariadicZeroUpdatesHlo = R"hlo(
+    HloModule UnfusedVariadicZeroUpdates
+
+    reducer {
+      lhs0 = s32[] parameter(0)
+      lhs1 = f64[] parameter(1)
+      rhs0 = s32[] parameter(2)
+      rhs1 = f64[] parameter(3)
+      sum0 = s32[] add(lhs0, rhs0)
+      sum1 = f64[] add(lhs1, rhs1)
+      ROOT out = (s32[], f64[]) tuple(sum0, sum1)
+    }
+
+    ENTRY main {
+      op0 = s32[3,2]{1,0} parameter(0)
+      op1 = f64[3,2]{1,0} parameter(1)
+      idx = s32[0]{0} parameter(2)
+      upd0 = s32[0,2]{1,0} parameter(3)
+      upd1 = f64[0,2]{1,0} parameter(4)
+      ROOT scatter = (s32[3,2]{1,0}, f64[3,2]{1,0}) scatter(
+          op0, op1, idx, upd0, upd1),
+        update_window_dims={1},
+        inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=reducer
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> variadic_module,
+      ParseAndReturnVerifiedModule(kUnfusedVariadicZeroUpdatesHlo));
+  variadic_module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_disable_hlo_passes("algsimp");
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}, {5, 6}});
+  Literal op1 =
+      LiteralUtil::CreateR2<double>({{1.5, 2.5}, {3.5, 4.5}, {5.5, 6.5}});
+  Literal idx_1d = LiteralUtil::CreateR1<int32_t>({});
+  Literal upd0(ShapeUtil::MakeShape(S32, {0, 2}));
+  Literal upd1(ShapeUtil::MakeShape(F64, {0, 2}));
+  ASSERT_OK_AND_ASSIGN(const Literal variadic_result,
+                       Execute(std::move(variadic_module),
+                               {&operand, &op1, &idx_1d, &upd0, &upd1}));
+  EXPECT_EQ(LiteralSlice(variadic_result, {0}), operand);
+  EXPECT_EQ(LiteralSlice(variadic_result, {1}), op1);
+}
+
+TEST_F(CpuFusionTest, ScatterFusionZeroSizedUpdateSlice) {
+  // Wrapped fusion on a zero sized operand (distinct from the unfused case
+  // below because ZeroSizedHloElimination folds zero sized outputs).
+  constexpr absl::string_view kZeroSizedOperandHlo = R"hlo(
+    HloModule ScatterFusionZeroSliceZeroOperand
+
+    add_s32 {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+
+    scatter_computation {
+      operand = s32[3,0]{1,0} parameter(0)
+      indices = s32[2,1]{1,0} parameter(1)
+      updates = s32[2,1,0]{2,1,0} parameter(2)
+      ROOT scatter = s32[3,0]{1,0} scatter(operand, indices, updates),
+        update_window_dims={1,2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=add_s32
+    }
+
+    ENTRY main {
+      p0 = s32[3,0]{1,0} parameter(0)
+      operand_copy = s32[3,0]{1,0} copy(p0)
+      p1 = s32[2,1]{1,0} parameter(1)
+      p2 = s32[2,1,0]{2,1,0} parameter(2)
+      ROOT wrapped_scatter = s32[3,0]{1,0} fusion(operand_copy, p1, p2),
+        kind=kLoop, calls=scatter_computation
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> empty_operand_module,
+                       ParseAndReturnVerifiedModule(kZeroSizedOperandHlo));
+  Literal empty_operand(ShapeUtil::MakeShape(S32, {3, 0}));
+  Literal empty_op_indices = LiteralUtil::CreateR2<int32_t>({{0}, {2}});
+  Literal empty_op_updates(ShapeUtil::MakeShape(S32, {2, 1, 0}));
+  ASSERT_OK_AND_ASSIGN(
+      const Literal empty_result,
+      Execute(std::move(empty_operand_module),
+              {&empty_operand, &empty_op_indices, &empty_op_updates},
+              /*run_hlo_passes=*/false));
+  EXPECT_EQ(empty_result, empty_operand);
+
+  // Full CPU HLO pipeline with algebraic simplification disabled on a zero
+  // sized update slice into a populated operand.
+  constexpr absl::string_view kUnfusedZeroSliceHlo = R"hlo(
+    HloModule UnfusedZeroSliceScatter
+
+    add_s32 {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      operand = s32[3,4]{1,0} parameter(0)
+      indices = s32[2,2]{1,0} parameter(1)
+      updates = s32[2,0]{1,0} parameter(2)
+      ROOT scatter = s32[3,4]{1,0} scatter(operand, indices, updates),
+        update_window_dims={1},
+        inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0,1},
+        index_vector_dim=1,
+        to_apply=add_s32
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> unfused_module,
+                       ParseAndReturnVerifiedModule(kUnfusedZeroSliceHlo));
+  unfused_module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_disable_hlo_passes("algsimp");
+  Literal operand = LiteralUtil::CreateR2<int32_t>(
+      {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
+  Literal indices = LiteralUtil::CreateR2<int32_t>({{1, 2}, {9, 9}});
+  Literal updates_2d(ShapeUtil::MakeShape(S32, {2, 0}));
+  ASSERT_OK_AND_ASSIGN(
+      const Literal unfused_result,
+      Execute(std::move(unfused_module), {&operand, &indices, &updates_2d}));
+  EXPECT_EQ(unfused_result, operand);
+}
+
+TEST_F(CpuFusionTest, ScatterFusionMixedWidthVariadic) {
+  constexpr absl::string_view kMixedWidthVariadicHlo = R"hlo(
+    HloModule ScatterFusionMixedWidthVariadic
+
+    reducer {
+      lhs0 = s8[] parameter(0)
+      lhs1 = c128[] parameter(1)
+      rhs0 = s8[] parameter(2)
+      rhs1 = c128[] parameter(3)
+      sum0 = s8[] add(lhs0, rhs0)
+      sum1 = c128[] add(lhs1, rhs1)
+      ROOT out = (s8[], c128[]) tuple(sum0, sum1)
+    }
+
+    ENTRY main {
+      op0 = s8[3,8]{1,0} parameter(0)
+      op1 = c128[3,8]{1,0} parameter(1)
+      indices = s32[2,1]{1,0} parameter(2)
+      upd0 = s8[2,1,8]{2,1,0} parameter(3)
+      upd1 = c128[2,1,8]{2,1,0} parameter(4)
+      ROOT scatter = (s8[3,8]{1,0}, c128[3,8]{1,0}) scatter(
+          op0, op1, indices, upd0, upd1),
+        update_window_dims={1,2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=reducer
+    }
+  )hlo";
+
+  Literal op0 =
+      LiteralUtil::CreateR2<int8_t>({{1, 2, 3, 4, 5, 6, 7, 8},
+                                     {10, 20, 30, 40, 50, 60, 70, 80},
+                                     {-1, -2, -3, -4, -5, -6, -7, -8}});
+  Literal op1 = LiteralUtil::CreateR2<complex128>(
+      {{{1, -1}, {2, -2}, {3, -3}, {4, -4}, {5, -5}, {6, -6}, {7, -7}, {8, -8}},
+       {{1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0}, {6, 0}, {7, 0}, {8, 0}},
+       {{0, 1}, {0, 2}, {0, 3}, {0, 4}, {0, 5}, {0, 6}, {0, 7}, {0, 8}}});
+  Literal indices = LiteralUtil::CreateR2<int32_t>({{0}, {2}});
+  Literal upd0 = LiteralUtil::CreateR3<int8_t>(
+      {{{10, 10, 10, 10, 20, 20, 20, 20}}, {{1, 2, 3, 4, 5, 6, 7, 8}}});
+  Literal upd1 = LiteralUtil::CreateR3<complex128>({{{{0.5, 1},
+                                                      {0.5, 2},
+                                                      {0.5, 3},
+                                                      {0.5, 4},
+                                                      {1.5, 5},
+                                                      {1.5, 6},
+                                                      {1.5, 7},
+                                                      {1.5, 8}}},
+                                                    {{{1, -1},
+                                                      {2, -2},
+                                                      {3, -3},
+                                                      {4, -4},
+                                                      {5, -5},
+                                                      {6, -6},
+                                                      {7, -7},
+                                                      {8, -8}}}});
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kMixedWidthVariadicHlo));
+  ASSERT_OK_AND_ASSIGN(
+      const Literal result,
+      Execute(std::move(module), {&op0, &op1, &indices, &upd0, &upd1}));
+  EXPECT_EQ(LiteralSlice(result, {0}),
+            LiteralUtil::CreateR2<int8_t>({{11, 12, 13, 14, 25, 26, 27, 28},
+                                           {10, 20, 30, 40, 50, 60, 70, 80},
+                                           {0, 0, 0, 0, 0, 0, 0, 0}}));
+  EXPECT_EQ(
+      LiteralSlice(result, {1}),
+      LiteralUtil::CreateR2<complex128>(
+          {{{1.5, 0},
+            {2.5, 0},
+            {3.5, 0},
+            {4.5, 0},
+            {6.5, 0},
+            {7.5, 0},
+            {8.5, 0},
+            {9.5, 0}},
+           {{1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0}, {6, 0}, {7, 0}, {8, 0}},
+           {{1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0}, {6, 0}, {7, 0}, {8, 0}}}));
 }
 
 }  // namespace

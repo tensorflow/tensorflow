@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
@@ -53,6 +55,9 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -72,6 +77,32 @@ namespace cpu {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::UnorderedElementsAreArray;
+
+bool ScatterConstraintsSatisfied(const IndexingMap& map, int64_t thread_id,
+                                 int64_t index_id, int64_t vector_id,
+                                 int64_t vector_element_id) {
+  mlir::MLIRContext* ctx = map.GetMLIRContext();
+  return map.ConstraintsSatisfied(
+      {CreateSymbolicConstant(thread_id, ctx)},
+      {CreateSymbolicConstant(index_id, ctx),
+       CreateSymbolicConstant(vector_id, ctx),
+       CreateSymbolicConstant(vector_element_id, ctx)});
+}
+
+llvm::SmallVector<int64_t, 4> EvaluateScatterMap(const IndexingMap& map,
+                                                 int64_t thread_id,
+                                                 int64_t index_id,
+                                                 int64_t vector_id,
+                                                 int64_t vector_element_id) {
+  mlir::MLIRContext* ctx = map.GetMLIRContext();
+  return map.Evaluate({CreateSymbolicConstant(thread_id, ctx)},
+                      {CreateSymbolicConstant(index_id, ctx),
+                       CreateSymbolicConstant(vector_id, ctx),
+                       CreateSymbolicConstant(vector_element_id, ctx)});
+}
 
 struct GetWorkDimensionsTestCase {
   std::string test_name;
@@ -252,6 +283,508 @@ TEST_F(CpuFusionEmitterTest,
   EXPECT_TRUE(wrapped->getArg(2)->hasNoAliasAttr());
   EXPECT_FALSE(wrapped->getArg(2)->use_empty());
   EXPECT_TRUE(wrapped->getArg(3)->use_empty());
+}
+
+TEST_F(CpuFusionEmitterTest, ScatterIndexingMapBounds) {
+  std::unique_ptr<mlir::MLIRContext> ctx = FusionCompiler::CreateContext();
+
+  struct Point {
+    int64_t thread_id;
+    int64_t index_id;
+    int64_t vector_id;
+    int64_t vector_element_id;
+  };
+  struct Case {
+    absl::string_view name;
+    std::vector<int64_t> updates_shape;
+    int64_t num_threads;
+    int64_t vector_size;
+    Point last_valid;
+    std::vector<int64_t> expected_last_valid_index;
+    std::vector<Point> rejected;
+    Interval expected_thread_bound;
+    std::vector<Interval> expected_symbol_bounds;
+    std::vector<Interval> expected_constraints;
+    std::vector<Interval> expected_result_ranges;
+  };
+
+  const Case cases[] = {
+      {"exact_divisibility",
+       {6, 4},
+       /*num_threads=*/3,
+       /*vector_size=*/4,
+       /*last_valid=*/{2, 1, 0, 3},
+       /*expected_last_valid_index=*/{5, 3},
+       /*rejected=*/{},
+       /*expected_thread_bound=*/{0, 2},
+       /*expected_symbol_bounds=*/{{0, 1}, {0, 0}, {0, 3}},
+       /*expected_constraints=*/{},
+       /*expected_result_ranges=*/{{0, 5}, {0, 3}}},
+      {"partial_tail_workgroup",
+       {5, 4},
+       /*num_threads=*/3,
+       /*vector_size=*/4,
+       /*last_valid=*/{2, 0, 0, 3},
+       /*expected_last_valid_index=*/{4, 3},
+       /*rejected=*/{{2, 1, 0, 0}},
+       /*expected_thread_bound=*/{0, 2},
+       /*expected_symbol_bounds=*/{{0, 1}, {0, 0}, {0, 3}},
+       /*expected_constraints=*/{{0, 4}},
+       /*expected_result_ranges=*/{{0, 4}, {0, 3}}},
+      {"partial_tail_two_threads",
+       {5, 4},
+       /*num_threads=*/2,
+       /*vector_size=*/4,
+       /*last_valid=*/{1, 1, 0, 3},
+       /*expected_last_valid_index=*/{4, 3},
+       /*rejected=*/{{1, 2, 0, 0}},
+       /*expected_thread_bound=*/{0, 1},
+       /*expected_symbol_bounds=*/{{0, 2}, {0, 0}, {0, 3}},
+       /*expected_constraints=*/{{0, 4}},
+       /*expected_result_ranges=*/{{0, 4}, {0, 3}}},
+      {"full_plus_idle_workgroup",
+       {4, 4},
+       /*num_threads=*/3,
+       /*vector_size=*/4,
+       /*last_valid=*/{1, 1, 0, 3},
+       /*expected_last_valid_index=*/{3, 3},
+       /*rejected=*/{{2, 0, 0, 0}, {2, 1, 0, 0}},
+       /*expected_thread_bound=*/{0, 1},
+       /*expected_symbol_bounds=*/{{0, 1}, {0, 0}, {0, 3}},
+       /*expected_constraints=*/{},
+       /*expected_result_ranges=*/{{0, 3}, {0, 3}}},
+      {"full_partial_and_idle_workgroups",
+       {5, 4},
+       /*num_threads=*/4,
+       /*vector_size=*/4,
+       /*last_valid=*/{2, 0, 0, 3},
+       /*expected_last_valid_index=*/{4, 3},
+       /*rejected=*/{{2, 1, 0, 0}, {3, 0, 0, 0}},
+       /*expected_thread_bound=*/{0, 3},
+       /*expected_symbol_bounds=*/{{0, 1}, {0, 0}, {0, 3}},
+       /*expected_constraints=*/{{0, 4}},
+       /*expected_result_ranges=*/{{0, 4}, {0, 3}}},
+      {"more_threads_than_updates",
+       {3, 4},
+       /*num_threads=*/8,
+       /*vector_size=*/4,
+       /*last_valid=*/{2, 0, 0, 3},
+       /*expected_last_valid_index=*/{2, 3},
+       /*rejected=*/{{3, 0, 0, 0}, {7, 0, 0, 0}},
+       /*expected_thread_bound=*/{0, 2},
+       /*expected_symbol_bounds=*/{{0, 0}, {0, 0}, {0, 3}},
+       /*expected_constraints=*/{},
+       /*expected_result_ranges=*/{{0, 2}, {0, 3}}},
+      {"non_divisible_vector_size",
+       {5, 3, 2},
+       /*num_threads=*/3,
+       /*vector_size=*/4,
+       /*last_valid=*/{2, 0, 1, 1},
+       /*expected_last_valid_index=*/{4, 2, 1},
+       /*rejected=*/{{0, 0, 1, 2}, {0, 0, 1, 3}, {2, 1, 0, 0}},
+       /*expected_thread_bound=*/{0, 2},
+       /*expected_symbol_bounds=*/{{0, 1}, {0, 1}, {0, 3}},
+       /*expected_constraints=*/{{0, 4}, {0, 5}},
+       /*expected_result_ranges=*/{{0, 4}, {0, 3}, {0, 1}}},
+      {"vector_wider_than_slice",
+       {5, 3},
+       /*num_threads=*/3,
+       /*vector_size=*/4,
+       /*last_valid=*/{2, 0, 0, 2},
+       /*expected_last_valid_index=*/{4, 2},
+       /*rejected=*/{{0, 0, 0, 3}, {2, 1, 0, 0}},
+       /*expected_thread_bound=*/{0, 2},
+       /*expected_symbol_bounds=*/{{0, 1}, {0, 0}, {0, 2}},
+       /*expected_constraints=*/{{0, 4}},
+       /*expected_result_ranges=*/{{0, 4}, {0, 2}}},
+      {"rank_zero_scalar_vec1",
+       {5},
+       /*num_threads=*/3,
+       /*vector_size=*/1,
+       /*last_valid=*/{2, 0, 0, 0},
+       /*expected_last_valid_index=*/{4},
+       /*rejected=*/{{2, 1, 0, 0}},
+       /*expected_thread_bound=*/{0, 2},
+       /*expected_symbol_bounds=*/{{0, 1}, {0, 0}, {0, 0}},
+       /*expected_constraints=*/{{0, 4}},
+       /*expected_result_ranges=*/{{0, 4}}},
+      {"rank_zero_scalar_vec4",
+       {5},
+       /*num_threads=*/3,
+       /*vector_size=*/4,
+       /*last_valid=*/{2, 0, 0, 0},
+       /*expected_last_valid_index=*/{4},
+       /*rejected=*/{{0, 0, 0, 1}, {2, 1, 0, 0}},
+       /*expected_thread_bound=*/{0, 2},
+       /*expected_symbol_bounds=*/{{0, 1}, {0, 0}, {0, 0}},
+       /*expected_constraints=*/{{0, 4}},
+       /*expected_result_ranges=*/{{0, 4}}},
+  };
+
+  for (const Case& tc : cases) {
+    SCOPED_TRACE(tc.name);
+    IndexingMap map = GetScatterIndexingMap(tc.updates_shape, tc.num_threads,
+                                            tc.vector_size, ctx.get());
+    EXPECT_FALSE(map.IsKnownEmpty());
+    EXPECT_THAT(EvaluateScatterMap(
+                    map, tc.last_valid.thread_id, tc.last_valid.index_id,
+                    tc.last_valid.vector_id, tc.last_valid.vector_element_id),
+                ElementsAreArray(tc.expected_last_valid_index));
+    EXPECT_TRUE(ScatterConstraintsSatisfied(
+        map, tc.last_valid.thread_id, tc.last_valid.index_id,
+        tc.last_valid.vector_id, tc.last_valid.vector_element_id));
+    for (const Point& p : tc.rejected) {
+      EXPECT_FALSE(ScatterConstraintsSatisfied(
+          map, p.thread_id, p.index_id, p.vector_id, p.vector_element_id));
+    }
+
+    map.Simplify();
+    EXPECT_FALSE(map.IsKnownEmpty());
+    EXPECT_EQ(map.GetDimensionBound(0), tc.expected_thread_bound);
+    EXPECT_THAT(map.GetSymbolBounds(),
+                ElementsAreArray(tc.expected_symbol_bounds));
+    std::vector<Interval> constraints;
+    for (const auto& [expr, interval] : map.GetSymbolicConstraints()) {
+      constraints.push_back(interval);
+    }
+    EXPECT_THAT(constraints,
+                UnorderedElementsAreArray(tc.expected_constraints));
+    EXPECT_THAT(map.ComputeResultRanges(),
+                ElementsAreArray(tc.expected_result_ranges));
+  }
+}
+
+TEST_F(CpuFusionEmitterTest, ScatterIndexingMapEmptyShapes) {
+  std::unique_ptr<mlir::MLIRContext> ctx = FusionCompiler::CreateContext();
+
+  struct EmptyCase {
+    absl::string_view name;
+    std::vector<int64_t> updates_shape;
+    int64_t num_threads;
+    int64_t vector_size;
+  };
+  for (const EmptyCase& tc : std::initializer_list<EmptyCase>{
+           {"zero_updates_single_thread", {0, 4, 8}, 1, 4},
+           {"zero_updates_multi_thread", {0, 4, 8}, 4, 4},
+           {"zero_updates_rank_zero", {0}, 2, 1},
+           {"zero_slice_single_thread", {5, 0, 8}, 1, 1},
+           {"zero_slice_multi_thread", {5, 4, 0}, 3, 4},
+           {"zero_updates_and_slice", {0, 0}, 2, 1}}) {
+    SCOPED_TRACE(tc.name);
+    IndexingMap map = GetScatterIndexingMap(tc.updates_shape, tc.num_threads,
+                                            tc.vector_size, ctx.get());
+    EXPECT_TRUE(map.IsKnownEmpty());
+    EXPECT_FALSE(ScatterConstraintsSatisfied(map, 0, 0, 0, 0));
+    map.Simplify();
+    EXPECT_TRUE(map.IsKnownEmpty());
+    EXPECT_THAT(map.GetSymbolicConstraints(), IsEmpty());
+  }
+}
+
+TEST_F(CpuFusionEmitterTest, ScatterEmptyShapesShortCircuit) {
+  constexpr absl::string_view kZeroUpdatesHlo = R"hlo(
+    HloModule scatter_zero_updates
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+    scatter_computation {
+      operand = f32[2,2]{1,0} parameter(0)
+      indices = s32[0,1]{1,0} parameter(1)
+      updates = f32[0,1,2]{2,1,0} parameter(2)
+      ROOT s = f32[2,2]{1,0} scatter(operand, indices, updates),
+        update_window_dims={1,2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=add
+    }
+    ENTRY main {
+      p0 = f32[2,2]{1,0} parameter(0)
+      p1 = s32[0,1]{1,0} parameter(1)
+      p2 = f32[0,1,2]{2,1,0} parameter(2)
+      ROOT wrapped_scatter = f32[2,2]{1,0} fusion(p0, p1, p2),
+        kind=kLoop, calls=scatter_computation
+    }
+  )hlo";
+
+  constexpr absl::string_view kZeroSliceHlo = R"hlo(
+    HloModule scatter_zero_slice
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+    scatter_computation {
+      operand = f32[2,2]{1,0} parameter(0)
+      indices = s32[2,2]{1,0} parameter(1)
+      updates = f32[2,1,0]{2,1,0} parameter(2)
+      ROOT s = f32[2,2]{1,0} scatter(operand, indices, updates),
+        update_window_dims={1,2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0,1},
+        index_vector_dim=1,
+        to_apply=add
+    }
+    ENTRY main {
+      p0 = f32[2,2]{1,0} parameter(0)
+      p1 = s32[2,2]{1,0} parameter(1)
+      p2 = f32[2,1,0]{2,1,0} parameter(2)
+      ROOT wrapped_scatter = f32[2,2]{1,0} fusion(p0, p1, p2),
+        kind=kLoop, calls=scatter_computation
+    }
+  )hlo";
+
+  for (const auto& [name, hlo] :
+       {std::pair<absl::string_view, absl::string_view>{"zero_updates",
+                                                        kZeroUpdatesHlo},
+        std::pair<absl::string_view, absl::string_view>{"zero_slice",
+                                                        kZeroSliceHlo}}) {
+    SCOPED_TRACE(name);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                         RunBufferAssignment(*module));
+    const auto* fusion = Cast<HloFusionInstruction>(
+        module->entry_computation()->root_instruction());
+    std::unique_ptr<mlir::MLIRContext> mlir_context =
+        FusionCompiler::CreateContext();
+    CpuScatterFusion emitter(*buffer_assignment, fusion, mlir_context.get());
+    ASSERT_OK_AND_ASSIGN(KernelDefinition<MlirKernelSource> kernel_definition,
+                         emitter.EmitKernelDefinition());
+    EXPECT_THAT(RunFileCheck(kernel_definition.source().ToString(), R"(
+      CHECK:     func.func @wrapped_scatter(
+      CHECK-NOT: xla.loop
+      CHECK:     return
+    )"),
+                absl_testing::IsOkAndHolds(true));
+  }
+}
+
+TEST_F(CpuFusionEmitterTest, ScatterVectorSizeUsesWidestOperandOrUpdateType) {
+  // Operand 0 is s8 (1 byte) and operand 1 is c128 (16 bytes). With a 64 byte
+  // vectorization budget, max_vectorized_elements must be 64 / 16 = 4 (giving
+  // vector_id in [0, 3], vector_element_id in [0, 3] for slice size 16), not 16
+  // from s8 alone.
+  constexpr absl::string_view kVariadicHlo = R"hlo(
+    HloModule variadic_scatter_vector_size
+    reducer {
+      lhs0 = s8[] parameter(0)
+      lhs1 = c128[] parameter(1)
+      rhs0 = s8[] parameter(2)
+      rhs1 = c128[] parameter(3)
+      sum0 = s8[] add(lhs0, rhs0)
+      sum1 = c128[] add(lhs1, rhs1)
+      ROOT out = (s8[], c128[]) tuple(sum0, sum1)
+    }
+    scatter_computation {
+      op0 = s8[4,16]{1,0} parameter(0)
+      op1 = c128[4,16]{1,0} parameter(1)
+      indices = s32[2,1]{1,0} parameter(2)
+      upd0 = s8[2,1,16]{2,1,0} parameter(3)
+      upd1 = c128[2,1,16]{2,1,0} parameter(4)
+      ROOT s = (s8[4,16]{1,0}, c128[4,16]{1,0}) scatter(
+          op0, op1, indices, upd0, upd1),
+        update_window_dims={1,2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=reducer
+    }
+    ENTRY main {
+      p0 = s8[4,16]{1,0} parameter(0)
+      p1 = c128[4,16]{1,0} parameter(1)
+      p2 = s32[2,1]{1,0} parameter(2)
+      p3 = s8[2,1,16]{2,1,0} parameter(3)
+      p4 = c128[2,1,16]{2,1,0} parameter(4)
+      ROOT wrapped_scatter = (s8[4,16]{1,0}, c128[4,16]{1,0}) fusion(
+          p0, p1, p2, p3, p4),
+        kind=kLoop, calls=scatter_computation
+    }
+  )hlo";
+
+  // Mixed floating point precision where updates are wider than the operand:
+  // operand is bf16 (2 bytes) and updates are f64 (8 bytes), so
+  // max_vectorized_elements must be 64 / 8 = 8 (vector_id in [0, 1],
+  // vector_element_id in [0, 7]), not 16 from bf16 alone.
+  constexpr absl::string_view kWiderUpdateHlo = R"hlo(
+    HloModule wider_update_scatter_vector_size
+    reducer {
+      lhs = bf16[] parameter(0)
+      rhs = f64[] parameter(1)
+      lhs_f64 = f64[] convert(lhs)
+      sum = f64[] add(lhs_f64, rhs)
+      ROOT out = bf16[] convert(sum)
+    }
+    scatter_computation {
+      op = bf16[4,16]{1,0} parameter(0)
+      indices = s32[2,1]{1,0} parameter(1)
+      upd = f64[2,1,16]{2,1,0} parameter(2)
+      ROOT s = bf16[4,16]{1,0} scatter(op, indices, upd),
+        update_window_dims={1,2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=reducer
+    }
+    ENTRY main {
+      p0 = bf16[4,16]{1,0} parameter(0)
+      p1 = s32[2,1]{1,0} parameter(1)
+      p2 = f64[2,1,16]{2,1,0} parameter(2)
+      ROOT wrapped_scatter = bf16[4,16]{1,0} fusion(p0, p1, p2),
+        kind=kLoop, calls=scatter_computation
+    }
+  )hlo";
+
+  struct VectorSizeCase {
+    absl::string_view name;
+    absl::string_view hlo;
+    absl::string_view expected_domain;
+  };
+  for (const VectorSizeCase& tc : std::initializer_list<VectorSizeCase>{
+           {"variadic_s8_c128", kVariadicHlo,
+            "CHECK: domain: thread_id in [0, 0], index_id in [0, 1], "
+            "vector_id in [0, 3], vector_element_id in [0, 3]"},
+           {"wider_update_bf16_f64", kWiderUpdateHlo,
+            "CHECK: domain: thread_id in [0, 0], index_id in [0, 1], "
+            "vector_id in [0, 1], vector_element_id in [0, 7]"}}) {
+    SCOPED_TRACE(tc.name);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(tc.hlo));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                         RunBufferAssignment(*module));
+    const auto* fusion = Cast<HloFusionInstruction>(
+        module->entry_computation()->root_instruction());
+    std::unique_ptr<mlir::MLIRContext> mlir_context =
+        FusionCompiler::CreateContext();
+    CpuScatterFusion emitter(*buffer_assignment, fusion, mlir_context.get());
+    ASSERT_OK_AND_ASSIGN(KernelDefinition<MlirKernelSource> kernel_definition,
+                         emitter.EmitKernelDefinition());
+    EXPECT_THAT(
+        RunFileCheck(kernel_definition.source().ToString(), tc.expected_domain),
+        absl_testing::IsOkAndHolds(true));
+  }
+}
+
+TEST_F(CpuFusionEmitterTest, ScatterEmitterRejectsUnsupportedScatters) {
+  constexpr absl::string_view kNonSimplified1DHlo = R"hlo(
+    HloModule non_simplified_1d
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+    scatter_computation {
+      operand = s32[4]{0} parameter(0)
+      indices = s32[2,1]{1,0} parameter(1)
+      updates = s32[2]{0} parameter(2)
+      ROOT s = s32[4]{0} scatter(operand, indices, updates),
+        update_window_dims={},
+        inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=add
+    }
+    ENTRY main {
+      p0 = s32[4]{0} parameter(0)
+      p1 = s32[2,1]{1,0} parameter(1)
+      p2 = s32[2]{0} parameter(2)
+      ROOT wrapped_scatter = s32[4]{0} fusion(p0, p1, p2),
+        kind=kLoop, calls=scatter_computation
+    }
+  )hlo";
+
+  constexpr absl::string_view kBatchingDimsHlo = R"hlo(
+    HloModule batching_dims_scatter
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+    scatter_computation {
+      operand = s32[2,4]{1,0} parameter(0)
+      indices = s32[2,1]{1,0} parameter(1)
+      updates = s32[2,1]{1,0} parameter(2)
+      ROOT s = s32[2,4]{1,0} scatter(operand, indices, updates),
+        update_window_dims={1},
+        inserted_window_dims={},
+        input_batching_dims={0},
+        scatter_indices_batching_dims={0},
+        scatter_dims_to_operand_dims={1},
+        index_vector_dim=1,
+        to_apply=add
+    }
+    ENTRY main {
+      p0 = s32[2,4]{1,0} parameter(0)
+      p1 = s32[2,1]{1,0} parameter(1)
+      p2 = s32[2,1]{1,0} parameter(2)
+      ROOT wrapped_scatter = s32[2,4]{1,0} fusion(p0, p1, p2),
+        kind=kLoop, calls=scatter_computation
+    }
+  )hlo";
+
+  constexpr absl::string_view kMismatchedVariadicDimsHlo = R"hlo(
+    HloModule mismatched_variadic_dims
+    reducer {
+      lhs0 = s32[] parameter(0)
+      lhs1 = s32[] parameter(1)
+      rhs0 = s32[] parameter(2)
+      rhs1 = s32[] parameter(3)
+      sum0 = s32[] add(lhs0, rhs0)
+      sum1 = s32[] add(lhs1, rhs1)
+      ROOT out = (s32[], s32[]) tuple(sum0, sum1)
+    }
+    scatter_computation {
+      op0 = s32[4]{0} parameter(0)
+      op1 = s32[8]{0} parameter(1)
+      indices = s32[2,1]{1,0} parameter(2)
+      upd0 = s32[2,1]{1,0} parameter(3)
+      upd1 = s32[2,1]{1,0} parameter(4)
+      ROOT s = (s32[4]{0}, s32[8]{0}) scatter(op0, op1, indices, upd0, upd1),
+        update_window_dims={1},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=reducer
+    }
+    ENTRY main {
+      p0 = s32[4]{0} parameter(0)
+      p1 = s32[8]{0} parameter(1)
+      p2 = s32[2,1]{1,0} parameter(2)
+      p3 = s32[2,1]{1,0} parameter(3)
+      p4 = s32[2,1]{1,0} parameter(4)
+      ROOT wrapped_scatter = (s32[4]{0}, s32[8]{0}) fusion(p0, p1, p2, p3, p4),
+        kind=kLoop, calls=scatter_computation
+    }
+  )hlo";
+
+  struct RejectCase {
+    absl::string_view name;
+    absl::string_view hlo;
+    absl::string_view expected_error_substr;
+  };
+  for (const RejectCase& tc : std::initializer_list<RejectCase>{
+           {"non_simplified_1d", kNonSimplified1DHlo,
+            "Non-simplified HLO Scatter is not supported."},
+           {"batching_dims", kBatchingDimsHlo,
+            "Non-simplified HLO Scatter is not supported."},
+           {"mismatched_variadic_dims", kMismatchedVariadicDimsHlo,
+            "Variadic scatter operands must have matching dimensions."}}) {
+    SCOPED_TRACE(tc.name);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(tc.hlo));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                         RunBufferAssignment(*module));
+    const auto* fusion = Cast<HloFusionInstruction>(
+        module->entry_computation()->root_instruction());
+    std::unique_ptr<mlir::MLIRContext> mlir_context =
+        FusionCompiler::CreateContext();
+    CpuScatterFusion emitter(*buffer_assignment, fusion, mlir_context.get());
+    EXPECT_THAT(emitter.EmitKernelDefinition(),
+                absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                       HasSubstr(tc.expected_error_substr)));
+  }
 }
 
 TEST_F(CpuFusionEmitterTest, SortComparatorMlirAndLlvm) {

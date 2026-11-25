@@ -16,17 +16,14 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_EMITTERS_CPU_SCATTER_EMITTER_H_
 
 #include <cstdint>
-#include <optional>
-#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Value.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
@@ -36,6 +33,12 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+
+// Maps (thread_id)[index_id, vector_id, vector_element_id] to indices of a
+// simplified scatter updates operand.
+IndexingMap GetScatterIndexingMap(
+    absl::Span<const int64_t> updates_operand_shape, int64_t num_threads,
+    int64_t vector_size, mlir::MLIRContext* context);
 
 // Generic scatter fusion. Lowers to LLVM via MLIR.
 class CpuScatterFusion final : public KernelEmitter<MlirKernelSource> {
@@ -58,21 +61,10 @@ class CpuScatterFusion final : public KernelEmitter<MlirKernelSource> {
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const;
 
-  mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
-
-  // These two methods do not seem to be used @ecg?
-  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const;
-
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const;
-
   const BufferAssignment& buffer_assignment_;
   const HloFusionInstruction* fusion_;
   mlir::MLIRContext* mlir_context_;
 
-  int64_t vector_size_;
   int64_t num_threads_;
 };
 

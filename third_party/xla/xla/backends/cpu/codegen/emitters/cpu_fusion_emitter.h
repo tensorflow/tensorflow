@@ -15,34 +15,20 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_EMITTERS_CPU_FUSION_EMITTER_H_
 #define XLA_BACKENDS_CPU_CODEGEN_EMITTERS_CPU_FUSION_EMITTER_H_
 
-#include <cstdint>
-#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/Pass/PassManager.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla {
 namespace cpu {
-
-IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
-                                  absl::Span<const int64_t> shape,
-                                  mlir::MLIRContext* mlir_context);
 
 absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
     mlir::ModuleOp fusion_module, const HloFusionInstruction& fusion,
@@ -64,8 +50,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateNamedMlirModuleOp(
 // C-style name of the fusion created by combining the name of the parent
 // HloModule and the name of the fusion.
 absl::StatusOr<std::string> GetFusionName(const HloFusionInstruction& fusion);
-
-int64_t CeilDiv(int64_t a, int64_t b);
 
 }  // namespace cpu
 }  // namespace xla

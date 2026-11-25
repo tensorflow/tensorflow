@@ -15,41 +15,19 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 
-#include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/LLVMContext.h"
-#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
-#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/Transforms/Passes.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/Interfaces/DataLayoutInterfaces.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Support/LLVM.h"
-#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
@@ -57,119 +35,21 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/analysis/indexing_analysis.h"
-#include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/interval.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
-#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/dump.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
-namespace {
-
-using llvm::SmallVector;
-
-bool Needs64Bits(const Shape& shape) {
-  return shape.IsArray() ? !IsInt32(ShapeUtil::ElementsIn(shape))
-                         : absl::c_any_of(shape.tuple_shapes(), Needs64Bits);
-}
-
-bool Is64BitIndex(const HloInstruction* instr, int operand) {
-  const auto& shape = instr->operand(operand)->shape();
-  return shape.element_type() == PrimitiveType::S64 ||
-         shape.element_type() == PrimitiveType::U64;
-}
-
-bool Needs64BitIndices(const HloComputation* computation) {
-  for (auto* instr : computation->instructions()) {
-    // Check if any HLO instructions directly take 64 bit indices as operands.
-    switch (instr->opcode()) {
-      case HloOpcode::kDynamicSlice:
-      case HloOpcode::kDynamicUpdateSlice:
-        for (int i = 1; i < instr->operand_count(); ++i) {
-          if (Is64BitIndex(instr, i)) return true;
-        }
-        break;
-      case HloOpcode::kGather:
-      case HloOpcode::kScatter: {
-        int indices_operand_index = instr->operand_count() / 2;
-        if (Is64BitIndex(instr, indices_operand_index)) return true;
-        break;
-      }
-      default:
-        break;
-    }
-
-    if (Needs64Bits(instr->shape()) ||
-        absl::c_any_of(instr->called_computations(), Needs64BitIndices)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
-
-IndexingMap GetDefaultIndexingMap(
-    absl::Span<const int64_t> thread_tile_sizes,
-    absl::Span<const int64_t> shape,
-    // TODO: b/451959933 - Use reference or absl_nullable pointer.
-    mlir::MLIRContext* mlir_context) {
-  CHECK_EQ(thread_tile_sizes.size(), shape.size())
-      << "thread_tile_sizes and shape must have the same size";
-  SmallVector<int64_t> thread_tile_counts;
-  thread_tile_counts.reserve(thread_tile_sizes.size());
-  for (auto [tile_size, dim_size] : llvm::zip(thread_tile_sizes, shape)) {
-    thread_tile_counts.push_back(CeilDiv(dim_size, tile_size));
-  }
-  // Delinearize thread_expr w.r.t. number of thread tiles per dimension.
-  auto thread_expr = CreateDimExpr(0, mlir_context);
-  SmallVector<SymbolicExpr, 4> thread_ids =
-      DelinearizeInBoundsIndex(thread_expr, thread_tile_counts);
-  SmallVector<SymbolicExpr> result;
-  result.reserve(thread_ids.size());
-  auto linear_index =
-      CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/1, mlir_context);
-  SmallVector<SymbolicExpr, 4> indices_in_tile =
-      DelinearizeInBoundsIndex(linear_index, thread_tile_sizes);
-  SmallVector<std::pair<SymbolicExpr, Interval>, 4> constraints;
-  constraints.reserve(thread_ids.size());
-  for (auto [tile_size, thread_id, index_in_tile, dim] :
-       llvm::zip(thread_tile_sizes, thread_ids, indices_in_tile, shape)) {
-    result.push_back(thread_id * tile_size + index_in_tile);
-    constraints.push_back(std::make_pair(result.back(), Interval{0, dim - 1}));
-  }
-  int64_t num_threads = Product(thread_tile_counts);
-  int64_t num_tile_elements = Product(thread_tile_sizes);
-
-  auto symbolic_map = SymbolicMap::Get(mlir_context, /*num_dimensions=*/1,
-                                       /*num_symbols=*/1, result);
-  return IndexingMap(
-      symbolic_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
-      {IndexingMap::Variable({0, num_tile_elements - 1, "linear_index"})}, {},
-      constraints);
-}
 
 absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
     mlir::ModuleOp fusion_module, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment& buffer_assignment) {
-  auto* context = fusion_module.getContext();
+  mlir::MLIRContext* context = fusion_module.getContext();
 
   if (fusion_module.getName().value().empty()) {
     return Internal("Fusion module name shouldn't be empty.");
@@ -226,7 +106,9 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
     }
   }
   for (const auto& epilogue : computations.epilogues()) {
-    if (epilogue.roots.empty()) continue;
+    if (epilogue.roots.empty()) {
+      continue;
+    }
     ABSL_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
         computations.FindPartitionedComputation(
             fusion.fused_instructions_computation()),
@@ -236,8 +118,6 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
 
   return call_targets;
 }
-
-int64_t CeilDiv(int64_t a, int64_t b) { return (a + b - 1) / b; }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateNamedMlirModuleOp(
     const HloFusionInstruction& fusion, mlir::Builder& builder) {
