@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -38,9 +40,13 @@ limitations under the License.
 namespace tflite::xnnpack {
 namespace {
 
+using testing::Each;
 using testing::ElementsAreArray;
 using testing::Ge;
 using testing::Gt;
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+using testing::EndsWith;
+#endif
 
 TEST(MMapHandleTest, DefaultConstructs) {
   MMapHandle handle;
@@ -312,6 +318,151 @@ TEST(MMapHandleTest, MemoryLockAndUnlock) {
 
   EXPECT_THAT(handle, ElementsAreArray(payload));
 }
+
+TEST(MMapHandleTest, RoundUpToPageSizeWorks) {
+  const size_t page_size = RoundUpToPageSize(1);
+  ASSERT_GT(page_size, 0);
+  EXPECT_EQ(RoundUpToPageSize(0), page_size);
+  EXPECT_EQ(RoundUpToPageSize(page_size), page_size);
+  EXPECT_EQ(RoundUpToPageSize(page_size + 1), 2 * page_size);
+  const size_t max_aligned =
+      std::numeric_limits<size_t>::max() - (page_size - 1);
+  EXPECT_EQ(RoundUpToPageSize(max_aligned), max_aligned);
+  EXPECT_EQ(RoundUpToPageSize(max_aligned + 1), 0);
+  EXPECT_EQ(RoundUpToPageSize(std::numeric_limits<size_t>::max()), 0);
+}
+
+TEST(MMapHandleTest, MapAnonymousWorks) {
+  const std::string file_prefix = "prefix:";
+  const std::string payload = "This is some data in the anonymous mapping.";
+  const size_t page_size = RoundUpToPageSize(1);
+  ASSERT_GE(page_size, payload.size());
+
+  MMapHandle handle;
+  EXPECT_FALSE(
+      handle.Map(MMapHandle::kAnonymous, std::numeric_limits<size_t>::max()));
+  EXPECT_FALSE(handle.IsMapped());
+
+#if defined(XNNPACK_TEST_CAN_PROBE_UNMAPPABLE_SIZE)
+  EXPECT_FALSE(handle.Map(MMapHandle::kAnonymous,
+                          std::numeric_limits<size_t>::max() / 4));
+  EXPECT_FALSE(handle.IsMapped());
+#endif
+
+  ASSERT_TRUE(handle.Map(MMapHandle::kAnonymous, 0));
+  ASSERT_TRUE(handle.IsMapped());
+  EXPECT_EQ(handle.size(), page_size);
+  EXPECT_EQ(handle.offset(), 0);
+  EXPECT_THAT(handle, Each(0));
+  handle.data()[0] = 0xAB;
+  EXPECT_EQ(handle.data()[0], 0xAB);
+
+  // An empty VMA name skips `PR_SET_VMA_ANON_NAME` without failing.
+  ASSERT_TRUE(handle.Map(MMapHandle::kAnonymous, page_size, ""));
+  ASSERT_TRUE(handle.IsMapped());
+  EXPECT_THAT(handle, Each(0));
+
+  // Invalid VMA characters are rejected by `prctl`, but mapping still succeeds
+  // because VMA naming is best-effort.
+  ASSERT_TRUE(handle.Map(MMapHandle::kAnonymous, page_size, "[invalid]"));
+  EXPECT_TRUE(handle.IsMapped());
+
+  TempFileDesc tmp_file;
+  ASSERT_TRUE(tmp_file.IsValid());
+  const std::string file_content = file_prefix + payload;
+  ASSERT_TRUE(tmp_file.Write(file_content.c_str(), file_content.size()));
+  tmp_file.Close();
+
+  // A failed anonymous `Map` unmaps any existing file mapping.
+  ASSERT_TRUE(handle.Map(tmp_file.GetCPath(), /*offset=*/file_prefix.size()));
+  ASSERT_TRUE(handle.IsMapped());
+  EXPECT_EQ(handle.offset(), file_prefix.size());
+  EXPECT_FALSE(
+      handle.Map(MMapHandle::kAnonymous, std::numeric_limits<size_t>::max()));
+  EXPECT_FALSE(handle.IsMapped());
+  EXPECT_EQ(handle.data(), nullptr);
+  EXPECT_EQ(handle.size(), 0);
+  EXPECT_EQ(handle.offset(), 0);
+
+  // Mapping anonymous memory over an offset file mapping resets `offset()` and
+  // page adjustment.
+  ASSERT_TRUE(handle.Map(tmp_file.GetCPath(), /*offset=*/file_prefix.size()));
+  ASSERT_TRUE(handle.IsMapped());
+  EXPECT_EQ(handle.offset(), file_prefix.size());
+  EXPECT_FALSE(handle.Resize(std::numeric_limits<size_t>::max()));
+
+  ASSERT_TRUE(handle.Map(MMapHandle::kAnonymous, 2 * page_size));
+  ASSERT_TRUE(handle.IsMapped());
+  ASSERT_NE(handle.data(), nullptr);
+  ASSERT_EQ(handle.size(), 2 * page_size);
+  EXPECT_EQ(handle.offset(), 0);
+  std::memcpy(handle.data(), payload.data(), payload.size());
+  handle.data()[handle.size() - 1] = 0x5A;
+
+  MMapHandle moved(std::move(handle));
+  // NOLINTBEGIN(bugprone-use-after-move)
+  EXPECT_FALSE(handle.IsMapped());
+  EXPECT_EQ(handle.data(), nullptr);
+  EXPECT_EQ(handle.size(), 0);
+  // NOLINTEND(bugprone-use-after-move)
+
+  MMapHandle assigned;
+  assigned = std::move(moved);
+  ASSERT_TRUE(assigned.IsMapped());
+  EXPECT_EQ(std::memcmp(assigned.data(), payload.data(), payload.size()), 0);
+  EXPECT_EQ(assigned.data()[assigned.size() - 1], 0x5A);
+
+  EXPECT_FALSE(MMapHandle{}.Resize(page_size));
+  EXPECT_FALSE(assigned.Resize(0));
+  EXPECT_FALSE(assigned.Resize(std::numeric_limits<size_t>::max()));
+  EXPECT_EQ(assigned.size(), 2 * page_size);
+
+#if (defined(__linux__) || defined(__ANDROID__)) && \
+    !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  ASSERT_TRUE(assigned.Resize(page_size));
+  EXPECT_EQ(assigned.size(), page_size);
+  EXPECT_EQ(std::memcmp(assigned.data(), payload.data(), payload.size()), 0);
+
+  EXPECT_TRUE(assigned.Resize(2 * page_size));
+  EXPECT_EQ(assigned.size(), 2 * page_size);
+  EXPECT_EQ(std::memcmp(assigned.data(), payload.data(), payload.size()), 0);
+#endif
+
+  assigned.UnMap();
+  EXPECT_FALSE(assigned.IsMapped());
+  EXPECT_EQ(assigned.data(), nullptr);
+  EXPECT_EQ(assigned.size(), 0);
+}
+
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+TEST(MMapHandleTest, AnonymousMappingHasVmaName) {
+  if (!AnonVmaNamingSupported()) {
+    GTEST_SKIP() << "Anonymous mapping names aren't supported.";
+  }
+
+  const size_t page_size = RoundUpToPageSize(1);
+  ASSERT_GT(page_size, 0);
+
+  MMapHandle moved_handle;
+  {
+    MMapHandle handle;
+    std::string transient_name = "xnnpack-test";
+    ASSERT_TRUE(handle.Map(MMapHandle::kAnonymous, 2 * page_size,
+                           transient_name.c_str()));
+    // Mutate and destroy `transient_name` and move `handle` to verify
+    // `MMapHandle` owns a stable copy of the VMA name.
+    transient_name.assign(transient_name.size(), 'x');
+    moved_handle = std::move(handle);
+  }
+  EXPECT_THAT(GetMapsLine(moved_handle.data()),
+              EndsWith("[anon:xnnpack-test]"));
+
+  ASSERT_TRUE(moved_handle.Resize(page_size));
+  ASSERT_TRUE(moved_handle.Resize(2 * page_size));
+  EXPECT_THAT(GetMapsLine(moved_handle.data() + moved_handle.size() - 1),
+              EndsWith("[anon:xnnpack-test]"));
+}
+#endif
 
 }  // namespace
 }  // namespace tflite::xnnpack

@@ -52,9 +52,9 @@ TFLInterpreter *interpreter =
 
 ### Enable XNNPACK via Bazel build flags (recommended on desktop)
 
-When building TensorFlow Lite with Bazel, add `--define
-tflite_with_xnnpack=true`, and the TensorFlow Lite interpreter will use XNNPACK
-engine by default.
+When building TensorFlow Lite with Bazel, add
+`--define tflite_with_xnnpack=true`, and the TensorFlow Lite interpreter will
+use XNNPACK engine by default.
 
 The exact command depends on the target platform, e.g. for Android AAR you'd use
 
@@ -224,8 +224,7 @@ instead of saving it to disk.
 
 You will lose advantages 1 and 4 but can still profit from 2 and 3.
 
-Because the cache isn't memory mapped, `weight_cache_lock_memory` has no effect
-on it.
+`weight_cache_lock_memory` currently has no effect on the in-memory cache.
 
 ```c++
 std::unique_ptr<tflite::Interpreter> interpreter;
@@ -592,8 +591,8 @@ is used. Forcing FP16 inference has several effects:
 *   If any floating-point operator offloaded to XNNPACK is not supported for
     FP16 inference, inference will fail rather than fall back to FP32.
 
-To force FP16 inference, either build the delegate with `--define
-xnnpack_force_float_precision=fp16` option, or add
+To force FP16 inference, either build the delegate with
+`--define xnnpack_force_float_precision=fp16` option, or add
 `TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16` flag to the
 `TfLiteXNNPackDelegateOptions.flags` bitmask passed into the
 `TfLiteXNNPackDelegateCreate` call:

@@ -246,14 +246,76 @@ class WeightCacheBuilder {
   std::atomic<bool> is_build_step_ = false;
 };
 
+// Bump-allocates aligned buffers from anonymous mappings.
+//
+// Chunks are grown in place when possible and never moved: returned addresses
+// stay valid for the lifetime of the arena.
+//
+// At most one uncommitted `Reserve()` is active at a time; calling `Reserve()`
+// again without `Commit()` rewinds and reuses that space.
+//
+// Note: The alignment is implementation-defined. It should be enough to cover
+// all XNNPACK requirements.
+class MMapArena {
+ public:
+  MMapArena() = default;
+  MMapArena(const MMapArena&) = delete;
+  MMapArena& operator=(const MMapArena&) = delete;
+  MMapArena(MMapArena&& other) noexcept;
+  MMapArena& operator=(MMapArena&& other) noexcept;
+
+  // Reserves `size` bytes. Discards any previous uncommitted reservation.
+  //
+  // If `evicted_mapping` is non-null and rewinding discards or replaces an
+  // empty chunk, that mapping is moved into `*evicted_mapping` instead of
+  // being unmapped immediately.
+  //
+  // Returns nullptr if mapping fails.
+  [[nodiscard]]
+  void* Reserve(size_t size, MMapHandle* evicted_mapping = nullptr);
+
+  // Commits up to `size` bytes of the active reservation at `ptr`
+  // (`size <= reserved_size`), reclaiming any unused tail bytes.
+  //
+  // Returns false if there is no active reservation, `ptr` does not match or
+  // `size` exceeds the reserved size.
+  [[nodiscard]]
+  bool Commit(const void* ptr, size_t size);
+
+  // Returns true if `[data, data + size)` starts inside the active chunk's
+  // mapping and extends past its end.
+  bool OverrunsActiveChunk(const void* data, size_t size) const noexcept;
+
+  bool HasPendingReservation() const noexcept {
+    return pending_ptr_ != nullptr;
+  }
+
+ private:
+  struct Chunk {
+    MMapHandle mapping;
+    size_t used = 0;
+  };
+
+  std::vector<Chunk> chunks_;
+  void* pending_ptr_ = nullptr;
+  size_t pending_size_ = 0;
+  size_t pending_chunk_offset_before_ = 0;
+};
+
 // This class handles cache misses when a cache is loaded (vs. being built).
 //
-// It substitutes itself to the file by storing packed data in buffers
-// allocated on the fly that aren't persisted to the cache file.
+// It substitutes itself to the file by storing packed data in anonymous
+// memory mappings that aren't persisted to the cache file.
 //
 // It also stores all the buffers of in-memory caches (`kInMemoryCachePath`).
 class CacheMissHandler {
  public:
+  CacheMissHandler() = default;
+  CacheMissHandler(const CacheMissHandler&) = delete;
+  CacheMissHandler& operator=(const CacheMissHandler&) = delete;
+  CacheMissHandler(CacheMissHandler&& other) noexcept;
+  CacheMissHandler& operator=(CacheMissHandler&& other) noexcept;
+
   // Reserves space in the data buffer for the required size in bytes and
   // returns the address of that space.
   //
@@ -284,23 +346,16 @@ class CacheMissHandler {
   // Checks if cache misses have happened.
   bool HasCacheMisses() const noexcept { return append_count_; }
 
-  size_t BufferCount() const noexcept { return buffers_.size(); }
+  size_t BufferCount() const noexcept {
+    return buffer_count_ + (arena_.HasPendingReservation() ? 1 : 0);
+  }
 
  private:
-  struct Buffer {
-    // Unaligned buffer holding at least loc.size elements.
-    std::unique_ptr<uint8_t[]> data;
-    BufferLocation loc;
-    // `kMinAlignement`-aligned pointer within data, holding at least loc.size
-    // elements.
-    uint8_t* ptr;
-    // True if an Append operation matching this buffer was called.
-    bool used;
-  };
-  std::vector<Buffer> buffers_;
+  MMapArena arena_;
   // Holds a location that is bigger than all of the locations held in the
   // cache. This is to avoid clashing with the stored offsets.
   size_t min_offset_ = 0;
+  size_t buffer_count_ = 0;
   size_t append_count_ = 0;
   size_t reserve_count_ = 0;
 };

@@ -21,9 +21,14 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <utility>
 
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+
+#if defined(__linux__) || defined(__ANDROID__)
+#define XNNPACK_MMAP_HAS_VMA_NAME 1
+#endif
 
 namespace tflite::xnnpack {
 
@@ -62,6 +67,10 @@ class ScopeGuard {
 template <class F>
 ScopeGuard(F&&) -> ScopeGuard<F>;
 
+// Rounds `size` (at least 1) up to a multiple of the OS page size. Returns 0
+// on overflow.
+size_t RoundUpToPageSize(size_t size);
+
 // Handles MMap allocations lifetime.
 //
 // When mapped, provides a view over the allocation for convenience.
@@ -72,12 +81,15 @@ class MMapHandle {
  public:
   using value_type = uint8_t;
 
+  struct AnonymousTag {};
+  static constexpr AnonymousTag kAnonymous{};
+
   MMapHandle() = default;
   ~MMapHandle();
   MMapHandle(const MMapHandle&) = delete;
   MMapHandle& operator=(const MMapHandle&) = delete;
-  MMapHandle(MMapHandle&&);
-  MMapHandle& operator=(MMapHandle&&);
+  MMapHandle(MMapHandle&&) noexcept;
+  MMapHandle& operator=(MMapHandle&&) noexcept;
 
   // Maps the file at the given path.
   [[nodiscard /*Mapping a file can fail.*/]]
@@ -90,12 +102,22 @@ class MMapHandle {
   bool Map(const FileDescriptorView& fd, size_t offset = 0,
            const char* debug_path = nullptr);
 
+  // Maps a private read-write anonymous region of at least `size` bytes
+  // (rounded up to at least one OS page); `size()` returns the page-rounded
+  // mapped capacity.
+  //
+  // On Linux and Android, best-effort names the region `[anon:<vma_name>]`
+  // (`< 80` printable ASCII chars excluding `` \`$[] ``) using an internal
+  // copy of `vma_name` owned for the lifetime of the mapping.
+  [[nodiscard /*Mapping anonymous memory can fail.*/]]
+  bool Map(AnonymousTag, size_t size, const char* vma_name = nullptr);
+
   // Tries to resize the current mapping.
   //
   // Only succeeds if the mapping could be resized without being moved.
   //
   // WARNING: expects `IsMapped()` to be true.
-  [[nodiscard /*Resizing a file can fail.*/]]
+  [[nodiscard /*Resizing a mapping can fail.*/]]
   bool Resize(size_t new_size);
 
   // Unmaps an existing mapping.
@@ -138,7 +160,7 @@ class MMapHandle {
 
   const uint8_t* end() const { return data() + size(); }
 
-  friend void swap(MMapHandle& a, MMapHandle& b);
+  friend void swap(MMapHandle& a, MMapHandle& b) noexcept;
 
  private:
   size_t size_ = 0;
@@ -147,6 +169,12 @@ class MMapHandle {
   uint8_t* data_ = nullptr;
 #if defined(_WIN32)
   HANDLE file_mapping_ = 0;
+#endif
+#if defined(XNNPACK_MMAP_HAS_VMA_NAME)
+  // Heap-allocated copy of the VMA name so its address stays valid across
+  // `MMapHandle` moves for kernels that retain the `PR_SET_VMA_ANON_NAME`
+  // pointer directly.
+  std::unique_ptr<char[]> vma_name_;
 #endif
 };
 

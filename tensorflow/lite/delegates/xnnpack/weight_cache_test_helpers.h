@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <ostream>
 #include <random>
@@ -29,6 +30,41 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
+
+#if defined(XNNPACK_MMAP_HAS_VMA_NAME) && \
+    !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+#define XNNPACK_TEST_HAS_VMA_NAME 1
+#endif
+
+#if INTPTR_MAX == INT64_MAX &&                           \
+    !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG) && \
+    !defined(__SANITIZE_ADDRESS__) && !defined(__SANITIZE_MEMORY__)
+#if defined(__has_feature)
+#if !__has_feature(address_sanitizer) && !__has_feature(memory_sanitizer)
+#define XNNPACK_TEST_CAN_PROBE_UNMAPPABLE_SIZE 1
+#endif
+#else
+#define XNNPACK_TEST_CAN_PROBE_UNMAPPABLE_SIZE 1
+#endif
+#endif
+
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+#include <sys/mman.h>
+#include <sys/prctl.h>
+#include <unistd.h>
+
+#include <cinttypes>
+#include <cstring>
+#include <fstream>
+
+#ifndef PR_SET_VMA
+#define PR_SET_VMA 0x53564d41
+#endif
+#ifndef PR_SET_VMA_ANON_NAME
+#define PR_SET_VMA_ANON_NAME 0
+#endif
+#endif
 
 namespace tflite::xnnpack {
 
@@ -129,6 +165,48 @@ class TempFileDesc : public FileDescriptor {
  private:
   std::string path_ = testing::TempDir() + "/weight_cache_test_file.XXXXXX";
 };
+
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+// Returns the `/proc/self/maps` line of the mapping that holds `addr`.
+inline std::string GetMapsLine(const void* addr) {
+  const uintptr_t target = reinterpret_cast<uintptr_t>(addr);
+  std::ifstream maps("/proc/self/maps");
+  for (std::string line; std::getline(maps, line);) {
+    uintptr_t start = 0;
+    uintptr_t end = 0;
+    if (std::sscanf(line.c_str(), "%" SCNxPTR "-%" SCNxPTR, &start, &end) ==
+            2 &&
+        start <= target && target < end) {
+      return line;
+    }
+  }
+  return "";
+}
+
+// Probes whether the running kernel supports `PR_SET_VMA_ANON_NAME`.
+inline bool AnonVmaNamingSupported() {
+  static const bool supported = []() {
+    static constexpr char kProbeName[] = "xnnpack-probe";
+    const size_t page_size = getpagesize();
+    void* const probe =
+        mmap(/*addr=*/nullptr, page_size, PROT_READ | PROT_WRITE,
+             MAP_PRIVATE | MAP_ANONYMOUS, /*fd=*/-1, /*offset=*/0);
+    if (probe == MAP_FAILED) {
+      return false;
+    }
+    const bool ok =
+        prctl(PR_SET_VMA, static_cast<uintptr_t>(PR_SET_VMA_ANON_NAME),
+              reinterpret_cast<uintptr_t>(probe),
+              static_cast<uintptr_t>(page_size),
+              reinterpret_cast<uintptr_t>(kProbeName)) == 0 &&
+        std::strstr(GetMapsLine(probe).c_str(), "[anon:xnnpack-probe]") !=
+            nullptr;
+    munmap(probe, page_size);
+    return ok;
+  }();
+  return supported;
+}
+#endif
 
 }  // namespace tflite::xnnpack
 

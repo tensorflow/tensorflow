@@ -37,6 +37,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "experimental.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
@@ -54,6 +55,21 @@ namespace tflite::xnnpack {
 
 namespace {
 constexpr size_t kMinAlignment = 128;
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+// Debug heap allocations (`new[]`) aren't page-aligned, so new chunks reserve
+// extra space to align the first buffer to `kMinAlignment`.
+constexpr size_t kChunkAlignmentPadding = kMinAlignment;
+#else
+// OS mappings (`mmap` and `MapViewOfFile` at offset 0) are page-aligned
+// (`>= 4 KiB`), which is already a multiple of `kMinAlignment`.
+constexpr size_t kChunkAlignmentPadding = 0;
+#endif
+// Name of the anonymous mapping holding cached packed weights, which shows up
+// as `[anon:xnnpack-weights-cache]` in `/proc/<pid>/maps`.
+constexpr char kWeightCacheVmaName[] = "xnnpack-weights-cache";
+// Caps single-step chunk growth at 1 MiB so unused tail capacity stays bounded
+// while amortizing mapping calls.
+constexpr size_t kMaxChunkGrowth = 1024 * 1024;
 
 const char* Sanitize(const char* path) { return path ? path : ""; }
 
@@ -367,49 +383,208 @@ bool WeightCacheBuilder::StopBuildStep(bool release_staging_buffer) {
   return true;
 }
 
-void* CacheMissHandler::Reserve(size_t size) {
-  // Calls to Reserve / Append do not support interleaving. When a Reserve call
-  // hasn't been used, we can replace the buffer. This will free the memory and
-  // prevent taking up too much memory in the case Reserve is called but then
-  // never appended.
-  const bool replace_unused = !buffers_.empty() && !buffers_.back().used;
-  // A replaced buffer keeps its offset, which keeps the offsets of all the
-  // buffers distinct.
-  const size_t offset = replace_unused ? buffers_.back().loc.offset
-                                       : min_offset_ + buffers_.size();
-  CacheMissHandler::Buffer buffer{
-      // The buffer is left uninitialized: it is about to be overwritten with
-      // packed data and zeroing it would touch every page one more time.
-      /*data=*/std::unique_ptr<uint8_t[]>(new uint8_t[size + kMinAlignment]),
-      /*loc=*/BufferLocation{/*offset=*/offset, /*size=*/size},
-      /*ptr=*/nullptr,
-      /*used=*/false,
-  };
-  if (replace_unused) {
-    buffers_.back() = std::move(buffer);
-  } else {
-    buffers_.emplace_back(std::move(buffer));
+MMapArena::MMapArena(MMapArena&& other) noexcept
+    : chunks_(std::move(other.chunks_)),
+      pending_ptr_(std::exchange(other.pending_ptr_, nullptr)),
+      pending_size_(std::exchange(other.pending_size_, 0)),
+      pending_chunk_offset_before_(
+          std::exchange(other.pending_chunk_offset_before_, 0)) {}
+
+MMapArena& MMapArena::operator=(MMapArena&& other) noexcept {
+  if (this != &other) {
+    chunks_ = std::move(other.chunks_);
+    pending_ptr_ = std::exchange(other.pending_ptr_, nullptr);
+    pending_size_ = std::exchange(other.pending_size_, 0);
+    pending_chunk_offset_before_ =
+        std::exchange(other.pending_chunk_offset_before_, 0);
   }
-  buffers_.back().ptr = Align(buffers_.back().data.get(), kMinAlignment);
-  ++reserve_count_;
-  return buffers_.back().ptr;
+  return *this;
+}
+
+void* MMapArena::Reserve(size_t size, MMapHandle* evicted_mapping) {
+  const auto evict_empty_tail = [&]() {
+    if (evicted_mapping != nullptr) {
+      *evicted_mapping = std::move(chunks_.back().mapping);
+    }
+    chunks_.pop_back();
+  };
+  const auto evict_oversized_empty_tail = [&]() {
+    if (!chunks_.empty() && chunks_.back().used == 0 &&
+        chunks_.back().mapping.size() > kMaxChunkGrowth) {
+      evict_empty_tail();
+    }
+  };
+
+  // Calls to Reserve / Commit do not interleave. Rewind an uncommitted
+  // reservation so unused `Reserve()` calls don't accumulate memory.
+  if (pending_ptr_ != nullptr) {
+    chunks_.back().used = pending_chunk_offset_before_;
+    pending_ptr_ = nullptr;
+    pending_size_ = 0;
+  }
+  if (size > SIZE_MAX - kMinAlignment) {
+    evict_oversized_empty_tail();
+    return nullptr;
+  }
+  const size_t alloc_size = std::max<size_t>(size, 1);
+  const size_t min_map_size = alloc_size + kChunkAlignmentPadding;
+  if (!chunks_.empty() && chunks_.back().used == 0 &&
+      chunks_.back().mapping.size() > kMaxChunkGrowth &&
+      (min_map_size <= kMaxChunkGrowth ||
+       chunks_.back().mapping.size() - kMaxChunkGrowth >= min_map_size)) {
+    evict_empty_tail();
+  }
+
+  const auto aligned_offset_in = [](const Chunk& chunk) -> size_t {
+    const uintptr_t base = reinterpret_cast<uintptr_t>(chunk.mapping.data());
+    return Align(base + chunk.used, kMinAlignment) - base;
+  };
+  const auto record_reservation = [&](Chunk& chunk,
+                                      size_t aligned_offset) -> void* {
+    pending_chunk_offset_before_ = chunk.used;
+    pending_ptr_ = chunk.mapping.data() + aligned_offset;
+    pending_size_ = size;
+    chunk.used = aligned_offset + alloc_size;
+    return pending_ptr_;
+  };
+
+  if (!chunks_.empty()) {
+    Chunk& chunk = chunks_.back();
+    const size_t aligned_offset = aligned_offset_in(chunk);
+    if (aligned_offset <= chunk.mapping.size() &&
+        alloc_size <= chunk.mapping.size() - aligned_offset) {
+      return record_reservation(chunk, aligned_offset);
+    }
+
+    // Try expanding the active mapping in place so earlier addresses stay
+    // valid.
+    if (alloc_size <= SIZE_MAX - aligned_offset) {
+      const size_t required = aligned_offset + alloc_size;
+      const size_t old_size = chunk.mapping.size();
+      const size_t grow_step = std::min(old_size, kMaxChunkGrowth);
+      const size_t grown_size =
+          old_size <= SIZE_MAX - grow_step ? old_size + grow_step : required;
+      const size_t target_size =
+          RoundUpToPageSize(std::max(required, grown_size));
+      if (target_size != 0 && chunk.mapping.Resize(target_size)) {
+        return record_reservation(chunk, aligned_offset);
+      }
+    }
+  }
+
+  const size_t prev_chunk_size =
+      chunks_.empty() ? 0 : chunks_.back().mapping.size();
+  const size_t next_chunk_size =
+      prev_chunk_size == 0
+          ? 0
+          : std::min(prev_chunk_size <= SIZE_MAX / 2 ? prev_chunk_size * 2
+                                                     : kMaxChunkGrowth,
+                     kMaxChunkGrowth);
+  const size_t map_size = std::max(min_map_size, next_chunk_size);
+  MMapHandle new_mapping;
+  if (!new_mapping.Map(MMapHandle::kAnonymous, map_size, kWeightCacheVmaName)) {
+    evict_oversized_empty_tail();
+    return nullptr;
+  }
+  if (!chunks_.empty() && chunks_.back().used == 0) {
+    if (evicted_mapping != nullptr) {
+      *evicted_mapping = std::move(chunks_.back().mapping);
+    }
+    chunks_.back().mapping = std::move(new_mapping);
+  } else {
+    chunks_.push_back(Chunk{std::move(new_mapping), /*used=*/0});
+  }
+
+  Chunk& chunk = chunks_.back();
+  return record_reservation(chunk, aligned_offset_in(chunk));
+}
+
+bool MMapArena::Commit(const void* ptr, size_t size) {
+  if (pending_ptr_ == nullptr || ptr != pending_ptr_ || size > pending_size_) {
+    return false;
+  }
+  Chunk& chunk = chunks_.back();
+  const size_t aligned_offset =
+      static_cast<const uint8_t*>(pending_ptr_) - chunk.mapping.data();
+  chunk.used = aligned_offset + std::max<size_t>(size, 1);
+  pending_ptr_ = nullptr;
+  pending_size_ = 0;
+  return true;
+}
+
+bool MMapArena::OverrunsActiveChunk(const void* data,
+                                    size_t size) const noexcept {
+  if (size == 0 || data == nullptr || chunks_.empty()) {
+    return false;
+  }
+  const Chunk& chunk = chunks_.back();
+  const uintptr_t start = reinterpret_cast<uintptr_t>(chunk.mapping.data());
+  const uintptr_t end = start + chunk.mapping.size();
+  const uintptr_t addr = reinterpret_cast<uintptr_t>(data);
+  return start <= addr && addr < end && size > end - addr;
+}
+
+CacheMissHandler::CacheMissHandler(CacheMissHandler&& other) noexcept
+    : arena_(std::move(other.arena_)),
+      min_offset_(std::exchange(other.min_offset_, 0)),
+      buffer_count_(std::exchange(other.buffer_count_, 0)),
+      append_count_(std::exchange(other.append_count_, 0)),
+      reserve_count_(std::exchange(other.reserve_count_, 0)) {}
+
+CacheMissHandler& CacheMissHandler::operator=(
+    CacheMissHandler&& other) noexcept {
+  if (this != &other) {
+    arena_ = std::move(other.arena_);
+    min_offset_ = std::exchange(other.min_offset_, 0);
+    buffer_count_ = std::exchange(other.buffer_count_, 0);
+    append_count_ = std::exchange(other.append_count_, 0);
+    reserve_count_ = std::exchange(other.reserve_count_, 0);
+  }
+  return *this;
+}
+
+void* CacheMissHandler::Reserve(size_t size) {
+  void* const ptr = arena_.Reserve(size);
+  if (ptr != nullptr) {
+    ++reserve_count_;
+  }
+  return ptr;
 }
 
 BufferLocation CacheMissHandler::Append(
     PackIdentifier pack_id, const void* data, uint64_t size, int fingerprint_id,
     std::map<size_t, void*>& offset_to_addr) {
-  auto buf_it =
-      std::find_if(buffers_.rbegin(), buffers_.rend(),
-                   [data](const auto& buf) { return buf.ptr == data; });
-  if (buf_it == buffers_.rend()) {
-    void* new_data = Reserve(size);
-    std::memcpy(new_data, data, size);
-    buf_it = buffers_.rbegin();
+  (void)pack_id;
+  (void)fingerprint_id;
+  if (size > SIZE_MAX) {
+    return BufferLocation::Invalid();
   }
-  buf_it->used = true;
+  void* ptr = nullptr;
+  if (arena_.Commit(data, size)) {
+    ptr = const_cast<void*>(data);
+  } else {
+    if (arena_.OverrunsActiveChunk(data, size)) {
+      return BufferLocation::Invalid();
+    }
+    MMapHandle evicted_mapping;
+    ptr = arena_.Reserve(size, &evicted_mapping);
+    if (ptr == nullptr) {
+      return BufferLocation::Invalid();
+    }
+    ++reserve_count_;
+    if (size > 0 && ptr != data) {
+      std::memmove(ptr, data, size);
+    }
+    if (!arena_.Commit(ptr, size)) {
+      return BufferLocation::Invalid();
+    }
+  }
+  const BufferLocation loc{/*offset=*/min_offset_ + buffer_count_,
+                           /*size=*/size};
+  ++buffer_count_;
   ++append_count_;
-  offset_to_addr.insert({buf_it->loc.offset, static_cast<void*>(buf_it->ptr)});
-  return buf_it->loc;
+  offset_to_addr.insert({loc.offset, ptr});
+  return loc;
 }
 
 #define XNN_MOVE_CONSTRUCT_MEMBER(member) member(std::move(other.member))

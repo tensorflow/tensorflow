@@ -7975,7 +7975,7 @@ void TfLiteXNNPackDelegateWeightsCacheDelete(
 }
 
 bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider() {
-  // In-memory caches only rely on heap allocations.
+  // In-memory caches only rely on anonymous mappings.
   return true;
 }
 

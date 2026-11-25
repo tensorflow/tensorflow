@@ -20,10 +20,23 @@ limitations under the License.
 #else
 #include <sys/mman.h>
 #include <unistd.h>
+#if !defined(MAP_ANONYMOUS) && defined(MAP_ANON)
+#define MAP_ANONYMOUS MAP_ANON
+#endif
 #endif
 
 #if defined(__linux__) && !defined(MADV_PAGEOUT)
 #define MADV_PAGEOUT 21
+#endif
+
+#if defined(XNNPACK_MMAP_HAS_VMA_NAME)
+#include <sys/prctl.h>
+#ifndef PR_SET_VMA
+#define PR_SET_VMA 0x53564d41
+#endif
+#ifndef PR_SET_VMA_ANON_NAME
+#define PR_SET_VMA_ANON_NAME 0
+#endif
 #endif
 
 #include <fcntl.h>
@@ -35,12 +48,39 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <new>
 
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/macros.h"
 #include "tensorflow/lite/delegates/xnnpack/windows_util.h"
 
 namespace tflite::xnnpack {
+
+namespace {
+
+size_t GetPageSize() {
+#if defined(_WIN32)
+  static const size_t page_size = []() -> size_t {
+    SYSTEM_INFO sys_info;
+    GetSystemInfo(&sys_info);
+    return sys_info.dwPageSize;
+  }();
+#else
+  static const size_t page_size = getpagesize();
+#endif
+  return page_size;
+}
+
+}  // namespace
+
+size_t RoundUpToPageSize(size_t size) {
+  size = std::max<size_t>(size, 1);
+  const size_t page_size = GetPageSize();
+  if (size > SIZE_MAX - (page_size - 1)) {
+    return 0;
+  }
+  return (size + (page_size - 1)) / page_size * page_size;
+}
 
 // NOLINTBEGIN(whitespace/line_length)
 #ifdef XNNPACK_CACHE_NO_MMAP_FOR_TEST
@@ -68,7 +108,7 @@ struct HighLow {
 };
 #endif
 
-void swap(MMapHandle& a, MMapHandle& b) {
+void swap(MMapHandle& a, MMapHandle& b) noexcept {
   using std::swap;
   swap(a.size_, b.size_);
   swap(a.offset_, b.offset_);
@@ -77,13 +117,16 @@ void swap(MMapHandle& a, MMapHandle& b) {
 #if defined(_WIN32)
   swap(a.file_mapping_, b.file_mapping_);
 #endif
+#if defined(XNNPACK_MMAP_HAS_VMA_NAME)
+  swap(a.vma_name_, b.vma_name_);
+#endif
 }
 
 MMapHandle::~MMapHandle() { UnMap(); }
 
-MMapHandle::MMapHandle(MMapHandle&& other) { swap(*this, other); }
+MMapHandle::MMapHandle(MMapHandle&& other) noexcept { swap(*this, other); }
 
-MMapHandle& MMapHandle::operator=(MMapHandle&& other) {
+MMapHandle& MMapHandle::operator=(MMapHandle&& other) noexcept {
   swap(*this, other);
   return *this;
 }
@@ -166,9 +209,73 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
   return true;
 }
 
+bool MMapHandle::Map(AnonymousTag, size_t size, const char* vma_name) {
+  this->UnMap();
+  const size_t mapped_size = RoundUpToPageSize(size);
+  XNNPACK_RETURN_CHECK(mapped_size != 0,
+                       "anonymous mapping size overflow: %zu.", size);
+
+  ScopeGuard unmap_on_error([this] { UnMap(); });
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  // This allocation is freed in UnMap and in the destructor.
+  data_ = new (std::nothrow) uint8_t[mapped_size]();
+  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not allocate %zu bytes.",
+                       mapped_size);
+  size_ = mapped_size;
+#elif defined(_WIN32)
+  const HighLow max_size = HighLow::From(mapped_size);
+  file_mapping_ = CreateFileMappingA(
+      INVALID_HANDLE_VALUE, /*lpFileMappingAttributes=*/nullptr,
+      /*flProtect=*/PAGE_READWRITE, max_size.high, max_size.low,
+      /*lpName=*/nullptr);
+  XNNPACK_RETURN_CHECK(file_mapping_ != nullptr,
+                       "could not create an anonymous file mapping: %s",
+                       GetLastErrorString().c_str());
+  data_ = static_cast<uint8_t*>(MapViewOfFile(
+      file_mapping_, FILE_MAP_WRITE, /*dwFileOffsetHigh=*/0,
+      /*dwFileOffsetLow=*/0, /*dwNumberOfBytesToMap=*/mapped_size));
+  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map anonymous view: %s",
+                       GetLastErrorString().c_str());
+  size_ = mapped_size;
+#else
+  void* const data = mmap(/*addr=*/nullptr, mapped_size, PROT_READ | PROT_WRITE,
+                          MAP_PRIVATE | MAP_ANONYMOUS, /*fd=*/-1, /*offset=*/0);
+  XNNPACK_RETURN_CHECK(data != MAP_FAILED,
+                       "could not map %zu anonymous bytes: %s.", mapped_size,
+                       strerror(errno));
+  data_ = static_cast<uint8_t*>(data);
+  size_ = mapped_size;
+#if defined(XNNPACK_MMAP_HAS_VMA_NAME)
+  if (vma_name != nullptr && vma_name[0] != '\0') {
+    const size_t name_len = std::strlen(vma_name);
+    vma_name_.reset(new (std::nothrow) char[name_len + 1]);
+    if (vma_name_ != nullptr) {
+      std::memcpy(vma_name_.get(), vma_name, name_len + 1);
+      // Best effort: older kernels or configs without CONFIG_ANON_VMA_NAME
+      // fail.
+      if (prctl(PR_SET_VMA, static_cast<uintptr_t>(PR_SET_VMA_ANON_NAME),
+                reinterpret_cast<uintptr_t>(data_),
+                static_cast<uintptr_t>(mapped_size),
+                reinterpret_cast<uintptr_t>(vma_name_.get())) != 0) {
+        vma_name_.reset();
+      }
+    }
+  }
+#endif
+#endif
+  (void)vma_name;
+  unmap_on_error.Deactivate();
+  return true;
+}
+
 bool MMapHandle::Resize(size_t new_size) {
 #if (defined(__linux__) || defined(__ANDROID__)) && \
     !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  if (!IsMapped() || new_size == 0 ||
+      new_size > SIZE_MAX - offset_page_adjustment_ ||
+      RoundUpToPageSize(new_size + offset_page_adjustment_) == 0) {
+    return false;
+  }
   void* const remapped_data =
       mremap(data_, size_ + offset_page_adjustment_,
              new_size + offset_page_adjustment_, /*flags=*/0);
@@ -201,6 +308,9 @@ void MMapHandle::UnMap() {
     CloseHandle(file_mapping_);
     file_mapping_ = nullptr;
   }
+#endif
+#if defined(XNNPACK_MMAP_HAS_VMA_NAME)
+  vma_name_.reset();
 #endif
   data_ = nullptr;
   offset_ = 0;

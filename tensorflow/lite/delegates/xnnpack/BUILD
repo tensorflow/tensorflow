@@ -393,7 +393,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":file_util",
-        "//tensorflow/lite:minimal_logging",
+        ":mmap_handle",
         "@com_google_googletest//:gtest",
     ],
 )

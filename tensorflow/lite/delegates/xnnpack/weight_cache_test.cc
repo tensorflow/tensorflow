@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cerrno>
+#include <cinttypes>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -65,6 +66,10 @@ using testing::Ge;
 using testing::IsNull;
 using testing::Ne;
 using testing::Not;
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+using testing::EndsWith;
+using testing::HasSubstr;
+#endif
 
 static xnn_fingerprint kDefaultFingerprint{/*id=*/0xf00d, /*value=*/0xb33f};
 
@@ -568,15 +573,350 @@ TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
   EXPECT_THAT(GetBufferData(buffer3), ElementsAreArray(payload3));
 }
 
+TEST(MMapArenaTest, ReservesAlignedPointersAndZeroSizedBuffers) {
+  MMapArena arena;
+  const size_t kSizes[] = {0, 1, 7, 64, 129, 0};
+  std::vector<void*> ptrs;
+  for (const size_t size : kSizes) {
+    void* const ptr = arena.Reserve(size);
+    ASSERT_NE(ptr, nullptr) << size;
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(ptr) % 128, 0) << size;
+    ASSERT_TRUE(arena.Commit(ptr, size)) << size;
+    ptrs.push_back(ptr);
+  }
+  for (size_t i = 0; i < ptrs.size(); ++i) {
+    for (size_t j = i + 1; j < ptrs.size(); ++j) {
+      EXPECT_NE(ptrs[i], ptrs[j]) << i << ", " << j;
+    }
+  }
+}
+
+TEST(MMapArenaTest, RewindsUncommittedReservations) {
+  MMapArena arena;
+  // An oversized (> 1 MiB) uncommitted reservation on an empty arena is
+  // discarded when followed directly by a small Reserve.
+  ASSERT_NE(arena.Reserve(2 * 1024 * 1024), nullptr);
+  EXPECT_TRUE(arena.HasPendingReservation());
+
+  void* const uncommitted = arena.Reserve(64);
+  ASSERT_NE(uncommitted, nullptr);
+  EXPECT_TRUE(arena.HasPendingReservation());
+
+  // Calling Reserve again without Commit reuses the uncommitted slot.
+  void* const committed = arena.Reserve(64);
+  EXPECT_EQ(committed, uncommitted);
+  std::memset(committed, 0xAB, 64);
+  ASSERT_TRUE(arena.Commit(committed, 64));
+  EXPECT_FALSE(arena.HasPendingReservation());
+
+  // An overflowing Reserve rewinds any pending reservation, drops an oversized
+  // uncommitted tail chunk and returns nullptr without corrupting committed
+  // allocations.
+  ASSERT_NE(arena.Reserve(2 * 1024 * 1024), nullptr);
+  EXPECT_TRUE(arena.HasPendingReservation());
+  EXPECT_EQ(arena.Reserve(std::numeric_limits<size_t>::max()), nullptr);
+  EXPECT_FALSE(arena.HasPendingReservation());
+
+  void* const after = arena.Reserve(64);
+  ASSERT_NE(after, nullptr);
+  std::memset(after, 0xCD, 64);
+  ASSERT_TRUE(arena.Commit(after, 64));
+
+  for (size_t i = 0; i < 64; ++i) {
+    EXPECT_EQ(static_cast<const uint8_t*>(committed)[i], 0xAB) << i;
+    EXPECT_EQ(static_cast<const uint8_t*>(after)[i], 0xCD) << i;
+  }
+
+  // On a fresh arena (`used == 0`), an overflowing Reserve evicts and unmaps
+  // the oversized uncommitted tail chunk.
+  {
+    MMapArena fresh_arena;
+    void* const oversized = fresh_arena.Reserve(2 * 1024 * 1024);
+    ASSERT_NE(oversized, nullptr);
+    EXPECT_TRUE(fresh_arena.HasPendingReservation());
+    EXPECT_EQ(fresh_arena.Reserve(std::numeric_limits<size_t>::max()), nullptr);
+    EXPECT_FALSE(fresh_arena.HasPendingReservation());
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+    EXPECT_TRUE(
+        GetMapsLine(static_cast<const uint8_t*>(oversized) + 1024 * 1024)
+            .empty());
+#endif
+  }
+}
+
+TEST(MMapArenaTest, CommitValidatesReservationAndReclaimsUnusedTail) {
+  MMapArena arena;
+  uint8_t dummy = 0;
+  EXPECT_FALSE(arena.Commit(nullptr, 0));
+  EXPECT_FALSE(arena.Commit(&dummy, 1));
+
+  auto* const first = static_cast<uint8_t*>(arena.Reserve(1024));
+  ASSERT_NE(first, nullptr);
+  EXPECT_TRUE(arena.HasPendingReservation());
+
+  // Mismatched pointers or sizes exceeding the reservation fail without
+  // consuming the active reservation.
+  EXPECT_FALSE(arena.Commit(first + 1, 64));
+  EXPECT_FALSE(arena.Commit(&dummy, 64));
+  EXPECT_FALSE(arena.Commit(first, 1025));
+  EXPECT_TRUE(arena.HasPendingReservation());
+
+  // Committing a smaller size succeeds, clears the pending reservation and
+  // reclaims unused tail bytes for the next allocation.
+  ASSERT_TRUE(arena.Commit(first, 64));
+  EXPECT_FALSE(arena.HasPendingReservation());
+  EXPECT_FALSE(arena.Commit(first, 64));
+
+  auto* const second = static_cast<uint8_t*>(arena.Reserve(64));
+  ASSERT_NE(second, nullptr);
+  EXPECT_EQ(second, first + 128);
+  EXPECT_TRUE(arena.Commit(second, 64));
+}
+
+TEST(MMapArenaTest, ReplacesEmptyChunkWhenLargerUncommittedReserveNeedsRemap) {
+  const size_t page_size = RoundUpToPageSize(1);
+  MMapHandle blocker_before;
+  ASSERT_TRUE(blocker_before.Map(MMapHandle::kAnonymous, page_size));
+  MMapArena arena;
+  void* const initial = arena.Reserve(64);
+  ASSERT_NE(initial, nullptr);
+  MMapHandle blocker_after;
+  ASSERT_TRUE(blocker_after.Map(MMapHandle::kAnonymous, page_size));
+
+  // With adjacent mappings pinned on both sides of the uncommitted 1-page
+  // chunk, a multi-page Reserve cannot resize in place and replaces the unused
+  // chunk instead.
+  const size_t large_size = 16 * page_size;
+  MMapHandle evicted;
+  auto* const ptr = static_cast<uint8_t*>(arena.Reserve(large_size, &evicted));
+  ASSERT_NE(ptr, nullptr);
+  EXPECT_NE(ptr, initial);
+  ASSERT_TRUE(evicted.IsMapped());
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  EXPECT_GE(static_cast<const uint8_t*>(initial), evicted.data());
+  EXPECT_LT(static_cast<const uint8_t*>(initial), evicted.data() + 128);
+#else
+  EXPECT_EQ(evicted.data(), initial);
+#endif
+  std::memset(ptr, 0x7E, large_size);
+  ASSERT_TRUE(arena.Commit(ptr, large_size));
+  EXPECT_EQ(ptr[0], 0x7E);
+  EXPECT_EQ(ptr[large_size - 1], 0x7E);
+}
+
+#if (defined(__linux__) || defined(__ANDROID__)) && \
+    !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+TEST(MMapArenaTest, ExpandsActiveChunkInPlaceWhenAdjacentSpaceIsFree) {
+  const size_t page_size = RoundUpToPageSize(1);
+  // Plug any small holes left by prior tests until 1-page and multi-page
+  // mappings land contiguously at the mmap frontier.
+  std::vector<MMapHandle> hole_plugs;
+  for (int i = 0; i < 128; ++i) {
+    MMapHandle small_probe;
+    MMapHandle large_probe;
+    ASSERT_TRUE(small_probe.Map(MMapHandle::kAnonymous, page_size)) << i;
+    ASSERT_TRUE(large_probe.Map(MMapHandle::kAnonymous, 6 * page_size)) << i;
+    if (large_probe.data() + large_probe.size() == small_probe.data() ||
+        small_probe.data() + small_probe.size() == large_probe.data()) {
+      break;
+    }
+    hole_plugs.push_back(std::move(small_probe));
+  }
+
+  MMapHandle blocker_before;
+  ASSERT_TRUE(blocker_before.Map(MMapHandle::kAnonymous, 3 * page_size));
+
+  MMapArena arena;
+  auto* const first = static_cast<uint8_t*>(arena.Reserve(64));
+  ASSERT_NE(first, nullptr);
+  std::memset(first, 0x5A, 64);
+  ASSERT_TRUE(arena.Commit(first, 64));
+
+  MMapHandle blocker_after;
+  ASSERT_TRUE(blocker_after.Map(MMapHandle::kAnonymous, 3 * page_size));
+
+  // Unmapping both neighbors guarantees free virtual address space immediately
+  // above the active chunk regardless of top-down or bottom-up mmap order.
+  blocker_before.UnMap();
+  blocker_after.UnMap();
+
+  const size_t second_size = 2 * page_size;
+  auto* const second = static_cast<uint8_t*>(arena.Reserve(second_size));
+  ASSERT_NE(second, nullptr);
+  EXPECT_EQ(second, first + 128);
+  std::memset(second, 0xA5, second_size);
+  ASSERT_TRUE(arena.Commit(second, second_size));
+
+  for (size_t i = 0; i < 64; ++i) {
+    EXPECT_EQ(first[i], 0x5A) << i;
+  }
+  EXPECT_EQ(second[0], 0xA5);
+  EXPECT_EQ(second[second_size - 1], 0xA5);
+}
+#endif
+
+#if defined(XNNPACK_TEST_CAN_PROBE_UNMAPPABLE_SIZE)
+TEST(MMapArenaTest, UnmappableReserveFailsCleanly) {
+  constexpr size_t kUnmappableSize = std::numeric_limits<size_t>::max() / 4;
+  MMapArena arena;
+  EXPECT_EQ(arena.Reserve(kUnmappableSize), nullptr);
+  EXPECT_FALSE(arena.HasPendingReservation());
+
+  // A failed large Reserve after an uncommitted > 1 MiB reservation drops the
+  // oversized chunk so subsequent small reservations do not keep it mapped.
+  void* const oversized = arena.Reserve(2 * 1024 * 1024);
+  ASSERT_NE(oversized, nullptr);
+  EXPECT_TRUE(arena.HasPendingReservation());
+  EXPECT_EQ(arena.Reserve(kUnmappableSize), nullptr);
+  EXPECT_FALSE(arena.HasPendingReservation());
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+  EXPECT_TRUE(GetMapsLine(static_cast<const uint8_t*>(oversized) + 1024 * 1024)
+                  .empty());
+#endif
+
+  void* const ptr = arena.Reserve(64);
+  ASSERT_NE(ptr, nullptr);
+  EXPECT_TRUE(arena.Commit(ptr, 64));
+}
+#endif
+
+TEST(MMapArenaTest, GrowsAcrossMultipleMegabytesWithStableAddresses) {
+  MMapArena arena;
+  constexpr size_t kBufferCount = 16;
+  constexpr size_t kBufferSize = 256 * 1024;
+  std::vector<uint8_t*> ptrs;
+  for (size_t i = 0; i < kBufferCount; ++i) {
+    auto* const ptr = static_cast<uint8_t*>(arena.Reserve(kBufferSize));
+    ASSERT_NE(ptr, nullptr) << i;
+    std::memset(ptr, static_cast<int>(i + 1), kBufferSize);
+    ASSERT_TRUE(arena.Commit(ptr, kBufferSize)) << i;
+    ptrs.push_back(ptr);
+  }
+  for (size_t i = 0; i < kBufferCount; ++i) {
+    EXPECT_EQ(ptrs[i][0], static_cast<uint8_t>(i + 1)) << i;
+    EXPECT_EQ(ptrs[i][kBufferSize - 1], static_cast<uint8_t>(i + 1)) << i;
+  }
+}
+
+TEST(MMapArenaTest, MoveResetsSourceArena) {
+  MMapArena arena1;
+  void* const ptr = arena1.Reserve(128);
+  ASSERT_NE(ptr, nullptr);
+  EXPECT_TRUE(arena1.HasPendingReservation());
+
+  MMapArena arena2(std::move(arena1));
+  // NOLINTBEGIN(bugprone-use-after-move)
+  EXPECT_FALSE(arena1.HasPendingReservation());
+  // NOLINTEND(bugprone-use-after-move)
+  EXPECT_TRUE(arena2.HasPendingReservation());
+
+  MMapArena arena3;
+  arena3 = std::move(arena2);
+  // NOLINTBEGIN(bugprone-use-after-move)
+  EXPECT_FALSE(arena2.HasPendingReservation());
+  // NOLINTEND(bugprone-use-after-move)
+  EXPECT_TRUE(arena3.HasPendingReservation());
+  EXPECT_TRUE(arena3.Commit(ptr, 128));
+}
+
+TEST(MMapArenaTest, ExactPageMultipleReserveDoesNotOvermapPage) {
+  const size_t page_size = RoundUpToPageSize(1);
+  ASSERT_GT(page_size, 0);
+
+  {
+    MMapArena arena;
+    auto* const ptr = static_cast<uint8_t*>(arena.Reserve(page_size));
+    ASSERT_NE(ptr, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(ptr) % 128, 0);
+    std::memset(ptr, 0x5A, page_size);
+    ASSERT_TRUE(arena.Commit(ptr, page_size));
+    EXPECT_EQ(ptr[0], 0x5A);
+    EXPECT_EQ(ptr[page_size - 1], 0x5A);
+
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+    if (AnonVmaNamingSupported()) {
+      const std::string maps_line = GetMapsLine(ptr);
+      uintptr_t start = 0;
+      uintptr_t end = 0;
+      ASSERT_EQ(std::sscanf(maps_line.c_str(), "%" SCNxPTR "-%" SCNxPTR, &start,
+                            &end),
+                2)
+          << maps_line;
+      EXPECT_EQ(end - start, page_size) << maps_line;
+    }
+#endif
+  }
+
+  // Rewinding an oversized (> 1 MiB) uncommitted chunk to an exact 1 MiB
+  // reservation drops the oversized chunk and maps 1 MiB without extra padding.
+  {
+    constexpr size_t kOneMiB = 1024 * 1024;
+    MMapArena arena;
+    ASSERT_NE(arena.Reserve(2 * kOneMiB), nullptr);
+    auto* const ptr = static_cast<uint8_t*>(arena.Reserve(kOneMiB));
+    ASSERT_NE(ptr, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(ptr) % 128, 0);
+    std::memset(ptr, 0xA5, kOneMiB);
+    ASSERT_TRUE(arena.Commit(ptr, kOneMiB));
+    EXPECT_EQ(ptr[0], 0xA5);
+    EXPECT_EQ(ptr[kOneMiB - 1], 0xA5);
+
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+    if (AnonVmaNamingSupported() && page_size <= kOneMiB) {
+      const std::string maps_line = GetMapsLine(ptr);
+      uintptr_t start = 0;
+      uintptr_t end = 0;
+      ASSERT_EQ(std::sscanf(maps_line.c_str(), "%" SCNxPTR "-%" SCNxPTR, &start,
+                            &end),
+                2)
+          << maps_line;
+      EXPECT_EQ(end - start, kOneMiB) << maps_line;
+    }
+#endif
+  }
+
+  // Rewinding an 8 MiB uncommitted chunk to a 2 MiB reservation (> 1 MiB) also
+  // drops the oversized chunk rather than keeping 6 MiB of unused capacity.
+  {
+    constexpr size_t kTwoMiB = 2 * 1024 * 1024;
+    constexpr size_t kEightMiB = 8 * 1024 * 1024;
+    MMapArena arena;
+    ASSERT_NE(arena.Reserve(kEightMiB), nullptr);
+    auto* const two_mib = static_cast<uint8_t*>(arena.Reserve(kTwoMiB));
+    ASSERT_NE(two_mib, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(two_mib) % 128, 0);
+    std::memset(two_mib, 0x3C, kTwoMiB);
+    ASSERT_TRUE(arena.Commit(two_mib, kTwoMiB));
+    EXPECT_EQ(two_mib[0], 0x3C);
+    EXPECT_EQ(two_mib[kTwoMiB - 1], 0x3C);
+
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+    if (AnonVmaNamingSupported() && page_size <= kTwoMiB) {
+      const std::string maps_line = GetMapsLine(two_mib);
+      uintptr_t start = 0;
+      uintptr_t end = 0;
+      ASSERT_EQ(std::sscanf(maps_line.c_str(), "%" SCNxPTR "-%" SCNxPTR, &start,
+                            &end),
+                2)
+          << maps_line;
+      EXPECT_EQ(end - start, kTwoMiB) << maps_line;
+    }
+#endif
+  }
+}
+
 TEST(CacheMissHandlerTest, ReserveThenAppendWorks) {
   const int kBufferSize = 5;
   const size_t kMinOffset = 12;
   CacheMissHandler cache_miss_handler;
   std::map<size_t, void*> offset_to_addr;
   cache_miss_handler.SetMinOffset(kMinOffset);
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(0));
   double* ptr = reinterpret_cast<double*>(
       cache_miss_handler.Reserve(kBufferSize * sizeof(double)));
-  EXPECT_THAT(ptr, Not(IsNull()));
+  ASSERT_THAT(ptr, Not(IsNull()));
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(1));
+  EXPECT_FALSE(cache_miss_handler.ConsistentReserveAppendCalls());
   std::iota(ptr, ptr + kBufferSize, 1);
 
   const PackIdentifier dummy_id{2, 3, 4};
@@ -586,7 +926,212 @@ TEST(CacheMissHandlerTest, ReserveThenAppendWorks) {
   EXPECT_THAT(loc.size, Eq(kBufferSize * sizeof(double)));
   EXPECT_THAT(loc.offset, Ge(kMinOffset));
   EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(1));
+  EXPECT_TRUE(cache_miss_handler.ConsistentReserveAppendCalls());
   EXPECT_THAT(offset_to_addr.find(loc.offset), Not(offset_to_addr.end()));
+}
+
+TEST(CacheMissHandlerTest, AppendZeroBytesAndFallbackCommitWork) {
+  CacheMissHandler cache_miss_handler;
+  std::map<size_t, void*> offset_to_addr;
+  const PackIdentifier id1{1, 2, 3};
+  const BufferLocation zero_loc = cache_miss_handler.Append(
+      id1, nullptr, /*size=*/0, kDefaultFingerprint.id, offset_to_addr);
+  ASSERT_FALSE(zero_loc.IsInvalid());
+  EXPECT_EQ(zero_loc.size, 0);
+  EXPECT_EQ(cache_miss_handler.BufferCount(), 1);
+  ASSERT_NE(offset_to_addr.find(zero_loc.offset), offset_to_addr.end());
+  EXPECT_NE(offset_to_addr[zero_loc.offset], nullptr);
+
+  // Appending more bytes than the active reservation rewinds and reserves a
+  // larger slot without self-overlapping memcpy when the address is reused.
+  auto* const buf = static_cast<uint8_t*>(cache_miss_handler.Reserve(64));
+  ASSERT_NE(buf, nullptr);
+  std::memset(buf, 0x33, 64);
+  ASSERT_EQ(cache_miss_handler.Reserve(16), buf);
+  EXPECT_EQ(cache_miss_handler.BufferCount(), 2);
+  const PackIdentifier id2{4, 5, 6};
+  const BufferLocation fallback_loc = cache_miss_handler.Append(
+      id2, buf, /*size=*/64, kDefaultFingerprint.id, offset_to_addr);
+  ASSERT_FALSE(fallback_loc.IsInvalid());
+  EXPECT_EQ(fallback_loc.size, 64);
+  EXPECT_EQ(cache_miss_handler.BufferCount(), 2);
+  const auto* const stored =
+      static_cast<const uint8_t*>(offset_to_addr[fallback_loc.offset]);
+  ASSERT_NE(stored, nullptr);
+  for (size_t i = 0; i < 64; ++i) {
+    EXPECT_EQ(stored[i], 0x33) << i;
+  }
+}
+
+#if defined(XNNPACK_TEST_CAN_PROBE_UNMAPPABLE_SIZE)
+TEST(CacheMissHandlerTest, UnmappableAppendReturnsInvalidLocation) {
+  constexpr size_t kUnmappableSize = std::numeric_limits<size_t>::max() / 4;
+  CacheMissHandler cache_miss_handler;
+  std::map<size_t, void*> offset_to_addr;
+  const PackIdentifier dummy_id{2, 3, 4};
+  const BufferLocation loc =
+      cache_miss_handler.Append(dummy_id, nullptr, kUnmappableSize,
+                                kDefaultFingerprint.id, offset_to_addr);
+  EXPECT_TRUE(loc.IsInvalid());
+  EXPECT_EQ(cache_miss_handler.BufferCount(), 0);
+  EXPECT_FALSE(cache_miss_handler.HasCacheMisses());
+  EXPECT_TRUE(offset_to_addr.empty());
+}
+#endif
+
+TEST(CacheMissHandlerTest, AppendHandlesSubSlicesAndRejectsChunkOverrun) {
+  // Non-zero sub-slice of an uncommitted 2 MiB reservation: rewinding pops the
+  // 2 MiB chunk, so the evicted mapping must stay alive until `memmove`
+  // completes.
+  {
+    CacheMissHandler handler;
+    std::map<size_t, void*> offset_to_addr;
+    constexpr size_t kTwoMiB = 2 * 1024 * 1024;
+    auto* const buf = static_cast<uint8_t*>(handler.Reserve(kTwoMiB));
+    ASSERT_NE(buf, nullptr);
+    for (size_t i = 0; i < 64; ++i) {
+      buf[128 + i] = static_cast<uint8_t>(0x80 + i);
+    }
+
+    const PackIdentifier id{1, 2, 3};
+    const BufferLocation loc = handler.Append(
+        id, buf + 128, /*size=*/64, kDefaultFingerprint.id, offset_to_addr);
+    ASSERT_FALSE(loc.IsInvalid());
+    EXPECT_EQ(loc.size, 64);
+    EXPECT_EQ(handler.BufferCount(), 1);
+    EXPECT_TRUE(handler.HasCacheMisses());
+    const auto* const stored =
+        static_cast<const uint8_t*>(offset_to_addr[loc.offset]);
+    ASSERT_NE(stored, nullptr);
+    for (size_t i = 0; i < 64; ++i) {
+      EXPECT_EQ(stored[i], static_cast<uint8_t>(0x80 + i)) << i;
+    }
+  }
+
+  // Overlapping sub-slice of a retained 128-byte reservation: rewinding reuses
+  // `buf2` as destination while copying from `buf2 + 32`.
+  {
+    CacheMissHandler handler;
+    std::map<size_t, void*> offset_to_addr;
+    auto* const buf2 = static_cast<uint8_t*>(handler.Reserve(128));
+    ASSERT_NE(buf2, nullptr);
+    for (size_t i = 0; i < 128; ++i) {
+      buf2[i] = static_cast<uint8_t>(i + 1);
+    }
+
+    const PackIdentifier id{4, 5, 6};
+    const BufferLocation loc = handler.Append(
+        id, buf2 + 32, /*size=*/64, kDefaultFingerprint.id, offset_to_addr);
+    ASSERT_FALSE(loc.IsInvalid());
+    EXPECT_EQ(loc.size, 64);
+    const auto* const stored =
+        static_cast<const uint8_t*>(offset_to_addr[loc.offset]);
+    EXPECT_EQ(stored, buf2);
+    for (size_t i = 0; i < 64; ++i) {
+      EXPECT_EQ(stored[i], static_cast<uint8_t>(33 + i)) << i;
+    }
+  }
+
+  // Out-of-bounds slice extending past the active 1-page chunk returns an
+  // invalid location before reserving or reading past the mapping end.
+  {
+    const size_t page_size = RoundUpToPageSize(1);
+    ASSERT_GT(page_size, 128);
+    CacheMissHandler handler;
+    std::map<size_t, void*> offset_to_addr;
+    auto* const buf3 = static_cast<uint8_t*>(handler.Reserve(64));
+    ASSERT_NE(buf3, nullptr);
+
+    const PackIdentifier id{7, 8, 9};
+    const BufferLocation loc = handler.Append(
+        id, buf3, 2 * page_size, kDefaultFingerprint.id, offset_to_addr);
+    EXPECT_TRUE(loc.IsInvalid());
+    EXPECT_FALSE(handler.HasCacheMisses());
+    EXPECT_TRUE(offset_to_addr.empty());
+  }
+}
+
+TEST(CacheMissHandlerTest, MovePreservesStateAndResetsSource) {
+  constexpr size_t kMinOffset = 100;
+  const PackIdentifier id1{1, 2, 3};
+  const PackIdentifier id2{4, 5, 6};
+  const PackIdentifier id3{7, 8, 9};
+  std::map<size_t, void*> offset_to_addr;
+
+  CacheMissHandler source;
+  source.SetMinOffset(kMinOffset);
+  auto* const first = static_cast<uint8_t*>(source.Reserve(32));
+  ASSERT_NE(first, nullptr);
+  std::memset(first, 0x11, 32);
+  const BufferLocation loc1 = source.Append(
+      id1, first, /*size=*/32, kDefaultFingerprint.id, offset_to_addr);
+  ASSERT_FALSE(loc1.IsInvalid());
+  EXPECT_EQ(loc1.offset, kMinOffset);
+
+  // Leave a second reservation uncommitted before move-constructing.
+  auto* const second = static_cast<uint8_t*>(source.Reserve(48));
+  ASSERT_NE(second, nullptr);
+  std::memset(second, 0x22, 48);
+  ASSERT_EQ(source.BufferCount(), 2);
+  ASSERT_TRUE(source.HasCacheMisses());
+  ASSERT_FALSE(source.ConsistentReserveAppendCalls());
+
+  CacheMissHandler move_constructed(std::move(source));
+  // NOLINTBEGIN(bugprone-use-after-move)
+  EXPECT_EQ(source.BufferCount(), 0);
+  EXPECT_FALSE(source.HasCacheMisses());
+  EXPECT_TRUE(source.ConsistentReserveAppendCalls());
+  const uint8_t reused_byte = 0x77;
+  const BufferLocation reset_loc =
+      source.Append(id1, &reused_byte, sizeof(reused_byte),
+                    kDefaultFingerprint.id, offset_to_addr);
+  ASSERT_FALSE(reset_loc.IsInvalid());
+  EXPECT_EQ(reset_loc.offset, 0);
+  // NOLINTEND(bugprone-use-after-move)
+
+  EXPECT_EQ(move_constructed.BufferCount(), 2);
+  EXPECT_TRUE(move_constructed.HasCacheMisses());
+  EXPECT_FALSE(move_constructed.ConsistentReserveAppendCalls());
+
+  const BufferLocation loc2 = move_constructed.Append(
+      id2, second, /*size=*/48, kDefaultFingerprint.id, offset_to_addr);
+  ASSERT_FALSE(loc2.IsInvalid());
+  EXPECT_EQ(loc2.offset, kMinOffset + 1);
+  EXPECT_EQ(move_constructed.BufferCount(), 2);
+  EXPECT_TRUE(move_constructed.ConsistentReserveAppendCalls());
+
+  // Leave a third reservation uncommitted before move-assigning onto a
+  // non-empty destination.
+  auto* const third = static_cast<uint8_t*>(move_constructed.Reserve(24));
+  ASSERT_NE(third, nullptr);
+  std::memset(third, 0x33, 24);
+  ASSERT_FALSE(move_constructed.ConsistentReserveAppendCalls());
+
+  CacheMissHandler move_assigned;
+  move_assigned.SetMinOffset(500);
+  ASSERT_NE(move_assigned.Reserve(16), nullptr);
+  move_assigned = std::move(move_constructed);
+
+  // NOLINTBEGIN(bugprone-use-after-move)
+  EXPECT_EQ(move_constructed.BufferCount(), 0);
+  EXPECT_FALSE(move_constructed.HasCacheMisses());
+  EXPECT_TRUE(move_constructed.ConsistentReserveAppendCalls());
+  // NOLINTEND(bugprone-use-after-move)
+
+  EXPECT_EQ(move_assigned.BufferCount(), 3);
+  EXPECT_TRUE(move_assigned.HasCacheMisses());
+  EXPECT_FALSE(move_assigned.ConsistentReserveAppendCalls());
+
+  const BufferLocation loc3 = move_assigned.Append(
+      id3, third, /*size=*/24, kDefaultFingerprint.id, offset_to_addr);
+  ASSERT_FALSE(loc3.IsInvalid());
+  EXPECT_EQ(loc3.offset, kMinOffset + 2);
+  EXPECT_EQ(move_assigned.BufferCount(), 3);
+  EXPECT_TRUE(move_assigned.ConsistentReserveAppendCalls());
+
+  EXPECT_EQ(static_cast<const uint8_t*>(offset_to_addr[loc1.offset])[0], 0x11);
+  EXPECT_EQ(static_cast<const uint8_t*>(offset_to_addr[loc2.offset])[0], 0x22);
+  EXPECT_EQ(static_cast<const uint8_t*>(offset_to_addr[loc3.offset])[0], 0x33);
 }
 
 TEST(CacheMissHandlerTest, AppendWithoutReserveWorks) {
@@ -1650,17 +2195,19 @@ TEST_F(InMemoryWeightCacheTest, BuffersHaveStableAddresses) {
   for (int i = 0; i < 16; ++i) {
     weights.push_back(GenerateRandomString(100000 + i));
     ASSERT_TRUE(provider_.MapBufferIdentifier(
-        weights.back().data(), weights.back().size(), /*identifier=*/i));
+        weights.back().data(), weights.back().size(), /*identifier=*/i))
+        << i;
     offsets.push_back(Insert(Key(/*seed=*/1, weights.back()), weights.back()));
-    ASSERT_NE(offsets.back(), SIZE_MAX);
+    ASSERT_NE(offsets.back(), SIZE_MAX) << i;
     // The address is usable as soon as the buffer is inserted.
     addresses.push_back(provider_.OffsetToAddr(offsets.back()));
-    ASSERT_NE(addresses.back(), nullptr);
+    ASSERT_NE(addresses.back(), nullptr) << i;
   }
   for (size_t i = 0; i < weights.size(); ++i) {
-    EXPECT_EQ(provider_.OffsetToAddr(offsets[i]), addresses[i]);
+    EXPECT_EQ(provider_.OffsetToAddr(offsets[i]), addresses[i]) << i;
     EXPECT_THAT(LightSpan<const char>(addresses[i], weights[i].size()),
-                ElementsAreArray(weights[i]));
+                ElementsAreArray(weights[i]))
+        << i;
   }
 }
 
@@ -1774,6 +2321,25 @@ TEST_F(InMemoryWeightCacheTest, MovedFromProviderIsInactive) {
   EXPECT_TRUE(assigned_to.IsActive());
   EXPECT_FALSE(moved_to.IsActive());  // NOLINT(bugprone-use-after-move)
 }
+
+#if defined(XNNPACK_TEST_HAS_VMA_NAME)
+TEST_F(InMemoryWeightCacheTest, BuffersUseAnonymousMapping) {
+  const std::string weights = GenerateRandomString(4096);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  const size_t offset = Insert(Key(/*seed=*/1, weights), weights);
+  ASSERT_NE(offset, SIZE_MAX);
+  const void* const addr = provider_.OffsetToAddr(offset);
+  ASSERT_NE(addr, nullptr);
+
+  const std::string matched_line = GetMapsLine(addr);
+  ASSERT_FALSE(matched_line.empty());
+  EXPECT_THAT(matched_line, Not(HasSubstr("[heap]")));
+  if (AnonVmaNamingSupported()) {
+    EXPECT_THAT(matched_line, EndsWith("[anon:xnnpack-weights-cache]"));
+  }
+}
+#endif
 
 TEST(MMapWeightCacheProviderReleaseTest, ReleaseForgetsTheCacheFile) {
   TempFileDesc tmp_file{TempFileDesc::kAutoClose};
