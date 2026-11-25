@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -29,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
@@ -163,6 +167,51 @@ bool IsTritonTwoShotAllGather(const HloInstruction& instr);
 // Returns the set of HloOpcodes that should be fused.
 absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
     const DebugOptions& debug_options);
+
+// Heuristic maximum warps per block across collective kernels.
+// Triton expects a power of 2 for num_warps.
+inline constexpr int64_t kMaxCollectiveWarpsPerBlock = 16;
+
+// Returns a tile such that each dimension is a power of two and that the total
+// number of blocks does not exceed num_blocks. Returns the tile sizes in
+// same order as the output shape. It picks tiles greedily from the most major
+// dimension to the most minor dimension. Eg:
+// - [1024, 1024] with num_blocks = 32 returns [32, 1024]
+// - [8192, 16] with num_blocks = 32 returns [256, 16].
+// - [5, 1024] with num_blocks = 32 returns [2, 128].
+// Note that it can be that the number of blocks used is less than num_blocks.
+// @pre num_blocks > 0.
+llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
+                                                 int32_t num_blocks);
+
+// Returns the output shapes of `instr` as a span (a 1-element span for
+// array-shaped instructions, or `tuple_shapes()` for tuple-shaped ones).
+// The returned span aliases `instr.shape()` and must not outlive `instr`.
+absl::Span<const Shape> GetOutputShapes(
+    const HloInstruction& instr ABSL_ATTRIBUTE_LIFETIME_BOUND);
+
+// Tiles one rank's part of a collective output across `blocks_per_rank`
+// programs. `collective_dim` is first divided by `num_devices` (R).
+//
+// All-gather: output f32[16] on 2 ranks -> one rank's part is f32[8].
+//
+// Reduce-scatter: output f32[8] on 2 ranks. Each block copies one input tile
+// and writes one output tile. The input tile is R times the output tile.
+// With two blocks on rank 0:
+//   block 0: copies input 0..8 (for rank 0). Reduces and writes output 0..4.
+//   block 1: copies input 8..16 (for rank 1). Reduces and writes output 4..8.
+absl::StatusOr<llvm::SmallVector<int64_t>> GetCollectiveOutputTile(
+    const Shape& output_shape, int64_t collective_dim, int64_t num_devices,
+    int32_t blocks_per_rank);
+
+// Computes one output tile per output of an all-gather or reduce-scatter
+// `instr` (see GetCollectiveOutputTile). Each output is tiled independently
+// using `num_blocks / num_devices` programs per rank; for variadic collectives,
+// smaller outputs get padded with masked-out blocks by
+// `GetIndexWiseVariadicSchedule`.
+absl::StatusOr<std::vector<llvm::SmallVector<int64_t>>>
+GetCollectiveOutputTiles(const HloInstruction& instr, int64_t collective_dim,
+                         int64_t num_devices, int32_t num_blocks);
 
 }  // namespace gpu
 }  // namespace xla

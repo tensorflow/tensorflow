@@ -1242,10 +1242,6 @@ class ReduceScatterEmitter : public ReductionEmitter {
   ReduceScatterEmitterContext& ctx_;
 };
 
-// Heuristic maximum warps per block across collective kernels.
-// Triton expects a power of 2 for num_warps.
-constexpr int64_t kMaxWarpsPerBlock = 16;
-
 BlockLevelFusionConfig CreateBlockLevelFusionConfig(
     int64_t num_warps,
     absl::Span<const llvm::SmallVector<int64_t>> output_tiles) {
@@ -1266,65 +1262,6 @@ BlockLevelFusionConfig CreateBlockLevelFusionConfig(
       num_warps, absl::MakeConstSpan(&tile_sizes, /*size=*/1));
 }
 
-// Tiles one rank's part of a collective output across `blocks_per_rank`
-// programs. `collective_dim` is first divided by `num_devices` (R).
-//
-// All-gather: output f32[16] on 2 ranks -> one rank's part is f32[8].
-//
-// Reduce-scatter: output f32[8] on 2 ranks. Each block copies one input tile
-// and writes one output tile. The input tile is R times the output tile.
-// With two blocks on rank 0:
-//   block 0: copies input 0..8 (for rank 0). Reduces and writes output 0..4.
-//   block 1: copies input 8..16 (for rank 1). Reduces and writes output 4..8.
-absl::StatusOr<llvm::SmallVector<int64_t>> GetCollectiveOutputTile(
-    const Shape& output_shape, int64_t collective_dim, int64_t num_devices,
-    int32_t blocks_per_rank) {
-  TF_RET_CHECK(output_shape.dimensions(collective_dim) % num_devices == 0)
-      << "Collective output " << output_shape.ToString()
-      << " must be divisible by " << num_devices << " along dimension "
-      << collective_dim;
-  const int64_t per_rank_size =
-      output_shape.dimensions(collective_dim) / num_devices;
-  Shape per_rank_shape = output_shape;
-  per_rank_shape.set_dimensions(collective_dim, per_rank_size);
-  llvm::SmallVector<int64_t> tile_sizes =
-      GreedyPowerOfTwoTiles(per_rank_shape, blocks_per_rank);
-  tile_sizes[collective_dim] = std::min(
-      tile_sizes[collective_dim], static_cast<int64_t>(llvm::bit_floor(
-                                      static_cast<uint64_t>(per_rank_size))));
-  return tile_sizes;
-}
-
-// Returns the output shapes of `instr` as a span (a 1-element span for
-// array-shaped instructions, or `tuple_shapes()` for tuple-shaped ones).
-absl::Span<const Shape> GetOutputShapes(const HloInstruction* instr) {
-  return instr->shape().IsTuple()
-             ? absl::MakeConstSpan(instr->shape().tuple_shapes())
-             : absl::MakeConstSpan(&instr->shape(), 1);
-}
-
-// Computes one output tile per output of an all-gather or reduce-scatter
-// `instr` (see GetCollectiveOutputTile). Each output is tiled independently
-// using `num_blocks / num_devices` programs per rank; for variadic collectives,
-// smaller outputs get padded with masked-out blocks by
-// `GetIndexWiseVariadicSchedule`.
-absl::StatusOr<std::vector<llvm::SmallVector<int64_t>>>
-GetCollectiveOutputTiles(const HloInstruction* instr, int64_t collective_dim,
-                         int64_t num_devices, int32_t num_blocks) {
-  const int32_t blocks_per_rank =
-      std::max<int32_t>(1, num_blocks / static_cast<int32_t>(num_devices));
-  const absl::Span<const Shape> output_shapes = GetOutputShapes(instr);
-  std::vector<llvm::SmallVector<int64_t>> tiles;
-  tiles.reserve(output_shapes.size());
-  for (const Shape& output_shape : output_shapes) {
-    ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
-                     GetCollectiveOutputTile(output_shape, collective_dim,
-                                             num_devices, blocks_per_rank));
-    tiles.push_back(std::move(tile_sizes));
-  }
-  return tiles;
-}
-
 absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllReduce(
     const GpuTopology& gpu_topology, const HloAllReduceInstruction* instr,
     const DeviceAssignment* device_assignment) {
@@ -1341,8 +1278,9 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllReduce(
            ? all_reduce_info.num_devices
            : 1);
   const int64_t total_warps = CeilOfRatio(elements_per_rank, elements_per_warp);
-  const int64_t num_warps = std::min<int64_t>(
-      kMaxWarpsPerBlock, llvm::bit_ceil(static_cast<uint64_t>(total_warps)));
+  const int64_t num_warps =
+      std::min<int64_t>(kMaxCollectiveWarpsPerBlock,
+                        llvm::bit_ceil(static_cast<uint64_t>(total_warps)));
   const int64_t num_blocks =
       std::min(kAllReduceMaxBlocksPerGrid, CeilOfRatio(total_warps, num_warps));
 
@@ -1373,14 +1311,15 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllGather(
   // slices).
   const int64_t total_warps =
       CeilOfRatio(all_gather_info.max_output_elements, elements_per_warp);
-  const int64_t num_warps = std::min<int64_t>(
-      kMaxWarpsPerBlock, llvm::bit_ceil(static_cast<uint64_t>(total_warps)));
+  const int64_t num_warps =
+      std::min<int64_t>(kMaxCollectiveWarpsPerBlock,
+                        llvm::bit_ceil(static_cast<uint64_t>(total_warps)));
   const int64_t num_blocks =
       std::min(kAllGatherMaxBlocksPerGrid, CeilOfRatio(total_warps, num_warps));
 
   ABSL_ASSIGN_OR_RETURN(
       std::vector<llvm::SmallVector<int64_t>> output_tiles,
-      GetCollectiveOutputTiles(instr, instr->all_gather_dimension(),
+      GetCollectiveOutputTiles(*instr, instr->all_gather_dimension(),
                                all_gather_info.num_devices, num_blocks));
   return CreateBlockLevelFusionConfig(num_warps, output_tiles);
 }
@@ -1401,7 +1340,7 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForReduceScatter(
   const int64_t warps_per_rank_tile =
       CeilOfRatio(elements_per_rank_tile, elements_per_warp);
   const int64_t num_warps = std::min<int64_t>(
-      kMaxWarpsPerBlock,
+      kMaxCollectiveWarpsPerBlock,
       llvm::bit_ceil(static_cast<uint64_t>(warps_per_rank_tile)));
   const int64_t blocks_per_rank_tile =
       CeilOfRatio(warps_per_rank_tile, num_warps);
@@ -1411,7 +1350,7 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForReduceScatter(
                                  static_cast<uint64_t>(blocks_per_rank_tile))));
 
   ABSL_ASSIGN_OR_RETURN(std::vector<llvm::SmallVector<int64_t>> output_tiles,
-                   GetCollectiveOutputTiles(instr, instr->scatter_dimension(),
+                   GetCollectiveOutputTiles(*instr, instr->scatter_dimension(),
                                             num_devices, num_blocks));
   return CreateBlockLevelFusionConfig(num_warps, output_tiles);
 }
@@ -1430,8 +1369,9 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllToAll(
       CeilOfRatio(all_to_all_info.num_elements, num_devices);
   const int64_t warps_per_rank =
       CeilOfRatio(elements_per_rank, elements_per_warp);
-  const int64_t num_warps = std::min<int64_t>(
-      kMaxWarpsPerBlock, llvm::bit_ceil(static_cast<uint64_t>(warps_per_rank)));
+  const int64_t num_warps =
+      std::min<int64_t>(kMaxCollectiveWarpsPerBlock,
+                        llvm::bit_ceil(static_cast<uint64_t>(warps_per_rank)));
   const int64_t blocks_per_rank = CeilOfRatio(warps_per_rank, num_warps);
   const int64_t num_blocks =
       std::min(kAllToAllMaxBlocksPerGrid, num_devices * blocks_per_rank);
@@ -2096,34 +2036,6 @@ bool RequiresScratchDataBuffers(const HloInstruction& inst) {
 
 }  // namespace
 
-llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
-                                                 int32_t num_blocks) {
-  CHECK_GT(num_blocks, 0) << "num_blocks must be positive. Was " << num_blocks;
-  // Rank fits in int32_t.
-  const auto rank = static_cast<int32_t>(output_shape.dimensions().size());
-  const llvm::ArrayRef<const int64_t> minor_to_major =
-      LayoutUtil::MinorToMajor(output_shape);
-  llvm::SmallVector<int64_t, 4> tile_sizes(rank);
-  // NB: Unsigned because llvm::bit_<> functions expect unsigned.
-  uint64_t remaining_blocks = num_blocks;
-  // Iterate from most major to most minor to keep memory contiguous for each
-  // block.
-  for (int32_t i = rank - 1; i >= 0; --i) {
-    const auto dim = static_cast<int32_t>(minor_to_major[i]);
-    const uint64_t dim_size = output_shape.dimensions(dim);
-    // Largest power-of-two k <= std::min(dim_size, remaining_blocks).
-    const uint64_t k = std::max(
-        uint64_t{1}, llvm::bit_floor(std::min(remaining_blocks, dim_size)));
-    // Round up number of tiles in this dimension to power of two.
-    tile_sizes[dim] =
-        static_cast<int64_t>(llvm::bit_ceil(xla::CeilOfRatio(dim_size, k)));
-    const uint64_t blocks_used =
-        xla::CeilOfRatio(dim_size, static_cast<uint64_t>(tile_sizes[dim]));
-    remaining_blocks = xla::FloorOfRatio(remaining_blocks, blocks_used);
-  }
-  return tile_sizes;
-}
-
 const HloInstruction* GetCollectiveHero(const HloComputation* computation) {
   return FindCollectiveHero(computation);
 }
@@ -2532,7 +2444,7 @@ bool ShouldFlattenReduceScatter(
     return false;
   }
   const int64_t scatter_dim = rs->scatter_dimension();
-  for (const Shape& output_shape : GetOutputShapes(rs)) {
+  for (const Shape& output_shape : GetOutputShapes(*rs)) {
     if (scatter_dim < 0 ||
         scatter_dim >= static_cast<int64_t>(output_shape.dimensions().size()) ||
         output_shape.dimensions(scatter_dim) % num_devices != 0) {
@@ -2563,7 +2475,7 @@ absl::Status FlattenReduceScatterFusion(
   original_output_shapes.reserve(num_operands);
   param_shapes.reserve(num_operands);
   output_shapes.reserve(num_operands);
-  for (const Shape& output_shape : GetOutputShapes(rs)) {
+  for (const Shape& output_shape : GetOutputShapes(*rs)) {
     ABSL_ASSIGN_OR_RETURN(
         FlatReduceScatterShapes flat_shapes,
         GetFlatReduceScatterShapes(output_shape.element_type(), num_devices,

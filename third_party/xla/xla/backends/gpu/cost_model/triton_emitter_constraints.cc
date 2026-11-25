@@ -41,10 +41,6 @@ namespace gpu {
 
 namespace {
 
-// Triton enforces that all tensors in the program have less than 1048576
-// elements, otherwise it will fail to compile. (See `TRITON_MAX_TENSOR_NUMEL`
-// in the Triton codebase.)
-constexpr int64_t kMaxTensorNumElements = 1048576;
 // For dot operations we don't want to tile the contracting dimension to a size
 // larger than this as that leads to a large number of registers being used.
 // Also for MMA instruction we don't want tiles greater than 256.

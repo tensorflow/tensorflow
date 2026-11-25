@@ -46,6 +46,8 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
+using ::testing::ElementsAre;
+using ::testing::Not;
 using ::testing::Test;
 
 class CommunicationTypeTest : public Test {
@@ -1079,6 +1081,81 @@ TEST(IsTritonTwoShotAllGatherTest, MatchesDirectAndCustomFusedTwoShot) {
       IsTritonTwoShotAllGather(*entry->GetInstructionWithName("f_two_shot")));
   EXPECT_FALSE(
       IsTritonTwoShotAllGather(*entry->GetInstructionWithName("f_one_shot")));
+}
+
+TEST(GetCollectiveOutputTilesTest, TilesPerRankSliceAcrossBlocks) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m, replica_count=2
+    ENTRY e {
+      p0 = u8[2,129,131073] parameter(0)
+      ROOT ag = u8[4,129,131073] all-gather(p0),
+          replica_groups={{0,1}}, dimensions={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const HloInstruction* ag = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      GetCollectiveOutputTiles(*ag, /*collective_dim=*/0, /*num_devices=*/2,
+                               /*num_blocks=*/128),
+      IsOkAndHolds(ElementsAre(ElementsAre(1, 8, 262144))));
+}
+
+TEST(GetCollectiveOutputTilesTest, HandlesLayoutlessShape) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m, replica_count=2
+    ENTRY e {
+      p0 = u8[2,129,131073] parameter(0)
+      ROOT ag = u8[4,129,131073] all-gather(p0),
+          replica_groups={{0,1}}, dimensions={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(
+                           kHlo, /*config=*/{},
+                           HloParserOptions().set_fill_missing_layouts(false)));
+  const HloInstruction* ag = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      GetCollectiveOutputTiles(*ag, /*collective_dim=*/0, /*num_devices=*/2,
+                               /*num_blocks=*/128),
+      IsOkAndHolds(ElementsAre(ElementsAre(1, 8, 262144))));
+}
+
+TEST(GetCollectiveOutputTilesTest, TilesTupleCollectiveOutputs) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m, replica_count=2
+    ENTRY e {
+      p0 = f32[8,16] parameter(0)
+      p1 = bf16[4,32] parameter(1)
+      ROOT ag = (f32[16,16], bf16[8,32]) all-gather(p0, p1),
+          replica_groups={{0,1}}, dimensions={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const HloInstruction* ag = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      GetCollectiveOutputTiles(*ag, /*collective_dim=*/0, /*num_devices=*/2,
+                               /*num_blocks=*/4),
+      IsOkAndHolds(ElementsAre(ElementsAre(4, 16), ElementsAre(2, 32))));
+}
+
+TEST(GetCollectiveOutputTilesTest, RejectsNonDivisibleCollectiveDim) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m, replica_count=2
+    ENTRY e {
+      p0 = f32[3,16] parameter(0)
+      ROOT ag = f32[5,16] all-gather(p0),
+          replica_groups={{0,1}}, dimensions={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const HloInstruction* ag = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      GetCollectiveOutputTiles(*ag, /*collective_dim=*/0, /*num_devices=*/2,
+                               /*num_blocks=*/4),
+      Not(IsOk()));
 }
 
 }  // namespace

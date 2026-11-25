@@ -27,6 +27,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Triton enforces that all tensors in the program have at most 1048576
+// elements, otherwise it will fail to compile. (See `TRITON_MAX_TENSOR_NUMEL`
+// in the Triton codebase.)
+inline constexpr int64_t kMaxTensorNumElements = 1048576;
+
 // Evaluates a subset of Triton hardware and emitter constraints on candidate
 // tile sizes without requiring construction of concrete tiled HLO instructions.
 // This allows us to prune invalid tiling candidates early, but doesn't replace

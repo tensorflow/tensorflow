@@ -201,7 +201,10 @@ cc_library(
     hdrs = ["collective_ops_utils.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
+        "//xla:shape_util",
         "//xla:side_effect_util",
+        "//xla:status_macros",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/target_config",
@@ -214,6 +217,7 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -225,6 +229,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 

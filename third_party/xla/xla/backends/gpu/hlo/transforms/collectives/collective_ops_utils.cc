@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/hlo/transforms/collectives/collective_ops_utils.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -33,6 +34,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/bit.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,14 +45,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
+#include "xla/layout_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/side_effect_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -546,6 +555,79 @@ absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
     }
   }
   return instructions_to_annotate;
+}
+
+llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
+                                                 int32_t num_blocks) {
+  CHECK_GT(num_blocks, 0) << "num_blocks must be positive. Was " << num_blocks;
+  // Rank fits in int32_t.
+  const auto rank = static_cast<int32_t>(output_shape.dimensions().size());
+  const llvm::ArrayRef<const int64_t> minor_to_major =
+      LayoutUtil::MinorToMajor(output_shape);
+  llvm::SmallVector<int64_t, 4> tile_sizes(rank);
+  // NB: Unsigned because llvm::bit_<> functions expect unsigned.
+  uint64_t remaining_blocks = num_blocks;
+  // Iterate from most major to most minor to keep memory contiguous for each
+  // block.
+  for (int32_t i = rank - 1; i >= 0; --i) {
+    const auto dim = static_cast<int32_t>(minor_to_major[i]);
+    const uint64_t dim_size = output_shape.dimensions(dim);
+    // Largest power-of-two k <= std::min(dim_size, remaining_blocks).
+    const uint64_t k = std::max(
+        uint64_t{1}, llvm::bit_floor(std::min(remaining_blocks, dim_size)));
+    // Round up number of tiles in this dimension to power of two.
+    tile_sizes[dim] =
+        static_cast<int64_t>(llvm::bit_ceil(xla::CeilOfRatio(dim_size, k)));
+    const uint64_t blocks_used =
+        xla::CeilOfRatio(dim_size, static_cast<uint64_t>(tile_sizes[dim]));
+    remaining_blocks = xla::FloorOfRatio(remaining_blocks, blocks_used);
+  }
+  return tile_sizes;
+}
+
+absl::Span<const Shape> GetOutputShapes(const HloInstruction& instr) {
+  return instr.shape().IsTuple()
+             ? absl::MakeConstSpan(instr.shape().tuple_shapes())
+             : absl::MakeConstSpan(&instr.shape(), 1);
+}
+
+absl::StatusOr<llvm::SmallVector<int64_t>> GetCollectiveOutputTile(
+    const Shape& output_shape, int64_t collective_dim, int64_t num_devices,
+    int32_t blocks_per_rank) {
+  TF_RET_CHECK(output_shape.dimensions(collective_dim) % num_devices == 0)
+      << "Collective output " << output_shape.ToString()
+      << " must be divisible by " << num_devices << " along dimension "
+      << collective_dim;
+  const int64_t per_rank_size =
+      output_shape.dimensions(collective_dim) / num_devices;
+  Shape per_rank_shape = output_shape;
+  per_rank_shape.set_dimensions(collective_dim, per_rank_size);
+  if (!LayoutUtil::HasLayout(per_rank_shape)) {
+    LayoutUtil::SetToDefaultLayout(&per_rank_shape);
+  }
+  llvm::SmallVector<int64_t> tile_sizes =
+      GreedyPowerOfTwoTiles(per_rank_shape, blocks_per_rank);
+  tile_sizes[collective_dim] = std::min(
+      tile_sizes[collective_dim], static_cast<int64_t>(llvm::bit_floor(
+                                      static_cast<uint64_t>(per_rank_size))));
+  return tile_sizes;
+}
+
+absl::StatusOr<std::vector<llvm::SmallVector<int64_t>>>
+GetCollectiveOutputTiles(const HloInstruction& instr, int64_t collective_dim,
+                         int64_t num_devices, int32_t num_blocks) {
+  const int32_t blocks_per_rank =
+      std::max<int32_t>(1, num_blocks / static_cast<int32_t>(num_devices));
+  const absl::Span<const Shape> output_shapes = GetOutputShapes(instr);
+  std::vector<llvm::SmallVector<int64_t>> tiles;
+  tiles.reserve(output_shapes.size());
+  for (const Shape& output_shape : output_shapes) {
+    ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
+                     GetCollectiveOutputTile(output_shape, collective_dim,
+                                             num_devices, blocks_per_rank));
+    tiles.push_back(std::move(tile_sizes));
+  }
+  return tiles;
 }
 
 }  // namespace gpu
