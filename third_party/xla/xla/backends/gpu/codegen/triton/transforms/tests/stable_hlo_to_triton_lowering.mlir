@@ -549,6 +549,86 @@ xtile.entry_func @all_gather_without_remote_buffers_arg_doesnt_lower(%input: mem
   xtile.return
 }
 
+// Two-shot AllGather forwards its operand on the sender before pushing to
+// peers, so epilogues only preserve HLO semantics for position-independent
+// unary elementwise ops on the gathered value.
+// CHECK-LABEL: xtile.entry_func @all_gather_two_shot_with_prologue_and_epilogue(
+// CHECK-SAME:    %[[INPUT:[a-zA-Z0-9_]+]]: memref<128x128xf32>,
+// CHECK-SAME:    %[[OUTPUT:[a-zA-Z0-9_]+]]: memref<2xi64>,
+// CHECK-SAME:    %[[SIG_MEM:[a-zA-Z0-9_]+]]: memref<2xi64>,
+// CHECK-SAME:    %[[RANK:[a-zA-Z0-9_]+]]: index,
+// CHECK-SAME:    %{{[a-zA-Z0-9_]+}}: index {xla.range = [0 : index, 127 : index]})
+xtile.entry_func @all_gather_two_shot_with_prologue_and_epilogue(
+    %input: memref<128x128xf32>, %output: memref<2xi64>,
+    %signal_buffer: memref<2xi64>, %device_rank: index,
+    %tile_id: index {xla.range = [0 : index, 127 : index]})
+    attributes {has_rank, has_signal_buffer} {
+  %c0 = arith.constant 0 : index
+  %c128 = arith.constant 128 : index
+  // CHECK: %[[EXTRACTED:.*]] = xtile.extract %[[INPUT]]
+  %tile = xtile.extract %input[%c0, %c0][16, 16][1, 1] : memref<128x128xf32> -> tensor<16x16xf32>
+  // CHECK: %[[SCALED:.*]] = arith.addf %[[EXTRACTED]], %[[EXTRACTED]]
+  %scaled = arith.addf %tile, %tile : tensor<16x16xf32>
+  // CHECK: %[[SIG:.*]] = triton_xla.memref_to_ptr %[[SIG_MEM]]
+  // CHECK-NOT: ttg.barrier local
+  // CHECK: triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 64, barrier_mode = pairwise_symmetric>
+  // CHECK-NOT: stablehlo.all_gather
+  %all_gather = "stablehlo.all_gather"(%scaled) <{all_gather_dim = 0 : i64, replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> {xtile.collective_strategy = #xtile.collective_strategy<two_shot>} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  // CHECK: %[[NEG:.*]] = arith.negf %[[SCALED]] : tensor<16x16xf32>
+  %neg = arith.negf %all_gather : tensor<16x16xf32>
+  %peer_buf = xtile.select_buffer %output[%c0] : memref<2xi64> -> memref<256x128xf32>
+  %rank_offset = arith.muli %device_rank, %c128 : index
+  // CHECK: xtile.insert %[[NEG]] into
+  xtile.insert %neg into %peer_buf[%rank_offset, %c0][16, 16][1, 1] : tensor<16x16xf32> -> memref<256x128xf32>
+  // CHECK: ttg.barrier local
+  // CHECK: triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 64, barrier_mode = pairwise_symmetric>
+  // CHECK: xtile.return
+  xtile.return
+}
+
+// CHECK-LABEL: xtile.entry_func @all_gather_two_shot_without_pid_range_doesnt_lower(
+xtile.entry_func @all_gather_two_shot_without_pid_range_doesnt_lower(
+    %input: memref<128x128xf32>, %output: memref<2xi64>,
+    %signal_buffer: memref<2xi64>, %device_rank: index, %tile_id: index)
+    attributes {has_rank, has_signal_buffer} {
+  %c0 = arith.constant 0 : index
+  %tile = xtile.extract %input[%c0, %c0][16, 16][1, 1] : memref<128x128xf32> -> tensor<16x16xf32>
+  // CHECK: stablehlo.all_gather
+  %all_gather = "stablehlo.all_gather"(%tile) <{all_gather_dim = 0 : i64, replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> {xtile.collective_strategy = #xtile.collective_strategy<two_shot>} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  %peer_buf = xtile.select_buffer %output[%c0] : memref<2xi64> -> memref<256x128xf32>
+  xtile.insert %all_gather into %peer_buf[%c0, %c0][16, 16][1, 1] : tensor<16x16xf32> -> memref<256x128xf32>
+  xtile.return
+}
+
+// CHECK-LABEL: xtile.entry_func @all_gather_two_shot_with_nonzero_pid_lower_doesnt_lower(
+xtile.entry_func @all_gather_two_shot_with_nonzero_pid_lower_doesnt_lower(
+    %input: memref<128x128xf32>, %output: memref<2xi64>,
+    %signal_buffer: memref<2xi64>, %device_rank: index,
+    %tile_id: index {xla.range = [1 : index, 127 : index]})
+    attributes {has_rank, has_signal_buffer} {
+  %c0 = arith.constant 0 : index
+  %tile = xtile.extract %input[%c0, %c0][16, 16][1, 1] : memref<128x128xf32> -> tensor<16x16xf32>
+  // CHECK: stablehlo.all_gather
+  %all_gather = "stablehlo.all_gather"(%tile) <{all_gather_dim = 0 : i64, replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> {xtile.collective_strategy = #xtile.collective_strategy<two_shot>} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  %peer_buf = xtile.select_buffer %output[%c0] : memref<2xi64> -> memref<256x128xf32>
+  xtile.insert %all_gather into %peer_buf[%c0, %c0][16, 16][1, 1] : tensor<16x16xf32> -> memref<256x128xf32>
+  xtile.return
+}
+
+// CHECK-LABEL: xtile.entry_func @all_gather_two_shot_with_overflow_pid_upper_doesnt_lower(
+xtile.entry_func @all_gather_two_shot_with_overflow_pid_upper_doesnt_lower(
+    %input: memref<128x128xf32>, %output: memref<2xi64>,
+    %signal_buffer: memref<2xi64>, %device_rank: index,
+    %tile_id: index {xla.range = [0 : index, 2147483647 : index]})
+    attributes {has_rank, has_signal_buffer} {
+  %c0 = arith.constant 0 : index
+  %tile = xtile.extract %input[%c0, %c0][16, 16][1, 1] : memref<128x128xf32> -> tensor<16x16xf32>
+  // CHECK: stablehlo.all_gather
+  %all_gather = "stablehlo.all_gather"(%tile) <{all_gather_dim = 0 : i64, replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> {xtile.collective_strategy = #xtile.collective_strategy<two_shot>} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  %peer_buf = xtile.select_buffer %output[%c0] : memref<2xi64> -> memref<256x128xf32>
+  xtile.insert %all_gather into %peer_buf[%c0, %c0][16, 16][1, 1] : tensor<16x16xf32> -> memref<256x128xf32>
+  xtile.return
+}
 // CHECK-LABEL: xtile.entry_func @reduce_scatter_one_shot(
 // CHECK-SAME: %[[INPUT:[a-zA-Z0-9_]+]]: memref<4x1024xf32>, %[[OUTPUT:[a-zA-Z0-9_]+]]: memref<2x1024xf32>, %[[REMOTE:[a-zA-Z0-9_]+]]: memref<2xi64>, %[[SIGNAL:[a-zA-Z0-9_]+]]: memref<2xi64>, %[[RANK:[a-zA-Z0-9_]+]]: index, %[[TILE_ID:[a-zA-Z0-9_]+]]: index)
 xtile.entry_func @reduce_scatter_one_shot(%input: memref<4x1024xf32>, %output: memref<2x1024xf32>, %remote_input_buffer: memref<2xi64>, %signal_buffer: memref<2xi64>, %device_rank: index, %tile_id: index) attributes {has_rank, has_signal_buffer, num_scratch_buffers = 1 : i32} {

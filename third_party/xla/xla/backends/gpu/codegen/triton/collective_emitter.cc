@@ -67,12 +67,13 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/gpu_constants.h"
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
-#include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -1447,7 +1448,7 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllToAll(
   return CreateBlockLevelFusionConfig(num_warps, tile_sizes);
 }
 
-// Per-operand state of an all-gather rewrite.
+// Per-operand state of a one-shot all-gather rewrite.
 struct AllGatherOperandContext {
   xtile::ExtractTileOp input_extract;
   // Local input buffer read by `input_extract`.
@@ -1469,6 +1470,7 @@ struct AllGatherRewriteContext {
   // Number of consecutive programs that read from the same peer. See
   // EmitPeerReplicaId.
   int64_t signal_stride = 0;
+  bool is_two_shot = false;
 };
 
 // Returns the number of programs needed to cover one rank's slice of an
@@ -1531,13 +1533,6 @@ absl::StatusOr<AllGatherRewriteContext> BuildAllGatherContext(
     return absl::InvalidArgumentError(
         "AllGather op must be directly nested in the XTile entry function.");
   }
-  mlir::ValueRange remote_buffers = entry_func.getScratchBuffers();
-  if (remote_buffers.size() < op.getNumOperands() ||
-      entry_func.getInputOutputBuffers().size() <= remote_buffers.size()) {
-    return absl::InvalidArgumentError(
-        "EntryFuncOp must have parameter/output I/O buffers and one scratch "
-        "buffer per fusion parameter.");
-  }
 
   ABSL_ASSIGN_OR_RETURN(auto replica_groups,
                    xla::ConvertReplicaGroups(op.getReplicaGroups(), op));
@@ -1556,7 +1551,47 @@ absl::StatusOr<AllGatherRewriteContext> BuildAllGatherContext(
   ctx.world_size = world_size;
   ctx.gather_dim = op.getAllGatherDim();
   ctx.signal_buffers_arg = entry_func.getSignalBuffer();
+  ctx.is_two_shot =
+      xtile::GetCollectiveStrategy(op) == xtile::CollectiveStrategy::kTwoShot;
 
+  if (ctx.is_two_shot) {
+    if (!entry_func.getScratchBuffers().empty()) {
+      return absl::InvalidArgumentError(
+          "Two-shot AllGather EntryFuncOp must not have scratch buffers.");
+    }
+    if (op.getOperandTypes() != op.getResultTypes()) {
+      return absl::InvalidArgumentError(
+          "Two-shot AllGather operand types must match result types.");
+    }
+    // `fusion_emitter.cc` attaches `xla.range = [0, num_pids - 1]` to the
+    // entry function's program id argument.
+    std::optional<Interval> pid_range =
+        xla::GetRange(entry_func.getProgramId());
+    if (!pid_range.has_value() || pid_range->lower != 0 ||
+        pid_range->upper < 0 ||
+        pid_range->upper >= std::numeric_limits<int32_t>::max()) {
+      return absl::InvalidArgumentError(
+          "Two-shot AllGather EntryFuncOp program id must have a valid [0, "
+          "N-1] i32 xla.range attribute.");
+    }
+    const int64_t num_programs = pid_range->upper + 1;
+    if (num_programs % world_size != 0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Two-shot AllGather program count (%d) must be divisible by "
+          "world_size (%d).",
+          num_programs, world_size));
+    }
+    ctx.signal_stride = num_programs / world_size;
+    return ctx;
+  }
+
+  mlir::ValueRange remote_buffers = entry_func.getScratchBuffers();
+  if (remote_buffers.size() < op.getNumOperands() ||
+      entry_func.getInputOutputBuffers().size() <= remote_buffers.size()) {
+    return absl::InvalidArgumentError(
+        "EntryFuncOp must have parameter/output I/O buffers and one scratch "
+        "buffer per fusion parameter.");
+  }
   for (int64_t i = 0; i < op.getNumOperands(); ++i) {
     ABSL_ASSIGN_OR_RETURN(AllGatherOperandContext operand,
                      BuildAllGatherOperandContext(
@@ -2346,10 +2381,6 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
 
 mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
                                      mlir::PatternRewriter& rewriter) {
-  if (xtile::GetCollectiveStrategy(op) == xtile::CollectiveStrategy::kTwoShot) {
-    return rewriter.notifyMatchFailure(
-        op, "Two-shot AllGather lowering is not yet implemented.");
-  }
   absl::StatusOr<AllGatherRewriteContext> maybe_ctx = BuildAllGatherContext(op);
   if (!maybe_ctx.ok()) {
     return rewriter.notifyMatchFailure(op, maybe_ctx.status().message());
@@ -2368,7 +2399,31 @@ mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
   mlir::Value signal_value = EmitDeviceInvocationCount(
       builder, ctx.signal_buffers_arg, rank, block_id, ctx.world_size);
 
-  // Push-based AllGather (e.g., rank 0 paired with peer rank 2):
+  if (ctx.is_two_shot) {
+    // Entry barrier ensures the peer's symmetric output buffer is free; root
+    // `xtile.insert` ops write directly into it, followed by an exit barrier.
+    EmitBlockBarrier(builder, ctx.signal_buffers_arg, rank, signal_value,
+                     ctx.world_size, /*signal_slot=*/peer_replica_id,
+                     ctx.signal_stride, mtx::BarrierMode::kPairwiseSymmetric,
+                     /*emit_local_barrier=*/false);
+    // TODO(b/436548063): Remove this when moving to phase-based codegen.
+    // Right now there is no post-store epilogue, so placing the exit barrier
+    // before `xtile.return` waits for all peer `xtile.insert` stores. With
+    // phased codegen, emit the exit barrier between the prologue and epilogue
+    // loops instead.
+    builder.setInsertionPoint(op->getBlock()->getTerminator());
+    mlir::Value exit_signal_value = arith::AddIOp::create(
+        builder, signal_value,
+        arith::ConstantOp::create(builder, builder.getI32IntegerAttr(1)));
+    EmitBlockBarrier(builder, ctx.signal_buffers_arg, rank, exit_signal_value,
+                     ctx.world_size, /*signal_slot=*/peer_replica_id,
+                     ctx.signal_stride, mtx::BarrierMode::kPairwiseSymmetric,
+                     /*emit_local_barrier=*/true);
+    rewriter.replaceOp(op, op.getOperands());
+    return mlir::success();
+  }
+
+  // One-shot push-based AllGather (e.g., rank 0 paired with peer rank 2):
   //   1. Rank 0 writes its local tile into GPU 2's scratch buffer (at slot 0).
   //   2. Ranks 0 and 2 wait for each other's write to finish.
   //   3. Rank 0 reads GPU 2's tile from its own local scratch buffer (slot 2).

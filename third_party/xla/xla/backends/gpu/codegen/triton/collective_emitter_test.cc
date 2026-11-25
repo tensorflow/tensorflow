@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -52,8 +53,10 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/hlo/transforms/collectives/collective_fusion.h"
 #include "xla/backends/gpu/hlo/transforms/collectives/collective_kernel_strategy_annotator.h"
+#include "xla/backends/gpu/hlo/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/gpu_constants.h"
 #include "xla/backends/gpu/target_config/target_config.h"
@@ -69,6 +72,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/mlir_context_pool.h"
@@ -92,6 +96,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::AllOf;
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 using ::tsl::proto_testing::EqualsProto;
 using ::xla::xtile::BlockLevelFusionConfig;
 
@@ -201,6 +206,13 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
   static std::string GetModuleStr(const Shape& shape,
                                   absl::string_view replica_groups,
                                   HloOpcode opcode) {
+    return GetModuleStr(shape, replica_groups, opcode,
+                        CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
+  }
+
+  static std::string GetModuleStr(
+      const Shape& shape, absl::string_view replica_groups, HloOpcode opcode,
+      CollectiveBackendConfig::CollectiveKernelStrategy strategy) {
     absl::string_view type_str =
         xla::primitive_util::LowercasePrimitiveTypeName(shape.element_type());
     absl::string_view reduction_kind = "add";
@@ -220,15 +232,22 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
     if (opcode == HloOpcode::kAllGather) {
       Shape output_shape = shape;
       output_shape.set_dimensions(0, shape.dimensions(0) * 2);
+      const std::string strategy_attr =
+          strategy == CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT
+              ? ""
+              : absl::StrFormat(
+                    R"(, backend_config={"collective_backend_config":{"kernel_strategy":"%s"}})",
+                    CollectiveBackendConfig::CollectiveKernelStrategy_Name(
+                        strategy));
       return absl::StrFormat(R"(
         HloModule test
         ENTRY test_computation {
           param_0 = %1$s parameter(0)
-          ROOT all-gather = %2$s all-gather(param_0), replica_groups={%3$s}, dimensions={0}
+          ROOT all-gather = %2$s all-gather(param_0), replica_groups={%3$s}, dimensions={0}%4$s
         }
       )",
                              shape.ToString(), output_shape.ToString(),
-                             replica_groups);
+                             replica_groups, strategy_attr);
     }
     if (opcode == HloOpcode::kReduceScatter) {
       Shape output_shape = shape;
@@ -415,6 +434,8 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
 struct CollectiveSanityTestCase {
   Shape shape;
   HloOpcode opcode;
+  CollectiveBackendConfig::CollectiveKernelStrategy strategy =
+      CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT;
 };
 
 class CollectiveEmitterParameterizedTest
@@ -423,11 +444,16 @@ class CollectiveEmitterParameterizedTest
 
 TEST_P(CollectiveEmitterParameterizedTest,
        AllReduceWithTritonGenerateTritonKernelSanity) {
-  const auto& [shape, opcode] = GetParam();
+  const auto& [shape, opcode, strategy] = GetParam();
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result,
-      BuildModuleWithEmitter(GetModuleStr(shape, "{0,1}", opcode),
+      BuildModuleWithEmitter(GetModuleStr(shape, "{0,1}", opcode, strategy),
                              *gpu_topology_));
+  if (strategy != CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT) {
+    EXPECT_EQ(
+        IsTritonTwoShotAllGather(*result->FusionInstr()),
+        strategy == CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT);
+  }
   const TritonFusion* triton_fusion = result->emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
 
@@ -479,7 +505,13 @@ INSTANTIATE_TEST_SUITE_P(
          {ShapeUtil::MakeShape(F32, {1048576}), HloOpcode::kAllToAll},
          {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllGather},
          {ShapeUtil::MakeShape(BF16, {1024, 1024}), HloOpcode::kAllGather},
-         {ShapeUtil::MakeShape(PRED, {256, 64}), HloOpcode::kAllGather}}),
+         {ShapeUtil::MakeShape(PRED, {256, 64}), HloOpcode::kAllGather},
+         {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllGather,
+          CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT},
+         {ShapeUtil::MakeShape(BF16, {1024, 1024}), HloOpcode::kAllGather,
+          CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT},
+         {ShapeUtil::MakeShape(PRED, {256, 64}), HloOpcode::kAllGather,
+          CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT}}),
     [](const ::testing::TestParamInfo<
         CollectiveEmitterParameterizedTest::ParamType>& info) {
       std::string op_prefix = "ar_";
@@ -494,10 +526,15 @@ INSTANTIATE_TEST_SUITE_P(
           info.param.shape.dimensions().empty()
               ? "scalar"
               : absl::StrJoin(info.param.shape.dimensions(), "_");
-      return op_prefix +
-             primitive_util::LowercasePrimitiveTypeName(
-                 info.param.shape.element_type()) +
-             "__" + dims_str;
+      absl::string_view suffix =
+          info.param.strategy ==
+                  CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT
+              ? "_two_shot"
+              : "";
+      return absl::StrCat(op_prefix,
+                          primitive_util::LowercasePrimitiveTypeName(
+                              info.param.shape.element_type()),
+                          "__", dims_str, suffix);
     });
 
 struct GreedyPowerOfTwoTilesTestCase {
@@ -588,25 +625,40 @@ TEST_F(CollectiveBlockLevelConfigTest, AllGatherBlockLevelConfig) {
   EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(2048));
 }
 
-TEST_F(CollectiveEmitterTest, AllGatherGetCollectiveUnmanagedKernelArguments) {
-  constexpr absl::string_view kAllGatherHloStr = R"(
-    HloModule test
-    ENTRY test_computation {
-      param_0 = f32[32768] parameter(0)
-      ROOT all-gather = f32[65536] all-gather(param_0), replica_groups={{0,1}},
-        dimensions={0}
-    }
-  )";
+class AllGatherUnmanagedKernelArgumentsTest
+    : public CollectiveEmitterTest,
+      public ::testing::WithParamInterface<
+          CollectiveBackendConfig::CollectiveKernelStrategy> {};
+
+TEST_P(AllGatherUnmanagedKernelArgumentsTest, ReturnsExpectedShapes) {
+  const CollectiveBackendConfig::CollectiveKernelStrategy strategy = GetParam();
   ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
-                       BuildModuleWithFusion(kAllGatherHloStr));
+                       BuildModuleWithFusion(GetModuleStr(
+                           ShapeUtil::MakeShape(F32, {32768}), "{0,1}",
+                           HloOpcode::kAllGather, strategy)));
   ASSERT_OK_AND_ASSIGN(
       const auto unmanaged_arguments,
       GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
+  std::vector<Shape> expected_shapes = {ShapeUtil::MakeShape(U64, {2})};
+  if (strategy == CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT) {
+    expected_shapes.push_back(ShapeUtil::MakeShape(U64, {2}));
+  }
+  expected_shapes.push_back(ShapeUtil::MakeShape(S32, {}));
   EXPECT_THAT(UnmanagedShapes(unmanaged_arguments),
-              ElementsAre(ShapeUtil::MakeShape(U64, {2}),
-                          ShapeUtil::MakeShape(U64, {2}),
-                          ShapeUtil::MakeShape(S32, {})));
+              ElementsAreArray(expected_shapes));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    AllGatherStrategies, AllGatherUnmanagedKernelArgumentsTest,
+    ::testing::Values(CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT,
+                      CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT),
+    [](const ::testing::TestParamInfo<
+        CollectiveBackendConfig::CollectiveKernelStrategy>& info) {
+      return info.param ==
+                     CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT
+                 ? "TwoShot"
+                 : "OneShot";
+    });
 
 TEST_F(CollectiveBlockLevelConfigTest,
        AllGatherBlockLevelConfigClampsGatherDimToPerRankSize) {

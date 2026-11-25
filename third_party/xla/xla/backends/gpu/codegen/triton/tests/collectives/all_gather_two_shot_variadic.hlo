@@ -1,0 +1,53 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+f {
+  %param0 = f32[128,128]{1,0} parameter(0)
+  %param1 = pred[128]{0} parameter(1)
+  %ag = (f32[256,128]{1,0}, pred[256]{0}) all-gather(%param0, %param1),
+    replica_groups={{0,1}}, dimensions={0},
+    backend_config={
+      "collective_backend_config": {
+        "kernel_strategy": "KERNEL_STRATEGY_TRITON_TWO_SHOT"
+      }
+    }
+  %gte0 = f32[256,128]{1,0} get-tuple-element(%ag), index=0
+  %gte1 = pred[256]{0} get-tuple-element(%ag), index=1
+  ROOT result = (f32[256,128]{1,0}, pred[256]{0}) tuple(%gte0, %gte1)
+}
+
+ENTRY entry {
+  p0 = f32[128,128]{1,0} parameter(0)
+  p1 = pred[128]{0} parameter(1)
+  ROOT %fusion = (f32[256,128]{1,0}, pred[256]{0}) fusion(p0, p1),
+    kind=kCustom, calls=f,
+    backend_config={
+      "fusion_backend_config": {
+        "kind": "__triton_collective",
+        "block_level_fusion_config": {
+          "num_warps": "4",
+          "output_tiles": [{sizes: [16,16]}, {sizes: [16]}],
+          "num_ctas": 1,
+          "num_stages": 1,
+          "is_tma_allowed": false,
+          "is_warp_specialization_allowed": false
+        }
+      }
+    }
+}
+
+// Variadic two-shot AllGather with heterogeneous shapes (f32[128,128] -> 64
+// tiles/rank, pred[128] -> 8 tiles/rank, padded with OOB offsets for blocks
+// 8..63). Verifies `i1` XTile -> `i8` Triton lowering, peer selection via
+// `xla.apply_indexing`, and exit barrier after all inserts.
+
+// CHECK-LABEL: xtile.entry_func @triton_fn(
+// CHECK-SAME:    attributes {has_rank, has_signal_buffer}
+// CHECK:       triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 64, barrier_mode = pairwise_symmetric>
+// CHECK:       %[[PEER_IDX:.*]] = xla.apply_indexing
+// CHECK:       %[[PEER_BUF0:.*]] = xtile.select_buffer %{{.*}}[%[[PEER_IDX]]] : memref<2xi64> -> memref<256x128xf32>
+// CHECK:       xtile.insert %{{.*}} into %[[PEER_BUF0]][
+// CHECK:       %[[PEER_BUF1:.*]] = xtile.select_buffer %{{.*}}[%[[PEER_IDX]]] : memref<2xi64> -> memref<256xi8>
+// CHECK:       %[[PACKED1:.*]] = arith.extui %{{.*}} : tensor<16xi1> to tensor<16xi8>
+// CHECK:       xtile.insert %[[PACKED1]] into %[[PEER_BUF1]][
+// CHECK:       ttg.barrier local
+// CHECK:       triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 64, barrier_mode = pairwise_symmetric>
+// CHECK:       xtile.return

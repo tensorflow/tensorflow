@@ -164,6 +164,10 @@ class AllGatherTest : public CollectiveOpsWithFlagsBase {
     return CheckDeviceCount(num_replicas);
   }
 
+  bool SetUpTwoShotTest(int32_t num_replicas) {
+    return SetUpStrategyTest(num_replicas, kTwoShot);
+  }
+
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
   ParseAndPrepareModuleForStrategy(absl::string_view hlo_text,
                                    int64_t num_replicas, Strategy strategy) {
@@ -551,7 +555,7 @@ TEST_P(AllGatherStrategyTest, ReversedReplicaGroups) {
 }
 
 INSTANTIATE_TEST_SUITE_P(AllGatherStrategies, AllGatherStrategyTest,
-                         ::testing::Values(kOneShot),
+                         ::testing::Values(kOneShot, kTwoShot),
                          [](const ::testing::TestParamInfo<Strategy>& info) {
                            return std::string(StrategyTestSuffix(info.param));
                          });
@@ -646,12 +650,76 @@ INSTANTIATE_TEST_SUITE_P(
             {"PredGatherDim1NonDefaultLayout",
              ShapeUtil::MakeShapeWithDenseLayout(PRED, {16, 8}, {0, 1}), 1},
         }),
-        ::testing::Values(kOneShot)),
+        ::testing::Values(kOneShot, kTwoShot)),
     [](const ::testing::TestParamInfo<AllGather2GpuShapeTest::ParamType>&
            info) {
       return absl::StrCat(std::get<0>(info.param).name, "_",
                           StrategyTestSuffix(std::get<1>(info.param)));
     });
+
+TEST_F(AllGatherTest, TwoShotFusedPrologue) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!SetUpTwoShotTest(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test_fused_prologue
+  fused_ag {
+    param_0 = f32[16,32] parameter(0)
+    two = f32[] constant(2.0)
+    scale = f32[16,32] broadcast(two), dimensions={}
+    scaled = f32[16,32] multiply(param_0, scale)
+    ROOT ag = f32[32,32] all-gather(scaled), dimensions={0},
+      replica_groups={{0,1}},
+      backend_config={"collective_backend_config":{
+        "kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"
+      }}
+  }
+
+  ENTRY test_computation {
+    p0 = f32[16,32] parameter(0)
+    ROOT fusion = f32[32,32] fusion(p0), kind=kCustom, calls=fused_ag,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__triton_collective",
+          "block_level_fusion_config": {
+            "num_warps": "4",
+            "output_tiles": [{"sizes": ["8", "16"]}],
+            "num_ctas": 1,
+            "num_stages": 1,
+            "is_tma_allowed": false,
+            "is_warp_specialization_allowed": false
+          }
+        }
+      }
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(Literal in_r0,
+                       Literal::Make(ShapeUtil::MakeShape(F32, {16, 32})));
+  ASSERT_OK_AND_ASSIGN(Literal in_r1,
+                       Literal::Make(ShapeUtil::MakeShape(F32, {16, 32})));
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       Literal::Make(ShapeUtil::MakeShape(F32, {32, 32})));
+  for (int64_t row = 0; row < 16; ++row) {
+    for (int64_t col = 0; col < 32; ++col) {
+      const float v0 = static_cast<float>(row * 32 + col + 1);
+      const float v1 = static_cast<float>((row + 16) * 32 + col + 1);
+      in_r0.Set<float>({row, col}, v0);
+      in_r1.Set<float>({row, col}, v1);
+      expected.Set<float>({row, col}, 2.0f * v0);
+      expected.Set<float>({row + 16, col}, 2.0f * v1);
+    }
+  }
+  std::vector<std::vector<Literal*>> args = {{&in_r0}, {&in_r1}};
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+  VerifyAllGatherStrategy(result.optimized_module, kTwoShot);
+
+  EXPECT_TRUE(EqualOnAllReplicas(expected, result.results, kNumReplicas));
+}
 
 struct Subgroup4GpuTestCase {
   std::string name;
@@ -713,7 +781,7 @@ INSTANTIATE_TEST_SUITE_P(
                            {"Adjacent", "{{0,1},{2,3}}", {{0, 1}, {2, 3}}},
                            {"Strided", "{{0,2},{1,3}}", {{0, 2}, {1, 3}}},
                        }),
-                       ::testing::Values(kOneShot)),
+                       ::testing::Values(kOneShot, kTwoShot)),
     [](const ::testing::TestParamInfo<AllGatherSubgroups4GpuTest::ParamType>&
            info) {
       return absl::StrCat(std::get<0>(info.param).name, "_",
@@ -778,7 +846,7 @@ INSTANTIATE_TEST_SUITE_P(
     AllGatherTypes, AllGatherTypesTest,
     ::testing::Combine(::testing::ValuesIn(gpu::SupportedAllGatherTypes(
                            GetGpuComputeCapability())),
-                       ::testing::Values(kOneShot)),
+                       ::testing::Values(kOneShot, kTwoShot)),
     [](const ::testing::TestParamInfo<AllGatherTypesTest::ParamType>& info) {
       return absl::StrCat(
           primitive_util::LowercasePrimitiveTypeName(std::get<0>(info.param)),
@@ -959,7 +1027,7 @@ INSTANTIATE_TEST_SUITE_P(
               ShapeUtil::MakeShape(S32, {2, 529})},
              /*gather_dim=*/0},
         }),
-        ::testing::Values(kOneShot)),
+        ::testing::Values(kOneShot, kTwoShot)),
     [](const ::testing::TestParamInfo<VariadicAllGatherTest::ParamType>& info) {
       return absl::StrCat(std::get<0>(info.param).name, "_",
                           StrategyTestSuffix(std::get<1>(info.param)));
