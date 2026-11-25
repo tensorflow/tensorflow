@@ -695,7 +695,24 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
                         /*tile_padding=*/uint8_t{0xff}),
       TransposeTestCase(/*dims=*/{1, 131072}, /*permutation=*/{0, 1},
                         /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
-                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0x00})};
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0x00}),
+      // Batched, transposed, and non-power-of-two partial output tile padding
+      // (including outer non-partial small-`ldb` dims outside partial tiles).
+      TransposeTestCase(/*dims=*/{3, 11, 130}, /*permutation=*/{0, 1, 2},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0xab}),
+      TransposeTestCase(/*dims=*/{3, 130, 11}, /*permutation=*/{0, 2, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0xcd}),
+      TransposeTestCase(/*dims=*/{11, 5, 130}, /*permutation=*/{1, 2, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0x5a}),
+      TransposeTestCase(/*dims=*/{130, 11, 5}, /*permutation=*/{1, 0, 2},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0xa5}),
+      TransposeTestCase(/*dims=*/{19, 23, 17}, /*permutation=*/{2, 0, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{4, 7, 11},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0x42})};
   return cases;
 }
 
@@ -1183,6 +1200,25 @@ static std::vector<TransposeTestCase> BenchmarkCases() {
                         /*permutation=*/{1, 2, 0}),
       TransposeTestCase(/*dims=*/{256, 256, 3},
                         /*permutation=*/{2, 0, 1}),
+      // Output tile-padded cases.
+      TransposeTestCase(/*dims=*/{4096, 130}, /*permutation=*/{0, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0}),
+      TransposeTestCase(/*dims=*/{513, 513}, /*permutation=*/{0, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0}),
+      TransposeTestCase(/*dims=*/{513, 513}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0}),
+      TransposeTestCase(/*dims=*/{64, 513, 513}, /*permutation=*/{0, 1, 2},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0}),
+      TransposeTestCase(/*dims=*/{64, 513, 513}, /*permutation=*/{0, 2, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0}),
+      TransposeTestCase(/*dims=*/{64, 130, 130}, /*permutation=*/{1, 2, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0}),
   };
 }
 
@@ -1216,6 +1252,10 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
   options.elem_size_in_bytes = sizeof(T);
   options.dims = bm.dims;
   options.permutation = bm.permutation;
+  if (!bm.output_tiling.empty()) {
+    options.output_tiling = TransposePlan::Tiling{bm.output_tiling};
+  }
+  options.tile_padding = bm.tile_padding;
   options.transformation = TransposePlan::Transformation::kNone;
 
   options.num_threads = parallelism;
@@ -1223,8 +1263,7 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   Array<T> input(bm.dims);
   input.FillIota(0);
-  std::vector<int64_t> output_dims = Permute(bm.dims, bm.permutation);
-  Array<T> output(output_dims);
+  std::vector<T> output(plan->OutputNumElems());
   tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
                                      parallelism);
   for (auto s : state) {
@@ -1250,6 +1289,10 @@ void BM_TransposePack(const TransposeTestCase& bm, int parallelism,
   options.elem_size_in_bytes = 1;
   options.dims = bm.dims;
   options.permutation = bm.permutation;
+  if (!bm.output_tiling.empty()) {
+    options.output_tiling = TransposePlan::Tiling{bm.output_tiling};
+  }
+  options.tile_padding = bm.tile_padding;
   options.dest_bits_per_element = bits_per_element;
   options.num_threads = parallelism;
 
@@ -1263,7 +1306,8 @@ void BM_TransposePack(const TransposeTestCase& bm, int parallelism,
   }
 
   int elements_per_byte = 8 / bits_per_element;
-  int64_t packed_size = CeilOfRatio<int64_t>(num_elems, elements_per_byte);
+  int64_t packed_size =
+      CeilOfRatio<int64_t>(plan->OutputNumElems(), elements_per_byte);
   std::vector<char> output(packed_size);
 
   tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
@@ -1284,25 +1328,47 @@ static void BM_Transpose_Pack4(const TransposeTestCase& bm, int parallelism,
 static void* benchmarks = []() {
   using BenchmarkFn =
       void (*)(const TransposeTestCase&, int, testing::benchmark::State&);
-  std::vector<std::tuple<std::string, BenchmarkFn, std::vector<int>>> variants =
-      {
-          {"BM_Eigen_uint8", BM_Eigen_uint8, {1}},
-          {"BM_Transpose_uint8", BM_Transpose_uint8, {1, 4, 8}},  //
-          {"BM_Eigen_float", BM_Eigen_float, {1}},
-          {"BM_Transpose_float", BM_Transpose_float, {1, 4, 8}},  //
-          {"BM_Transpose_Pack4", BM_Transpose_Pack4, {1, 4, 8}},
-      };
+  struct Variant {
+    std::string name;
+    BenchmarkFn fn;
+    std::vector<int> threads;
+    bool supports_tiling;
+  };
+  const std::vector<Variant> variants = {
+      {"BM_Eigen_uint8", BM_Eigen_uint8, {1}, /*supports_tiling=*/false},
+      {"BM_Transpose_uint8",
+       BM_Transpose_uint8,
+       {1, 4, 8},
+       /*supports_tiling=*/true},
+      {"BM_Eigen_float", BM_Eigen_float, {1}, /*supports_tiling=*/false},
+      {"BM_Transpose_float",
+       BM_Transpose_float,
+       {1, 4, 8},
+       /*supports_tiling=*/true},
+      {"BM_Transpose_Pack4",
+       BM_Transpose_Pack4,
+       {1, 4, 8},
+       /*supports_tiling=*/true},
+  };
   auto benchmark_cases = BenchmarkCases();
   for (const auto& benchmark_case : benchmark_cases) {
-    for (const auto& variant : variants) {
-      for (int num_threads : std::get<2>(variant)) {
+    for (const Variant& variant : variants) {
+      if (!benchmark_case.output_tiling.empty() && !variant.supports_tiling) {
+        continue;
+      }
+      for (int num_threads : variant.threads) {
         std::string name =
-            absl::StrCat(std::get<0>(variant), "_threads_", num_threads, "_",
+            absl::StrCat(variant.name, "_threads_", num_threads, "_",
                          absl::StrJoin(benchmark_case.dims, "_"), "_perm_",
                          absl::StrJoin(benchmark_case.permutation, "_"));
+        if (!benchmark_case.output_tiling.empty()) {
+          absl::StrAppend(
+              &name, "_tile_", absl::StrJoin(benchmark_case.output_tiling, "_"),
+              benchmark_case.tile_padding.has_value() ? "_pad" : "");
+        }
 
         TransposeTestCase testcase = benchmark_case;
-        BenchmarkFn fn = std::get<1>(variant);
+        BenchmarkFn fn = variant.fn;
         benchmark::RegisterBenchmark(
             name.c_str(), [fn, num_threads, testcase](benchmark::State& state) {
               fn(testcase, num_threads, state);

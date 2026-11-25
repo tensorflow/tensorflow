@@ -1001,13 +1001,49 @@ struct ChunkPlanBuilder {
   const Planner& plan;
   absl::Span<const Loop> chunk_loops;
   int elements_per_byte;
+  // Loop index in `chunk_loops` where tile padding is emitted (immediately
+  // after the transfer of `chunk_loops[*pad_idx..]`), or `std::nullopt` when
+  // this chunk needs no padding.
+  //
+  // Padding is fused at the first loop that writes inside a single output tile
+  // (`ldb < tile_bytes`) rather than as a second pass over the whole chunk.
+  // For example, on `float[64, 513, 513]` with `{8, 128}` output tiling, the
+  // outer batch and tile-exterior loops stay outside `*pad_idx`, so each 4 KiB
+  // partial tile is padded right after its data is written while still hot in
+  // L1, while `PadFrom` still sees all inner loops of the tile and coalesces
+  // full-row `Fill1D` calls identically to whole-chunk padding.
+  std::optional<size_t> pad_idx;
 
   ChunkPlanBuilder(const Planner& plan, int chunk_id)
       : plan(plan),
         chunk_loops(plan.chunk_loops[chunk_id]),
         elements_per_byte((plan.transformation == Transformation::kPackSubbyte)
                               ? (8 / plan.bits_per_element)
-                              : 1) {}
+                              : 1) {
+    if (!plan.tile_padding.has_value() || !plan.b_is_tiled ||
+        !absl::c_any_of(chunk_loops,
+                        [](const Loop& l) { return l.has_partial_tile; })) {
+      return;
+    }
+    int64_t tile_bytes = plan.elem_size_in_bytes;
+    for (int64_t t : plan.b_tiling) {
+      tile_bytes *= t;
+    }
+    // Stop at the first loop whose output stride is smaller than one full tile
+    // (for example, on `float[4096, 130]` tiled `{8, 128}`, `tile_bytes = 4096`
+    // stops at `row_int` with `ldb = 512` rather than descending into `col_int`
+    // and issuing per-row padding), or at a 2D-kernel axis whose `Plan::Loop`
+    // steps by `inc > 1` so `PadFrom` does not run inside a blocked loop.
+    for (size_t i = 0; i < chunk_loops.size(); ++i) {
+      const Loop& l = chunk_loops[i];
+      const bool is_kernel_axis = !plan.inner_kernel_is_memcpy() &&
+                                  (l.is_inner_dim_in_a || l.is_inner_dim_in_b);
+      if (is_kernel_axis || (l.ldb > 0 && l.ldb < tile_bytes)) {
+        pad_idx = i;
+        break;
+      }
+    }
+  }
 
   int64_t StepB(const Loop& l, int64_t n) const {
     DCHECK_EQ((n * l.ldb) % elements_per_byte, 0);
@@ -1125,17 +1161,17 @@ struct ChunkPlanBuilder {
       return Plan::MakeNoop();
     }
 
+    Plan transfer;
     if (plan.inner_kernel_is_memcpy() && loop.is_inner_dim_in_a) {
       DCHECK_EQ(idx + 1, chunk_loops.size());
       if (plan.transformation == Transformation::kPackSubbyte) {
         DCHECK_EQ(count % elements_per_byte, 0);
-        return Plan::MakePackSubbyte(plan.bits_per_element, count);
+        transfer = Plan::MakePackSubbyte(plan.bits_per_element, count);
+      } else {
+        transfer = Plan::MakeCopy1D(count * plan.elem_size_in_bytes);
       }
-      return Plan::MakeCopy1D(count * plan.elem_size_in_bytes);
-    }
-
-    if (!plan.inner_kernel_is_memcpy() &&
-        (loop.is_inner_dim_in_a || loop.is_inner_dim_in_b)) {
+    } else if (!plan.inner_kernel_is_memcpy() &&
+               (loop.is_inner_dim_in_a || loop.is_inner_dim_in_b)) {
       const int64_t block = loop.inc;
       DCHECK_GT(block, 0);
       const int64_t full_blocks = count / block;
@@ -1157,12 +1193,18 @@ struct ChunkPlanBuilder {
               ? Plan::MakeOffset(rem_start * loop.lda, StepB(loop, rem_start),
                                  build_child(static_cast<int>(rem)))
               : Plan::MakeNoop();
-      return Plan::MakeSeq(std::move(full_plan), std::move(rem_plan));
+      transfer = Plan::MakeSeq(std::move(full_plan), std::move(rem_plan));
+    } else {
+      DCHECK_EQ(loop.inc, 1);
+      transfer =
+          Plan::MakeLoop(count, loop.lda, StepB(loop, 1),
+                         BuildTransfer(idx + 1, a_elems, b_elems, partial));
     }
 
-    DCHECK_EQ(loop.inc, 1);
-    return Plan::MakeLoop(count, loop.lda, StepB(loop, 1),
-                          BuildTransfer(idx + 1, a_elems, b_elems, partial));
+    if (pad_idx == idx) {
+      return Plan::MakeSeq(std::move(transfer), BuildPadding(idx, partial));
+    }
+    return transfer;
   }
 
   Plan PadFrom(absl::Span<const Loop> loops, size_t idx, bool is_padding,
@@ -1209,7 +1251,9 @@ struct ChunkPlanBuilder {
             sub_loop(loop.tile_size - rem, /*sub_padding=*/true)));
   }
 
-  // Builds the padding fills for any partial output tiles in `chunk_id`.
+  // Builds the padding fills for `chunk_loops[start_idx..]` using `partial` to
+  // identify which enclosing dimensions (from `chunk_loops[0..start_idx)`) are
+  // currently on their trailing partial tile.
   //
   // For example, a partial row-major 8x128 tile with 3 valid rows and 5 valid
   // columns has an L-shaped padding region. We cut the L horizontally so the
@@ -1231,16 +1275,12 @@ struct ChunkPlanBuilder {
   // loops ensures that any inner loop partitioned across chunks only fills its
   // `[loop.start, loop.end)` slice, while `Plan::MakeLoop` coalesces unsplit
   // inner loops into a single `Fill1D`.
-  Plan BuildPadding() const {
-    if (!plan.tile_padding.has_value() || !plan.b_is_tiled ||
-        !absl::c_any_of(chunk_loops,
-                        [](const Loop& l) { return l.has_partial_tile; })) {
-      return Plan::MakeNoop();
-    }
-
+  Plan BuildPadding(size_t start_idx,
+                    absl::InlinedVector<bool, 4>& partial) const {
     std::vector<Loop> loops;
-    loops.reserve(chunk_loops.size());
-    for (const Loop& l : chunk_loops) {
+    loops.reserve(chunk_loops.size() - start_idx);
+    for (size_t i = start_idx; i < chunk_loops.size(); ++i) {
+      const Loop& l = chunk_loops[i];
       if (l.ldb != 0) {
         loops.push_back(l);
       }
@@ -1250,8 +1290,7 @@ struct ChunkPlanBuilder {
              std::make_tuple(b.ldb, !b.tile_interior);
     });
 
-    absl::InlinedVector<bool, 4> in_partial(plan.a_dims.size(), false);
-    Plan pad_plan = PadFrom(loops, /*idx=*/0, /*is_padding=*/false, in_partial);
+    Plan pad_plan = PadFrom(loops, /*idx=*/0, /*is_padding=*/false, partial);
     if (elements_per_byte > 1) {
       ScalePlanOutputBytes(pad_plan, elements_per_byte);
     }
@@ -1265,9 +1304,8 @@ Plan Planner::BuildChunkPlan(int chunk_id) const {
   DCHECK_GT(ndim, 0);
   ChunkPlanBuilder builder(*this, chunk_id);
   absl::InlinedVector<bool, 4> partial(ndim, false);
-  return Plan::MakeSeq(
-      builder.BuildTransfer(/*idx=*/0, /*a_elems=*/0, /*b_elems=*/0, partial),
-      builder.BuildPadding());
+  return builder.BuildTransfer(/*idx=*/0, /*a_elems=*/0, /*b_elems=*/0,
+                               partial);
 }
 
 FlattenedPlan Planner::ToFlattenedPlan() {
