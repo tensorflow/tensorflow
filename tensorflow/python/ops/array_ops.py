@@ -981,6 +981,14 @@ def slice(input_, begin, size, name=None):
   perform slices, as it allows you to write `foo[3:7, :-2]` instead of
   `tf.slice(foo, [3, 0], [4, foo.get_shape()[1]-2])`.
 
+  In a function compiled with `tf.function(jit_compile=True)`, XLA may treat
+  Python slices with runtime bounds as dynamically sized. If a downstream
+  operation needs a fixed shape, pass a constant `size` to `tf.slice` and
+  specify each dimension's length rather than using `-1`. For example, to
+  select one row from a matrix `x` with four columns at an in-bounds index `i`
+  computed in a `tf.while_loop`, use
+  `tf.slice(x, [i, 0], [1, 4])` instead of `x[i : i + 1, :]`.
+
   `begin` is zero-based; `size` is one-based. If `size[i]` is -1,
   all remaining elements in dimension i are included in the
   slice. In other words, this is equivalent to setting:
