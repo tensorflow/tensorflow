@@ -26,7 +26,7 @@ int AbslErrorReporter::Report(const char* format, va_list args) {
   char buffer[1024];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
-  vsprintf(buffer, format, args);
+  vsnprintf(buffer, sizeof(buffer), format, args);
 #pragma clang diagnostic pop
   LOG(ERROR) << buffer;
   return 0;
