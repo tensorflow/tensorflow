@@ -4711,6 +4711,11 @@ def ssim_multiscale(img1,
     A tensor containing an MS-SSIM value for each image in batch.  The values
     are in range [0, 1].  Returns a tensor with shape:
     broadcast(img1.shape[:-3], img2.shape[:-3]).
+
+  Raises:
+    ValueError: If the converted range is statically known to be non-positive.
+    tf.errors.InvalidArgumentError: If a dynamic range is non-positive at
+      runtime.
   """
   with ops.name_scope(None, 'MS-SSIM', [img1, img2]):
     # Convert to tensor if needed.
@@ -4725,10 +4730,14 @@ def ssim_multiscale(img1,
     # SSIM is computed correctly.
     max_val = math_ops.cast(max_val, img1.dtype)
     max_val = convert_image_dtype(max_val, dtypes.float32)
-    with ops.control_dependencies([
-        check_ops.assert_positive(max_val, message='max_val must be positive')
-    ]):
-      max_val = array_ops.identity(max_val)
+    max_val_static = tensor_util.constant_value(max_val)
+    if max_val_static is None:
+      with ops.control_dependencies([
+          check_ops.assert_positive(max_val, message='max_val must be positive')
+      ]):
+        max_val = array_ops.identity(max_val)
+    elif not np.all(max_val_static > 0):
+      raise ValueError('max_val must be positive')
     img1 = convert_image_dtype(img1, dtypes.float32)
     img2 = convert_image_dtype(img2, dtypes.float32)
 
