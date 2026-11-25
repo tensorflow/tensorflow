@@ -13,19 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <string>
+
 #include "tensorflow/core/common_runtime/type_inference.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -1190,6 +1201,704 @@ TEST(ArrayOpsTest, Transpose_ShapeFn) {
   perm = test::AsTensor<int32_t>({1, 0, 3, 4, 2});
   INFER_OK(op, "[0,1,2,3,4];[5]", "[d0_1,d0_0,d0_3,d0_4,d0_2]");
   INFER_OK(op, "[0,?,2,3,4];[5]", "[d0_1,d0_0,d0_3,d0_4,d0_2]");
+}
+
+namespace {
+
+class RawTensorBuffer : public TensorBuffer {
+ public:
+  RawTensorBuffer(void* data, size_t size) : TensorBuffer(data), size_(size) {}
+  size_t size() const override { return size_; }
+  TensorBuffer* root_buffer() override { return this; }
+  void FillAllocationDescription(AllocationDescription* proto) const override {}
+
+ private:
+  size_t size_;
+};
+
+std::string MakeUnknownRankSpec(int rank) {
+  std::string spec = "[";
+  for (int i = 0; i < rank; ++i) {
+    if (i > 0) spec += ",";
+    spec += "?";
+  }
+  spec += "]";
+  return spec;
+}
+
+}  // namespace
+
+TEST(ArrayOpsTest, Transpose_ValidPermDtypesAndShapes) {
+  ShapeInferenceTestOp op("Transpose");
+  op.input_tensors.resize(2);
+
+  Tensor perm_int32 = test::AsTensor<int32_t>({1, 0, 2});
+  op.input_tensors[1] = &perm_int32;
+  INFER_OK(op, "[1,2,3];[3]", "[d0_1,d0_0,d0_2]");
+  EXPECT_EQ(shape_inference::ShapeInferenceTestutil::InferShapes(
+                op, "[1,2,3];[3]", "[d0_1,d0_0,d0_2]"),
+            absl::OkStatus());
+
+  Tensor perm_int64 = test::AsTensor<int64_t>({1, 0, 2});
+  op.input_tensors[1] = &perm_int64;
+  INFER_OK(op, "[1,2,3];[3]", "[d0_1,d0_0,d0_2]");
+
+  Tensor perm_neg_int64 = test::AsTensor<int64_t>({-1, -3, -2});
+  op.input_tensors[1] = &perm_neg_int64;
+  INFER_OK(op, "[1,2,3];[3]", "[d0_2,d0_0,d0_1]");
+
+  Tensor empty_perm_int32(DT_INT32, TensorShape({0}));
+  op.input_tensors[1] = &empty_perm_int32;
+  INFER_OK(op, "[];[0]", "[]");
+
+  Tensor empty_perm_int64(DT_INT64, TensorShape({0}));
+  op.input_tensors[1] = &empty_perm_int64;
+  INFER_OK(op, "[];[0]", "[]");
+
+  Tensor perm_1d = test::AsTensor<int32_t>({0});
+  op.input_tensors[1] = &perm_1d;
+  INFER_OK(op, "[5];[1]", "[d0_0]");
+
+  Tensor perm_2d_unknown_input = test::AsTensor<int32_t>({1, 0});
+  op.input_tensors[1] = &perm_2d_unknown_input;
+  INFER_OK(op, "?;?", "[?,?]");
+  INFER_OK(op, "?;[2]", "[?,?]");
+
+  // Exact maximum supported rank boundary succeeds when perm is unknown.
+  op.input_tensors[1] = nullptr;
+  const int max_rank = TensorShape::MaxDimensions();
+  INFER_OK(op, strings::StrCat("?;[", max_rank, "]"),
+           MakeUnknownRankSpec(max_rank));
+
+  ShapeInferenceTestOp conj_op("ConjugateTranspose");
+  conj_op.input_tensors.resize(2);
+  conj_op.input_tensors[1] = &perm_int32;
+  INFER_OK(conj_op, "[1,2,3];[3]", "[d0_1,d0_0,d0_2]");
+  conj_op.input_tensors[1] = &perm_int64;
+  INFER_OK(conj_op, "[1,2,3];[3]", "[d0_1,d0_0,d0_2]");
+  conj_op.input_tensors[1] = &empty_perm_int32;
+  INFER_OK(conj_op, "[];[0]", "[]");
+}
+
+TEST(ArrayOpsTest, Transpose_InvalidPermDtypeAndRank) {
+  ShapeInferenceTestOp op("Transpose");
+  op.input_tensors.resize(2);
+
+  Tensor invalid_perm_float = test::AsTensor<float>({1.0f, 0.0f});
+  op.input_tensors[1] = &invalid_perm_float;
+  INFER_ERROR("perm must be int32 or int64, got float", op, "[1,2];[2]");
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      shape_inference::ShapeInferenceTestutil::InferShapes(op, "[1,2];[2]",
+                                                           "e")));
+
+  Tensor invalid_perm_double = test::AsTensor<double>({1.0, 0.0});
+  op.input_tensors[1] = &invalid_perm_double;
+  INFER_ERROR("perm must be int32 or int64, got double", op, "[1,2];[2]");
+
+  Tensor invalid_perm_bool = test::AsTensor<bool>({true, false});
+  op.input_tensors[1] = &invalid_perm_bool;
+  INFER_ERROR("perm must be int32 or int64, got bool", op, "[1,2];[2]");
+
+  Tensor invalid_perm_string =
+      test::AsTensor<tstring>({tstring("1"), tstring("0")});
+  op.input_tensors[1] = &invalid_perm_string;
+  INFER_ERROR("perm must be int32 or int64, got string", op, "[1,2];[2]");
+
+  Tensor invalid_perm_int16 = test::AsTensor<int16_t>({1, 0});
+  op.input_tensors[1] = &invalid_perm_int16;
+  INFER_ERROR("perm must be int32 or int64, got int16", op, "[1,2];[2]");
+
+  // Invalid dtype and rank must not be bypassed when input rank is unknown
+  // and inferred rank < 2.
+  Tensor invalid_perm_float_1 = test::AsTensor<float>({0.0f});
+  op.input_tensors[1] = &invalid_perm_float_1;
+  INFER_ERROR("perm must be int32 or int64, got float", op, "?;[1]");
+  INFER_ERROR("perm must be int32 or int64, got float", op, "?;?");
+
+  Tensor invalid_perm_empty_float(DT_FLOAT, TensorShape({0}));
+  op.input_tensors[1] = &invalid_perm_empty_float;
+  INFER_ERROR("perm must be int32 or int64, got float", op, "[];[0]");
+  INFER_ERROR("perm must be int32 or int64, got float", op, "?;[0]");
+
+  Tensor invalid_perm_scalar = test::AsScalar<int32_t>(0);
+  op.input_tensors[1] = &invalid_perm_scalar;
+  INFER_ERROR("perm must be rank 1, got rank 0", op, "[1,2];?");
+  INFER_ERROR("perm must be rank 1, got rank 0", op, "?;?");
+
+  Tensor invalid_perm_2d = test::AsTensor<int32_t>({1, 0}, TensorShape({2, 1}));
+  op.input_tensors[1] = &invalid_perm_2d;
+  INFER_ERROR("perm must be rank 1, got rank 2", op, "[1,2];?");
+  INFER_ERROR("perm must be rank 1, got rank 2", op, "?;?");
+
+  Tensor invalid_perm_2d_single =
+      test::AsTensor<int32_t>({0}, TensorShape({1, 1}));
+  op.input_tensors[1] = &invalid_perm_2d_single;
+  INFER_ERROR("perm must be rank 1, got rank 2", op, "?;?");
+
+  Tensor invalid_perm_short = test::AsTensor<int32_t>({0});
+  op.input_tensors[1] = &invalid_perm_short;
+  INFER_ERROR("perm must have 2 elements, got 1", op, "[1,2];[?]");
+  INFER_ERROR("perm must have 2 elements, got 1", op, "?;[2]");
+
+  Tensor invalid_perm_long = test::AsTensor<int32_t>({1, 0, 2});
+  op.input_tensors[1] = &invalid_perm_long;
+  INFER_ERROR("perm must have 2 elements, got 3", op, "[1,2];[?]");
+  INFER_ERROR("perm must have 2 elements, got 3", op, "?;[2]");
+
+  // Non-1-D perm_shape and excessive rank must be rejected before allocating
+  // output dimensions.
+  op.input_tensors[1] = nullptr;
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "?;[]");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[1,1]");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[100000,100000]");
+
+  const int over_max_rank = TensorShape::MaxDimensions() + 1;
+  INFER_ERROR(strings::StrCat("Input rank ", over_max_rank,
+                              " exceeds maximum supported rank ",
+                              TensorShape::MaxDimensions()),
+              op, strings::StrCat("?;[", over_max_rank, "]"));
+  INFER_ERROR(strings::StrCat("Input rank 2147483648 exceeds maximum supported "
+                              "rank ",
+                              TensorShape::MaxDimensions()),
+              op, "?;[2147483648]");
+
+  Tensor over_max_perm(DT_INT32, TensorShape({over_max_rank}));
+  auto over_max_vec = over_max_perm.vec<int32_t>();
+  for (int i = 0; i < over_max_rank; ++i) {
+    over_max_vec(i) = i;
+  }
+  op.input_tensors[1] = &over_max_perm;
+  INFER_ERROR(strings::StrCat("Input rank ", over_max_rank,
+                              " exceeds maximum supported rank ",
+                              TensorShape::MaxDimensions()),
+              op, "?;?");
+
+  ShapeInferenceTestOp conj_op("ConjugateTranspose");
+  conj_op.input_tensors.resize(2);
+  conj_op.input_tensors[1] = &invalid_perm_float;
+  INFER_ERROR("perm must be int32 or int64, got float", conj_op, "[1,2];[2]");
+  conj_op.input_tensors[1] = &invalid_perm_double;
+  INFER_ERROR("perm must be int32 or int64, got double", conj_op, "[1,2];[2]");
+  conj_op.input_tensors[1] = &invalid_perm_bool;
+  INFER_ERROR("perm must be int32 or int64, got bool", conj_op, "[1,2];[2]");
+  conj_op.input_tensors[1] = &invalid_perm_scalar;
+  INFER_ERROR("perm must be rank 1, got rank 0", conj_op, "?;?");
+}
+
+TEST(ArrayOpsTest, Transpose_InvalidPermTensorStorage) {
+  ShapeInferenceTestOp op("Transpose");
+  op.input_tensors.resize(2);
+
+  Tensor uninitialized_perm(DT_INT32, TensorShape({2}),
+                            static_cast<TensorBuffer*>(nullptr));
+  op.input_tensors[1] = &uninitialized_perm;
+  INFER_ERROR("perm tensor is not initialized", op, "[1,2];[2]");
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      shape_inference::ShapeInferenceTestutil::InferShapes(op, "[1,2];[2]",
+                                                           "e")));
+
+  ShapeInferenceTestOp conj_op("ConjugateTranspose");
+  conj_op.input_tensors.resize(2);
+  conj_op.input_tensors[1] = &uninitialized_perm;
+  INFER_ERROR("perm tensor is not initialized", conj_op, "[1,2];[2]");
+
+  alignas(64) unsigned char aligned_storage[64] = {};
+
+  auto* unaligned_buf =
+      new RawTensorBuffer(aligned_storage + 1, 2 * sizeof(int32_t));
+  Tensor unaligned_perm(DT_INT32, TensorShape({2}), unaligned_buf);
+  unaligned_buf->Unref();
+  if (!unaligned_perm.IsAligned()) {
+    op.input_tensors[1] = &unaligned_perm;
+    INFER_ERROR("perm tensor is not aligned", op, "[1,2];[2]");
+    EXPECT_TRUE(absl::IsInvalidArgument(
+        shape_inference::ShapeInferenceTestutil::InferShapes(op, "[1,2];[2]",
+                                                             "e")));
+  }
+
+  auto* short_int32_buf = new RawTensorBuffer(aligned_storage, sizeof(int32_t));
+  Tensor truncated_int32_perm(DT_INT32, TensorShape({2}), short_int32_buf);
+  short_int32_buf->Unref();
+  op.input_tensors[1] = &truncated_int32_perm;
+  INFER_ERROR(
+      "perm tensor buffer is too small: got 4 bytes for 2 elements of int32",
+      op, "[1,2];[2]");
+
+  auto* short_int64_buf = new RawTensorBuffer(aligned_storage, sizeof(int64_t));
+  Tensor truncated_int64_perm(DT_INT64, TensorShape({2}), short_int64_buf);
+  short_int64_buf->Unref();
+  op.input_tensors[1] = &truncated_int64_perm;
+  INFER_ERROR(
+      "perm tensor buffer is too small: got 8 bytes for 2 elements of int64",
+      op, "[1,2];[2]");
+}
+
+TEST(ArrayOpsTest, SplitV_ValidAndInvalidSizeSplitsStorage) {
+  ShapeInferenceTestOp op("SplitV");
+  op.input_tensors.resize(3);
+  TF_ASSERT_OK(NodeDefBuilder("test", "SplitV")
+                   .Input("value", 0, DT_FLOAT)
+                   .Input("size_splits", 1, DT_INT32)
+                   .Input("split_dim", 2, DT_INT32)
+                   .Attr("num_split", 2)
+                   .Finalize(&op.node_def));
+
+  Tensor split_dim = test::AsScalar<int32_t>(0);
+  op.input_tensors[2] = &split_dim;
+
+  Tensor valid_int32 = test::AsTensor<int32_t>({2, 4});
+  op.input_tensors[1] = &valid_int32;
+  INFER_OK(op, "[6,5];[2];[]", "[2,d0_1];[4,d0_1]");
+
+  Tensor valid_int8 = test::AsTensor<int8_t>({2, -1});
+  op.input_tensors[1] = &valid_int8;
+  INFER_OK(op, "[6,5];[2];[]", "[2,d0_1];[4,d0_1]");
+
+  Tensor valid_int64 = test::AsTensor<int64_t>({1, 5});
+  op.input_tensors[1] = &valid_int64;
+  INFER_OK(op, "[6,5];[2];[]", "[1,d0_1];[5,d0_1]");
+
+  // ShapeHandle length mismatch against valid size_splits tensor.
+  INFER_ERROR("Dimension must be 2 but is 3", op, "[6,5];[3];[]");
+
+  // Unexpected dtypes (including zero-sized DT_STRING) are rejected cleanly.
+  Tensor invalid_float = test::AsTensor<float>({2.0f, 4.0f});
+  op.input_tensors[1] = &invalid_float;
+  INFER_ERROR("Unexpected dtype for size_splits: float", op, "[6,5];[2];[]");
+
+  Tensor invalid_string = test::AsTensor<tstring>({tstring("2"), tstring("4")});
+  op.input_tensors[1] = &invalid_string;
+  INFER_ERROR("Unexpected dtype for size_splits: string", op, "[6,5];[2];[]");
+
+  // Non-1-D object ranks.
+  Tensor scalar_splits = test::AsScalar<int32_t>(6);
+  op.input_tensors[1] = &scalar_splits;
+  INFER_ERROR("size_splits must be 1-D, got rank 0", op, "[6,5];?;[]");
+
+  Tensor matrix_splits = test::AsTensor<int32_t>({2, 4}, TensorShape({2, 1}));
+  op.input_tensors[1] = &matrix_splits;
+  INFER_ERROR("size_splits must be 1-D, got rank 2", op, "[6,5];?;[]");
+
+  // Uninitialized backing storage across all supported dtypes.
+  for (DataType dt : {DT_INT8, DT_INT32, DT_INT64}) {
+    Tensor uninit_splits(dt, TensorShape({2}),
+                         static_cast<TensorBuffer*>(nullptr));
+    op.input_tensors[1] = &uninit_splits;
+    INFER_ERROR("size_splits tensor is not initialized", op, "[6,5];[2];[]");
+    EXPECT_TRUE(absl::IsInvalidArgument(
+        shape_inference::ShapeInferenceTestutil::InferShapes(op, "[6,5];[2];[]",
+                                                             "e")));
+  }
+
+  alignas(64) unsigned char aligned_storage[64] = {};
+
+  auto* unaligned_buf =
+      new RawTensorBuffer(aligned_storage + 1, 2 * sizeof(int32_t));
+  Tensor unaligned_splits(DT_INT32, TensorShape({2}), unaligned_buf);
+  unaligned_buf->Unref();
+  if (!unaligned_splits.IsAligned()) {
+    op.input_tensors[1] = &unaligned_splits;
+    INFER_ERROR("size_splits tensor is not aligned", op, "[6,5];[2];[]");
+  }
+
+  auto* short_int8_buf = new RawTensorBuffer(aligned_storage, sizeof(int8_t));
+  Tensor truncated_int8(DT_INT8, TensorShape({2}), short_int8_buf);
+  short_int8_buf->Unref();
+  op.input_tensors[1] = &truncated_int8;
+  INFER_ERROR(
+      "size_splits tensor buffer is too small: got 1 bytes for 2 elements of "
+      "int8",
+      op, "[6,5];[2];[]");
+
+  auto* short_int32_buf = new RawTensorBuffer(aligned_storage, sizeof(int32_t));
+  Tensor truncated_int32(DT_INT32, TensorShape({2}), short_int32_buf);
+  short_int32_buf->Unref();
+  op.input_tensors[1] = &truncated_int32;
+  INFER_ERROR(
+      "size_splits tensor buffer is too small: got 4 bytes for 2 elements of "
+      "int32",
+      op, "[6,5];[2];[]");
+
+  auto* short_int64_buf = new RawTensorBuffer(aligned_storage, sizeof(int64_t));
+  Tensor truncated_int64(DT_INT64, TensorShape({2}), short_int64_buf);
+  short_int64_buf->Unref();
+  op.input_tensors[1] = &truncated_int64;
+  INFER_ERROR(
+      "size_splits tensor buffer is too small: got 8 bytes for 2 elements of "
+      "int64",
+      op, "[6,5];[2];[]");
+}
+
+TEST(ArrayOpsTest, ReverseV2_ValidAndInvalidAxisTensor) {
+  ShapeInferenceTestOp op("ReverseV2");
+  op.input_tensors.resize(2);
+
+  Tensor valid_int32 = test::AsTensor<int32_t>({0, -1});
+  op.input_tensors[1] = &valid_int32;
+  INFER_OK(op, "[2,3,4];[2]", "in0");
+  INFER_OK(op, "?;[2]", "in0");
+
+  Tensor valid_int64 = test::AsTensor<int64_t>({1, 0});
+  op.input_tensors[1] = &valid_int64;
+  INFER_OK(op, "[2,3];[2]", "in0");
+
+  Tensor empty_int32(DT_INT32, TensorShape({0}));
+  op.input_tensors[1] = &empty_int32;
+  INFER_OK(op, "[];[0]", "in0");
+  INFER_OK(op, "[2,3];[0]", "in0");
+
+  Tensor empty_int64(DT_INT64, TensorShape({0}));
+  op.input_tensors[1] = &empty_int64;
+  INFER_OK(op, "[];[0]", "in0");
+
+  // Element count mismatch against axis ShapeHandle.
+  Tensor one_axis = test::AsTensor<int32_t>({0});
+  op.input_tensors[1] = &one_axis;
+  INFER_ERROR("Dimension must be 1 but is 2", op, "[2,3];[2]");
+
+  // Non-integer dtypes are rejected for both known and unknown input ranks.
+  Tensor invalid_float = test::AsTensor<float>({0.0f, 1.0f});
+  op.input_tensors[1] = &invalid_float;
+  INFER_ERROR("axis must be int32 or int64, got float", op, "[2,3];[2]");
+  INFER_ERROR("axis must be int32 or int64, got float", op, "?;?");
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      shape_inference::ShapeInferenceTestutil::InferShapes(op, "[2,3];[2]",
+                                                           "e")));
+
+  Tensor invalid_double = test::AsTensor<double>({0.0});
+  op.input_tensors[1] = &invalid_double;
+  INFER_ERROR("axis must be int32 or int64, got double", op, "[2,3];[1]");
+
+  Tensor invalid_bool = test::AsTensor<bool>({true});
+  op.input_tensors[1] = &invalid_bool;
+  INFER_ERROR("axis must be int32 or int64, got bool", op, "[2,3];[1]");
+
+  Tensor invalid_string = test::AsTensor<tstring>({tstring("0")});
+  op.input_tensors[1] = &invalid_string;
+  INFER_ERROR("axis must be int32 or int64, got string", op, "[2,3];[1]");
+
+  Tensor invalid_int16 = test::AsTensor<int16_t>({0});
+  op.input_tensors[1] = &invalid_int16;
+  INFER_ERROR("axis must be int32 or int64, got int16", op, "[2,3];[1]");
+
+  // Non-1-D object ranks.
+  Tensor scalar_axis = test::AsScalar<int32_t>(0);
+  op.input_tensors[1] = &scalar_axis;
+  INFER_ERROR("axis must be rank 1, got rank 0", op, "[2,3];?");
+  INFER_ERROR("axis must be rank 1, got rank 0", op, "?;?");
+
+  Tensor matrix_axis = test::AsTensor<int32_t>({0, 1}, TensorShape({2, 1}));
+  op.input_tensors[1] = &matrix_axis;
+  INFER_ERROR("axis must be rank 1, got rank 2", op, "[2,3];?");
+  INFER_ERROR("axis must be rank 1, got rank 2", op, "?;?");
+
+  // Backing-storage preconditions.
+  Tensor uninit_axis(DT_INT32, TensorShape({2}),
+                     static_cast<TensorBuffer*>(nullptr));
+  op.input_tensors[1] = &uninit_axis;
+  INFER_ERROR("axis tensor is not initialized", op, "[2,3];[2]");
+  INFER_ERROR("axis tensor is not initialized", op, "?;?");
+
+  alignas(64) unsigned char aligned_storage[64] = {};
+
+  auto* unaligned_buf =
+      new RawTensorBuffer(aligned_storage + 1, 2 * sizeof(int32_t));
+  Tensor unaligned_axis(DT_INT32, TensorShape({2}), unaligned_buf);
+  unaligned_buf->Unref();
+  if (!unaligned_axis.IsAligned()) {
+    op.input_tensors[1] = &unaligned_axis;
+    INFER_ERROR("axis tensor is not aligned", op, "[2,3];[2]");
+  }
+
+  auto* short_int32_buf = new RawTensorBuffer(aligned_storage, sizeof(int32_t));
+  Tensor truncated_int32(DT_INT32, TensorShape({2}), short_int32_buf);
+  short_int32_buf->Unref();
+  op.input_tensors[1] = &truncated_int32;
+  INFER_ERROR(
+      "axis tensor buffer is too small: got 4 bytes for 2 elements of int32",
+      op, "[2,3];[2]");
+
+  auto* short_int64_buf = new RawTensorBuffer(aligned_storage, sizeof(int64_t));
+  Tensor truncated_int64(DT_INT64, TensorShape({2}), short_int64_buf);
+  short_int64_buf->Unref();
+  op.input_tensors[1] = &truncated_int64;
+  INFER_ERROR(
+      "axis tensor buffer is too small: got 8 bytes for 2 elements of int64",
+      op, "[2,3];[2]");
+}
+
+TEST(ArrayOpsTest, Pad_ValidAndInvalidPaddingsTensor) {
+  ShapeInferenceTestOp op("Pad");
+  op.input_tensors.resize(2);
+
+  Tensor valid_int32 = test::AsTensor<int32_t>({1, 2, 3, 4}, TensorShape{2, 2});
+  op.input_tensors[1] = &valid_int32;
+  INFER_OK(op, "[10,20];[2,2]", "[13,27]");
+
+  Tensor valid_int64 = test::AsTensor<int64_t>({1, 2, 3, 4}, TensorShape{2, 2});
+  op.input_tensors[1] = &valid_int64;
+  INFER_OK(op, "[10,20];[2,2]", "[13,27]");
+
+  // Large int32 paddings sum in int64 without signed int32 overflow.
+  Tensor large_int32 = test::AsTensor<int32_t>(
+      {std::numeric_limits<int32_t>::max(), 1}, TensorShape{1, 2});
+  op.input_tensors[1] = &large_int32;
+  INFER_OK(op, "[10];[1,2]", "[2147483658]");
+
+  Tensor empty_int32(DT_INT32, TensorShape({0, 2}));
+  op.input_tensors[1] = &empty_int32;
+  INFER_OK(op, "[];[0,2]", "[]");
+
+  // Exact maximum supported rank boundary succeeds when paddings are unknown.
+  op.input_tensors[1] = nullptr;
+  const int max_rank = TensorShape::MaxDimensions();
+  INFER_OK(op, strings::StrCat("?;[", max_rank, ",2]"),
+           MakeUnknownRankSpec(max_rank));
+
+  const int over_max_rank = max_rank + 1;
+  INFER_ERROR(strings::StrCat("Input rank ", over_max_rank,
+                              " exceeds maximum supported rank ", max_rank),
+              op, strings::StrCat("?;[", over_max_rank, ",2]"));
+  INFER_ERROR(
+      strings::StrCat("Input rank 2147483648 exceeds maximum supported rank ",
+                      max_rank),
+      op, "?;[2147483648,2]");
+
+  Tensor over_max_paddings(DT_INT32, TensorShape({over_max_rank, 2}));
+  over_max_paddings.flat<int32_t>().setZero();
+  op.input_tensors[1] = &over_max_paddings;
+  INFER_ERROR(strings::StrCat("Input rank ", over_max_rank,
+                              " exceeds maximum supported rank ", max_rank),
+              op, "?;?");
+
+  // Non-integer dtypes.
+  Tensor invalid_float =
+      test::AsTensor<float>({1.0f, 2.0f, 3.0f, 4.0f}, TensorShape{2, 2});
+  op.input_tensors[1] = &invalid_float;
+  INFER_ERROR("paddings must be int32 or int64, got float", op,
+              "[10,20];[2,2]");
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      shape_inference::ShapeInferenceTestutil::InferShapes(op, "[10,20];[2,2]",
+                                                           "e")));
+
+  Tensor invalid_double = test::AsTensor<double>({1.0, 2.0}, TensorShape{1, 2});
+  op.input_tensors[1] = &invalid_double;
+  INFER_ERROR("paddings must be int32 or int64, got double", op, "[10];[1,2]");
+
+  Tensor invalid_bool = test::AsTensor<bool>({true, false}, TensorShape{1, 2});
+  op.input_tensors[1] = &invalid_bool;
+  INFER_ERROR("paddings must be int32 or int64, got bool", op, "[10];[1,2]");
+
+  Tensor invalid_string =
+      test::AsTensor<tstring>({tstring("1"), tstring("2")}, TensorShape{1, 2});
+  op.input_tensors[1] = &invalid_string;
+  INFER_ERROR("paddings must be int32 or int64, got string", op, "[10];[1,2]");
+
+  Tensor invalid_int16 = test::AsTensor<int16_t>({1, 2}, TensorShape{1, 2});
+  op.input_tensors[1] = &invalid_int16;
+  INFER_ERROR("paddings must be int32 or int64, got int16", op, "[10];[1,2]");
+
+  // Non-2-D object ranks and invalid column counts.
+  Tensor scalar_paddings = test::AsScalar<int32_t>(1);
+  op.input_tensors[1] = &scalar_paddings;
+  INFER_ERROR("paddings must be rank 2, got rank 0", op, "[10];?");
+
+  Tensor vec_paddings = test::AsTensor<int32_t>({1, 2});
+  op.input_tensors[1] = &vec_paddings;
+  INFER_ERROR("paddings must be rank 2, got rank 1", op, "[10];?");
+
+  Tensor rank3_paddings =
+      test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2, 1}));
+  op.input_tensors[1] = &rank3_paddings;
+  INFER_ERROR("paddings must be rank 2, got rank 3", op, "[10];?");
+
+  Tensor one_col_paddings = test::AsTensor<int32_t>({1, 2}, TensorShape{2, 1});
+  op.input_tensors[1] = &one_col_paddings;
+  INFER_ERROR("paddings must have 2 columns, got 1", op, "[10,20];?");
+
+  Tensor zero_col_paddings(DT_INT32, TensorShape({2, 0}));
+  op.input_tensors[1] = &zero_col_paddings;
+  INFER_ERROR("paddings must have 2 columns, got 0", op, "[10,20];?");
+
+  Tensor three_col_paddings =
+      test::AsTensor<int32_t>({1, 2, 3}, TensorShape{1, 3});
+  op.input_tensors[1] = &three_col_paddings;
+  INFER_ERROR("paddings must have 2 columns, got 3", op, "[10];?");
+
+  Tensor short_row_paddings =
+      test::AsTensor<int32_t>({1, 2}, TensorShape{1, 2});
+  op.input_tensors[1] = &short_row_paddings;
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[10,20];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[2,2]");
+
+  // Backing-storage preconditions.
+  Tensor uninit_paddings(DT_INT32, TensorShape({2, 2}),
+                         static_cast<TensorBuffer*>(nullptr));
+  op.input_tensors[1] = &uninit_paddings;
+  INFER_ERROR("paddings tensor is not initialized", op, "[10,20];[2,2]");
+
+  alignas(64) unsigned char aligned_storage[64] = {};
+
+  auto* unaligned_buf =
+      new RawTensorBuffer(aligned_storage + 1, 4 * sizeof(int32_t));
+  Tensor unaligned_paddings(DT_INT32, TensorShape({2, 2}), unaligned_buf);
+  unaligned_buf->Unref();
+  if (!unaligned_paddings.IsAligned()) {
+    op.input_tensors[1] = &unaligned_paddings;
+    INFER_ERROR("paddings tensor is not aligned", op, "[10,20];[2,2]");
+  }
+
+  auto* short_int32_buf =
+      new RawTensorBuffer(aligned_storage, 3 * sizeof(int32_t));
+  Tensor truncated_int32(DT_INT32, TensorShape({2, 2}), short_int32_buf);
+  short_int32_buf->Unref();
+  op.input_tensors[1] = &truncated_int32;
+  INFER_ERROR(
+      "paddings tensor buffer is too small: got 12 bytes for 4 elements of "
+      "int32",
+      op, "[10,20];[2,2]");
+
+  auto* short_int64_buf =
+      new RawTensorBuffer(aligned_storage, 3 * sizeof(int64_t));
+  Tensor truncated_int64(DT_INT64, TensorShape({2, 2}), short_int64_buf);
+  short_int64_buf->Unref();
+  op.input_tensors[1] = &truncated_int64;
+  INFER_ERROR(
+      "paddings tensor buffer is too small: got 24 bytes for 4 elements of "
+      "int64",
+      op, "[10,20];[2,2]");
+
+  // int64 padding sum overflow.
+  Tensor overflow_int64 = test::AsTensor<int64_t>(
+      {std::numeric_limits<int64_t>::max(), 1}, TensorShape{1, 2});
+  op.input_tensors[1] = &overflow_int64;
+  INFER_ERROR("Paddings sum overflows int64", op, "[10];[1,2]");
+
+  // Sibling ops sharing PadShapeFn (PadV2 and MirrorPad).
+  ShapeInferenceTestOp padv2_op("PadV2");
+  padv2_op.input_tensors.resize(3);
+  padv2_op.input_tensors[1] = &invalid_float;
+  INFER_ERROR("paddings must be int32 or int64, got float", padv2_op,
+              "[10,20];[2,2];[]");
+  padv2_op.input_tensors[1] = &uninit_paddings;
+  INFER_ERROR("paddings tensor is not initialized", padv2_op,
+              "[10,20];[2,2];[]");
+
+  ShapeInferenceTestOp mirror_op("MirrorPad");
+  mirror_op.input_tensors.resize(2);
+  mirror_op.input_tensors[1] = &invalid_float;
+  INFER_ERROR("paddings must be int32 or int64, got float", mirror_op,
+              "[10,20];[2,2]");
+  mirror_op.input_tensors[1] = &uninit_paddings;
+  INFER_ERROR("paddings tensor is not initialized", mirror_op, "[10,20];[2,2]");
+}
+
+TEST(ArrayOpsTest, MirrorPadGrad_ValidAndInvalidPaddingsTensor) {
+  ShapeInferenceTestOp op("MirrorPadGrad");
+  op.input_tensors.resize(2);
+
+  Tensor valid_int32 = test::AsTensor<int32_t>({1, 2, 3, 4}, TensorShape{2, 2});
+  op.input_tensors[1] = &valid_int32;
+  INFER_OK(op, "[10,20];[2,2]", "[7,13]");
+
+  Tensor valid_int64 = test::AsTensor<int64_t>({1, 2, 3, 4}, TensorShape{2, 2});
+  op.input_tensors[1] = &valid_int64;
+  INFER_OK(op, "[10,20];[2,2]", "[7,13]");
+
+  Tensor empty_int32(DT_INT32, TensorShape({0, 2}));
+  op.input_tensors[1] = &empty_int32;
+  INFER_OK(op, "[];[0,2]", "[]");
+
+  op.input_tensors[1] = nullptr;
+  const int max_rank = TensorShape::MaxDimensions();
+  INFER_OK(op, strings::StrCat("?;[", max_rank, ",2]"),
+           MakeUnknownRankSpec(max_rank));
+
+  const int over_max_rank = max_rank + 1;
+  INFER_ERROR(strings::StrCat("Input rank ", over_max_rank,
+                              " exceeds maximum supported rank ", max_rank),
+              op, strings::StrCat("?;[", over_max_rank, ",2]"));
+  INFER_ERROR(
+      strings::StrCat("Input rank 2147483648 exceeds maximum supported rank ",
+                      max_rank),
+      op, "?;[2147483648,2]");
+
+  // Non-integer dtypes (including when pad_0 is unknown).
+  Tensor invalid_float =
+      test::AsTensor<float>({1.0f, 2.0f, 3.0f, 4.0f}, TensorShape{2, 2});
+  op.input_tensors[1] = &invalid_float;
+  INFER_ERROR("paddings must be int32 or int64, got float", op,
+              "[10,20];[2,2]");
+  INFER_ERROR("paddings must be int32 or int64, got float", op, "?;[?,2]");
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      shape_inference::ShapeInferenceTestutil::InferShapes(op, "[10,20];[2,2]",
+                                                           "e")));
+
+  Tensor invalid_string =
+      test::AsTensor<tstring>({tstring("1"), tstring("2")}, TensorShape{1, 2});
+  op.input_tensors[1] = &invalid_string;
+  INFER_ERROR("paddings must be int32 or int64, got string", op, "[10];[1,2]");
+
+  // Non-2-D object ranks, invalid columns, and row-count mismatch.
+  Tensor scalar_paddings = test::AsScalar<int32_t>(1);
+  op.input_tensors[1] = &scalar_paddings;
+  INFER_ERROR("paddings must be rank 2, got rank 0", op, "[10];[1,2]");
+
+  Tensor rank3_paddings =
+      test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2, 1}));
+  op.input_tensors[1] = &rank3_paddings;
+  INFER_ERROR("paddings must be rank 2, got rank 3", op, "[10];[1,2]");
+
+  Tensor one_col_paddings = test::AsTensor<int32_t>({1, 2}, TensorShape{2, 1});
+  op.input_tensors[1] = &one_col_paddings;
+  INFER_ERROR("paddings must have 2 columns, got 1", op, "[10,20];[2,2]");
+
+  Tensor short_rows = test::AsTensor<int32_t>({1, 2}, TensorShape{1, 2});
+  op.input_tensors[1] = &short_rows;
+  INFER_ERROR("paddings must have 2 rows, got 1", op, "[10,20];[2,2]");
+
+  // Backing-storage preconditions.
+  Tensor uninit_paddings(DT_INT32, TensorShape({2, 2}),
+                         static_cast<TensorBuffer*>(nullptr));
+  op.input_tensors[1] = &uninit_paddings;
+  INFER_ERROR("paddings tensor is not initialized", op, "[10,20];[2,2]");
+
+  alignas(64) unsigned char aligned_storage[64] = {};
+
+  auto* unaligned_buf =
+      new RawTensorBuffer(aligned_storage + 1, 4 * sizeof(int32_t));
+  Tensor unaligned_paddings(DT_INT32, TensorShape({2, 2}), unaligned_buf);
+  unaligned_buf->Unref();
+  if (!unaligned_paddings.IsAligned()) {
+    op.input_tensors[1] = &unaligned_paddings;
+    INFER_ERROR("paddings tensor is not aligned", op, "[10,20];[2,2]");
+  }
+
+  auto* short_int32_buf =
+      new RawTensorBuffer(aligned_storage, 3 * sizeof(int32_t));
+  Tensor truncated_int32(DT_INT32, TensorShape({2, 2}), short_int32_buf);
+  short_int32_buf->Unref();
+  op.input_tensors[1] = &truncated_int32;
+  INFER_ERROR(
+      "paddings tensor buffer is too small: got 12 bytes for 4 elements of "
+      "int32",
+      op, "[10,20];[2,2]");
+
+  auto* short_int64_buf =
+      new RawTensorBuffer(aligned_storage, 3 * sizeof(int64_t));
+  Tensor truncated_int64(DT_INT64, TensorShape({2, 2}), short_int64_buf);
+  short_int64_buf->Unref();
+  op.input_tensors[1] = &truncated_int64;
+  INFER_ERROR(
+      "paddings tensor buffer is too small: got 24 bytes for 4 elements of "
+      "int64",
+      op, "[10,20];[2,2]");
+
+  // int64 padding sum overflow.
+  Tensor overflow_int64 = test::AsTensor<int64_t>(
+      {std::numeric_limits<int64_t>::max(), 1}, TensorShape{1, 2});
+  op.input_tensors[1] = &overflow_int64;
+  INFER_ERROR("Paddings sum overflows int64", op, "[10];[1,2]");
 }
 
 TEST(ArrayOpsTest, Bitcast_ShapeFn) {

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -58,6 +59,67 @@ absl::Status GetAxisForPackAndUnpack(InferenceContext* c,
   return absl::OkStatus();
 }
 
+absl::Status ValidateTensorStorage(const Tensor* tensor, const char* name) {
+  if (!tensor->IsInitialized()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " tensor is not initialized"));
+  }
+  if (!tensor->IsAligned()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " tensor is not aligned"));
+  }
+  if (tensor->NumElements() > 0) {
+    const int64_t elem_size = DataTypeSize(tensor->dtype());
+    if (elem_size <= 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat(name, " tensor has unsupported dtype ",
+                       DataTypeString(tensor->dtype())));
+    }
+    if (static_cast<uint64_t>(tensor->GetBufferSize()) /
+            static_cast<uint64_t>(elem_size) <
+        static_cast<uint64_t>(tensor->NumElements())) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          name, " tensor buffer is too small: got ", tensor->GetBufferSize(),
+          " bytes for ", tensor->NumElements(), " elements of ",
+          DataTypeString(tensor->dtype())));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ValidateInt32OrInt64VectorTensor(const Tensor* tensor,
+                                              const char* name) {
+  if (tensor->dims() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " must be rank 1, got rank ", tensor->dims()));
+  }
+  if (tensor->dtype() != DT_INT32 && tensor->dtype() != DT_INT64) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " must be int32 or int64, got ",
+                     DataTypeString(tensor->dtype())));
+  }
+  return ValidateTensorStorage(tensor, name);
+}
+
+absl::Status ValidatePaddingsTensor(const Tensor* paddings_t) {
+  if (paddings_t->dims() != 2) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("paddings must be rank 2, got rank ", paddings_t->dims()));
+  }
+  if (paddings_t->dim_size(1) != 2) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "paddings must have 2 columns, got ", paddings_t->dim_size(1)));
+  }
+  if (paddings_t->dtype() != DT_INT32 && paddings_t->dtype() != DT_INT64) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("paddings must be int32 or int64, got ",
+                     DataTypeString(paddings_t->dtype())));
+  }
+  return ValidateTensorStorage(paddings_t, "paddings");
+}
+
+// Requires caller to validate rank == 1, dtype == T, backing storage, and
+// num_elements <= tensor->NumElements().
 template <typename T>
 std::vector<int64_t> AsInt64(const Tensor* tensor, int64_t num_elements) {
   std::vector<int64_t> ret(num_elements);
@@ -75,10 +137,13 @@ absl::Status PadKnown(InferenceContext* c, ShapeHandle input,
   std::vector<DimensionHandle> dims(num_dims);
   auto paddings_data = paddings_t->matrix<T>();
   for (int64_t i = 0; i < num_dims; ++i) {
-    const T pad0 = paddings_data(i, 0);
-    const T pad1 = paddings_data(i, 1);
+    const int64_t pad0 = static_cast<int64_t>(paddings_data(i, 0));
+    const int64_t pad1 = static_cast<int64_t>(paddings_data(i, 1));
     if (pad0 < 0 || pad1 < 0) {
       return absl::InvalidArgumentError("Paddings must be non-negative");
+    }
+    if (pad0 > std::numeric_limits<int64_t>::max() - pad1) {
+      return absl::InvalidArgumentError("Paddings sum overflows int64");
     }
     TF_RETURN_IF_ERROR(c->Add(c->Dim(input, i), pad0 + pad1, &dims[i]));
   }
@@ -97,6 +162,11 @@ absl::Status PadShapeFn(InferenceContext* c) {
   ShapeHandle input = c->input(0);
   DimensionHandle n_dim = c->Dim(paddings, 0);
   if (c->ValueKnown(n_dim)) {
+    if (c->Value(n_dim) > TensorShape::MaxDimensions()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Input rank ", c->Value(n_dim), " exceeds maximum supported rank ",
+          TensorShape::MaxDimensions()));
+    }
     TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(n_dim), &input));
   } else if (c->RankKnown(input)) {
     TF_RETURN_IF_ERROR(c->WithValue(n_dim, c->Rank(input), &n_dim));
@@ -115,7 +185,13 @@ absl::Status PadShapeFn(InferenceContext* c) {
     return absl::OkStatus();
   }
 
-  const int64_t num_dims = paddings_t->shape().dim_size(0);
+  TF_RETURN_IF_ERROR(ValidatePaddingsTensor(paddings_t));
+  const int64_t num_dims = paddings_t->dim_size(0);
+  if (num_dims > TensorShape::MaxDimensions()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Input rank ", num_dims, " exceeds maximum supported rank ",
+        TensorShape::MaxDimensions()));
+  }
   TF_RETURN_IF_ERROR(c->WithRank(input, num_dims, &input));
   TF_RETURN_IF_ERROR(c->WithValue(n_dim, num_dims, &n_dim));
 
@@ -129,8 +205,12 @@ absl::Status PadShapeFn(InferenceContext* c) {
 absl::Status TransposeShapeFn(InferenceContext* c) {
   ShapeHandle input = c->input(0);
   ShapeHandle perm_shape = c->input(1);
+  TF_RETURN_IF_ERROR(c->WithRank(perm_shape, 1, &perm_shape));
   const Tensor* perm = c->input_tensor(1);
-  DimensionHandle perm_elems = c->NumElements(perm_shape);
+  if (perm != nullptr) {
+    TF_RETURN_IF_ERROR(ValidateInt32OrInt64VectorTensor(perm, "perm"));
+  }
+  DimensionHandle perm_elems = c->Dim(perm_shape, 0);
   // If we don't have rank information on the input or value information on
   // perm we can't return any shape information, otherwise we have enough
   // information to at least find the rank of the output.
@@ -156,17 +236,25 @@ absl::Status TransposeShapeFn(InferenceContext* c) {
     return absl::OkStatus();
   }
 
-  std::vector<DimensionHandle> dims;
-  dims.resize(rank);
+  if (rank > TensorShape::MaxDimensions()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input rank ", rank, " exceeds maximum supported rank ",
+                     TensorShape::MaxDimensions()));
+  }
+
   TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));
-  // Ensure that perm is a vector and has rank elements.
-  TF_RETURN_IF_ERROR(c->WithRank(perm_shape, 1, &perm_shape));
+  // Ensure that perm has rank elements.
   TF_RETURN_IF_ERROR(c->WithValue(perm_elems, rank, &perm_elems));
 
+  std::vector<DimensionHandle> dims(rank);
   // If we know the rank of the input and the value of perm, we can return
   // all shape information, otherwise we can only return rank information,
   // but no information for the dimensions.
   if (perm != nullptr) {
+    if (perm->NumElements() != rank) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "perm must have ", rank, " elements, got ", perm->NumElements()));
+    }
     std::vector<int64_t> data;
     if (perm->dtype() == DT_INT32) {
       data = AsInt64<int32_t>(perm, rank);
@@ -725,6 +813,17 @@ REGISTER_OP("SplitV")
           return absl::InvalidArgumentError(
               "Length of size_splits should be equal to num_outputs");
         }
+        DimensionHandle unused_splits_dim;
+        TF_RETURN_IF_ERROR(c->WithValue(c->Dim(size_splits_shape, 0),
+                                        num_size_splits, &unused_splits_dim));
+        if (size_splits->dtype() != DT_INT32 &&
+            size_splits->dtype() != DT_INT8 &&
+            size_splits->dtype() != DT_INT64) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Unexpected dtype for size_splits: ",
+                           DataTypeString(size_splits->dtype())));
+        }
+        TF_RETURN_IF_ERROR(ValidateTensorStorage(size_splits, "size_splits"));
         // The kernel computes in Tlen, so sizes have to fit in it.
         int64_t max_tlen;
         std::vector<int64_t> data;
@@ -1120,6 +1219,13 @@ REGISTER_OP("ReverseV2")
             "reverse does not work on tensors with more than 8 dimensions");
       }
       const Tensor* axis_tensor = c->input_tensor(1);
+      if (axis_tensor != nullptr) {
+        TF_RETURN_IF_ERROR(
+            ValidateInt32OrInt64VectorTensor(axis_tensor, "axis"));
+        DimensionHandle axis_elems = c->Dim(axis, 0);
+        TF_RETURN_IF_ERROR(
+            c->WithValue(axis_elems, axis_tensor->NumElements(), &axis_elems));
+      }
       if (axis_tensor != nullptr && c->RankKnown(input)) {
         int32_t rank = c->Rank(input);
         std::vector<int64_t> axis_value;
@@ -1130,8 +1236,8 @@ REGISTER_OP("ReverseV2")
           axis_value =
               AsInt64<int64_t>(axis_tensor, axis_tensor->NumElements());
         }
-        std::vector<bool> axes_dense(c->Rank(input), false);
-        for (int i = 0; i < axis_value.size(); i++) {
+        std::vector<bool> axes_dense(rank, false);
+        for (int64_t i = 0; i < static_cast<int64_t>(axis_value.size()); ++i) {
           int64_t canonical_axis =
               axis_value[i] < 0 ? rank + axis_value[i] : axis_value[i];
           if (canonical_axis < 0 || canonical_axis >= rank) {
@@ -2077,6 +2183,9 @@ absl::Status MirrorPadKnown(InferenceContext* c, ShapeHandle input,
     if (pad0 < 0 || pad1 < 0) {
       return absl::InvalidArgumentError("Paddings must be non-negative");
     }
+    if (pad0 > std::numeric_limits<int64_t>::max() - pad1) {
+      return absl::InvalidArgumentError("Paddings sum overflows int64");
+    }
 
     TF_RETURN_IF_ERROR(c->Subtract(c->Dim(input, i), pad0 + pad1, &dims[i]));
   }
@@ -2096,6 +2205,10 @@ REGISTER_OP("MirrorPadGrad")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle paddings;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &paddings));
+      const Tensor* paddings_t = c->input_tensor(1);
+      if (paddings_t != nullptr) {
+        TF_RETURN_IF_ERROR(ValidatePaddingsTensor(paddings_t));
+      }
       DimensionHandle pad_0 = c->Dim(paddings, 0);
       if (!c->ValueKnown(pad_0)) {
         // We don't know the rank of the output since the first
@@ -2105,12 +2218,16 @@ REGISTER_OP("MirrorPadGrad")
       }
 
       int64_t input_rank = c->Value(pad_0);
+      if (input_rank > TensorShape::MaxDimensions()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Input rank ", input_rank, " exceeds maximum supported rank ",
+            TensorShape::MaxDimensions()));
+      }
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), input_rank, &input));
       TF_RETURN_IF_ERROR(
           c->Merge(paddings, c->Matrix(input_rank, 2), &paddings));
 
-      const Tensor* paddings_t = c->input_tensor(1);
       if (paddings_t == nullptr) {
         // Values of 'paddings' is not available, but we know the
         // input rank, so return the rank of the output with unknown
@@ -2119,6 +2236,11 @@ REGISTER_OP("MirrorPadGrad")
         return absl::OkStatus();
       }
 
+      if (paddings_t->dim_size(0) != input_rank) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("paddings must have ", input_rank, " rows, got ",
+                         paddings_t->dim_size(0)));
+      }
       if (paddings_t->dtype() == DT_INT32) {
         return MirrorPadKnown<int32_t>(c, input, paddings_t, input_rank);
       } else {
