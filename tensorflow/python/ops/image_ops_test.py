@@ -6226,6 +6226,27 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase,
           self.assertAllClose(selected_indices, [0, 2, 4])
           self.assertEqual(self.evaluate(num_valid), 3)
 
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.xla_allow_fallback(
+      "non_max_suppression with dynamic output shape unsupported.")
+  def testSelectFromBoxesWithMixedCornerOrder(self):
+    # [1, 1.1, 0, 0.1] is [0, 0.1, 1, 1.1] with its corners swapped, which
+    # overlaps [0, 0, 1, 1] with an IoU of 0.82.
+    box, flipped_box, far_box = [0, 0, 1, 1], [1, 1.1, 0, 0.1], [0, 10, 1, 11]
+    for boxes_np, scores_np in [
+        ([box, flipped_box, far_box], [0.9, 0.8, 0.7]),
+        ([flipped_box, box, far_box], [0.8, 0.9, 0.7]),
+    ]:
+      selected_indices, num_valid = image_ops.non_max_suppression_padded(
+          constant_op.constant(boxes_np),
+          constant_op.constant(scores_np),
+          max_output_size=3,
+          iou_threshold=0.5,
+          pad_to_max_output_size=True)
+      self.assertAllEqual(
+          self.evaluate(selected_indices), [scores_np.index(0.9), 2, 0])
+      self.assertEqual(self.evaluate(num_valid), 2)
+
   def testInvalidDtype(self):
     boxes_np = [[4.0, 6.0, 3.0, 6.0],
                 [2.0, 1.0, 5.0, 4.0],
