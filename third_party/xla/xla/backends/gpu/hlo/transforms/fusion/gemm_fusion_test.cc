@@ -926,6 +926,22 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
 }
 
+TEST_F(GemmFusionTest, PadIsFused) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[1000,1024]{1,0} parameter(0)
+  c0 = bf16[] constant(0)
+  pad = bf16[1024,1024]{1,0} pad(p0, c0), padding=0_24x0_0
+  p1 = bf16[1024,512]{1,0} parameter(1)
+  ROOT r = bf16[1024,512]{1,0} dot(pad, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
 TEST_F(GemmFusionTest, ReshapeToScalarIsHandled) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(

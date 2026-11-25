@@ -382,9 +382,9 @@ INSTANTIATE_TEST_SUITE_P(PadTestSuite, PadTest,
                          AllTestCombinationsForOpcodes(kTestedOpsPad),
                          SupportTestTypeAndOpcodeAndDeviceToString);
 
-TEST_F(HloHardwareIndependentTestBase, PadOutsideGemmFusionIsRejected) {
+TEST_F(HloHardwareIndependentTestBase, PadOutsideFusionIsAllowed) {
   const std::string kHlo = R"(
-HloModule PadOutsideGemmFusion
+HloModule PadOutsideFusion
 
 ENTRY main {
   p0 = f32[4, 4] parameter(0)
@@ -396,13 +396,10 @@ ENTRY main {
   const HloInstruction* pad = module->entry_computation()->root_instruction();
   auto decision = IsTritonSupportedInstruction(
       *pad, se::GpuComputeCapability(se::CudaComputeCapability::Ampere()));
-  EXPECT_FALSE(decision);
-  EXPECT_THAT(
-      decision.Explain(),
-      ::testing::HasSubstr("Pads are only supported within GEMM fusions"));
+  EXPECT_TRUE(decision) << decision.Explain();
 }
 
-TEST_F(HloHardwareIndependentTestBase, PadInsideGenericTritonFusionIsRejected) {
+TEST_F(HloHardwareIndependentTestBase, PadInsideGenericTritonFusionIsAllowed) {
   const std::string kHlo = R"(
 HloModule PadInsideGenericTritonFusion
 
@@ -427,10 +424,7 @@ ENTRY main {
   const HloInstruction* pad = comp->root_instruction();
   auto decision = IsTritonSupportedInstruction(
       *pad, se::GpuComputeCapability(se::CudaComputeCapability::Ampere()));
-  EXPECT_FALSE(decision);
-  EXPECT_THAT(
-      decision.Explain(),
-      ::testing::HasSubstr("Pads are only supported within GEMM fusions"));
+  EXPECT_TRUE(decision) << decision.Explain();
 }
 
 TEST_F(HloHardwareIndependentTestBase, PadInsideGemmFusionIsAllowed) {

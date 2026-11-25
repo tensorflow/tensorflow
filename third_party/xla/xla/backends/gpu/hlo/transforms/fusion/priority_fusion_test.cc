@@ -2229,6 +2229,32 @@ ENTRY main {
               absl_testing::IsOkAndHolds(false));
 }
 
+TEST_F(PriorityFusionTest, FusesPadIntoTriton) {
+  const std::string kHloText = R"(
+HloModule test_module
+
+triton_computation {
+  p0 = f32[16,64]{1,0} parameter(0)
+  ROOT negate = f32[16,64]{1,0} negate(p0)
+}
+
+ENTRY main {
+  p0 = f32[16,48]{1,0} parameter(0)
+  c0 = f32[] constant(0)
+  pad = f32[16,64]{1,0} pad(p0, c0), padding=0_0x0_16
+  ROOT triton_fusion = f32[16,64]{1,0} fusion(pad), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","64"]}],"num_warps":"1"}}}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::Parameter())));
+  EXPECT_TRUE(IsGenericTritonFusion(*root));
+}
+
 TEST_F(PriorityFusionTest,
        DoesNotFuseSmallSoftmaxIntoLargeBroadcastingSlicedLoopConsumer) {
   constexpr absl::string_view kHloText = R"hlo(
