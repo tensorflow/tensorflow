@@ -5,8 +5,8 @@ op {
 *NOTE*: `FloorDiv` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
-On CPU, the floating-point kernel floors the computed quotient. This can
-differ from Python's `//` on floats when the divisor is infinite.
+For floating-point inputs, flooring the computed quotient can differ from
+Python's `//` when the divisor is infinite.
 
 For signed integer types, dividing the minimum representable value by `-1`
 (e.g. `int_min / -1`) overflows the signed integer range and wraps around to
