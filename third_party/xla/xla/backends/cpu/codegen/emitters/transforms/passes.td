@@ -37,6 +37,26 @@ def LowerToLLVMPass : Pass<"xla-cpu-lower-to-llvm", "mlir::ModuleOp"> {
   ];
 }
 
+def LowerTensorsPass : Pass<"xla-cpu-lower-tensors", "mlir::ModuleOp"> {
+  let summary = "Lowers tensors to LLVM pointers and loads/stores for CPU.";
+
+  let description = [{
+    Lowers tensors to LLVM for XLA:CPU. We cannot use the memref lowerings
+    because they are not compatible with XLA's ABI.
+  }];
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::complex::ComplexDialect",
+    "mlir::func::FuncDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect",
+    "mlir::vector::VectorDialect",
+    "xla::XlaDialect",
+  ];
+}
+
 def LowerXlaSharedPass :
    Pass<"xla-cpu-lower-xla-shared", "mlir::func::FuncOp"> {
   let summary = "Lowers XLA shared dialect ops to XLA cpu compatable ops.";

@@ -35,6 +35,8 @@ namespace gpu {
 
 std::unique_ptr<mlir::Pass> CreateConvertFloatAMDPass(
     const stream_executor::RocmComputeCapability& cc);
+std::unique_ptr<mlir::Pass> createLowerTensorsPass(
+    const stream_executor::GpuComputeCapability& gpu_cc);
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"

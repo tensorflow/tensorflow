@@ -667,7 +667,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
 void AddLoweringPasses(mlir::OpPassManager& pm,
                        const se::DeviceDescription& device) {
   pm.addNestedPass<FuncOp>(emitters::createConvertPureCallOpsPass());
-  pm.addPass(emitters::createLowerTensorsPass(device));
+  pm.addPass(createLowerTensorsPass(device.gpu_compute_capability()));
   pm.addPass(emitters::createLowerPdlWaitPass());
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(emitters::createMergePointersToSameSlicePass());

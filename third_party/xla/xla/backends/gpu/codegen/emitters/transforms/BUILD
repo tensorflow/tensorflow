@@ -15,7 +15,6 @@
 
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -43,40 +42,13 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "lower_tensors_patterns",
-    srcs = ["lower_tensors_patterns.cc"],
-    hdrs = ["lower_tensors_patterns.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla:util",
-        "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
-        "//xla/codegen/emitters/ir:xla",
-        "//xla/codegen/emitters/transforms:atomic_rmw_utils",
-        "//xla/codegen/emitters/transforms:lower_tensors_common",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/stream_executor/rocm:rocm_compute_capability",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:ROCDLDialect",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:VectorDialect",
-    ],
-)
-
-cc_library(
     name = "passes",
     srcs = [
         "convert_float_amd.cc",
         "convert_float_nvidia.cc",
         "convert_index_type.cc",
         "insert_pdl_ops.cc",
+        "lower_tensors.cc",
         "lower_xla_shared.cc",
         "optimize_loops.cc",
         "peel_loops.cc",
@@ -91,10 +63,13 @@ cc_library(
         "//xla:util",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:atomic_rmw_utils",
+        "//xla/codegen/emitters/transforms:lower_tensors_common",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/service/gpu:gpu_fusible",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -106,6 +81,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AMDGPUDialect",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:DataLayoutInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FunctionInterfaces",
@@ -116,6 +92,7 @@ cc_library(
         "@llvm-project//mlir:MathTransforms",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFUtils",
         "@llvm-project//mlir:Support",

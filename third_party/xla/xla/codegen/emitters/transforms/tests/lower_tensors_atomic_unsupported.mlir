@@ -13,15 +13,15 @@
 // limitations under the License.
 // ==============================================================================
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
-// RUN: --verify-diagnostics -xla-lower-tensors="target_type=cpu"
+// RUN: --verify-diagnostics -xla-cpu-lower-tensors
 
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: --verify-diagnostics \
-// RUN: -xla-lower-tensors="gpu_device_info='cuda_compute_capability {major: 8}'"
+// RUN: -xla-gpu-lower-tensors="gpu_compute_capability='cuda_compute_capability {major: 8}'"
 
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: --verify-diagnostics \
-// RUN: -xla-lower-tensors="gpu_device_info='rocm_compute_capability {gcn_arch_name: \"gfx942:sramecc+:xnack\"}'"
+// RUN: -xla-gpu-lower-tensors="gpu_compute_capability='rocm_compute_capability {gcn_arch_name: \"gfx942:sramecc+:xnack\"}'"
 
 // A complex<f32> element only has the 4 byte ABI alignment of f32, so the 64
 // bit atomic word that holds it needs a proven 8 byte alignment.

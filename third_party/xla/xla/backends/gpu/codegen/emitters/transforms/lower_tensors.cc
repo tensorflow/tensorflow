@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/backends/gpu/codegen/emitters/transforms/lower_tensors_patterns.h"
-
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -27,6 +27,8 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMAggregateOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMArithOps.h"
@@ -34,11 +36,13 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMCallOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMConstantOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMConversionOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/LLVMMemoryOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMModuleOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialectDecl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -54,18 +58,27 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/emitters/ir/xla_dialect.h"  // IWYU pragma: keep
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/lower_tensors_common.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
+
+#define GEN_PASS_DEF_LOWERTENSORSPASS
+#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+
 namespace {
 
 using ::mlir::failure;
@@ -783,33 +796,60 @@ class RewriteGpuSetDynamicDimSize
   llvm::StringRef sync_scope_;
 };
 
+class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
+ public:
+  using LowerTensorsPassBase::LowerTensorsPassBase;
+
+  explicit LowerTensorsPass(const se::GpuComputeCapability& gpu_cc)
+      : gpu_cc_(gpu_cc) {}
+
+  void runOnOperation() override {
+    if (!gpu_compute_capability_.empty()) {
+      se::GpuComputeCapabilityProto gpu_cc_proto;
+      CHECK(google::protobuf::TextFormat::ParseFromString(gpu_compute_capability_,
+                                                &gpu_cc_proto));
+      absl::StatusOr<se::GpuComputeCapability> gpu_cc =
+          se::GpuComputeCapability::FromProto(gpu_cc_proto);
+      CHECK_OK(gpu_cc.status());
+      gpu_cc_ = *std::move(gpu_cc);
+    }
+
+    mlir::MLIRContext* context = &getContext();
+    mlir::RewritePatternSet alloc_patterns(context);
+    alloc_patterns.add<RewriteAllocateShared>(context);
+    mlir::walkAndApplyPatterns(getOperation(), std::move(alloc_patterns));
+
+    const se::CudaComputeCapability* cuda_cc =
+        gpu_cc_.cuda_compute_capability();
+    emitters::LowerTensorsConfig config;
+    config.allow_mixed_tensor_results = false;
+    config.atomic_sub_byte_inserts = true;
+    config.min_atomic_bit_width = 32;
+    config.max_cas_bit_width =
+        (cuda_cc != nullptr && cuda_cc->IsAtLeastHopper()) ? 128 : 64;
+    config.atomic_sync_scope = std::string(GetAtomicSyncScope(gpu_cc_));
+    config.atomic_load_store_ordering = GetAtomicLoadStoreOrdering(gpu_cc_);
+
+    if (mlir::failed(emitters::LowerTensors(
+            getOperation(), config, [&](mlir::RewritePatternSet& patterns) {
+              patterns.add<RewriteSyncThreads>(context);
+              patterns
+                  .add<RewriteGpuDirectAtomicRMW, RewriteGpuDirectAtomicStore,
+                       RewriteGpuSetDynamicDimSize>(context, gpu_cc_);
+            }))) {
+      signalPassFailure();
+    }
+  }
+
+ private:
+  se::GpuComputeCapability gpu_cc_;
+};
+
 }  // namespace
 
-LogicalResult LowerGpuTensors(mlir::ModuleOp module,
-                              const se::DeviceDescription& device_info) {
-  mlir::MLIRContext* context = module.getContext();
-  mlir::RewritePatternSet alloc_patterns(context);
-  alloc_patterns.add<RewriteAllocateShared>(context);
-  mlir::walkAndApplyPatterns(module, std::move(alloc_patterns));
-
-  emitters::LowerTensorsConfig config;
-  config.allow_mixed_tensor_results = false;
-  config.atomic_sub_byte_inserts = true;
-  config.min_atomic_bit_width = 32;
-  config.max_cas_bit_width =
-      device_info.cuda_compute_capability().IsAtLeastHopper() ? 128 : 64;
-  config.atomic_sync_scope =
-      std::string(GetAtomicSyncScope(device_info.gpu_compute_capability()));
-  config.atomic_load_store_ordering =
-      GetAtomicLoadStoreOrdering(device_info.gpu_compute_capability());
-
-  return emitters::LowerTensors(
-      module, config, [&](mlir::RewritePatternSet& patterns) {
-        patterns.add<RewriteSyncThreads>(context);
-        patterns.add<RewriteGpuDirectAtomicRMW, RewriteGpuDirectAtomicStore,
-                     RewriteGpuSetDynamicDimSize>(
-            context, device_info.gpu_compute_capability());
-      });
+std::unique_ptr<mlir::Pass> createLowerTensorsPass(
+    const se::GpuComputeCapability& gpu_cc) {
+  return std::make_unique<LowerTensorsPass>(gpu_cc);
 }
 
 }  // namespace xla::gpu

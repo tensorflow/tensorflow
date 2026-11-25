@@ -268,9 +268,7 @@ static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
       emitters::createConvertPureCallOpsPass());
   pm.addPass(cpu::createLowerToLLVMPass(
       cpu::LowerToLLVMPassOptions{/*prefer_vector_width =*/vector_width}));
-  emitters::LowerTensorsPassOptions lower_tensors_options;
-  lower_tensors_options.target_type_ = "cpu";
-  pm.addPass(emitters::createLowerTensorsPass(lower_tensors_options));
+  pm.addPass(cpu::createLowerTensorsPass());
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(emitters::createMergePointersToSameSlicePass());
 

@@ -1,5 +1,5 @@
 // RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize \
-// RUN:   -xla-gpu-test-transform-loops -xla-lower-tensors | FileCheck %s
+// RUN:   -xla-gpu-test-transform-loops -xla-gpu-lower-tensors | FileCheck %s
 // RUN: gpu_test_correctness %s
 // RUN: cpu_test_correctness %s
 

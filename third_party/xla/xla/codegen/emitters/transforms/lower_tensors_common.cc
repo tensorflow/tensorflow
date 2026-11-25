@@ -2209,23 +2209,6 @@ bool ReportUnloweredAtomics(mlir::Operation* root) {
 
 }  // namespace
 
-LowerTensorsConfig GetCpuLowerTensorsConfig() {
-  LowerTensorsConfig config;
-  config.allow_mixed_tensor_results = true;
-  config.atomic_sub_byte_inserts = false;
-  config.min_atomic_bit_width = 8;
-  // CPU targets without a native 128 bit CAS call
-  // __atomic_compare_exchange_16, which the XLA:CPU JIT does not provide.
-  config.max_cas_bit_width = 64;
-  // LLVM's LoopIdiomRecognizePass rewrites contiguous loops with unordered
-  // atomic loads or stores into @llvm.memcpy.element.unordered.atomic, emitting
-  // unresolved __llvm_memcpy_element_unordered_atomic_* calls in the XLA:CPU
-  // JIT; monotonic loads and stores block that rewrite with identical codegen.
-  config.atomic_load_store_ordering = ml::AtomicOrdering::monotonic;
-  config.direct_scalar_atomics = true;
-  return config;
-}
-
 LogicalResult LowerTensors(mlir::ModuleOp module,
                            const LowerTensorsConfig& config,
                            absl::FunctionRef<void(mlir::RewritePatternSet&)>

@@ -100,32 +100,6 @@ def ExpandFloatOpsPass : Pass<"xla-expand-float-ops", "mlir::ModuleOp"> {
   ];
 }
 
-def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
-  let summary = "Lowers tensors to llvm pointers and loads/stores.";
-
-  let description = [{
-      Lowers tensors to LLVM. We cannot use the memref lowerings because they
-      are not compatible with XLA's ABI.
-  }];
-
-  let dependentDialects = [
-    "mlir::LLVM::LLVMDialect",
-    "mlir::arith::ArithDialect",
-    "mlir::complex::ComplexDialect",
-    "mlir::func::FuncDialect",
-    "mlir::scf::SCFDialect",
-    "mlir::tensor::TensorDialect",
-    "xla::XlaDialect",
-    "mlir::vector::VectorDialect",
-  ];
-  let options = [
-    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
-           "Serialized stream_executor::GPUDeviceInfo proto.">,
-    Option<"target_type_", "target_type", "std::string", /*default=*/"\"gpu\"",
-           "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
-  ];
-}
-
 def LowerXlaToScfPass :
    Pass<"xla-lower-xla-to-scf", "mlir::func::FuncOp"> {
   let summary = "Lowers xla to SCF.";

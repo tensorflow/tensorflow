@@ -14,7 +14,7 @@
 // ==============================================================================
 
 // RUN: emitters_opt %s --allow-unregistered-dialect --verify-diagnostics \
-// RUN: -xla-lower-tensors="gpu_device_info='cuda_compute_capability {major: 6}'" \
+// RUN: -xla-gpu-lower-tensors="gpu_compute_capability='cuda_compute_capability {major: 6}'" \
 // RUN: | FileCheck %s
 
 // A tensor.insert into the result of xla_gpu.sync_threads must resolve to the

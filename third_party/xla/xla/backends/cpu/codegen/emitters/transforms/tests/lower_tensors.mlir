@@ -13,7 +13,7 @@
 // limitations under the License.
 // ==============================================================================
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
-// RUN: -xla-lower-tensors="target_type=cpu" \
+// RUN: -xla-cpu-lower-tensors \
 // RUN: | FileCheck %s
 
 func.func @load_non_gep_from_args(%arg0: !llvm.ptr) -> !llvm.ptr {

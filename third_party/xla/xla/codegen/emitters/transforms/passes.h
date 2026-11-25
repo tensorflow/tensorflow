@@ -31,8 +31,6 @@ namespace emitters {
 #define GEN_PASS_DECL
 #include "xla/codegen/emitters/transforms/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> createLowerTensorsPass(
-    const stream_executor::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> createVectorizeLoadsAndStoresPass(
     const stream_executor::DeviceDescription& device_description);
 

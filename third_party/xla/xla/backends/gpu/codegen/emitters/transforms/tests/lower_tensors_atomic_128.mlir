@@ -13,7 +13,7 @@
 // limitations under the License.
 // ==============================================================================
 // RUN: emitters_opt %s -split-input-file --verify-diagnostics \
-// RUN: -xla-lower-tensors="gpu_device_info='cuda_compute_capability {major: 9}'" \
+// RUN: -xla-gpu-lower-tensors="gpu_compute_capability='cuda_compute_capability {major: 9}'" \
 // RUN: | FileCheck %s
 
 // Hopper has a 128 bit atomicCAS, which needs a 16 byte aligned address.

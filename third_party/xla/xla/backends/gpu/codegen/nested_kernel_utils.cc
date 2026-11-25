@@ -59,7 +59,7 @@ absl::Status LowerLauncherModuleToLlvmDialect(
     const stream_executor::DeviceDescription& device_info, bool should_verify) {
   mlir::PassManager pm(launcher_module.getContext());
   pm.enableVerifier(should_verify);
-  pm.addPass(emitters::createLowerTensorsPass(device_info));
+  pm.addPass(createLowerTensorsPass(device_info.gpu_compute_capability()));
   pm.addPass(emitters::createMergePointersToSameSlicePass());
   // Remove the launcher's block and thread guards that are statically known to
   // hold, then lower the remaining `xla.apply_indexing` ops to `arith`.

@@ -71,10 +71,6 @@ struct LowerTensorsConfig {
   bool direct_scalar_atomics = false;
 };
 
-// Returns the standard target-neutral configuration for XLA:CPU tensor
-// lowering.
-LowerTensorsConfig GetCpuLowerTensorsConfig();
-
 // Runs the two-stage tensor-to-LLVM lowering (`tensor_patterns`, unlowered
 // atomic verification, and `function_patterns`) on `module`.
 mlir::LogicalResult LowerTensors(

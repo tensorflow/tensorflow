@@ -124,6 +124,35 @@ def LowerXlaSharedPass :
   ];
 }
 
+def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
+  let summary = "Lowers tensors to LLVM pointers and loads/stores for GPU.";
+
+  let description = [{
+    Lowers tensors and GPU-specific tensor operations to LLVM for XLA:GPU. We
+    cannot use the memref lowerings because they are not compatible with XLA's
+    ABI.
+  }];
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::complex::ComplexDialect",
+    "mlir::func::FuncDialect",
+    "mlir::gpu::GPUDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect",
+    "mlir::vector::VectorDialect",
+    "xla::XlaDialect",
+  ];
+
+  let options = [
+    Option<"gpu_compute_capability_", "gpu_compute_capability", "std::string",
+           /*default=*/"",
+           "Serialized stream_executor::GpuComputeCapabilityProto.">,
+  ];
+}
+
 def InsertPDLPass : Pass<"xla-gpu-insert-pdl", "mlir::ModuleOp"> {
   let summary = "Inserts programmatic dependent launch (PDL) ops.";
   let description = [{
