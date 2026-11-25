@@ -557,10 +557,12 @@ diff -ruN --strip-trailing-cr a/mlir/test/Transforms/loop-invariant-code-motion.
    // CHECK: arith.addi %{{.*}}, %[[IF]]
  
    return %sum_result : i32
-@@ -1593,224 +1584,6 @@
+@@ -1591,224 +1582,6 @@
+   }
+   func.return %final : vector<4x4xf32>
  }
- 
- // -----
+-
+-// -----
 -
 -// Invariant ops are hoisted out of regions of ops that stay in the loop.
 -
@@ -777,8 +779,6 @@ diff -ruN --strip-trailing-cr a/mlir/test/Transforms/loop-invariant-code-motion.
 -  %late = arith.addi %a, %a : i32
 -  return %late : i32
 -}
--
--// -----
  
- func.func private @consume(i32)
+ // -----
  
