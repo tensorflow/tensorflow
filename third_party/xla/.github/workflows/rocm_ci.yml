@@ -189,6 +189,7 @@ jobs:
       # `${VAR}` references are expanded by the shell of the step using them.
       ROCM_COMMON_BAZEL_ARGS: >-
         --config=rocm_ci_hermetic
+        --config=rocm_rbe
         --config=rocm_rbe_dynamic
         --config=ci_repo_cache
         --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"

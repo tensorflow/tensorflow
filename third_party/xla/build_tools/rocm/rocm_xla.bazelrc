@@ -47,7 +47,6 @@ build:rocm_rbe_dev --tls_certificate="/data/bb-rbe-ca.crt"
 build:rocm_rbe_dev --action_env=RBE_DOCKER_IMAGE="ghcr.io/rocm/jax-build-ubu24.rocmless@sha256:68854ed30b800d3e8c390f6e651721e2bead58830da1c59e1b828354eb8f077f"
 
 # Dynamic execution config for ROCm RBE - races remote vs local with remote head start
-build:rocm_rbe_dynamic --config=rocm_rbe
 build:rocm_rbe_dynamic --jobs=50
 build:rocm_rbe_dynamic --internal_spawn_scheduler
 build:rocm_rbe_dynamic --spawn_strategy=dynamic
