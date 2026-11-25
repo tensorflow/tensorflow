@@ -1489,6 +1489,26 @@ def function(
   Python numerical arguments should only be used when they take few distinct
   values, such as hyperparameters like the number of layers in a neural network.
 
+  `tf.function` can distinguish which variable arguments refer to the same
+  variable. It may reuse a trace when an argument changes from referring to a
+  captured variable to referring to a different variable. If a
+  `tf.GradientTape` inside the function watches an argument that can also be
+  accessed through a capture, pass the variables used in the differentiated
+  computation explicitly instead:
+
+  >>> @tf.function(autograph=False)
+  ... def derivative(a, b, target):
+  ...   with tf.GradientTape(watch_accessed_variables=False) as tape:
+  ...     tape.watch(target)
+  ...     value = a + b * b / 2
+  ...   return tape.gradient(value, target)
+  >>> a = tf.Variable(2.0)
+  >>> b = tf.Variable(4.0)
+  >>> derivative(a, b, a).numpy().item()
+  1.0
+  >>> derivative(a, b, b).numpy().item()
+  4.0
+
   ## Input signatures
 
   For Tensor arguments, `PolymorphicFunction`creates a new `ConcreteFunction`
