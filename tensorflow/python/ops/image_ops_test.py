@@ -6629,6 +6629,15 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
         with self.assertRaisesRegex(ValueError, "max_val must be positive"):
           image_ops.ssim_multiscale(img1, img2, max_val, filter_size=1)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRejectsNonpositiveIntegerImageMaxVal(self):
+    img1 = constant_op.constant([[[[64]]]], dtype=dtypes.uint8)
+    img2 = constant_op.constant([[[[128]]]], dtype=dtypes.uint8)
+    for max_val in (0, 0.5):
+      with self.subTest(max_val=max_val):
+        with self.assertRaisesRegex(ValueError, "max_val must be positive"):
+          image_ops.ssim_multiscale(img1, img2, max_val, filter_size=1)
+
   def testRejectsNonpositiveTensorMaxVal(self):
     img1 = constant_op.constant([[[[1.0]]]])
     img2 = constant_op.constant([[[[0.5]]]])

@@ -4729,8 +4729,13 @@ def ssim_multiscale(img1,
     # Need to convert the images to float32.  Scale max_val accordingly so that
     # SSIM is computed correctly.
     max_val = math_ops.cast(max_val, img1.dtype)
-    max_val = convert_image_dtype(max_val, dtypes.float32)
-    max_val_static = tensor_util.constant_value(max_val)
+    normalized_max_val = convert_image_dtype(max_val, dtypes.float32)
+    # For integer images the scale is positive, but constant_value cannot
+    # evaluate the multiplication used to apply it.
+    max_val_static = tensor_util.constant_value(
+        max_val if max_val.dtype.is_integer else normalized_max_val
+    )
+    max_val = normalized_max_val
     if max_val_static is None:
       with ops.control_dependencies([
           check_ops.assert_positive(max_val, message='max_val must be positive')
