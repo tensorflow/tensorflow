@@ -477,8 +477,8 @@ def stateless_random_binomial(
 
   >>> tf.random.stateless_binomial(
   ...     shape=[3], seed=[123, 456], counts=[0., 5., 5.],
-  ...     probs=[0.5, 0., 1.]).numpy()
-  array([0, 0, 5], dtype=int32)
+  ...     probs=[0.5, 0., 1.]).numpy().tolist()
+  [0, 0, 5]
 
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
