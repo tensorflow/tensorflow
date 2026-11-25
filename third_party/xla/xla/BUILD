@@ -351,6 +351,7 @@ cc_library(
         "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -471,6 +472,15 @@ xla_cc_test(
         ":util",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
+    name = "overflow_util_test",
+    srcs = ["overflow_util_test.cc"],
+    deps = [
+        ":util",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

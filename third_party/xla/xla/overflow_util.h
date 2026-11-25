@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/attributes.h"
+#include "absl/base/config.h"
 #include "absl/base/optimization.h"
 
 namespace xla {
@@ -69,9 +70,8 @@ OverflowSafeMultiply(const int64_t x, const int64_t y) {
 // x and y must be signed integers.
 template <typename T>
 ABSL_ATTRIBUTE_ALWAYS_INLINE inline std::optional<T> OverflowSafeAdd(T x, T y) {
-  static_assert(std::is_signed<T>::value,
-                "Only implemented for signed numbers T.");
-  static_assert(std::is_integral<T>::value, "Only implemented for integers T.");
+  static_assert(std::is_signed_v<T>, "Only implemented for signed numbers T.");
+  static_assert(std::is_integral_v<T>, "Only implemented for integers T.");
 #if ABSL_HAVE_BUILTIN(__builtin_add_overflow)
   T result;
   if (ABSL_PREDICT_FALSE(__builtin_add_overflow(x, y, &result))) {
@@ -82,7 +82,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline std::optional<T> OverflowSafeAdd(T x, T y) {
   // "Signed integer overflow occurs on integer addition iff the operands have
   // the same sign and the sum has a sign opposite to that of the operands."
   // Hacker's Delight 2nd ed, p 28.
-  using U = typename std::make_unsigned<T>::type;
+  using U = std::make_unsigned_t<T>;
   const U ux = x;
   const U uy = y;
   const U usum = ux + uy;
@@ -92,6 +92,24 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline std::optional<T> OverflowSafeAdd(T x, T y) {
   }
   return sum;
 #endif
+}
+
+// Rounds non-negative signed integer `value` up to a multiple of positive
+// `align`. Returns std::nullopt if `value < 0`, `align <= 0`, or the rounded
+// result overflows T.
+template <typename T>
+ABSL_ATTRIBUTE_ALWAYS_INLINE inline std::optional<T> OverflowSafeRoundUpTo(
+    T value, T align) {
+  static_assert(std::is_signed_v<T>, "Only implemented for signed numbers T.");
+  static_assert(std::is_integral_v<T>, "Only implemented for integers T.");
+  if (ABSL_PREDICT_FALSE(value < 0 || align <= 0)) {
+    return std::nullopt;
+  }
+  const T rem = value % align;
+  if (rem == 0) {
+    return value;
+  }
+  return OverflowSafeAdd<T>(value, static_cast<T>(align - rem));
 }
 
 }  // namespace xla
