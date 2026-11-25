@@ -721,6 +721,14 @@ bool IsCubCompatibleSort(const se::DeviceDescription& device_description,
     return false;
   }
 
+  const int64_t segment_size = operand_shape.dimensions().back();
+  const int64_t total_items = Product(operand_shape.dimensions());
+  if (total_items == 0 || segment_size <= 1) {
+    VLOG(2) << "Nothing to sort for empty or single-element shape: "
+            << operand_shape.ToString();
+    return false;
+  }
+
   if (!ShouldRewriteCompatibleSort(device_description, sort_op)) {
     VLOG(2) << "Tensor shape and type will not see an improvement.";
     return false;

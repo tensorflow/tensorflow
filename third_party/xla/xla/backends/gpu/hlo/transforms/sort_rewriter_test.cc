@@ -629,6 +629,102 @@ ENTRY %main {
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
+// Empty and single-element sorts should not be rewritten to CUB sort (leaving
+// them for AlgebraicSimplifier / ZeroSizedHloElimination), even in kAlways
+// mode.
+TEST_F(SortRewriterTest, NoRewriteEmptyOrSingleElement) {
+  constexpr char kKeysHloTmpl[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = $0[] parameter(0)
+  %rhs = $0[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = $0[$1] parameter(0)
+  ROOT %sort = $0[$1] sort(%input), dimensions={$2}, to_apply=%compare
+})";
+
+  for (const auto& [type, dims, sort_dim] :
+       std::vector<std::tuple<std::string, std::string, int>>{
+           {"f32", "0", 0},
+           {"f32", "0,100", 1},
+           {"f32", "10,0", 1},
+           {"u8", "1", 0},
+           {"f32", "16,1", 1},
+       }) {
+    std::string hlo = absl::Substitute(kKeysHloTmpl, type, dims, sort_dim);
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    EXPECT_FALSE(RunModuleAndPass(module.get()))
+        << "Unexpectedly rewrote " << type << "[" << dims << "]";
+  }
+
+  constexpr char kPairsHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  %p2 = s32[] parameter(2)
+  %p3 = s32[] parameter(3)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %keys = f32[16,1] parameter(0)
+  %vals = s32[16,1] parameter(1)
+  ROOT %sort = (f32[16,1], s32[16,1]) sort(%keys, %vals), dimensions={1},
+      to_apply=%compare
+})";
+  ASSERT_OK_AND_ASSIGN(auto pairs_module,
+                       ParseAndReturnVerifiedModule(kPairsHlo));
+  EXPECT_FALSE(RunModuleAndPass(pairs_module.get()));
+}
+
+TEST_F(SortRewriterTest, NoRewriteEmptyOrSingleElementAutoMode) {
+  SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAuto);
+  constexpr char kHloTmpl[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = $0[] parameter(0)
+  %rhs = $0[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = $0[$1] parameter(0)
+  ROOT %sort = $0[$1] sort(%input), dimensions={$2}, to_apply=%compare
+})";
+
+  // Shapes that previously slipped past per-architecture kAuto heuristics:
+  // u8[1] / u8[0, 2000] on A100/H100, f16[0, 4096] on Blackwell, and
+  // f32[20000, 1] on fallback heuristics.
+  const std::vector<std::pair<stream_executor::DeviceDescription,
+                              std::tuple<std::string, std::string, int>>>
+      cases = {
+          {TestGpuDeviceInfo::H100SXMDeviceInfo(), {"u8", "1", 0}},
+          {TestGpuDeviceInfo::H100SXMDeviceInfo(), {"u8", "0,2000", 1}},
+          {TestGpuDeviceInfo::RTXA6000DeviceInfo(), {"u8", "1", 0}},
+          {TestGpuDeviceInfo::RTXA6000DeviceInfo(), {"u8", "0,2000", 1}},
+          {TestGpuDeviceInfo::B200SXMDeviceInfo(), {"f16", "0,4096", 1}},
+          {TestGpuDeviceInfo::B200SXMDeviceInfo(), {"f64", "0,16384", 1}},
+          {TestGpuDeviceInfo::AMDMI210DeviceInfo(), {"f32", "20000,1", 1}},
+      };
+
+  for (const auto& [device_info, shape_case] : cases) {
+    const auto& [type, dims, sort_dim] = shape_case;
+    std::string hlo = absl::Substitute(kHloTmpl, type, dims, sort_dim);
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    SortRewriter pass(device_info);
+    ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+    EXPECT_FALSE(changed) << "Unexpectedly rewrote " << type << "[" << dims
+                          << "] on " << device_info.name();
+  }
+}
+
 // Small shapes do not see improvement from CUB sort.
 TEST_F(SortRewriterTest, NoRewriteSmallSize) {
   SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAuto);
