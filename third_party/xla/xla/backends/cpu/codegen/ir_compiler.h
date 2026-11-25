@@ -108,6 +108,10 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
       llvm::CodeGenOptLevel opt_level,
       const TargetMachineOptions& target_machine_options);
 
+  // Initializes the LLVM targets that XLA:CPU can compile for, unless already
+  // initialized. `InferTargetMachine` does this implicitly.
+  static void InitializeTargets();
+
   // Compiles a `module` to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(
       llvm::Module& module) final;
