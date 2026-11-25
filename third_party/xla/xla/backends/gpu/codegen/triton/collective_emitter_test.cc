@@ -376,6 +376,14 @@ INSTANTIATE_TEST_SUITE_P(
             num_ctas: 1
             num_stages: 1
             output_tiles { sizes: 2048 }
+          )pb"},
+         {/* .test_name= */ "F32_262144",
+          /* .shape= */ ShapeUtil::MakeShape(F32, {262144}),
+          /* .expected_proto= */ R"pb(
+            num_warps: 16
+            num_ctas: 1
+            num_stages: 1
+            output_tiles { sizes: 2048 }
           )pb"}}),
     [](const ::testing::TestParamInfo<
         CollectiveBlockLevelConfigParameterizedTest::ParamType>& info) {
