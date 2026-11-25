@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -59,11 +60,20 @@ PjRtMemorySpace* PjRtMemorySpace::FromC(PJRT_Memory* c_space) {
   return static_cast<PjRtMemorySpace*>(owner);
 }
 
+namespace {
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void InvokeUserDataDtor(void (*dtor)(void*),
+                                                       void* data) {
+  if (dtor != nullptr && data != nullptr) {
+    dtor(data);
+  }
+}
+
+}  // namespace
+
 PjRtMemorySpaceCApiDelegator::~PjRtMemorySpaceCApiDelegator() {
   for (auto& [key, value] : user_data_) {
-    if (value.dtor && value.data) {
-      value.dtor(value.data);
-    }
+    InvokeUserDataDtor(value.dtor, value.data);
   }
 }
 
@@ -85,16 +95,12 @@ void PjRtMemorySpaceCApiDelegator::SetUserDataImpl(PJRT_Memory* memory,
                                                    CApiDtor dtor) {
   auto* d = reinterpret_cast<PjRtMemorySpaceCApiDelegator*>(memory);
   if (key == &PjRtMemorySpace::FromC) {
-    if (dtor && data) {
-      dtor(data);
-    }
+    InvokeUserDataDtor(dtor, data);
     return;
   }
   auto it = d->user_data_.find(key);
   if (it != d->user_data_.end()) {
-    if (it->second.dtor && it->second.data) {
-      it->second.dtor(it->second.data);
-    }
+    InvokeUserDataDtor(it->second.dtor, it->second.data);
   }
   if (data == nullptr) {
     d->user_data_.erase(key);
