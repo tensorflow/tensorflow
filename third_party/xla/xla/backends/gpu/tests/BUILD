@@ -806,11 +806,6 @@ _CUDA_ONLY_HLO_TESTS = [
     "pdl.hlo",
 ]
 
-_ROCM_ALLGPU_SKIPPED_HLO_TESTS = [
-    # TODO: re-enable once mi200.txtpb sets registers_per_block_limit.
-    "triton_scan_bf16.hlo",
-]
-
 # Per-GPU skips, on top of _CUDA_ONLY_HLO_TESTS. Each entry should say why.
 _ROCM_SKIPPED_HLO_TESTS = {
     "mi200": [
@@ -822,6 +817,19 @@ _ROCM_SKIPPED_HLO_TESTS = {
         "reduce_unnested.hlo",
         "reduction_vectorization_sm_all.hlo",
         "triton_async_copy.hlo",
+        # TODO: re-enable once mi200.txtpb sets registers_per_block_limit.
+        "triton_scan_bf16.hlo",
+    ],
+    "gfx1250_strict": [
+        # TODO: re-enable once gfx1250_strict.txtpb sets
+        # registers_per_block_limit.
+        "triton_scan_bf16.hlo",
+    ],
+    "mi450": [
+        # TODO: re-enable once mi450.txtpb sets registers_per_block_limit.
+        # Verified failing on mi450: ScanRewriterTriton does not produce the
+        # __triton scan fusion, so the CHECK-HLO block does not match.
+        "triton_scan_bf16.hlo",
     ],
 }
 
@@ -860,7 +868,7 @@ lit_test_suite_for_gpus(
     cfg = "//xla:lit.cfg.py",
     default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
     disabled_on_gpus = {
-        gpu: _ROCM_SKIPPED_HLO_TESTS.get(gpu, []) + _CUDA_ONLY_HLO_TESTS + _ROCM_ALLGPU_SKIPPED_HLO_TESTS
+        gpu: _ROCM_SKIPPED_HLO_TESTS.get(gpu, []) + _CUDA_ONLY_HLO_TESTS
         for gpu in _ROCM_LIT_GPUS
     },
     gpus = _CUDA_LIT_GPUS + _ROCM_LIT_GPUS,

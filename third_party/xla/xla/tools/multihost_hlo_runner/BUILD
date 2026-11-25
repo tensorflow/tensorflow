@@ -542,6 +542,6 @@ xla_py_test(
     env = {"XLA_FLAGS": "--xla_gpu_graph_min_graph_size=1 --xla_gpu_enable_command_buffer=CUSTOM_CALL"},
     exec_properties = tf_exec_properties({"tags": tf_gpu_tests_tags()}),
     main = "python_hlo_runner_ffi_test.py",
-    tags = ["cuda-only"] + tf_gpu_tests_tags(),
+    tags = ["no-oneapi"] + tf_gpu_tests_tags(),
     deps = _FFI_TEST_DEPS,
 )

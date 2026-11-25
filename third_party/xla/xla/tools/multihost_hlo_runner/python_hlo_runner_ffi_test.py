@@ -32,7 +32,7 @@ class PythonHloRunnerFfiTest(parameterized.TestCase):
   )
   def test_handler_bundle(self, with_record):
     is_gpu = _DEVICE.value == "gpu"
-    platform = "CUDA" if is_gpu else "Host"
+    platform = _DEVICE.value if is_gpu else "Host"
     name = self._testMethodName
     handlers = test_lib.handlers()
     if not with_record:
