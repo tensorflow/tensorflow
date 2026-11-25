@@ -128,7 +128,7 @@ class CrossTrainerCache {
   // the sequence. Concurrent `Get` calls can change the answer as soon as this
   // returns. Returns an error if `trainer_id` is empty or the cache has been
   // cancelled.
-  StatusOr<bool> IsElementCached(const std::string& trainer_id) const;
+  absl::StatusOr<bool> IsElementCached(const std::string& trainer_id) const;
 
  private:
   struct CacheQueryResult {
@@ -395,7 +395,7 @@ bool CrossTrainerCache<ElementType>::IsCancelled() const
 }
 
 template <class ElementType>
-StatusOr<bool> CrossTrainerCache<ElementType>::IsElementCached(
+absl::StatusOr<bool> CrossTrainerCache<ElementType>::IsElementCached(
     const std::string& trainer_id) const TF_LOCKS_EXCLUDED(mu_) {
   if (trainer_id.empty()) {
     return absl::InvalidArgumentError(
