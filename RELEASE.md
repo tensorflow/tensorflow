@@ -74,6 +74,11 @@
     indices and loop-invariant params now handles negative `batch_dims` and
     symbolic `axis` tensors instead of raising shape errors or
     `OperatorNotAllowedInGraphError`.
+*   `tf.sparse.sparse_dense_matmul`: fixed an issue where multiplying a dense
+    complex tensor by a `SparseTensor` (or `SparseTensorValue`) as the second
+    argument returned the complex conjugate of the result (and wrong gradients)
+    because the outer transpose omitted `conjugate=True`. Passing two sparse
+    inputs now raises `TypeError` instead of recursing infinitely.
 
 ## Thanks to our Contributors
 

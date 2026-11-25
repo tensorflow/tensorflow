@@ -103,5 +103,56 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
     self._testGradientsType(np.complex64, np.int32)
 
 
+  @test_util.run_deprecated_v1
+  def testDenseSparseGradient(self):
+    """Gradient test when the dense tensor is sp_a and SparseTensor is b."""
+    np.random.seed(23)
+    for values_dtype in (np.float32, np.float64, np.complex64, np.complex128):
+      for adjoint_a in (False, True):
+        for adjoint_b in (False, True):
+          # dense_a has effective shape [n, k]; sp_b has effective shape [k, m].
+          # Output shape is always [n, m].
+          n, k, m = 2, 3, 2
+          # Physical dense tensor: [k, n] when adjoint_a else [n, k]
+          dense_shape = [k, n] if adjoint_a else [n, k]
+          # Physical sparse tensor: [m, k] when adjoint_b else [k, m]
+          sp_shape = [m, k] if adjoint_b else [k, m]
+          out_shape = [n, m]
+
+          dense_t = self._randomTensor(dense_shape, values_dtype)
+
+          # Build a sparse tensor with guaranteed non-zero entries.
+          if values_dtype in (np.complex64, np.complex128):
+            sp_data = (np.random.rand(*sp_shape) + 0.6 +
+                       1j * (np.random.rand(*sp_shape) + 0.6)
+                       ).astype(values_dtype)
+          else:
+            sp_data = (np.random.rand(*sp_shape) + 0.6).astype(values_dtype)
+          sp_t, nnz = self._sparsify(sp_data)
+          if nnz == 0:
+            # Ensure at least one non-zero to make gradient check meaningful.
+            sp_data[0, 0] = values_dtype(1.0)
+            sp_t, nnz = self._sparsify(sp_data)
+          sp_t = sparse_tensor.SparseTensor(
+              indices=sp_t.indices, values=sp_t.values, dense_shape=sp_shape)
+
+          matmul = sparse_ops.sparse_tensor_dense_matmul(
+              dense_t, sp_t, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
+
+          name = ("dense_sparse_matmul_%s_%s_%s" % (
+              adjoint_a, adjoint_b, values_dtype.__name__))
+          with self.cached_session():
+            delta = 1e-3
+            tolerance = 1e-2
+            err = gradient_checker.compute_gradient_error(
+                [dense_t, sp_t.values],
+                [dense_shape, [nnz]],
+                matmul,
+                out_shape,
+                delta=delta)
+            print("%s gradient err = %s" % (name, err))
+            self.assertLess(err, tolerance)
+
+
 if __name__ == "__main__":
   test.main()
