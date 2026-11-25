@@ -129,6 +129,30 @@ TEST(EnvTest, RenameFile) {
   EXPECT_EQ(target_content, "source content");
 }
 
+TEST(EnvTest, NonAsciiDirectoryNames) {
+  Env* env = Env::Default();
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  // U+00E9 and U+738B in UTF-8: "caf\u00e9/\u738b".
+  std::string parent = tsl::io::JoinPath(temp_dir.path(), "caf\xc3\xa9");
+  std::string dir = tsl::io::JoinPath(parent, "\xe7\x8e\x8b");
+  ASSERT_THAT(env->RecursivelyCreateDir(dir), IsOk());
+  EXPECT_THAT(env->IsDirectory(parent), IsOk());
+  EXPECT_THAT(env->IsDirectory(dir), IsOk());
+  EXPECT_THAT(env->RecursivelyCreateDir(tsl::io::JoinPath(dir, "sub")), IsOk());
+  ASSERT_THAT(WriteStringToFile(env, tsl::io::JoinPath(dir, "f.txt"), "x"),
+              IsOk());
+
+  int64_t undeleted_files = 0;
+  int64_t undeleted_dirs = 0;
+  EXPECT_THAT(env->DeleteRecursively(parent, &undeleted_files, &undeleted_dirs),
+              IsOk());
+  EXPECT_EQ(undeleted_files, 0);
+  EXPECT_EQ(undeleted_dirs, 0);
+  EXPECT_TRUE(absl::IsNotFound(env->FileExists(parent)));
+}
+
 TEST(EnvTest, GetMatchingPaths) {
   Env* env = Env::Default();
   ASSERT_OK_AND_ASSIGN(

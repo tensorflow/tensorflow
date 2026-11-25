@@ -632,7 +632,7 @@ absl::Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
                                                   int64_t* undeleted_dirs) {
   absl::Status result;
   std::wstring ws1 = GetUncPathName(TranslateName(dirname));
-  std::string dirname_final(ws1.begin(), ws1.end());
+  std::string dirname_final = WideCharToUtf8(ws1);
   return FileSystem::DeleteRecursively(dirname_final, undeleted_files,
                                        undeleted_dirs);
 }
@@ -659,7 +659,7 @@ absl::Status WindowsFileSystem::GetFileSize(const std::string& fname,
 
 absl::Status WindowsFileSystem::IsDirectory(const std::string& fname) {
   std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
-  std::string str_final_fname(ws_final_fname.begin(), ws_final_fname.end());
+  std::string str_final_fname = WideCharToUtf8(ws_final_fname);
   ABSL_RETURN_IF_ERROR(FileExists(str_final_fname));
   if (PathIsDirectoryW(ws_final_fname.c_str())) {
     return absl::OkStatus();
