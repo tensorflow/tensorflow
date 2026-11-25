@@ -396,6 +396,26 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.count_nonzero(a, axis=-3)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testCountNonzeroScalarAxis(self):
+    for value in (0, 5):
+      for axis in (0, -1, np.int64(0), np.int64(-1)):
+        with self.subTest(value=value, axis=axis):
+          a = np_array_ops.array(value)
+          self.assertAllEqual(
+              np_math_ops.count_nonzero(a, axis=axis),
+              np.count_nonzero(value, axis=axis),
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCountNonzeroScalarTupleAxis(self):
+    a = np_array_ops.array(5)
+    self.assertAllEqual(np_math_ops.count_nonzero(a, axis=()), 1)
+    for axis in ((0,), (-1,)):
+      with self.subTest(axis=axis):
+        with self.assertRaisesRegex(ValueError, 'out of bounds'):
+          np_math_ops.count_nonzero(a, axis=axis)
+
   def testArgMaxArgMin(self):
     data = [
         0,

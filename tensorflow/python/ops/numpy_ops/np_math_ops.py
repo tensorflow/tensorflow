@@ -1799,12 +1799,19 @@ def count_nonzero(a, axis=None):
   a = np_array_ops.array(a)
   maybe_rank = a.shape.rank
   if axis is not None and maybe_rank is not None:
-    # NumPy accepts axis 0 (and -1) on 0-d inputs.
-    validation_rank = max(maybe_rank, 1)
+    # NumPy accepts a single integer axis of 0 or -1 on a scalar, but a
+    # nonempty tuple still names dimensions and is out of bounds.
+    if (
+        maybe_rank == 0
+        and isinstance(axis, (int, np.integer))
+        and not isinstance(axis, bool)
+        and axis in (0, -1)
+    ):
+      return math_ops.count_nonzero(a)
     axes = axis if isinstance(axis, (tuple, list)) else (axis,)
     for ax in axes:
-      normalized = ax + validation_rank if ax < 0 else ax
-      if normalized < 0 or normalized >= validation_rank:
+      normalized = ax + maybe_rank if ax < 0 else ax
+      if normalized < 0 or normalized >= maybe_rank:
         raise ValueError(
             f'Argument `axis` (received axis={ax}) is out of bounds '
             f'for input {a} of rank {maybe_rank}.'
