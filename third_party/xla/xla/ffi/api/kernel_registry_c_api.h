@@ -43,7 +43,7 @@ extern "C" {
 //==============================================================================
 #define XLA_FFI_Extension_KernelRegistry 130
 #define XLA_FFI_Extension_KernelRegistry_MajorVersion 0
-#define XLA_FFI_Extension_KernelRegistry_MinorVersion 4
+#define XLA_FFI_Extension_KernelRegistry_MinorVersion 5
 
 //===----------------------------------------------------------------------===//
 // Kernel Registry Extension API
@@ -64,7 +64,8 @@ enum XLA_FFI_KernelFeatureBits {
 typedef uint32_t XLA_FFI_KernelFeatures;
 
 // Output for registering a device kernel with the XLA runtime.
-// `kernel` is the opaque executable-owned handle. `already_cached` is 0 for the
+// `kernel` is a device-independent descriptor handle owned by the executable,
+// shared across all devices in the executable. `already_loaded` is 0 for the
 // single call that loads the kernel on the current device (across
 // executable-wide deduplication) and non-zero if another call already loaded it
 // or finished loading it concurrently. It does not synchronize caller side
@@ -74,16 +75,20 @@ struct XLA_FFI_KernelRegistry_Register_Result {
   XLA_FFI_InternalExtension* extension_start;
 
   const XLA_FFI_Kernel* kernel;
-  int32_t already_cached;
+  int32_t already_loaded;
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Register_Result,
-                             already_cached);
+                             already_loaded);
 
 // Arguments for registering a device kernel with the XLA runtime.
 // `kernel_spec` describes the kernel name, binary payload (PTX or CUBIN), size,
 // and format. `uses_pdl` is a flag (0 = off, non-zero = on) that says whether
 // the kernel is launched with Programmatic Dependent Launch (PDL).
+// `existing_kernel` is an optional handle returned by an earlier call on the
+// same executable; passing it does not cache anything itself, but lets XLA skip
+// hashing `kernel_spec->data` and looking up the executable-wide map when the
+// kernel is already loaded on the current device.
 // `required_features` is a bitmask of `XLA_FFI_KernelFeatureBits` that the
 // target device must support; registration fails if any requested feature is
 // unsupported.
@@ -94,24 +99,30 @@ struct XLA_FFI_KernelRegistry_Register_Args {
   XLA_FFI_KernelRegistryState* state;
   const XLA_FFI_KernelSpec* kernel_spec;
   int32_t uses_pdl;
-  const XLA_FFI_Kernel* cached_kernel;             // in, optional
-  XLA_FFI_KernelRegistry_Register_Result* result;  // out
   XLA_FFI_KernelFeatures required_features;        // in, optional (0 = none)
+  const XLA_FFI_Kernel* existing_kernel;           // in, optional
+  XLA_FFI_KernelRegistry_Register_Result* result;  // out
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Register_Args,
-                             required_features);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Register_Args, result);
 
-// Registers a device kernel (PTX or CUBIN) for the current device and writes
-// the opaque `XLA_FFI_Kernel*` handle and cache status to `args->result`. Call
-// on every Prepare or Initialize so each device loads the module; pass
-// `cached_kernel` (from a prior call on the same executable) to skip binary
-// hashing and map lookup.
+// Registers a device kernel (PTX or CUBIN) with the executable and loads it on
+// the current device, writing the shared `XLA_FFI_Kernel*` handle and load
+// status to `args->result`.
+//
+// Even though the returned `XLA_FFI_Kernel*` handle is device-independent and
+// shared across all devices in the executable, callers must still call
+// `register_kernel` on every device during Prepare or Initialize so each device
+// loads the module and validates `required_features`. Pass `existing_kernel` (a
+// handle already held from an earlier call on the same executable) so repeated
+// calls on a device where the kernel is already loaded skip binary hashing and
+// map lookup.
 // Valid stages: Prepare, Initialize.
 // Lifetime:
 // - `kernel_spec` (including `name` and `data`) is only read during the call
 //   and does not need to outlive it; binary bytes are not re-checked when
-//   `cached_kernel` is non-null.
+//   `existing_kernel` is already loaded on the current device and metadata
+//   (name, size, format, effective PDL) matches.
 // - The returned `XLA_FFI_Kernel*` is owned by the XLA executable and remains
 //   valid until the executable is destroyed. Passing a handle from a destroyed
 //   executable is undefined behavior.

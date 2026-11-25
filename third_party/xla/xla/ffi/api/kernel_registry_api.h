@@ -54,12 +54,13 @@ struct RequiredFeatures {
 
 // Result of registering a device kernel with `KernelRegistry::Register`.
 struct RegisterResult {
+  // Device-independent handle owned by the executable, shared across devices.
   const XLA_FFI_Kernel* kernel = nullptr;
   // False for the single call that loads the kernel on the current device
   // (across executable-wide deduplication); true if another call already loaded
   // it or finished loading it concurrently. Does not synchronize caller side
   // effects performed after `Register` returns.
-  bool already_cached = false;
+  bool already_loaded = false;
 };
 
 namespace internal {
@@ -80,11 +81,12 @@ class KernelRegistryBase {
                      const XLA_FFI_KernelRegistry_Extension* extension)
       : api_(api), extension_(extension) {}
 
-  // Registers a device kernel (PTX or CUBIN) for the current device and returns
-  // an opaque `XLA_FFI_Kernel*` handle owned by the executable along with
-  // whether it was already cached on this device. Pass a previously returned
-  // `cached_kernel` from the same executable to ensure it is loaded on the
-  // current device without rehashing `data`. Enabled only in
+  // Registers a device kernel (PTX or CUBIN) with the executable and loads it
+  // on the current device, returning the shared `XLA_FFI_Kernel*` handle and
+  // whether it was already loaded on this device. Call on every device in
+  // `kPrepare` or `kInitialize`; pass a previously returned `existing_kernel`
+  // from the same executable to skip binary hashing and map lookup when the
+  // kernel is already loaded on the current device. Enabled only in
   // `ExecutionStage::kPrepare` and `ExecutionStage::kInitialize`.
   template <ExecutionStage s = stage,
             std::enable_if_t<s == ExecutionStage::kPrepare ||
@@ -94,7 +96,7 @@ class KernelRegistryBase {
                                     bool uses_pdl,
                                     RequiredFeatures required_features) {
     return Register(name, data, size, format, uses_pdl, required_features,
-                    /*cached_kernel=*/nullptr);
+                    /*existing_kernel=*/nullptr);
   }
 
   template <ExecutionStage s = stage,
@@ -104,7 +106,7 @@ class KernelRegistryBase {
                                     size_t size, SourceFormat format,
                                     bool uses_pdl,
                                     RequiredFeatures required_features,
-                                    const XLA_FFI_Kernel* cached_kernel) {
+                                    const XLA_FFI_Kernel* existing_kernel) {
     if (data == nullptr) {
       return ErrorPolicy::FromErrorCode(
           XLA_FFI_Error_Code_INVALID_ARGUMENT,
@@ -133,9 +135,9 @@ class KernelRegistryBase {
     args.state = extension_->state;
     args.kernel_spec = &kernel_spec;
     args.uses_pdl = static_cast<int32_t>(uses_pdl);
-    args.cached_kernel = cached_kernel;
-    args.result = &result;
     args.required_features = required_features.bits;
+    args.existing_kernel = existing_kernel;
+    args.result = &result;
 
     if (XLA_FFI_Error* err = extension_->api->register_kernel(&args)) {
       return ErrorPolicy::TakeError(api_, err);
@@ -146,7 +148,7 @@ class KernelRegistryBase {
           "Kernel handle is null but no error was returned during "
           "kernel registration.");
     }
-    return RegisterResult{result.kernel, result.already_cached != 0};
+    return RegisterResult{result.kernel, result.already_loaded != 0};
   }
 
   // Launches a previously registered `XLA_FFI_Kernel*` on the execution stream.

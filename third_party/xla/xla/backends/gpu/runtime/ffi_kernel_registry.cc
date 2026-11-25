@@ -360,7 +360,7 @@ absl::StatusOr<FfiKernelRegistry::RegisterResult> FfiKernelRegistry::Register(
         loaded = true;
         return absl::OkStatus();
       }));
-  return RegisterResult{kernel, /*already_cached=*/!loaded};
+  return RegisterResult{kernel, /*already_loaded=*/!loaded};
 }
 
 absl::Status KernelRegistrationExtension::RegisterImpl(
@@ -372,7 +372,7 @@ absl::Status KernelRegistrationExtension::RegisterImpl(
       args->result, XLA_FFI_KernelRegistry_Register_Result_STRUCT_SIZE,
       "XLA_FFI_KernelRegistry_Register_Result"));
   args->result->kernel = nullptr;
-  args->result->already_cached = 0;
+  args->result->already_loaded = 0;
   // NOLINTNEXTLINE(*-reinterpret-cast): `state` points to `State`.
   const auto* state = reinterpret_cast<const State*>(args->state);
   if (state == nullptr || state->registry == nullptr ||
@@ -388,7 +388,7 @@ absl::Status KernelRegistrationExtension::RegisterImpl(
   }
   const absl::string_view name(spec->name.ptr, spec->name.len);
   const bool use_pdl = state->pdl_enabled && (args->uses_pdl != 0);
-  if (const XLA_FFI_Kernel* cached = args->cached_kernel;
+  if (const XLA_FFI_Kernel* cached = args->existing_kernel;
       cached != nullptr &&
       state->registry->Contains(state->executor->device_ordinal(), cached) &&
       cached->name == name && cached->binary.size() == spec->size &&
@@ -396,7 +396,7 @@ absl::Status KernelRegistrationExtension::RegisterImpl(
     ABSL_RETURN_IF_ERROR(
         ValidateRequiredFeatures(state->executor, args->required_features));
     args->result->kernel = cached;
-    args->result->already_cached = 1;
+    args->result->already_loaded = 1;
     return absl::OkStatus();
   }
   ABSL_ASSIGN_OR_RETURN(FfiKernelRegistry::RegisterResult result,
@@ -404,7 +404,7 @@ absl::Status KernelRegistrationExtension::RegisterImpl(
                                              spec->size, spec->format, use_pdl,
                                              args->required_features));
   args->result->kernel = result.kernel;
-  args->result->already_cached = static_cast<int32_t>(result.already_cached);
+  args->result->already_loaded = static_cast<int32_t>(result.already_loaded);
   return absl::OkStatus();
 }
 

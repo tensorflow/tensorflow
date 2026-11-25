@@ -68,7 +68,7 @@ class FfiKernelRegistry {
     // (across executable-wide deduplication); true if another call already
     // loaded it or finished loading it concurrently. Does not synchronize
     // caller side effects performed after `Register` returns.
-    bool already_cached = false;
+    bool already_loaded = false;
   };
 
   explicit FfiKernelRegistry(int num_devices);

@@ -151,12 +151,12 @@ TEST_F(FfiKernelRegistryTest, RegisterCopiesAndDedupsBinary) {
       ffi::RegisterResult first,
       Register("AddI32", first_copy->data(), first_copy->size(),
                ffi::SourceFormat::kCubin, /*uses_pdl=*/false));
-  EXPECT_FALSE(first.already_cached);
+  EXPECT_FALSE(first.already_loaded);
   first_copy.reset();
   ASSERT_OK_AND_ASSIGN(ffi::RegisterResult second,
                        RegisterFatbinKernel("AddI32", /*uses_pdl=*/false));
   EXPECT_EQ(second.kernel, first.kernel);
-  EXPECT_TRUE(second.already_cached);
+  EXPECT_TRUE(second.already_loaded);
 
   EXPECT_THAT(FindDeviceKernel(first.kernel, executor_->device_ordinal()),
               IsOk());
@@ -306,7 +306,7 @@ TEST_F(FfiKernelRegistryTest, UsesPdlIsFixedAtRegistration) {
                     ffi::SourceFormat::kCubin, /*uses_pdl=*/true,
                     ffi::RequiredFeatures::None(), pdl_res.kernel));
   EXPECT_EQ(gated_res.kernel, no_pdl_res.kernel);
-  EXPECT_TRUE(gated_res.already_cached);
+  EXPECT_TRUE(gated_res.already_loaded);
 }
 
 TEST_F(FfiKernelRegistryTest, RequiredFeaturesMultimemMatchesDeviceSupport) {
@@ -320,10 +320,10 @@ TEST_F(FfiKernelRegistryTest, RequiredFeaturesMultimemMatchesDeviceSupport) {
   };
   if (executor_->is_multicast_supported()) {
     ASSERT_OK_AND_ASSIGN(ffi::RegisterResult first, reg(nullptr));
-    EXPECT_FALSE(first.already_cached);
+    EXPECT_FALSE(first.already_loaded);
     ASSERT_OK_AND_ASSIGN(ffi::RegisterResult second, reg(first.kernel));
     EXPECT_EQ(second.kernel, first.kernel);
-    EXPECT_TRUE(second.already_cached);
+    EXPECT_TRUE(second.already_loaded);
   } else {
     EXPECT_THAT(reg(nullptr), StatusIs(absl::StatusCode::kFailedPrecondition));
   }
@@ -373,7 +373,7 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
   ASSERT_OK_AND_ASSIGN(ffi::RegisterResult res_a,
                        reg(ext0, "k", kBytesA, /*uses_pdl=*/true, nullptr));
   const XLA_FFI_Kernel* kernel_a = res_a.kernel;
-  EXPECT_FALSE(res_a.already_cached);
+  EXPECT_FALSE(res_a.already_loaded);
   EXPECT_TRUE(registry.Contains(0, kernel_a));
   EXPECT_FALSE(registry.Contains(1, kernel_a));
 
@@ -381,16 +381,16 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
   ASSERT_OK_AND_ASSIGN(ffi::RegisterResult fast_hit,
                        reg(ext0, "k", kBytesB, /*uses_pdl=*/true, kernel_a));
   EXPECT_EQ(fast_hit.kernel, kernel_a);
-  EXPECT_TRUE(fast_hit.already_cached);
+  EXPECT_TRUE(fast_hit.already_loaded);
 
   // Unseen device (e1) misses Contains, checks kBytesB, and registers kernel_b.
   ASSERT_OK_AND_ASSIGN(ffi::RegisterResult res_b,
                        reg(ext1, "k", kBytesB, /*uses_pdl=*/true, kernel_a));
   EXPECT_NE(res_b.kernel, kernel_a);
-  EXPECT_FALSE(res_b.already_cached);
+  EXPECT_FALSE(res_b.already_loaded);
 
   // Concurrent calls racing on the same unloaded device (e1) report
-  // !already_cached to exactly one caller, while pre-loaded e0 reports 0.
+  // !already_loaded to exactly one caller, while pre-loaded e0 reports 0.
   std::atomic<int> e0_loads{0};
   std::atomic<int> e1_loads{0};
   {
@@ -404,7 +404,7 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
               ffi::RegisterResult r,
               reg(ext, "k", kBytesA, /*uses_pdl=*/true, kernel_a));
           EXPECT_EQ(r.kernel, kernel_a);
-          if (!r.already_cached) {
+          if (!r.already_loaded) {
             loads.fetch_add(1, std::memory_order_relaxed);
           }
         }
@@ -421,7 +421,7 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
   ASSERT_OK_AND_ASSIGN(ffi::RegisterResult no_pdl,
                        reg(ext0, "k", kBytesA, /*uses_pdl=*/false, kernel_a));
   EXPECT_NE(no_pdl.kernel, kernel_a);
-  EXPECT_FALSE(no_pdl.already_cached);
+  EXPECT_FALSE(no_pdl.already_loaded);
 
   // Foreign registry handle misses Contains and falls back cleanly.
   FfiKernelRegistry other_registry(/*num_devices=*/2);
@@ -434,7 +434,7 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
       ffi::RegisterResult other_kernel,
       reg(other_ext, "k", kBytesA, /*uses_pdl=*/true, kernel_a));
   EXPECT_NE(other_kernel.kernel, kernel_a);
-  EXPECT_FALSE(other_kernel.already_cached);
+  EXPECT_FALSE(other_kernel.already_loaded);
 
   // Missing or undersized result out-struct is rejected.
   XLA_FFI_KernelSpec spec = {XLA_FFI_KernelSpec_STRUCT_SIZE,
@@ -519,9 +519,9 @@ TEST(FfiKernelRegistryCachedTest, RequiredFeaturesValidationRunsBeforeCache) {
   // Registering without required features loads the kernel once on e0.
   ASSERT_OK_AND_ASSIGN(ffi::RegisterResult loaded,
                        reg(ext0, nullptr, ffi::RequiredFeatures::None()));
-  EXPECT_FALSE(loaded.already_cached);
+  EXPECT_FALSE(loaded.already_loaded);
 
-  // Fast-path calls with cached_kernel still validate required features.
+  // Fast-path calls with existing_kernel still validate required features.
   EXPECT_THAT(reg(ext0, loaded.kernel, ffi::RequiredFeatures::Multimem()),
               StatusIs(absl::StatusCode::kFailedPrecondition));
   EXPECT_THAT(reg(ext0, loaded.kernel, kUnknown),
@@ -532,19 +532,19 @@ TEST(FfiKernelRegistryCachedTest, RequiredFeaturesValidationRunsBeforeCache) {
       ffi::RegisterResult e1_loaded,
       reg(ext1, loaded.kernel, ffi::RequiredFeatures::Multimem()));
   EXPECT_EQ(e1_loaded.kernel, loaded.kernel);
-  EXPECT_FALSE(e1_loaded.already_cached);
+  EXPECT_FALSE(e1_loaded.already_loaded);
   ASSERT_OK_AND_ASSIGN(
       ffi::RegisterResult e1_fast,
       reg(ext1, loaded.kernel, ffi::RequiredFeatures::Multimem()));
   EXPECT_EQ(e1_fast.kernel, loaded.kernel);
-  EXPECT_TRUE(e1_fast.already_cached);
+  EXPECT_TRUE(e1_fast.already_loaded);
   ASSERT_OK_AND_ASSIGN(
       FfiKernelRegistry::RegisterResult e1_direct,
       registry.Register(&e1, "k", kBytes, sizeof(kBytes),
                         XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false,
                         XLA_FFI_KERNEL_FEATURE_MULTIMEM));
   EXPECT_EQ(e1_direct.kernel, loaded.kernel);
-  EXPECT_TRUE(e1_direct.already_cached);
+  EXPECT_TRUE(e1_direct.already_loaded);
 }
 
 }  // namespace

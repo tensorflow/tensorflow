@@ -112,7 +112,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
     int32_t device_ordinal = 1;
     bool registered = false;
     bool launched = false;
-    const XLA_FFI_Kernel* last_cached_kernel = nullptr;
+    const XLA_FFI_Kernel* last_existing_kernel = nullptr;
     XLA_FFI_KernelFeatures last_required_features = 0;
   };
 
@@ -131,7 +131,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
     EXPECT_EQ(args->kernel_spec->format, XLA_FFI_SourceFormat_CUBIN);
     EXPECT_EQ(args->uses_pdl, 0);
     state->registered = true;
-    state->last_cached_kernel = args->cached_kernel;
+    state->last_existing_kernel = args->existing_kernel;
     state->last_required_features = args->required_features;
     EXPECT_NE(args->result, nullptr);
     if (args->result == nullptr) {
@@ -140,7 +140,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
     EXPECT_EQ(args->result->struct_size,
               XLA_FFI_KernelRegistry_Register_Result_STRUCT_SIZE);
     args->result->kernel = kExpectedKernel;
-    args->result->already_cached = args->cached_kernel != nullptr ? 1 : 0;
+    args->result->already_loaded = args->existing_kernel != nullptr ? 1 : 0;
     return nullptr;
   };
 
@@ -178,8 +178,8 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
                          "internal_kernel", "cubin!", 6, SourceFormat::kCubin,
                          /*uses_pdl=*/false, RequiredFeatures::None()));
     EXPECT_EQ(first.kernel, kExpectedKernel);
-    EXPECT_FALSE(first.already_cached);
-    EXPECT_EQ(state.last_cached_kernel, nullptr);
+    EXPECT_FALSE(first.already_loaded);
+    EXPECT_EQ(state.last_existing_kernel, nullptr);
     EXPECT_EQ(state.last_required_features, 0u);
     registered_kernel = first.kernel;
     ABSL_ASSIGN_OR_RETURN(RegisterResult cached,
@@ -188,8 +188,8 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
                          /*uses_pdl=*/false, RequiredFeatures::Multimem(),
                          registered_kernel));
     EXPECT_EQ(cached.kernel, kExpectedKernel);
-    EXPECT_TRUE(cached.already_cached);
-    EXPECT_EQ(state.last_cached_kernel, kExpectedKernel);
+    EXPECT_TRUE(cached.already_loaded);
+    EXPECT_EQ(state.last_existing_kernel, kExpectedKernel);
     EXPECT_EQ(state.last_required_features, XLA_FFI_KERNEL_FEATURE_MULTIMEM);
     return absl::OkStatus();
   };
@@ -206,7 +206,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
                          "internal_kernel", "cubin!", 6, SourceFormat::kCubin,
                          /*uses_pdl=*/false, RequiredFeatures::None()));
     EXPECT_EQ(result.kernel, kExpectedKernel);
-    EXPECT_FALSE(result.already_cached);
+    EXPECT_FALSE(result.already_loaded);
     return absl::OkStatus();
   };
 
