@@ -77,18 +77,31 @@ namespace {
 absl::StatusOr<Shape> GetShardedShape(const Shape& shape,
                                       const OpSharding& sharding) {
   ABSL_ASSIGN_OR_RETURN(HloSharding hlo_sharding, HloSharding::FromProto(sharding));
-  if (shape.IsTuple()) {
-    Shape sharded_shape = shape;
-    ShapeUtil::ForEachMutableSubshape(
-        &sharded_shape, [&](Shape* subshape, const ShapeIndex& index) {
-          if (!subshape->IsTuple()) {
-            HloSharding subsharding = hlo_sharding.GetSubSharding(shape, index);
-            *subshape = subsharding.TileShape(*subshape);
-          }
-        });
-    return sharded_shape;
+  if (!shape.IsTuple()) {
+    return hlo_sharding.TileShape(shape);
   }
-  return hlo_sharding.TileShape(shape);
+  if (!hlo_sharding.IsTuple()) {
+    TF_RET_CHECK(!hlo_sharding.IsTiled())
+        << "Expected tuple or non-tiled sharding for tuple shape "
+        << shape.ToString() << ", got " << hlo_sharding.ToString();
+    return shape;
+  }
+  Shape sharded_shape = shape;
+  absl::Span<const HloSharding> tuple_elements = hlo_sharding.tuple_elements();
+  int64_t leaf_index = 0;
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachMutableLeafShapeWithStatus(
+      &sharded_shape,
+      [&](Shape* subshape, const ShapeIndex& /*index*/) -> absl::Status {
+        TF_RET_CHECK(leaf_index < static_cast<int64_t>(tuple_elements.size()));
+        *subshape = tuple_elements[leaf_index++].TileShape(*subshape);
+        return absl::OkStatus();
+      }));
+  TF_RET_CHECK(leaf_index == static_cast<int64_t>(tuple_elements.size()) ||
+               (leaf_index == 0 && tuple_elements.size() == 1))
+      << "Tuple sharding has " << tuple_elements.size()
+      << " elements, but shape " << shape.ToString() << " has " << leaf_index
+      << " leaves";
+  return sharded_shape;
 }
 
 absl::StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {
