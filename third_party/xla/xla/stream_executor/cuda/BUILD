@@ -1862,6 +1862,11 @@ xla_test(
         ],
         "gb200": ["broken"],
         "gb300": ["broken"],
+        "vr_nvl72": [
+            # TODO(b/586216016): re-enable when fixed.
+            "broken",
+            "multi_gpu",
+        ],
     },
     backends = NVIDIA_GPU_DEFAULT_BACKENDS,
     tags = ["cuda-only"],

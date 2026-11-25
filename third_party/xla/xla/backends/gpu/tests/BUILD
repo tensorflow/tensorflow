@@ -1476,6 +1476,11 @@ xla_test(
     ] for gpu in GPU_BACKENDS} | {
         "gb200": ["broken"],
         "gb300": ["broken"],
+        "vr_nvl72": [
+            # TODO(b/586216016): re-enable when fixed.
+            "broken",
+            "multi_gpu",
+        ],
     },
     backends = GPU_DEFAULT_BACKENDS,
     deps = [
