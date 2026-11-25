@@ -292,8 +292,14 @@ absl::Status FixedUnigramSampler::AddWeight(float weight) {
         "Unigram weights must be finite and nonnegative, got ", weight));
   }
   const float distorted_weight = std::pow(weight, distortion_);
-  total_weight_ += distorted_weight;
+  const float new_total = total_weight_ + distorted_weight;
+  if (!std::isfinite(new_total)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Total unigram weight after distortion must be finite; weight: ",
+        weight, ", distortion: ", distortion_));
+  }
   weights_.push_back(distorted_weight);
+  total_weight_ = new_total;
   return absl::OkStatus();
 }
 

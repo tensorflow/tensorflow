@@ -207,6 +207,21 @@ TEST_F(RangeSamplerTest, FixedUnigramRejectsInvalidVectorWeight) {
   }
 }
 
+TEST_F(RangeSamplerTest, FixedUnigramRejectsNonfiniteDistortedWeight) {
+  const float largest = std::numeric_limits<float>::max();
+  FixedUnigramSampler sampler(2, 2.0, 0, 1, 0);
+  const absl::Status status = sampler.SetDistributionSampler({largest, 1.0f});
+  EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+}
+
+TEST_F(RangeSamplerTest, FixedUnigramRejectsNonfiniteTotalWeight) {
+  const float largest = std::numeric_limits<float>::max();
+  FixedUnigramSampler sampler(2, 1.0, 0, 1, 0);
+  const absl::Status status =
+      sampler.SetDistributionSampler({largest, largest});
+  EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+}
+
 TEST_F(RangeSamplerTest, FixedUnigramAcceptsZeroWeight) {
   FixedUnigramSampler sampler(2, 1.0, 0, 1, 0);
   TF_ASSERT_OK(sampler.SetDistributionSampler({0.0f, 3.0f}));

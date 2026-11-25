@@ -385,7 +385,8 @@ def fixed_unigram_candidate_sampler(true_classes,
       distribution.  Each weight is first raised to the distortion's power
       before adding to the internal unigram distribution. As a result,
       `distortion = 1.0` gives regular unigram sampling (as defined by the vocab
-      file), and `distortion = 0.0` gives a uniform distribution.
+      file), and `distortion = 0.0` gives a uniform distribution. The sum of
+      the distorted weights must be finite.
     num_reserved_ids: Optionally some reserved IDs can be added in the range
       `[0, num_reserved_ids)` by the users. One use case is that a special
       unknown word token is used as ID 0. These IDs will have a sampling
