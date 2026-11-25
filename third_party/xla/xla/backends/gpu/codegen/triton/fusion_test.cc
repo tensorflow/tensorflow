@@ -124,6 +124,150 @@ ENTRY entry_computation {
   }
 }
 
+// Each block of a scan fusion processes the whole scan dimension, so its output
+// tile sizes cover only the other dimensions.
+TEST_F(TritonFusionTest, ScanFusionLaunchConfigExcludesScanDimension) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+add_computation {
+  p0 = f32[8,6] parameter(0)
+  p1 = f32[8,6] parameter(1)
+  add = f32[8,6] add(p0, p1)
+  ROOT tuple = (f32[8,6], f32[8,6]) tuple(add, add)
+}
+
+triton_computation {
+  param_0 = f32[8,1000,6] parameter(0)
+  param_1 = f32[8,6] parameter(1)
+  scan = (f32[8,1000,6], f32[8,6]) scan(param_0, param_1), dimensions={1},
+    num_carries=1, is_associative=true, to_apply=add_computation
+  ROOT get-tuple-element = f32[8,1000,6] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  param_0 = f32[8,1000,6] parameter(0)
+  param_1 = f32[8,6] parameter(1)
+  ROOT fusion = f32[8,1000,6] fusion(param_0, param_1), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["2","4"]}],
+                                   "num_warps":"4"}}}
+})"));
+
+  stream_executor::DeviceDescription device_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
+
+  std::optional<TritonFusion::LaunchConfig> launch_config =
+      TritonFusion::GetLaunchConfig(&analysis);
+  ASSERT_NE(launch_config, std::nullopt);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
+            /*ceil(8 / 2) * ceil(6 / 4)=*/8);
+}
+
+TEST_F(TritonFusionTest, ScanFusionLaunchConfigExcludesAllScanDimensions) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+add_12x6 {
+  p0 = f32[12,6] parameter(0)
+  p1 = f32[12,6] parameter(1)
+  add = f32[12,6] add(p0, p1)
+  ROOT tuple = (f32[12,6], f32[12,6]) tuple(add, add)
+}
+
+add_20x6 {
+  p0 = f32[20,6] parameter(0)
+  p1 = f32[20,6] parameter(1)
+  add = f32[20,6] add(p0, p1)
+  ROOT tuple = (f32[20,6], f32[20,6]) tuple(add, add)
+}
+
+triton_computation {
+  param_0 = f32[12,20,6] parameter(0)
+  param_1 = f32[20,6] parameter(1)
+  param_2 = f32[12,6] parameter(2)
+  scan_0 = (f32[12,20,6], f32[20,6]) scan(param_0, param_1), dimensions={0},
+    num_carries=1, is_associative=true, to_apply=add_20x6
+  scan_1 = (f32[12,20,6], f32[12,6]) scan(param_0, param_2), dimensions={1},
+    num_carries=1, is_associative=true, to_apply=add_12x6
+  get-tuple-element.0 = f32[12,20,6] get-tuple-element(scan_0), index=0
+  get-tuple-element.1 = f32[12,20,6] get-tuple-element(scan_1), index=0
+  ROOT add = f32[12,20,6] add(get-tuple-element.0, get-tuple-element.1)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[12,20,6] parameter(0)
+  param_1 = f32[20,6] parameter(1)
+  param_2 = f32[12,6] parameter(2)
+  ROOT fusion = f32[12,20,6] fusion(param_0, param_1, param_2), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["4"]}],
+                                   "num_warps":"4"}}}
+})"));
+
+  stream_executor::DeviceDescription device_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
+
+  std::optional<TritonFusion::LaunchConfig> launch_config =
+      TritonFusion::GetLaunchConfig(&analysis);
+  ASSERT_NE(launch_config, std::nullopt);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
+            /*ceil(6 / 4)=*/2);
+}
+
+// The roots of a same-shape multi-output fusion share their tiling, including
+// the scan dimension.
+TEST_F(TritonFusionTest,
+       MultiOutputScanFusionLaunchConfigExcludesScanDimension) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+add_computation {
+  p0 = f32[6] parameter(0)
+  p1 = f32[6] parameter(1)
+  add = f32[6] add(p0, p1)
+  ROOT tuple = (f32[6], f32[6]) tuple(add, add)
+}
+
+triton_computation {
+  param_0 = f32[100,6] parameter(0)
+  param_1 = f32[6] parameter(1)
+  scan = (f32[100,6], f32[6]) scan(param_0, param_1), dimensions={0},
+    num_carries=1, is_associative=true, to_apply=add_computation
+  get-tuple-element = f32[100,6] get-tuple-element(scan), index=0
+  negate = f32[100,6] negate(param_0)
+  ROOT tuple = (f32[100,6], f32[100,6]) tuple(get-tuple-element, negate)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[100,6] parameter(0)
+  param_1 = f32[6] parameter(1)
+  ROOT fusion = (f32[100,6], f32[100,6]) fusion(param_0, param_1),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["4"]},
+                                                   {"sizes":["4"]}],
+                                   "num_warps":"4"}}}
+})"));
+
+  stream_executor::DeviceDescription device_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
+
+  std::optional<TritonFusion::LaunchConfig> launch_config =
+      TritonFusion::GetLaunchConfig(&analysis);
+  ASSERT_NE(launch_config, std::nullopt);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
+            /*ceil(6 / 4)=*/2);
+}
+
 TEST_F(TritonFusionTest,
        TritonFusionWithoutBlockLevelFusionConfig_LaunchConfigIsNullopt) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(

@@ -2501,6 +2501,36 @@ class ScanTritonEmitterTest : public TritonEmitterTest {
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(module), LiteralUtil::MakePointers(arguments), error_spec));
   }
+
+  // Compiles `hlo_text` with the HLO passes, expects its scan to be emitted as
+  // a Triton fusion, and compares the result with the reference.
+  void RunAndCompareTritonScanWithHloPasses(absl::string_view hlo_text) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo_text));
+    bool has_triton_scan = false;
+    for (const HloInstruction* instr :
+         optimized_module->entry_computation()->instructions()) {
+      if (instr->opcode() == HloOpcode::kFusion &&
+          instr->fusion_kind() == HloInstruction::FusionKind::kCustom &&
+          hlo_query::ContainsInstrWithOpcode(
+              instr->fused_instructions_computation(), {HloOpcode::kScan})) {
+        ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                             instr->backend_config<GpuBackendConfig>());
+        if (gpu_config.fusion_backend_config().kind() == "__triton") {
+          has_triton_scan = true;
+          break;
+        }
+      }
+    }
+    EXPECT_TRUE(has_triton_scan) << optimized_module->ToString();
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
+                         MakeSmallIntegerArguments(*module));
+    EXPECT_TRUE(RunAndCompare(
+        std::move(module), LiteralUtil::MakePointers(arguments), kExactMatch));
+  }
 };
 
 TEST_F(ScanTritonEmitterTest, SingleTileScan) {
@@ -2954,6 +2984,31 @@ ENTRY entry_computation {
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             LiteralUtil::MakePointers(arguments),
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+// Scans over the minor-most dimension are emitted with Triton even if it is not
+// the last dimension. The scan dimension size 30001 is not a multiple of the
+// tile size, so the last tile is partial. Because 30001 is below
+// `kMinLongScanDimSize`, `ScanRewriterTriton` rewrites the scan even with only
+// 32 rows.
+TEST_F(ScanTritonEmitterTest, ScanOverMinorMiddleDimensionOfRank3Input) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[4,8] parameter(1)
+  add = f32[4,8] add(p0, p1)
+  ROOT tuple = (f32[4,8], f32[4,8]) tuple(add, add)
+}
+
+ENTRY entry_computation {
+  p0 = f32[4,30001,8]{1,2,0} parameter(0)
+  p1 = f32[4,8] parameter(1)
+  scan = (f32[4,30001,8]{1,2,0}, f32[4,8]) scan(p0, p1), dimensions={1},
+    num_carries=1, is_associative=true, to_apply=add_computation
+  ROOT get-tuple-element = f32[4,30001,8]{1,2,0} get-tuple-element(scan),
+    index=0
+})";
+  RunAndCompareTritonScanWithHloPasses(kHloText);
 }
 
 TEST_F(ScanTritonEmitterTest, ScanOverMajorDimensionIsNotTritonFused) {

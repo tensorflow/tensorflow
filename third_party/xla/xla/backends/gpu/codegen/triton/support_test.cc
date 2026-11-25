@@ -1245,23 +1245,29 @@ TEST_F(ScanSupportTest, NonAssociativeScanNotSupported) {
   })");
 }
 
-TEST_F(ScanSupportTest, ScanOverNonLastDimensionNotSupported) {
-  ExpectScanNotSupported(
-      "Only scans over the last dimension are supported in Triton.", R"(
-  ENTRY main {
-    param = f32[16,8] parameter(0)
-    init = f32[8] parameter(1)
-    scan = (f32[16,8], f32[8]) scan(param, init), dimensions={0}, to_apply=add,
-      num_carries=1, is_associative=true
-    ROOT gte = f32[16,8] get-tuple-element(scan), index=0
-  })",
-      R"(
+TEST_F(ScanSupportTest, ScanOverNonLastDimensionSupported) {
+  constexpr absl::string_view kHloText = R"(
   add {
     Arg_0 = f32[8] parameter(0)
     Arg_1 = f32[8] parameter(1)
     add = f32[8] add(Arg_0, Arg_1)
     ROOT t = (f32[8], f32[8]) tuple(add, add)
-  })");
+  }
+
+  ENTRY triton_computation {
+    param = f32[16,8] parameter(0)
+    init = f32[8] parameter(1)
+    scan = (f32[16,8], f32[8]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true
+    ROOT gte = f32[16,8] get-tuple-element(scan), index=0
+  })";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(
+                           kHloText, PRIMITIVE_TYPE_INVALID, HloOpcode::kScan));
+  EXPECT_TRUE(IsTritonSupportedInstruction(
+      ti.Instruction(), se::CudaComputeCapability::Hopper()));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{8},
+                 se::CudaComputeCapability::Hopper());
 }
 
 TEST_F(ScanSupportTest, FloatNormalizedAdditiveScanSupported) {

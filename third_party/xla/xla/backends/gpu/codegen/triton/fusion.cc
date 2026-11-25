@@ -32,6 +32,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
@@ -59,6 +61,7 @@ limitations under the License.
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/frontend_attributes.h"
 #include "xla/future.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -351,10 +354,50 @@ xla::Future<KernelReuseCache::Kernel> TritonFusion::EmitKernel(
 }
 
 namespace {
-int64_t GetNumberOfTiles(absl::Span<const int64_t> dimensions,
+// Returns the scan dimensions for the fusion roots of shape `dimensions`.
+// `TilingSpace` tracks the same, but needs an MLIR context.
+llvm::SmallBitVector GetScanDimensions(const HloFusionAnalysis& analysis,
+                                       absl::Span<const int64_t> dimensions) {
+  llvm::SmallBitVector scan_dimensions(dimensions.size());
+  // Same-shape roots share their tiling, so collect the scans of all of them.
+  HloBfsConsumersFirstTraversal(
+      analysis.fusion_roots(), analysis.fusion(),
+      [&](HloInstructionAdaptor node) {
+        if (node.opcode() == HloOpcode::kScan) {
+          const auto* scan = Cast<HloScanInstruction>(&node.instruction());
+          if (scan->shape().IsTuple() &&
+              scan->shape().tuple_shapes(0).dimensions() == dimensions) {
+            scan_dimensions.set(scan->scan_dimension());
+          }
+          return TraversalResult::kSkip;
+        }
+        if ((node.opcode() == HloOpcode::kGetTupleElement ||
+             HloInstruction::IsOpElementwise(node.opcode())) &&
+            node.shape().IsArray() && node.shape().dimensions() == dimensions) {
+          return TraversalResult::kAdvance;
+        }
+        return TraversalResult::kSkip;
+      });
+  return scan_dimensions;
+}
+
+// Returns the number of tiles of a root with shape `dimensions`. Each block of
+// a scan fusion processes the whole scan dimension, so `tile_sizes` only cover
+// the other dimensions.
+int64_t GetNumberOfTiles(const HloFusionAnalysis& analysis,
+                         absl::Span<const int64_t> dimensions,
                          absl::Span<const int64_t> tile_sizes) {
+  llvm::SmallBitVector scan_dimensions =
+      GetScanDimensions(analysis, dimensions);
+  llvm::SmallVector<int64_t> parallel_dimensions;
+  for (auto [index, dim_size] : llvm::enumerate(dimensions)) {
+    if (!scan_dimensions.test(index)) {
+      parallel_dimensions.push_back(dim_size);
+    }
+  }
   int64_t num_tiles = 1;
-  for (auto [dim_size, dim_tile_size] : llvm::zip(dimensions, tile_sizes)) {
+  for (auto [dim_size, dim_tile_size] :
+       llvm::zip(parallel_dimensions, tile_sizes)) {
     num_tiles *= (dim_size + dim_tile_size - 1) / dim_tile_size;
   }
   return num_tiles;
@@ -375,12 +418,12 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::GetLaunchConfig(
   CHECK_EQ(analysis->fusion_root_count(),
            block_level_parameters.output_tile_sizes.size());
   int64_t num_tiles =
-      GetNumberOfTiles(analysis->fusion_root(0).shape().dimensions(),
+      GetNumberOfTiles(*analysis, analysis->fusion_root(0).shape().dimensions(),
                        block_level_parameters.output_tile_sizes[0]);
   for (int64_t i = 1; i < analysis->fusion_root_count(); ++i) {
-    int64_t root_tiles =
-        GetNumberOfTiles(analysis->fusion_root(i).shape().dimensions(),
-                         block_level_parameters.output_tile_sizes[i]);
+    int64_t root_tiles = GetNumberOfTiles(
+        *analysis, analysis->fusion_root(i).shape().dimensions(),
+        block_level_parameters.output_tile_sizes[i]);
     if (analysis->fusion_backend_config().kind() ==
         kTritonCollectiveFusionKind) {
       // Variadic collective fusion: each output has its own tile size, and
