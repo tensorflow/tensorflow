@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -297,7 +299,12 @@ class DeserializeSparseOp : public OpKernel {
                        ", 2] to be a shape vector but its shape is ",
                        (*output_shape)->shape().DebugString()));
     }
-    *output_num_non_zeros = serialized_values.get<Tensor>()->NumElements();
+    const Tensor* values = serialized_values.get<Tensor>();
+    if (values == nullptr) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Could not get a tensor from serialized_sparse[", index, ", 1]"));
+    }
+    *output_num_non_zeros = values->NumElements();
     return absl::OkStatus();
   }
 
