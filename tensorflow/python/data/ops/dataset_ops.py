@@ -1124,9 +1124,10 @@ class DatasetV2(
     datasets with compatible element specs, use `from_tensor_slices` and
     `flat_map` to read them in list order:
 
-    >>> datasets = [a, b, tf.data.Dataset.range(8, 10)]
+    >>> datasets = [tf.data.Dataset.range(start, stop)
+    ...             for start, stop in [(1, 4), (4, 8), (8, 10)]]
     >>> ds = tf.data.Dataset.from_tensor_slices(datasets).flat_map(lambda ds: ds)
-    >>> list(ds.as_numpy_iterator())
+    >>> [value.item() for value in ds.as_numpy_iterator()]
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     Args:
