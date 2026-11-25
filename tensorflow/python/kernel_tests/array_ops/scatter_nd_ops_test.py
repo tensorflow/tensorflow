@@ -1407,5 +1407,61 @@ class ScatterNdTensorDeterminismTest(ScatterNdTensorTest):
       self.assertAllEqual(val, val2)
 
 
+class ScatterNdLargeOutputGpuTest(test.TestCase):
+
+  @test_util.disable_xla(
+      "Test targets ScatterNdOpKernel directly; avoid 4 GiB XLA compilation."
+  )
+  def testLargeOutputTensorGpu(self):
+    if not config.list_physical_devices("GPU"):
+      self.skipTest("GPU is required for this test.")
+    # Note: 4 GiB float16 output skips on CI harnesses capping per-device
+    # memory below 4 GiB.
+    shape = [2**30 + 1, 2]
+    indices = constant_op.constant([[2**30, 1]], dtype=dtypes.int32)
+    updates = constant_op.constant([7.0], dtype=dtypes.float16)
+
+    @def_function.function
+    def ScatterAndSlice():
+      out = array_ops.scatter_nd(indices, updates, shape)
+      return out[2**30, 1], out[0, 0]
+
+    try:
+      with test_util.device(use_gpu=True):
+        val_hit, val_zero = self.evaluate(ScatterAndSlice())
+    except errors.ResourceExhaustedError:
+      self.skipTest("Insufficient GPU memory for large tensor test.")
+    self.assertAllEqual(val_hit, 7.0)
+    self.assertAllEqual(val_zero, 0.0)
+
+  @test_util.disable_xla(
+      "Test targets ScatterNdOpKernel directly; avoid 4 GiB XLA compilation."
+  )
+  def testLargeOutputTensorSliceUpdateGpu(self):
+    if not config.list_physical_devices("GPU"):
+      self.skipTest("GPU is required for this test.")
+    # Note: 4 GiB float16 output skips on CI harnesses capping per-device
+    # memory below 4 GiB.
+    shape = [2**30 + 1, 2]
+    indices = constant_op.constant([[0], [2**30]], dtype=dtypes.int32)
+    updates = constant_op.constant(
+        [[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float16
+    )
+
+    @def_function.function
+    def ScatterAndSlice():
+      out = array_ops.scatter_nd(indices, updates, shape)
+      return out[0], out[2**30], out[1]
+
+    try:
+      with test_util.device(use_gpu=True):
+        val_zero, val_last, val_untouched = self.evaluate(ScatterAndSlice())
+    except errors.ResourceExhaustedError:
+      self.skipTest("Insufficient GPU memory for large tensor test.")
+    self.assertAllEqual(val_zero, [1.0, 2.0])
+    self.assertAllEqual(val_last, [3.0, 4.0])
+    self.assertAllEqual(val_untouched, [0.0, 0.0])
+
+
 if __name__ == "__main__":
   test.main()
