@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
@@ -222,7 +223,7 @@ llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config);
 // Function attribute marking bitcode functions (such as CppGen / YNNPACK
 // intrinsics) whose explicit FMA / non-FMA rounding boundaries must not be
 // altered by `SetAllowContractOnFpArithmetic`.
-inline constexpr absl::string_view kNoFpContractAttr = "xla_no_fp_contract";
+inline constexpr llvm::StringLiteral kNoFpContractAttr = "xla_no_fp_contract";
 
 // Sets the `contract` fast-math flag on every floating-point add, subtract and
 // multiply in `module`, skipping functions carrying `kNoFpContractAttr`.
