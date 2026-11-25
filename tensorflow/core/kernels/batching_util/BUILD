@@ -565,6 +565,7 @@ tf_cc_test(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:batch_kernels",
         "//tensorflow/core/lib/monitoring:cell_reader",
+        "//third_party/gloop/base:context",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
