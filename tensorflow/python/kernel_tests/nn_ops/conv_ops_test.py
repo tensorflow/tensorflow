@@ -1417,6 +1417,19 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
                                      data_format=data_format,
                                      dtype=dtypes.float32)
 
+  @parameterized.parameters(1, 2, 3)
+  @test_util.run_in_graph_and_eager_modes
+  def testGroupedConvolutionRejectsInvalidOutputDepth(self, spatial_rank):
+    inputs = constant_op.constant(1.0, shape=[1] + [2] * spatial_rank + [2])
+    filters = constant_op.constant(1.0, shape=[1] * spatial_rank + [1, 3])
+
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"Depth of output(?: \(3\) is not a| must be a) multiple of the number "
+        r"of groups(?: \(2\)|: 3 vs 2)",
+    ):
+      self.evaluate(nn_ops.convolution(inputs, filters, padding="VALID"))
+
   @test_util.deprecated_graph_mode_only
   @test_util.run_gpu_only
   @test.disable_with_predicate(

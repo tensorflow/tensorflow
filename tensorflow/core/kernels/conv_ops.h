@@ -129,6 +129,10 @@ struct Conv2DDimensions {
 absl::Status InitConv2DParameters(const OpKernelConstruction* context,
                                   Conv2DParameters* params);
 
+// Checks that the output channels can be split evenly among the groups.
+absl::Status ValidateConvOutputDepthForGroups(int64_t out_depth,
+                                              int64_t num_groups);
+
 // Computes and validates convolutions dimensions from Conv2D parameters. If
 // parameters are valid, dimensions will be updated with derived convolution
 // dimensions, otherwise an error will be returned.

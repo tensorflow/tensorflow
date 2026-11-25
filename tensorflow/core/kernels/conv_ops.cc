@@ -103,6 +103,16 @@ absl::Status InitConv2DParameters(const OpKernelConstruction* context,
   return absl::OkStatus();
 }
 
+absl::Status ValidateConvOutputDepthForGroups(int64_t out_depth,
+                                              int64_t num_groups) {
+  if (num_groups > 1 && out_depth % num_groups != 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Depth of output must be a multiple of the number of groups: ",
+        out_depth, " vs ", num_groups));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
                                     const Tensor& input, const Tensor& filter,
                                     Conv2DDimensions* dimensions) {
@@ -147,8 +157,10 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
                   in_depth, " vs ", patch_depth)));
 
   // The last dimension for filter is out_depth.
-  const int out_depth =
-      static_cast<int>(GetFilterDim(filter, filter_format, 'O'));
+  const int64_t out_depth_raw = GetFilterDim(filter, filter_format, 'O');
+  TF_RETURN_IF_ERROR(
+      ValidateConvOutputDepthForGroups(out_depth_raw, in_depth / patch_depth));
+  const int out_depth = static_cast<int>(out_depth_raw);
 
   // The second dimension for input is rows/height.
   // The first dimension for filter is rows/height.

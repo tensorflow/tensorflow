@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_3d.h"
+#include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/conv_ops_impl.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -144,6 +145,8 @@ class Conv3DOp : public BinaryOp<T> {
         context, filter.NumElements() > 0,
         absl::InvalidArgumentError("filter must not have zero elements "
                                    "(i.e. all dimensions must be non-zero)"));
+    OP_REQUIRES_OK(context, ValidateConvOutputDepthForGroups(
+                                out_depth, in_depth / filter_depth));
 
     // Dimension order for these arrays is: z, y, x.
     std::array<int64_t, 3> input_size = {
