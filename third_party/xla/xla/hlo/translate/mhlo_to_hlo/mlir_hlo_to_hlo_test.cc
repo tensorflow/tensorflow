@@ -54,6 +54,7 @@ limitations under the License.
 namespace mlir {
 namespace {
 
+using ::absl_testing::IsOk;
 using testing::_;
 using testing::AllOf;
 using testing::HasSubstr;
@@ -365,7 +366,7 @@ TEST(ConvertMlirHloToHloModuleTest, MemoizesRepeatedNamedShardings) {
   mlir::BaseScopedDiagnosticHandler handler(&context);
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::parseSourceString<mlir::ModuleOp>(kMlirModule, &context);
-  ASSERT_THAT(handler.ConsumeStatus(), ::absl_testing::IsOk());
+  ASSERT_THAT(handler.ConsumeStatus(), IsOk());
   ASSERT_TRUE(module);
 
   MlirToHloConversionOptions options;
@@ -600,6 +601,85 @@ BENCHMARK(BM_ExportWithSharedNamedShardings)
     ->Arg(1000)
     ->Arg(4000)
     ->Arg(16000)
+    ->Unit(benchmark::kMillisecond);
+
+std::string MakeModuleSourceWithManyFunctionsAndCalls(int num_funcs) {
+  std::string source;
+  for (int i = 0; i < num_funcs; ++i) {
+    absl::StrAppend(&source, "func.func private @fn_", i,
+                    "(%arg0: tensor<4xf32>) -> tensor<4xf32> {\n"
+                    "  %0 = stablehlo.negate %arg0 : tensor<4xf32>\n"
+                    "  func.return %0 : tensor<4xf32>\n"
+                    "}\n");
+  }
+  absl::StrAppend(&source,
+                  "func.func @main(%arg0: tensor<4xf32>) -> tensor<4xf32> {\n"
+                  "  %v0 = func.call @fn_0(%arg0) : (tensor<4xf32>) -> "
+                  "tensor<4xf32>\n");
+  for (int i = 1; i < num_funcs; ++i) {
+    absl::StrAppend(&source, "  %v", i, " = func.call @fn_", i, "(%v", i - 1,
+                    ") : (tensor<4xf32>) -> tensor<4xf32>\n");
+  }
+  absl::StrAppend(&source, "  func.return %v", num_funcs - 1,
+                  " : tensor<4xf32>\n}\n");
+  return source;
+}
+
+void BM_ExportWithManyFunctionsAndCalls(benchmark::State& state) {
+  const int num_funcs = state.range(0);
+  const std::string mlir_source =
+      MakeModuleSourceWithManyFunctionsAndCalls(num_funcs);
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
+  CHECK(module);
+
+  MlirToHloConversionOptions options;
+  {
+    xla::HloProto warmup_proto;
+    CHECK_OK(ConvertMlirHloToHlo(*module, &warmup_proto, options));
+  }
+
+  for (auto s : state) {
+    xla::HloProto hlo_proto;
+    CHECK_OK(ConvertMlirHloToHlo(*module, &hlo_proto, options));
+    benchmark::DoNotOptimize(hlo_proto);
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_funcs);
+}
+
+TEST(ConvertMlirHloToHloModuleTest, ConvertsManyFunctionsAndCalls) {
+  const std::string mlir_source = MakeModuleSourceWithManyFunctionsAndCalls(32);
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::BaseScopedDiagnosticHandler handler(&context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
+  ASSERT_THAT(handler.ConsumeStatus(), IsOk());
+  ASSERT_TRUE(module);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
+                       ConvertMlirHloToHloModule(*module));
+  const xla::HloComputation* entry = hlo_module->entry_computation();
+  ASSERT_NE(entry, nullptr);
+  int call_count = 0;
+  for (const xla::HloInstruction* instr : entry->instructions()) {
+    if (instr->opcode() == xla::HloOpcode::kCall) {
+      ++call_count;
+    }
+  }
+  EXPECT_EQ(call_count, 32);
+}
+
+BENCHMARK(BM_ExportWithManyFunctionsAndCalls)
+    ->Arg(500)
+    ->Arg(2000)
+    ->Arg(8000)
     ->Unit(benchmark::kMillisecond);
 
 }  // namespace

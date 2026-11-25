@@ -63,6 +63,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/UseDefLists.h"
 #include "mlir/IR/Value.h"
@@ -1140,14 +1141,17 @@ class ConvertToHloModule {
   explicit ConvertToHloModule(mlir::ModuleOp module,
                               xla::XlaBuilder& module_builder,
                               MlirToHloConversionOptions options)
-      : module_(module), module_builder_(module_builder), options_(options) {}
+      : module_(module),
+        symbol_table_(module),
+        module_builder_(module_builder),
+        options_(options) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
   // encountered.
   //
   // TODO(hinsu): Check for dynamic shapes and exit instead of crashing.
   LogicalResult Run() {
-    auto main = module_.lookupSymbol<mlir::func::FuncOp>(kMain);
+    mlir::func::FuncOp main = LookUpSymbol(kMain);
     if (!main) {
       return module_.emitError(
           "conversion requires module with `main` function");
@@ -1168,7 +1172,7 @@ class ConvertToHloModule {
   LogicalResult RunOnFunction(mlir::func::FuncOp f);
 
   absl::StatusOr<::xla::HloModuleProto> ConsumeMainProto() {
-    auto main = module_.lookupSymbol<mlir::func::FuncOp>(kMain);
+    mlir::func::FuncOp main = LookUpSymbol(kMain);
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
     TF_RET_CHECK(main) << "requires module to have main function";
@@ -1269,8 +1273,11 @@ class ConvertToHloModule {
 
   // Look up a symbol with the specified name, returning null if no such name
   // exists.
+  func::FuncOp LookUpSymbol(llvm::StringRef name) {
+    return symbol_table_.lookup<mlir::func::FuncOp>(name);
+  }
   func::FuncOp LookUpSymbol(FlatSymbolRefAttr symbol) {
-    return module_.lookupSymbol<mlir::func::FuncOp>(symbol);
+    return LookUpSymbol(symbol.getValue());
   }
 
   // Get Reference to lowered XLA computation for a function.
@@ -1304,8 +1311,9 @@ class ConvertToHloModule {
       llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
       llvm::SmallVectorImpl<xla::Shape>* arg_shapes);
 
-  // The module being lowered.
+  // The module being lowered and its cached symbol table.
   mlir::ModuleOp module_;
+  mlir::SymbolTable symbol_table_;
 
   // The top-level XlaBuilder.
   xla::XlaBuilder& module_builder_;
@@ -5763,8 +5771,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
       builder, CreateOpShardingFromAttribute(call_op, this));
 
   auto& value_map = *value_lowering;
-  mlir::func::FuncOp callee =
-      module_.lookupSymbol<mlir::func::FuncOp>(call_op.getCallee());
+  mlir::func::FuncOp callee = LookUpSymbol(call_op.getCallee());
   if (failed(RunOnFunction(callee))) {
     return failure();
   }
