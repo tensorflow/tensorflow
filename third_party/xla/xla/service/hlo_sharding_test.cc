@@ -48,6 +48,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
@@ -1943,6 +1944,97 @@ TEST_F(HloShardingTest, NamedShardingExceedingInt32) {
   EXPECT_TRUE(partially_replicated.HasPartialReplication());
   EXPECT_EQ(partially_replicated.ReplicationFactor(), 2);
   EXPECT_EQ(partially_replicated.NumTiles(), kTwoTo32);
+}
+
+// Iota tile assignments whose replicated or subgroup dims don't align with the
+// iota reshape dims must be materialized; `FromProto` bounds that.
+TEST_F(HloShardingTest, FromProtoRejectsHugeIotaMaterialization) {
+  for (const char* textproto : {
+           R"pb(type: OTHER
+                replicate_on_last_tile_dim: true
+                tile_assignment_dimensions: [ 3, 1073741824 ]
+                iota_reshape_dims: [ 3, 1073741824 ]
+                iota_transpose_perm: [ 1, 0 ])pb",
+           R"pb(type: OTHER
+                tile_assignment_dimensions: [ 3, 1073741824 ]
+                iota_reshape_dims: [ 3, 1073741824 ]
+                iota_transpose_perm: [ 1, 0 ]
+                last_tile_dims: [ REPLICATED ])pb",
+           R"pb(type: OTHER
+                tile_assignment_dimensions: [ 1073741824, 3 ]
+                iota_reshape_dims: [ 1073741824, 3 ]
+                iota_transpose_perm: [ 1, 0 ]
+                last_tile_dims: [ REPLICATED, MANUAL ])pb",
+           R"pb(type: OTHER
+                tile_assignment_dimensions: [ 3, 1073741824 ]
+                iota_reshape_dims: [ 3, 1073741824 ]
+                iota_transpose_perm: [ 1, 0 ]
+                last_tile_dims: [ MANUAL, REPLICATED ])pb",
+       }) {
+    EXPECT_THAT(
+        HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(textproto)),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("too large to materialize")))
+        << textproto;
+  }
+}
+
+TEST_F(HloShardingTest, FromProtoIotaMaterializationBudgetIsSharedByTuples) {
+  // Each leaf materializes 30000 elements; the 2^16 budget fits two leaves.
+  OpSharding tuple;
+  tuple.set_type(OpSharding::TUPLE);
+  const OpSharding leaf = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    replicate_on_last_tile_dim: true
+    tile_assignment_dimensions: [ 3, 10000 ]
+    iota_reshape_dims: [ 3, 10000 ]
+    iota_transpose_perm: [ 1, 0 ]
+  )pb");
+  *tuple.add_tuple_shardings() = leaf;
+  *tuple.add_tuple_shardings() = leaf;
+  EXPECT_OK(HloSharding::FromProto(tuple));
+  *tuple.add_tuple_shardings() = leaf;
+  EXPECT_THAT(HloSharding::FromProto(tuple),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("too large to materialize")));
+}
+
+TEST_F(HloShardingTest, FromProtoIotaWithinMaterializationBudget) {
+  // Huge but aligned: stays iota without materialization.
+  ASSERT_OK_AND_ASSIGN(HloSharding huge,
+                       HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(
+                           R"pb(type: OTHER
+                                replicate_on_last_tile_dim: true
+                                tile_assignment_dimensions: [ 2, 1099511627776 ]
+                                iota_reshape_dims: [ 2199023255552 ]
+                                iota_transpose_perm: [ 0 ])pb")));
+  EXPECT_TRUE(huge.tile_assignment().iota().has_value());
+  // Small and non-aligned: [2,3]<=[2,3]T(1,0) is [[0,3,1],[4,2,5]].
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(
+                  R"pb(type: OTHER
+                       replicate_on_last_tile_dim: true
+                       tile_assignment_dimensions: [ 2, 3 ]
+                       iota_reshape_dims: [ 2, 3 ]
+                       iota_transpose_perm: [ 1, 0 ])pb")),
+              IsOkAndHolds(HloSharding::PartialTile(
+                  Array<int64_t>({2, 3}, {0, 1, 3, 2, 4, 5}))));
+  // [3,2]<=[3,2]T(1,0) is [[0,2],[4,1],[3,5]]; MANUAL first is
+  // [[0,4,3],[2,1,5]], then REPLICATED groups are sorted.
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(
+                  R"pb(type: OTHER
+                       tile_assignment_dimensions: [ 3, 2 ]
+                       iota_reshape_dims: [ 3, 2 ]
+                       iota_transpose_perm: [ 1, 0 ]
+                       last_tile_dims: [ REPLICATED, MANUAL ])pb")),
+              IsOkAndHolds(HloSharding::Subgroup(
+                  Array<int64_t>({2, 3}, {0, 3, 4, 1, 2, 5}),
+                  {OpSharding::MANUAL, OpSharding::REPLICATED})));
+  // Explicit-array merge drops the size-1 REPLICATED dim.
+  EXPECT_THAT(
+      HloSharding::TrySubgroup(Array<int64_t>({2, 1, 3}, {5, 4, 3, 2, 1, 0}),
+                               {OpSharding::REPLICATED, OpSharding::MANUAL}),
+      IsOkAndHolds(HloSharding::Subgroup(
+          Array<int64_t>({2, 3}, {5, 4, 3, 2, 1, 0}), {OpSharding::MANUAL})));
 }
 
 }  // namespace

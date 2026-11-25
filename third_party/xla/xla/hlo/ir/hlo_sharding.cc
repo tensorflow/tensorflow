@@ -290,6 +290,38 @@ absl::Status ValidateSubgroupTypes(
   return absl::OkStatus();
 }
 
+// Maximum total number of tile assignment elements that a single
+// `HloSharding::FromProto` call may materialize from iota (V2) tile assignments
+// into explicit (V1) arrays. Iota tile assignments describe arbitrarily many
+// devices in a few bytes, so materializing them is the only way a small proto
+// can trigger a large allocation. Canonical shardings produced by
+// `HloSharding::ToProto` do not need this; it only applies to iota tile
+// assignments whose replicated or subgroup dimensions do not align with the
+// iota reshape dimensions.
+constexpr int64_t kMaxFromProtoIotaMaterializationElements = int64_t{1} << 16;
+
+// Charges the materialization of `tile_assignment` into an explicit array
+// against `iota_materialization_budget`, if it is an iota tile assignment.
+// A null budget means unlimited.
+absl::Status ChargeIotaMaterialization(const TileAssignment& tile_assignment,
+                                       int64_t* iota_materialization_budget) {
+  if (iota_materialization_budget == nullptr ||
+      !tile_assignment.iota().has_value()) {
+    return absl::OkStatus();
+  }
+  const int64_t num_elements = tile_assignment.num_elements();
+  if (num_elements > *iota_materialization_budget) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Iota tile assignment %s with %d elements is too large to materialize "
+        "(remaining budget: %d elements); use explicit tile_assignment_devices "
+        "instead",
+        tile_assignment.ToString(), num_elements,
+        *iota_materialization_budget));
+  }
+  *iota_materialization_budget -= num_elements;
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 HloSharding HloSharding::SingleDevice(int64_t device_id,
@@ -360,6 +392,14 @@ HloSharding HloSharding::IotaTile(
 absl::StatusOr<HloSharding> HloSharding::TryPartialTile(
     const TileAssignment& tile_assignment_last_dim_replicate,
     absl::Span<const OpMetadata> metadata) {
+  return TryPartialTileImpl(tile_assignment_last_dim_replicate, metadata,
+                            /*iota_materialization_budget=*/nullptr);
+}
+
+absl::StatusOr<HloSharding> HloSharding::TryPartialTileImpl(
+    const TileAssignment& tile_assignment_last_dim_replicate,
+    absl::Span<const OpMetadata> metadata,
+    int64_t* iota_materialization_budget) {
   if (tile_assignment_last_dim_replicate.num_dimensions() == 0) {
     return absl::InvalidArgumentError(
         "PartialTile tile assignment must have at least one dimension");
@@ -402,6 +442,8 @@ absl::StatusOr<HloSharding> HloSharding::TryPartialTile(
     }
   }
 
+  ABSL_RETURN_IF_ERROR(ChargeIotaMaterialization(tile_assignment_last_dim_replicate,
+                                            iota_materialization_budget));
   std::shared_ptr<Array<int64_t>> sorted_tile =
       tile_assignment_last_dim_replicate.shared_array_clone();
   int64_t* sorted_tile_data = sorted_tile->data();
@@ -429,6 +471,15 @@ absl::StatusOr<HloSharding> HloSharding::TrySubgroup(
     const TileAssignment& tile_assignment,
     absl::Span<const OpSharding::Type> subgroup_types,
     absl::Span<const OpMetadata> metadata) {
+  return TrySubgroupImpl(tile_assignment, subgroup_types, metadata,
+                         /*iota_materialization_budget=*/nullptr);
+}
+
+absl::StatusOr<HloSharding> HloSharding::TrySubgroupImpl(
+    const TileAssignment& tile_assignment,
+    absl::Span<const OpSharding::Type> subgroup_types,
+    absl::Span<const OpMetadata> metadata,
+    int64_t* iota_materialization_budget) {
   ABSL_RETURN_IF_ERROR(ValidateTiledAssignment(tile_assignment));
   ABSL_RETURN_IF_ERROR(
       ValidateSubgroupTypes(tile_assignment.num_dimensions(), subgroup_types));
@@ -485,12 +536,14 @@ absl::StatusOr<HloSharding> HloSharding::TrySubgroup(
   needs_merging |= subgroup_count > 1;
   // Make sure the replicate dims are at the end so that we can leverage
   // PartialTile() to sort the elements.
-  auto create_sharding = [](const TileAssignment& tiles,
-                            absl::Span<const OpSharding::Type> types,
-                            absl::Span<const OpMetadata> metadata) {
+  auto create_sharding = [iota_materialization_budget](
+                             const TileAssignment& tiles,
+                             absl::Span<const OpSharding::Type> types,
+                             absl::Span<const OpMetadata> metadata)
+      -> absl::StatusOr<HloSharding> {
     if (types.size() == 1 && types.back() == OpSharding::REPLICATED) {
       // Normalize to partial tile.
-      return PartialTile(tiles, metadata);
+      return TryPartialTileImpl(tiles, metadata, iota_materialization_budget);
     }
     if (types.size() == 1 && types.back() == OpSharding::MANUAL &&
         tiles.num_elements() == tiles.dimensions().back()) {
@@ -501,7 +554,9 @@ absl::StatusOr<HloSharding> HloSharding::TrySubgroup(
       // If the last type is REPLICATED, we first create a partially replicated
       // sharding without other subgroups so that the elements are sorted. Then
       // we fix the subgroup types.
-      HloSharding sharding = PartialTile(tiles, metadata);
+      ABSL_ASSIGN_OR_RETURN(
+          HloSharding sharding,
+          TryPartialTileImpl(tiles, metadata, iota_materialization_budget));
       sharding.replicate_on_last_tile_dim_ = false;
       sharding.subgroup_types_.assign(types.begin(), types.end());
       return sharding;
@@ -513,7 +568,6 @@ absl::StatusOr<HloSharding> HloSharding::TrySubgroup(
         tile_assignment.dimensions().subspan(0, data_dims);
     absl::InlinedVector<int64_t, 6> merged_shape(data_tile_shape.begin(),
                                                  data_tile_shape.end());
-    absl::InlinedVector<int64_t, 6> transposed_shape = merged_shape;
     std::vector<OpSharding::Type> merged_types;
     static constexpr std::array<OpSharding::Type, OpSharding::Type_ARRAYSIZE>
         kOrderedTypes = {OpSharding::MAXIMAL,   OpSharding::TUPLE,
@@ -533,14 +587,15 @@ absl::StatusOr<HloSharding> HloSharding::TrySubgroup(
       for (int64_t dim : dims) {
         perm.push_back(dim);
         dim_size *= tile_assignment.dim(dim);
-        transposed_shape.push_back(tile_assignment.dim(dim));
       }
       merged_shape.push_back(dim_size);
       merged_types.push_back(type);
     }
-    TileAssignment new_tile_assignment = [&] {
+    // Move the removed size-1 dims to the end so that `perm` is a full
+    // permutation of the tile assignment dimensions.
+    absl::c_copy(removed_dims, std::back_inserter(perm));
+    auto merge_tile_assignment = [&]() -> absl::StatusOr<TileAssignment> {
       if (tile_assignment.iota_.has_value()) {
-        absl::c_copy(removed_dims, std::back_inserter(perm));
         std::optional<IotaTileAssignment> transposed_iota =
             tile_assignment.iota_->Transpose(perm);
         if (transposed_iota.has_value()) {
@@ -548,17 +603,16 @@ absl::StatusOr<HloSharding> HloSharding::TrySubgroup(
                                 transposed_iota->transpose_perm());
         }
       }
-      auto new_tiles = std::make_shared<Array<int64_t>>(transposed_shape);
-      new_tiles->Each([&](absl::Span<const int64_t> indices, int64_t* value) {
-        std::vector<int64_t> src_indices(tile_assignment.num_dimensions(), 0);
-        for (int64_t i = 0; i < indices.size(); ++i) {
-          src_indices[perm[i]] = indices[i];
-        }
-        *value = tile_assignment(src_indices);
-      });
+      ABSL_RETURN_IF_ERROR(ChargeIotaMaterialization(tile_assignment,
+                                                iota_materialization_budget));
+      std::shared_ptr<Array<int64_t>> new_tiles =
+          tile_assignment.shared_array_clone();
+      new_tiles->TransposeDimensions(perm);
       new_tiles->Reshape(merged_shape);
       return TileAssignment(std::move(new_tiles));
-    }();
+    };
+    ABSL_ASSIGN_OR_RETURN(TileAssignment new_tile_assignment,
+                     merge_tile_assignment());
 
     return create_sharding(new_tile_assignment, merged_types, metadata);
   }
@@ -1218,6 +1272,13 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
 
 /*static*/ absl::StatusOr<HloSharding> HloSharding::FromProto(
     const OpSharding& proto) {
+  int64_t iota_materialization_budget =
+      kMaxFromProtoIotaMaterializationElements;
+  return FromProtoWithBudget(proto, &iota_materialization_budget);
+}
+
+/*static*/ absl::StatusOr<HloSharding> HloSharding::FromProtoWithBudget(
+    const OpSharding& proto, int64_t* iota_materialization_budget) {
   if (proto.has_named_sharding()) {
     return HloSharding(NamedSharding::FromProto(proto.named_sharding()));
   }
@@ -1227,7 +1288,7 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
       [](const OpMetadata& md) { return md.op_type() == "sdy::reduction_op"; });
 
   if (!has_reduction_op) {
-    return FromProtoInternal(proto);
+    return FromProtoInternal(proto, iota_materialization_budget);
   }
 
   std::vector<OpMetadata> metadata;
@@ -1252,13 +1313,14 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
     *proto_clone.add_metadata() = md;
   }
 
-  ABSL_ASSIGN_OR_RETURN(HloSharding sharding, FromProtoInternal(proto_clone));
+  ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
+                   FromProtoInternal(proto_clone, iota_materialization_budget));
   sharding.set_reduction_op(reduction_op);
   return sharding;
 }
 
 /*static*/ absl::StatusOr<HloSharding> HloSharding::FromProtoInternal(
-    const OpSharding& proto) {
+    const OpSharding& proto, int64_t* iota_materialization_budget) {
   if (proto.has_named_sharding()) {
     return HloSharding(NamedSharding::FromProto(proto.named_sharding()));
   }
@@ -1279,7 +1341,8 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
     tuple_shardings.reserve(proto.tuple_shardings().size());
     for (const OpSharding& tuple_sharding_proto : proto.tuple_shardings()) {
       ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
-                       HloSharding::FromProto(tuple_sharding_proto));
+                       FromProtoWithBudget(tuple_sharding_proto,
+                                           iota_materialization_budget));
       tuple_shardings.push_back(std::move(sharding));
     }
     return std::move(
@@ -1361,12 +1424,14 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
   if (!subgroup_types.empty()) {
     TF_RET_CHECK(!proto.replicate_on_last_tile_dim());
     ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
-                     TrySubgroup(tile_assignment, subgroup_types, metadata));
+                     TrySubgroupImpl(tile_assignment, subgroup_types, metadata,
+                                     iota_materialization_budget));
     return std::move(sharding.SetShardGroupFromProto(proto));
   }
   if (proto.replicate_on_last_tile_dim()) {
     ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
-                     TryPartialTile(tile_assignment, metadata));
+                     TryPartialTileImpl(tile_assignment, metadata,
+                                        iota_materialization_budget));
     return std::move(sharding.SetShardGroupFromProto(proto));
   }
   ABSL_ASSIGN_OR_RETURN(HloSharding sharding,

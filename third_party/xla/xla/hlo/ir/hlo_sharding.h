@@ -1006,7 +1006,28 @@ class HloSharding {
   }
   friend class HloShardingTestHelper;
 
-  static absl::StatusOr<HloSharding> FromProtoInternal(const OpSharding& proto);
+  // Implementation of `FromProto`. Materializing iota tile assignments into
+  // explicit arrays is charged against `iota_materialization_budget`, which is
+  // shared across all elements of a tuple sharding.
+  static absl::StatusOr<HloSharding> FromProtoWithBudget(
+      const OpSharding& proto, int64_t* iota_materialization_budget);
+  static absl::StatusOr<HloSharding> FromProtoInternal(
+      const OpSharding& proto, int64_t* iota_materialization_budget);
+
+  // Implementations of `TryPartialTile` and `TrySubgroup`. If
+  // `iota_materialization_budget` is non-null, falling back from an iota tile
+  // assignment to an explicit array of N elements fails with InvalidArgument if
+  // N exceeds `*iota_materialization_budget`, and otherwise decrements it by N.
+  // A null budget means unlimited.
+  static absl::StatusOr<HloSharding> TryPartialTileImpl(
+      const TileAssignment& tile_assignment_last_dim_replicate,
+      absl::Span<const OpMetadata> metadata,
+      int64_t* iota_materialization_budget);
+  static absl::StatusOr<HloSharding> TrySubgroupImpl(
+      const TileAssignment& tile_assignment,
+      absl::Span<const OpSharding::Type> subgroup_types,
+      absl::Span<const OpMetadata> metadata,
+      int64_t* iota_materialization_budget);
 
   // Checks that the number of elements in tuple_elements_ is consistent with
   // the argument `shape`.
