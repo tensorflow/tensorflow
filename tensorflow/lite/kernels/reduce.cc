@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/optimized/reduce.h"
+#include "tensorflow/lite/kernels/internal/optimized/reduce_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reduce_common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -358,6 +360,7 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* absl_nonnull context,
                     GetTemporarySafe(context, node, /*index=*/2, &temp_accum));
   switch (op_context.input->type) {
     case kTfLiteFloat32:
+    case kTfLiteFloat16:
       temp_accum->type = kTfLiteFloat32;
       break;
     case kTfLiteInt32:
@@ -433,6 +436,11 @@ TfLiteStatus ValidateInputType(TfLiteContext* absl_nonnull context,
                                TfLiteType input_type) {
   switch (op) {
     case kTfLiteBuiltinSum:
+      if (IsBasicReduceInputTypeSupported(input_type) ||
+          input_type == kTfLiteFloat16) {
+        return kTfLiteOk;
+      }
+      break;
     case kTfLiteBuiltinMean:
     case kTfLiteBuiltinReduceProd:
     case kTfLiteBuiltinReduceMin:
@@ -465,6 +473,8 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE_OK(context, CreateOpContext(context, node, op_context));
   TF_LITE_ENSURE_OK(context,
                     ValidateInputType(context, op, op_context.input->type));
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
+                          op_context.output->type);
   TF_LITE_ENSURE(context, op_context.axis != nullptr);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
@@ -1175,12 +1185,142 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+// Evaluates float16 SUM by accumulating in float32 via the temporary
+// accumulator tensor (`temp_sum`) and converting back to float16 once on
+// writeback, avoiding binary16 stagnation and intermediate overflow.
+template <KernelType kernel_type>
+TfLiteStatus EvalFloat16Sum(TfLiteContext* absl_nonnull context,
+                            TfLiteNode* absl_nonnull node,
+                            OpContext& op_context) {
+  int num_axis = 0;
+  TF_LITE_ENSURE_OK(context,
+                    kernel_utils::CheckedTensorElementsAndData(
+                        context, *op_context.axis, "Reduce", num_axis));
+  TfLiteTensor* temp_index;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/0, &temp_index));
+  TfLiteTensor* resolved_axis;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
+  TfLiteTensor* temp_sum;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
+  // Resize the output and temporary tensors if the output tensor is dynamic.
+  if (IsDynamicTensor(op_context.output)) {
+    TF_LITE_ENSURE_OK(context,
+                      ResizeTempAxis(context, num_axis, *resolved_axis));
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, op_context));
+    TF_LITE_ENSURE_OK(context, ResizeTempAccum(context, op_context, *temp_sum));
+  }
+  TfLiteTensor* normalized_dims = nullptr;
+  if constexpr (kernel_type == kGenericOptimized) {
+    TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/3,
+                                                &normalized_dims));
+    if (IsDynamicTensor(normalized_dims)) {
+      TF_LITE_ENSURE_OK(context,
+                        ResizeTempDims(context, op_context, *normalized_dims));
+    }
+  }
+
+  const TfLiteTensor* input = op_context.input;
+  TfLiteTensor* output = op_context.output;
+  constexpr ElementCountLimit data_limit =
+      ElementCountLimitForKernel<kernel_type>();
+  TF_LITE_ENSURE_OK(context, ValidateTensorData(context, *input, data_limit));
+  size_t num_outputs = 0;
+  TF_LITE_ENSURE_OK(context,
+                    kernel_utils::GetTensorElementCountAndValidateData(
+                        context, *output, "Reduce", data_limit, num_outputs));
+  size_t temp_sum_elements = 0;
+  TF_LITE_ENSURE_OK(context, kernel_utils::GetTensorElementCountAndValidateData(
+                                 context, *temp_sum, "Reduce", data_limit,
+                                 temp_sum_elements));
+  TF_LITE_ENSURE_EQ(context, temp_sum_elements, num_outputs);
+
+  const half* input_data = GetTensorData<half>(input);
+  half* output_data = GetTensorData<half>(output);
+  float* temp_sum_data = GetTensorData<float>(temp_sum);
+  const int* axis_data = GetTensorData<int>(op_context.axis);
+
+  if constexpr (kernel_type == kReference) {
+    int num_resolved_axis = 0;
+    TF_LITE_ENSURE(context,
+                   reference_ops::ResolveAxis(
+                       input->dims->size, axis_data, num_axis,
+                       GetTensorData<int>(resolved_axis), &num_resolved_axis));
+    const absl::Span<const int> input_dims = absl::MakeConstSpan(
+        input->dims->data, static_cast<size_t>(input->dims->size));
+    if (absl::c_contains(input_dims, 0)) {
+      for (size_t idx = 0; idx < num_outputs; ++idx) {
+        output_data[idx] = half::sum_identity();
+      }
+      return kTfLiteOk;
+    }
+    if (num_resolved_axis == 0) {
+      for (size_t idx = 0; idx < num_outputs; ++idx) {
+        output_data[idx] = input_data[idx];
+      }
+      return kTfLiteOk;
+    }
+    for (size_t idx = 0; idx < num_outputs; ++idx) {
+      temp_sum_data[idx] = 0.0f;
+    }
+    TF_LITE_ENSURE(context,
+                   (reference_ops::ReduceSumImpl<half, float>(
+                       input_data, input->dims->data, output->dims->data,
+                       input->dims->size, output->dims->size,
+                       GetTensorData<int>(resolved_axis), num_resolved_axis,
+                       GetTensorData<int>(temp_index), temp_sum_data)));
+  } else {
+    int num_resolved_axis = 0;
+    int normalized_num_dims = 0;
+    TF_LITE_ENSURE(context,
+                   reduce_utils::ResolveAxis(
+                       input->dims->size, axis_data, num_axis,
+                       GetTensorData<int>(resolved_axis), num_resolved_axis,
+                       input->dims->data, GetTensorData<int>(normalized_dims),
+                       normalized_num_dims));
+    if (num_resolved_axis == 0) {
+      TF_LITE_ENSURE(
+          context, optimized_ops::ReduceIsCopy(input_data, input->dims->data,
+                                               input->dims->size, output_data));
+      return kTfLiteOk;
+    }
+    const absl::Span<const int> normalized_input_dims =
+        absl::MakeConstSpan(GetTensorData<int>(normalized_dims),
+                            static_cast<size_t>(normalized_num_dims));
+    if (absl::c_contains(normalized_input_dims, 0)) {
+      for (size_t idx = 0; idx < num_outputs; ++idx) {
+        output_data[idx] = half::sum_identity();
+      }
+      return kTfLiteOk;
+    }
+    TF_LITE_ENSURE(
+        context, (optimized_ops::Reduce<half, float,
+                                        optimized_ops::CastSumOp<half, float>,
+                                        optimized_ops::CastSumOp<half, float>>(
+                     input_data, GetTensorData<int>(normalized_dims),
+                     normalized_num_dims, GetTensorData<int>(resolved_axis),
+                     num_resolved_axis, temp_sum_data,
+                     optimized_ops::CastSumOp<half, float>(),
+                     optimized_ops::CastSumOp<half, float>())));
+  }
+
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = half(temp_sum_data[idx]);
+  }
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
 TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context;
   TF_LITE_ENSURE_OK(context, CreateOpContext(context, node, op_context));
   ruy::profiler::ScopeLabel label("Sum");
   const auto& input = op_context.input;
+  if (input->type == kTfLiteFloat16) {
+    return EvalFloat16Sum<kernel_type>(context, node, op_context);
+  }
   const bool quantized = input->type == kTfLiteUInt8 ||
                          input->type == kTfLiteInt8 ||
                          input->type == kTfLiteInt16;

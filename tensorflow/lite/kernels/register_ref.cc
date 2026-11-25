@@ -444,7 +444,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SUM, Register_SUM_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD_REF(),
              /* min_version = */ 1,
              /* max_version = */ 2);
