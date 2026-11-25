@@ -833,13 +833,13 @@ class UnaryOpTest(test.TestCase):
         # Use hardcoded expected values for boundary/pole inputs to avoid
         # scipy inconsistencies (e.g., scipy returns nan for digamma(0.0) in
         # some environments). The key behaviors being tested:
-        #   x=0.0, x=-0.0 -> -inf  (pole fix: PR #111945)
+        #   x=0.0 -> -inf, x=-0.0 -> +inf  (the sign of zero picks the side)
         #   x=-1.0, x=-2.0 -> nan  (negative integer poles)
         expected = np.array([
             -0.57721566490153286,  # digamma(1.0)   = -euler_mascheroni
             -1.9635100260214238,  # digamma(0.5)
             -np.inf,  # digamma(0.0)   -> -inf (pole)
-            -np.inf,  # digamma(-0.0)  -> -inf (pole)
+            np.inf,  # digamma(-0.0)  -> +inf (limit from the left)
             np.nan,  # digamma(-1.0)  -> nan (negative integer)
             np.nan,  # digamma(-2.0)  -> nan (negative integer)
             0.7031566378415714,  # digamma(2.5)
@@ -854,6 +854,16 @@ class UnaryOpTest(test.TestCase):
 
         # Always check the full array including boundary/pole values.
         self.assertAllClose(expected, y_val)
+
+  def testDigammaSignedZero(self):
+    # Long enough to reach packetOp on devices with a packet digamma.
+    x = np.tile([0.0, -0.0], 16)
+    expected = np.tile([-np.inf, np.inf], 16)
+    for dtype in [np.float16, np.float32, np.float64]:
+      with self.subTest(dtype=dtype), self.cached_session():
+        x_tf = constant_op.constant(x.astype(dtype))
+        y_val = self.evaluate(math_ops.digamma(x_tf))
+        self.assertAllEqual(expected.astype(dtype), y_val)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def testLogSigmoidSecondDerivativePreservesSmallValue(self):

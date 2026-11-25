@@ -801,9 +801,10 @@ struct functor_traits<scalar_erfinv_op<T>> {
 };
 
 // digamma has poles at zero and at the negative integers. Eigen's
-// scalar_digamma_op returns NaN for all of them; TensorFlow returns -inf at
-// zero (the limit from the right) and NaN at the negative integers, matching
-// the XLA lowering in xla/hlo/builder/lib/math.cc.
+// scalar_digamma_op returns NaN for all of them. At zero the limit is -inf from
+// the right and +inf from the left, so the sign of the zero picks the side, and
+// at the negative integers TensorFlow returns NaN, matching the XLA lowering in
+// xla/hlo/builder/lib/math.cc.
 template <typename Scalar>
 struct digamma_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
@@ -815,7 +816,9 @@ struct digamma_op {
       }
     }
     if (x == Scalar(0.)) {
-      return -Eigen::NumTraits<Scalar>::infinity();
+      return std::signbit(static_cast<double>(x))
+                 ? Eigen::NumTraits<Scalar>::infinity()
+                 : -Eigen::NumTraits<Scalar>::infinity();
     }
     return Eigen::internal::scalar_digamma_op<Scalar>()(x);
   }
@@ -830,7 +833,9 @@ struct digamma_op {
     Packet is_unsafe = por(is_zero, is_negative_integer);
     Packet safe_x = pselect(is_unsafe, pset1<Packet>(Scalar(1.)), x);
 
-    Packet infs = pset1<Packet>(-Eigen::NumTraits<Scalar>::infinity());
+    // -inf for +0 and +inf for -0: x's sign bit flips the sign of -inf.
+    Packet infs = pxor(pset1<Packet>(-Eigen::NumTraits<Scalar>::infinity()),
+                       pand(x, pset1<Packet>(Scalar(-0.))));
     Packet nans = pset1<Packet>(Eigen::NumTraits<Scalar>::quiet_NaN());
     Packet digamma_x =
         Eigen::internal::scalar_digamma_op<Scalar>().packetOp(safe_x);
