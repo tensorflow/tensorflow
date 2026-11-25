@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/operator.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <map>
 #include <memory>
@@ -1662,11 +1663,20 @@ class TensorFlowUnsupported : public BaseOperator {
       return std::unique_ptr<flexbuffers::Builder>(fbb.release());
     }
 
+    std::vector<std::pair<const std::string*, const ::tensorflow::AttrValue*>>
+        sorted_attrs;
+    sorted_attrs.reserve(node_def.attr().size());
+    for (const auto& pair : node_def.attr()) {
+      sorted_attrs.emplace_back(&pair.first, &pair.second);
+    }
+    std::sort(sorted_attrs.begin(), sorted_attrs.end(),
+              [](const auto& a, const auto& b) { return *a.first < *b.first; });
+
     bool has_valid_attr = false;
     size_t map_start = fbb->StartMap();
-    for (const auto& pair : node_def.attr()) {
-      const char* key = pair.first.c_str();
-      const auto& attr = pair.second;
+    for (const auto& pair : sorted_attrs) {
+      const char* key = pair.first->c_str();
+      const auto& attr = *pair.second;
       switch (attr.value_case()) {
         case ::tensorflow::AttrValue::kS:
           fbb->String(key, attr.s());
