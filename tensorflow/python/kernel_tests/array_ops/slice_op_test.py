@@ -51,6 +51,41 @@ class SliceTest(test.TestCase):
         slice_val = self.evaluate(slice_t)
       self.assertAllEqual(slice_val, inp[2, k:k])
 
+  def testInclusiveEndWithTensorBounds(self):
+    @def_function.function
+    def reverse_through(end):
+      return array_ops.strided_slice(
+          [1, 2, 3, 4], [2], end, [-1], inclusive_end=True)
+
+    for dtype in (dtypes.int16, dtypes.int32, dtypes.int64):
+      for end, expected in ((0, [3, 2, 1]), (1, [3, 2]), (-2, [3])):
+        self.assertAllEqual(expected, reverse_through(
+            constant_op.constant([end], dtype=dtype)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInclusiveEndBoundaries(self):
+    x = [0, 1, 2, 3, 4]
+    for begin, end, stride, expected in (
+        (0, -1, 1, x), (0, 3, 2, [0, 2]), (4, -3, -2, [4, 2]),
+        (0, dtypes.int64.max, 1, x), (4, dtypes.int64.min, -1, x[::-1]),
+        (4, 0, 1, [])):
+      with self.subTest(begin=begin, end=end, stride=stride):
+        self.assertAllEqual(expected, array_ops.strided_slice(
+            x, [begin], [end], [stride], inclusive_end=True))
+
+    self.assertAllEqual([1, 2], array_ops.strided_slice(
+        x, [1], [2], inclusive_end=True))
+    self.assertAllEqual([4, 3, 2, 1, 0], array_ops.strided_slice(
+        x, [4], [3], [-1], end_mask=1, inclusive_end=True))
+    self.assertAllEqual([[2, 1], [5, 4]], array_ops.strided_slice(
+        [[0, 1, 2], [3, 4, 5]], [0, 2], [1, 1], [1, -1], inclusive_end=True))
+
+  def testInclusiveEndWithNarrowIndex(self):
+    x = math_ops.range(32769)
+    end = constant_op.constant([-1], dtype=dtypes.int16)
+    result = array_ops.strided_slice(x, [32767], end, inclusive_end=True)
+    self.assertAllEqual([32767, 32768], result)
+
   def testSlicingWithInt64Index(self):
     with self.cached_session(force_gpu=test.is_gpu_available()):
       a = constant_op.constant([0, 1, 2], dtype=dtypes.int32)

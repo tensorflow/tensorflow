@@ -1016,6 +1016,28 @@ def slice(input_, begin, size, name=None):
   return gen_array_ops._slice(input_, begin, size, name=name)
 
 
+def _inclusive_slice_indices(begin, end, strides):
+  """Translate an inclusive end to the exclusive end used by StridedSlice."""
+  indices = []
+  for value in (begin, end, strides):
+    index = ops.convert_to_tensor(value, preferred_dtype=dtypes.int64)
+    if index.dtype not in (dtypes.int16, dtypes.int32, dtypes.int64):
+      raise TypeError(
+          f"Slice indices must be int16, int32 or int64, got {index.dtype.name}.")
+    indices.append(gen_math_ops.cast(index, dtypes.int64))
+  begin, end, strides = indices
+
+  # Incrementing -1 would wrap back to the first element. Likewise,
+  # decrementing 0 would wrap to the last. StridedSlice clips the int64
+  # extrema to the open boundaries for any input dimension.
+  lo, hi = dtypes.int64.min, dtypes.int64.max
+  forward = gen_math_ops.select_v2(
+      gen_math_ops.equal(end, -1), hi, gen_math_ops.minimum(end, hi - 1) + 1)
+  backward = gen_math_ops.select_v2(
+      gen_math_ops.equal(end, 0), lo, gen_math_ops.maximum(end, lo + 1) - 1)
+  return begin, gen_math_ops.select(strides > 0, forward, backward), strides
+
+
 # pylint: disable=invalid-name
 @tf_export("strided_slice")
 @dispatch.add_dispatch_support
@@ -1029,7 +1051,8 @@ def strided_slice(input_,
                   new_axis_mask=0,
                   shrink_axis_mask=0,
                   var=None,
-                  name=None):
+                  name=None,
+                  inclusive_end=False):
   """Extracts a strided slice of a tensor (generalized Python array indexing).
 
   See also `tf.slice`.
@@ -1111,6 +1134,10 @@ def strided_slice(input_,
     shrink_axis_mask: An `int32` mask.
     var: The variable corresponding to `input_` or None
     name: A name for the operation (optional).
+    inclusive_end: A Python bool. If True, include an end index when the stride
+      reaches it. Indices are still zero-based. For example, slicing
+      `[1, 2, 3, 4]` with `begin=[2]`, `end=[0]`, and `strides=[-1]`
+      returns `[3, 2, 1]`. Masked end indices are ignored as usual.
 
   Returns:
     A `Tensor` the same type as `input`.
@@ -1118,6 +1145,9 @@ def strided_slice(input_,
 
   if strides is None:
     strides = ones_like(begin)
+
+  if inclusive_end:
+    begin, end, strides = _inclusive_slice_indices(begin, end, strides)
 
   op = gen_array_ops.strided_slice(
       input=input_,
