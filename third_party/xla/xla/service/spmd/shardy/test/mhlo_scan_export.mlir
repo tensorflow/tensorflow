@@ -811,3 +811,42 @@ func.func private @scan_dim_sharded_indivisible_multi_input_2d(
       -> (tensor<7x7xf32>, tensor<7x7xi32>, tensor<7xf32>, tensor<7xi32>)
   return %0#0, %0#1, %0#2, %0#3 : tensor<7x7xf32>, tensor<7x7xi32>, tensor<7xf32>, tensor<7xi32>
 }
+
+// -----
+
+sdy.mesh @mesh_x = <["x"=2]>
+
+// Uses i64 global scan indices and limit constant when the padded global scan
+// dimension exceeds INT32_MAX (size 2147483649 on 2 shards -> padded to
+// 2147483650, local size 1073741825).
+// CHECK-LABEL: func private @scan_dim_sharded_indivisible_large_scan_dim
+// CHECK-SAME: (%arg0: tensor<1073741825x2xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{"x"}, {}]>},
+// CHECK-SAME:  %arg1: tensor<2xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{}]>})
+// CHECK-SAME: -> (tensor<1073741825x2xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{"x"}, {}]>},
+// CHECK-SAME:     tensor<2xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{}]>})
+func.func private @scan_dim_sharded_indivisible_large_scan_dim(
+    %arg0: tensor<2147483649x2xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{"x"}, {}]>},
+    %arg1: tensor<2xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{}]>})
+    -> (tensor<2147483649x2xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{"x"}, {}]>},
+        tensor<2xf32> {sdy.sharding = #sdy.sharding<@mesh_x, [{}]>}) {
+  // CHECK:      %[[BASE_IOTA:.*]] = stablehlo.iota dim = 0 : tensor<1073741825xi64>
+  // CHECK:      %[[GLOBAL_IDX:.*]] = stablehlo.add %[[BASE_IOTA]], {{.*}} : tensor<1073741825xi64>
+  // CHECK-NEXT: %[[LAST_IDX_SLICE1:.*]] = stablehlo.slice %[[GLOBAL_IDX]] [1073741824:1073741825] {{.*}}: (tensor<1073741825xi64>) -> tensor<1xi64>
+  // CHECK-NEXT: %[[LAST_IDX1:.*]] = stablehlo.reshape %[[LAST_IDX_SLICE1]] {{.*}}: (tensor<1xi64>) -> tensor<i64>
+  // CHECK-NEXT: %[[LIMIT1:.*]] = stablehlo.constant dense<2147483649> : tensor<i64>
+  // CHECK-NEXT: %[[IS_LAST_SHARD1:.*]] = stablehlo.compare GE, %[[LAST_IDX1]], %[[LIMIT1]] : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  // CHECK:      %[[LAST_IDX_SLICE3:.*]] = stablehlo.slice %[[GLOBAL_IDX]] [1073741824:1073741825] {{.*}}: (tensor<1073741825xi64>) -> tensor<1xi64>
+  // CHECK-NEXT: %[[LAST_IDX3:.*]] = stablehlo.reshape %[[LAST_IDX_SLICE3]] {{.*}}: (tensor<1xi64>) -> tensor<i64>
+  // CHECK-NEXT: %[[LIMIT3:.*]] = stablehlo.constant dense<2147483649> : tensor<i64>
+  // CHECK-NEXT: %[[IS_LAST_SHARD3:.*]] = stablehlo.compare GE, %[[LAST_IDX3]], %[[LIMIT3]] : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  %0:2 = mhlo.scan (%arg0) inits (%arg1) dimension=0 attributes {
+      is_associative = true,
+      is_reverse = true,
+      sdy.sharding = #sdy.sharding_per_value<[<@mesh_x, [{"x"}, {}]>, <@mesh_x, [{}]>]>
+  } {
+  ^bb0(%input0: tensor<2xf32>, %carry0: tensor<2xf32>):
+    %1 = stablehlo.multiply %input0, %carry0 : tensor<2xf32>
+    stablehlo.return %1, %1 : tensor<2xf32>, tensor<2xf32>
+  } : (tensor<2147483649x2xf32>, tensor<2xf32>) -> (tensor<2147483649x2xf32>, tensor<2xf32>)
+  return %0#0, %0#1 : tensor<2147483649x2xf32>, tensor<2xf32>
+}

@@ -987,8 +987,10 @@ void maybePadScanInputsAndCreateGlobalIdx(ScanLoweringContext& ctx,
     return;
   }
   int64_t paddedGlobalScanSize = ctx.numPartitions * ctx.localScanSize;
-  auto globalIdxType = mlir::RankedTensorType::get({paddedGlobalScanSize},
-                                                   rewriter.getI32Type());
+  mlir::Type idxElemType = mlir::sdy::getIndexOrOffsetType(
+      rewriter, mlir::sdy::requires64BitOffset(paddedGlobalScanSize));
+  auto globalIdxType =
+      mlir::RankedTensorType::get({paddedGlobalScanSize}, idxElemType);
   auto globalIdxOp = mlir::stablehlo::IotaOp::create(
       rewriter, ctx.loc, globalIdxType, rewriter.getI64IntegerAttr(0));
   mlir::Attribute meshOrRef = ctx.inShardings[0].getMeshOrRef();
@@ -1149,22 +1151,22 @@ std::pair<mlir::Value, mlir::Value> splitIntoLocalInitAndRest(
   return {localInit, restInput};
 }
 
-// Compares the last element of 1D `localIdx` (`tensor<Lxi32>`) against
-// `ctx.globalScanSize` (`GE`) to produce a scalar `tensor<i1>` predicate that
-// is true only on the last shard (`P - 1`).
+// Compares the last element of 1D `localIdx` (`tensor<Lxi32>` or
+// `tensor<Lxi64>`) against `ctx.globalScanSize` (`GE`) to produce a scalar
+// `tensor<i1>` predicate that is true only on the last shard (`P - 1`).
 mlir::Value createIsLastShardPred(const ScanLoweringContext& ctx,
                                   mlir::Value localIdx,
                                   mlir::IRRewriter& rewriter) {
   mlir::Value lastIdxSlice = createSliceAlongDim(
       rewriter, ctx.loc, localIdx, /*scanDim=*/0, ctx.localScanSize - 1,
       ctx.localScanSize, ctx.localIdxSharding);
-  auto scalarI32Type = mlir::RankedTensorType::get({}, rewriter.getI32Type());
+  mlir::Type idxElemType =
+      llvm::cast<mlir::RankedTensorType>(localIdx.getType()).getElementType();
+  auto scalarIdxType = mlir::RankedTensorType::get({}, idxElemType);
   auto lastIdx = mlir::stablehlo::ReshapeOp::create(
-      rewriter, ctx.loc, scalarI32Type, lastIdxSlice);
-  auto limitConst = mlir::stablehlo::ConstantOp::create(
-      rewriter, ctx.loc,
-      mlir::DenseIntElementsAttr::get(
-          scalarI32Type, {static_cast<int32_t>(ctx.globalScanSize)}));
+      rewriter, ctx.loc, scalarIdxType, lastIdxSlice);
+  mlir::Value limitConst = mlir::sdy::createScalarIntConstant(
+      ctx.loc, scalarIdxType, ctx.globalScanSize, rewriter);
   auto isLastShard = mlir::stablehlo::CompareOp::create(
       rewriter, ctx.loc, lastIdx, limitConst,
       mlir::stablehlo::ComparisonDirection::GE);
@@ -1274,7 +1276,7 @@ mlir::sdy::ManualComputationOp buildLocalScanReduction(
   }
   if (ctx.needsScanPadding) {
     phaseOneBlock.addArgument(
-        mlir::RankedTensorType::get({ctx.localScanSize}, rewriter.getI32Type()),
+        withDimSize(ctx.globalIdx.getType(), /*dim=*/0, ctx.localScanSize),
         ctx.loc);
   }
 
@@ -1409,7 +1411,7 @@ mlir::sdy::ManualComputationOp buildFinalLocalScan(
   }
   if (needsReverseShift) {
     phaseThreeBlock.addArgument(
-        mlir::RankedTensorType::get({ctx.localScanSize}, rewriter.getI32Type()),
+        withDimSize(ctx.globalIdx.getType(), /*dim=*/0, ctx.localScanSize),
         ctx.loc);
   }
 
