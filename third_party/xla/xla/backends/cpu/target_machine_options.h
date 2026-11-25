@@ -50,7 +50,8 @@ class TargetMachineOptions {
   // target features from the machine.
   static TargetMachineOptions Native();
 
-  bool operator==(const TargetMachineOptions& other) const;
+  friend bool operator==(const TargetMachineOptions&,
+                         const TargetMachineOptions&) = default;
 
   TargetMachineOptionsProto ToProto() const;
   static absl::StatusOr<TargetMachineOptions> FromProto(

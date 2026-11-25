@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_INPUT_OUTPUT_ALIAS_CONFIG_H_
 #define XLA_HLO_IR_HLO_INPUT_OUTPUT_ALIAS_CONFIG_H_
 
+#include <compare>
 #include <cstdint>
 #include <optional>
 #include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
 
 #include "absl/container/btree_set.h"
@@ -69,14 +69,7 @@ class HloInputOutputAliasConfig {
                              kind == kMustAlias ? "must-alias" : "may-alias");
     }
 
-    friend bool operator==(const Alias& lhs, const Alias& rhs) {
-      return std::tie(lhs.parameter_number, lhs.parameter_index, lhs.kind) ==
-             std::tie(rhs.parameter_number, rhs.parameter_index, rhs.kind);
-    }
-
-    friend bool operator!=(const Alias& lhs, const Alias& rhs) {
-      return !(lhs == rhs);
-    }
+    friend bool operator==(const Alias&, const Alias&) = default;
   };
 
   HloInputOutputAliasConfig() = default;
@@ -178,18 +171,8 @@ class HloBufferDonorConfig {
     int64_t param_number;
     ShapeIndex param_index;
 
-    bool operator==(const BufferDonor& other) const {
-      return param_number == other.param_number &&
-             param_index == other.param_index;
-    }
-
-    bool operator<(const BufferDonor& other) const {
-      return std::forward_as_tuple(param_number, param_index) <
-             std::forward_as_tuple(other.param_number, other.param_index);
-    }
-    bool operator>(const BufferDonor& other) const { return other < *this; }
-    bool operator<=(const BufferDonor& other) const { return !(*this > other); }
-    bool operator>=(const BufferDonor& other) const { return !(*this < other); }
+    friend std::strong_ordering operator<=>(const BufferDonor&,
+                                            const BufferDonor&) = default;
 
     // A hash function borrowed from go/absl-hash.
     template <typename H>

@@ -165,14 +165,4 @@ ProgramShape ComputationLayout::ComputeProgramShape() const {
   return program_shape;
 }
 
-bool ComputationLayout::operator==(const ComputationLayout& other) const {
-  return result_layout() == other.result_layout() &&
-         parameter_layouts() == other.parameter_layouts();
-}
-
-bool ComputationLayout::operator!=(const ComputationLayout& other) const {
-  return result_layout() != other.result_layout() ||
-         parameter_layouts() != other.parameter_layouts();
-}
-
 }  // namespace xla

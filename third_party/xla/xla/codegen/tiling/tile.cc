@@ -86,11 +86,6 @@ DimTile GetDefaultDimTile(TiledDimId id, SymbolicExpr tile_size,
                  CreateSymbolicConstant(dim_size, ctx)};
 }
 
-bool DimTile::operator==(const DimTile& other) const {
-  return offset == other.offset && size == other.size &&
-         stride == other.stride && upper_bound == other.upper_bound;
-}
-
 std::string DimTile::ToString() const {
   return absl::StrCat("offset [", offset.ToString(), "], size [",
                       size.ToString(), "], stride [", stride.ToString(),
@@ -343,13 +338,6 @@ Tile Tile::CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const {
 
 Tile Tile::CloneWithNewTilingSpace(const TilingSpace& new_space) const {
   return Tile(new_space, dim_tiles_, replica_ids_, constraints_);
-}
-
-bool Tile::operator==(const Tile& other) const {
-  return tiling_space_ == other.tiling_space_ &&  //
-         dim_tiles_ == other.dim_tiles_ &&        //
-         replica_ids_ == other.replica_ids_ &&    //
-         constraints_ == other.constraints_;
 }
 
 }  // namespace xla::gpu

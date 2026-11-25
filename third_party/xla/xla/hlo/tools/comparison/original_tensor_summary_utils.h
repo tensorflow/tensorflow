@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef XLA_HLO_TOOLS_COMPARISON_ORIGINAL_TENSOR_SUMMARY_UTILS_H_
 #define XLA_HLO_TOOLS_COMPARISON_ORIGINAL_TENSOR_SUMMARY_UTILS_H_
 
+#include <compare>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -492,26 +492,8 @@ struct ScopeInstruction {
     return Create(proto.instruction_name(), proto.iteration_index());
   }
 
-  friend bool operator==(const ScopeInstruction& a, const ScopeInstruction& b) {
-    return a.instruction_name == b.instruction_name &&
-           a.iteration_index == b.iteration_index;
-  }
-  friend bool operator!=(const ScopeInstruction& a, const ScopeInstruction& b) {
-    return !(a == b);
-  }
-  friend bool operator<(const ScopeInstruction& a, const ScopeInstruction& b) {
-    return std::tie(a.instruction_name, a.iteration_index) <
-           std::tie(b.instruction_name, b.iteration_index);
-  }
-  friend bool operator>(const ScopeInstruction& a, const ScopeInstruction& b) {
-    return b < a;
-  }
-  friend bool operator<=(const ScopeInstruction& a, const ScopeInstruction& b) {
-    return !(b < a);
-  }
-  friend bool operator>=(const ScopeInstruction& a, const ScopeInstruction& b) {
-    return !(a < b);
-  }
+  friend auto operator<=>(const ScopeInstruction&,
+                          const ScopeInstruction&) = default;
   template <typename H>
   friend H AbslHashValue(H h, const ScopeInstruction& s) {
     return H::combine(std::move(h), s.instruction_name, s.iteration_index);
@@ -566,26 +548,8 @@ struct TensorKey {
         ShapeIndex(proto.shape_index().begin(), proto.shape_index().end()));
   }
 
-  friend bool operator==(const TensorKey& a, const TensorKey& b) {
-    return a.instruction_name == b.instruction_name &&
-           a.shape_index == b.shape_index;
-  }
-  friend bool operator!=(const TensorKey& a, const TensorKey& b) {
-    return !(a == b);
-  }
-  friend bool operator<(const TensorKey& a, const TensorKey& b) {
-    return std::tie(a.instruction_name, a.shape_index) <
-           std::tie(b.instruction_name, b.shape_index);
-  }
-  friend bool operator>(const TensorKey& a, const TensorKey& b) {
-    return b < a;
-  }
-  friend bool operator<=(const TensorKey& a, const TensorKey& b) {
-    return !(b < a);
-  }
-  friend bool operator>=(const TensorKey& a, const TensorKey& b) {
-    return !(a < b);
-  }
+  friend std::strong_ordering operator<=>(const TensorKey&,
+                                          const TensorKey&) = default;
   template <typename H>
   friend H AbslHashValue(H h, const TensorKey& s) {
     return H::combine(std::move(h), s.instruction_name, s.shape_index);
@@ -682,26 +646,8 @@ struct ScopedTensorKey {
                   std::move(scope_instructions));
   }
 
-  friend bool operator==(const ScopedTensorKey& a, const ScopedTensorKey& b) {
-    return a.scope_instructions == b.scope_instructions &&
-           a.tensor_key == b.tensor_key;
-  }
-  friend bool operator!=(const ScopedTensorKey& a, const ScopedTensorKey& b) {
-    return !(a == b);
-  }
-  friend bool operator<(const ScopedTensorKey& a, const ScopedTensorKey& b) {
-    return std::tie(a.scope_instructions, a.tensor_key) <
-           std::tie(b.scope_instructions, b.tensor_key);
-  }
-  friend bool operator>(const ScopedTensorKey& a, const ScopedTensorKey& b) {
-    return b < a;
-  }
-  friend bool operator<=(const ScopedTensorKey& a, const ScopedTensorKey& b) {
-    return !(b < a);
-  }
-  friend bool operator>=(const ScopedTensorKey& a, const ScopedTensorKey& b) {
-    return !(a < b);
-  }
+  friend std::strong_ordering operator<=>(const ScopedTensorKey&,
+                                          const ScopedTensorKey&) = default;
   template <typename H>
   friend H AbslHashValue(H h, const ScopedTensorKey& s) {
     return H::combine(std::move(h), s.scope_instructions, s.tensor_key);

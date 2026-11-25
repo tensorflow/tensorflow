@@ -95,8 +95,7 @@ class TilingSpace;
 //  - tile sizes of all dimensions, followed by
 //  - runtime variables.
 struct DimTile {
-  bool operator==(const DimTile& other) const;
-  bool operator!=(const DimTile& other) const { return !(*this == other); }
+  friend bool operator==(const DimTile&, const DimTile&) = default;
 
   SymbolicExpr offset;
   SymbolicExpr size;
@@ -230,8 +229,7 @@ class Tile {
   // Creates a copy of the tile associated with a new tiling space.
   Tile CloneWithNewTilingSpace(const TilingSpace& new_space) const;
 
-  bool operator==(const Tile& other) const;
-  bool operator!=(const Tile& other) const { return !(*this == other); }
+  friend bool operator==(const Tile&, const Tile&) = default;
 
   // This allows GUnit to print the tile.
   template <typename Sink>

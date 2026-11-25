@@ -110,8 +110,8 @@ class ComputationLayout {
   // within this object.
   ProgramShape ComputeProgramShape() const;
 
-  bool operator==(const ComputationLayout& other) const;
-  bool operator!=(const ComputationLayout& other) const;
+  friend bool operator==(const ComputationLayout&,
+                         const ComputationLayout&) = default;
 
   template <typename H>
   friend H AbslHashValue(H h, const ComputationLayout& computation_layout) {

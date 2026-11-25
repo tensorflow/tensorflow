@@ -163,12 +163,6 @@ TargetMachineOptions TargetMachineOptions::Native() {
       std::move(enabled_features), std::move(disabled_features));
 }
 
-bool TargetMachineOptions::operator==(const TargetMachineOptions& other) const {
-  return triple_ == other.triple_ && cpu_ == other.cpu_ &&
-         enabled_features_ == other.enabled_features_ &&
-         disabled_features_ == other.disabled_features_;
-}
-
 std::vector<std::string> TargetMachineOptions::GetTargetMachineFeaturesVector()
     const {
   std::vector<std::string> all_features;
