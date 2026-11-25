@@ -1198,13 +1198,21 @@ REGISTER_OP("GenerateBoundingBoxProposals")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &n_pre_nms));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &min_box_size));
 
-      // TODO(skama): verify that the inputs are compatible
+      DimensionHandle batch;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(scores, 0), c->Dim(bounding_boxes, 0),
+                                  &batch));
+      TF_RETURN_IF_ERROR(c->Merge(batch, c->Dim(images, 0), &batch));
+      for (int axis = 1; axis <= 2; ++axis) {
+        DimensionHandle spatial;
+        TF_RETURN_IF_ERROR(c->Merge(c->Dim(scores, axis),
+                                    c->Dim(bounding_boxes, axis), &spatial));
+        TF_RETURN_IF_ERROR(c->Merge(spatial, c->Dim(anchors, axis - 1),
+                                    &spatial));
+      }
       int post_nms_top_n;
       TF_RETURN_IF_ERROR(c->GetAttr("post_nms_topn", &post_nms_top_n));
-      auto roi_shape = c->MakeShape(
-          {c->Dim(scores, 0), post_nms_top_n, 4});  //(N,post_nms_top_n,4)
-      auto prob_shape = c->MakeShape(
-          {c->Dim(scores, 0), post_nms_top_n});  // (N,post_nms_top_n)
+      auto roi_shape = c->MakeShape({batch, post_nms_top_n, 4});
+      auto prob_shape = c->MakeShape({batch, post_nms_top_n});
       c->set_output(0, roi_shape);
       c->set_output(1, prob_shape);
       return absl::OkStatus();

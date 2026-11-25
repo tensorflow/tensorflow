@@ -6109,8 +6109,8 @@ def generate_bounding_box_proposals(scores,
       in the form `[dy, dx, dh, dw]`.
     image_info: A 2-D float `Tensor` of shape `[num_images, 5]`
       containing image information Height, Width, Scale.
-    anchors: A 2-D float `Tensor` of shape `[num_anchors, 4]`
-      describing the anchor boxes.
+    anchors: A 3-D float `Tensor` of shape `[height, width, 4 x num_anchors]`
+      describing the anchor boxes at each feature-map location.
       Boxes are formatted in the form `[y1, x1, y2, x2]`.
     nms_threshold: A scalar float `Tensor` for non-maximal-suppression
       threshold. Defaults to 0.7.

@@ -339,6 +339,19 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     const auto num_anchors = scores.dim_size(3);
     const auto height = scores.dim_size(1);
     const auto width = scores.dim_size(2);
+    OP_REQUIRES(context,
+                bbox_deltas.dim_size(0) == num_images &&
+                    image_info.dim_size(0) == num_images,
+                absl::InvalidArgumentError(
+                    "scores, bbox_deltas and image_info must have the same "
+                    "batch size"));
+    OP_REQUIRES(context,
+                bbox_deltas.dim_size(1) == height &&
+                    bbox_deltas.dim_size(2) == width &&
+                    anchors.dim_size(0) == height && anchors.dim_size(1) == width,
+                absl::InvalidArgumentError(
+                    "scores, bbox_deltas and anchors must have the same "
+                    "height and width"));
     const auto box_dim = anchors.dim_size(2) / num_anchors;
     OP_REQUIRES(context, box_dim == 4,
                 absl::OutOfRangeError("Box dimensions need to be 4"));

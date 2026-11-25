@@ -134,6 +134,40 @@ class DrawBoundingBoxOpTest(test.TestCase):
     self._testDrawBoundingBoxColorCycling(
         image, dtype=dtypes.half, colors=colors)
 
+  def testProposalFeatureDimensions(self):
+    with ops.Graph().as_default():
+      scores = array_ops.placeholder(dtypes.float32, [None, 2, 3, 1])
+
+      def proposals(deltas, info, anchors):
+        return image_ops.generate_bounding_box_proposals(
+            scores, array_ops.zeros(deltas), array_ops.zeros(info),
+            array_ops.zeros(anchors), post_nms_topn=1)
+
+      rois, probabilities = proposals([2, 2, 3, 4], [2, 5], [2, 3, 4])
+      self.assertEqual(rois.shape.as_list(), [2, 1, 4])
+      self.assertEqual(probabilities.shape.as_list(), [2, 1])
+      for shapes in (
+          ([1, 2, 3, 4], [2, 5], [2, 3, 4]),
+          ([2, 3, 2, 4], [2, 5], [2, 3, 4]),
+          ([2, 2, 3, 4], [2, 5], [3, 2, 4]),
+      ):
+        with self.subTest(shapes=shapes), self.assertRaises(ValueError):
+          proposals(*shapes)
+
+  @test_util.run_gpu_only
+  @test_util.run_v2_only
+  def testProposalDimensionMismatchEager(self):
+    with ops.device("/GPU:0"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, "batch size"):
+        image_ops.generate_bounding_box_proposals(
+            array_ops.ones([1, 2, 3, 1]), array_ops.zeros([2, 2, 3, 4]),
+            array_ops.ones([2, 5]), array_ops.zeros([2, 3, 4]))
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "height and width"):
+        image_ops.generate_bounding_box_proposals(
+            array_ops.ones([1, 2, 3, 1]), array_ops.zeros([1, 3, 2, 4]),
+            array_ops.ones([1, 5]), array_ops.zeros([2, 3, 4]))
+
   # generate_bound_box_proposals is only available on GPU.
   @test_util.run_gpu_only
   def testGenerateBoundingBoxProposals(self):
