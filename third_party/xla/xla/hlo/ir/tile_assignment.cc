@@ -342,13 +342,29 @@ absl::Status ValidateIotaReshapeAndTranspose(
   return *std::move(iota);
 }
 
-/*static*/ IotaTileAssignment IotaTileAssignment::Create(
+/*static*/ absl::StatusOr<IotaTileAssignment> IotaTileAssignment::TryCreate(
     absl::Span<const int64_t> dims, const MeshProto::IotaTransform& transform) {
+  const int64_t perm_size = transform.transpose_perm().size();
   // This is an extra copy, but the array will typically be quite small since
   // it scales with the number of dimensions.
-  absl::InlinedVector<int, 6> int_perm(transform.transpose_perm().begin(),
-                                       transform.transpose_perm().end());
-  return Create(dims, transform.reshape_dims(), absl::MakeSpan(int_perm));
+  absl::InlinedVector<int, 6> int_perm;
+  int_perm.reserve(perm_size);
+  for (int64_t perm_dim : transform.transpose_perm()) {
+    if (perm_dim < 0 || perm_dim >= perm_size) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Iota transpose_perm entry %d out of range [0, %d)",
+                          perm_dim, perm_size));
+    }
+    int_perm.push_back(static_cast<int>(perm_dim));
+  }
+  return TryCreate(dims, transform.reshape_dims(), int_perm);
+}
+
+/*static*/ IotaTileAssignment IotaTileAssignment::Create(
+    absl::Span<const int64_t> dims, const MeshProto::IotaTransform& transform) {
+  absl::StatusOr<IotaTileAssignment> iota = TryCreate(dims, transform);
+  CHECK_OK(iota);
+  return *std::move(iota);
 }
 
 // Materializes array representation of IotaTileAssignment.

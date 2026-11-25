@@ -289,6 +289,22 @@ TEST(MeshAndAxisTest, FromProtoValidation) {
         Mesh::FromProto(proto),
         "Number of elements must match the product of array dimensions");
   }
+
+  {
+    MeshProto proto;
+    auto* axis_x = proto.add_axes();
+    axis_x->set_name("x");
+    axis_x->set_size(2);
+    auto* axis_y = proto.add_axes();
+    axis_y->set_name("y");
+    axis_y->set_size(2);
+    proto.mutable_iota_transform()->add_reshape_dims(2);
+    proto.mutable_iota_transform()->add_reshape_dims(2);
+    // Low 32 bits are [1, 0], which would silently validate if truncated.
+    proto.mutable_iota_transform()->add_transpose_perm(4294967297LL);
+    proto.mutable_iota_transform()->add_transpose_perm(4294967296LL);
+    EXPECT_DEATH(Mesh::FromProto(proto), "out of range");
+  }
 }
 
 TEST(MeshAndAxisTest, MeshToString) {

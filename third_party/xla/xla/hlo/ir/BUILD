@@ -563,6 +563,7 @@ xla_cc_test(
         ":tile_assignment",
         "//xla:array",
         "//xla:array2d",
+        "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/functional:any_invocable",
