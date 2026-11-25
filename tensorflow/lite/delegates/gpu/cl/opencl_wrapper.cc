@@ -27,6 +27,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/tools/logging.h"
@@ -52,7 +53,8 @@ namespace {
 // If it fails, for example if process is running with linker default namespace
 // because it's a sub-process of the app, then tries loading the library using
 // a sphal helper loader function from Vendor NDK support library.
-void* AndroidDlopenSphalLibrary(const char* filename, int dlopen_flags) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void* AndroidDlopenSphalLibrary(
+    const char* filename, int dlopen_flags) {
   void* lib = dlopen(filename, dlopen_flags);
   if (lib != nullptr) {
     return lib;
@@ -96,10 +98,11 @@ void* AndroidDlopenSphalLibrary(const char* filename, int dlopen_flags) {
 #ifdef __WINDOWS__
 void LoadOpenCLFunctions(HMODULE libopencl);
 #else
-void LoadOpenCLFunctions(void* libopencl, bool use_wrapper);
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void LoadOpenCLFunctions(void* libopencl,
+                                                        bool use_wrapper);
 #endif
 
-absl::Status LoadOpenCLOnce() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status LoadOpenCLOnce() {
 #ifdef __WINDOWS__
   HMODULE libopencl = LoadLibraryA("OpenCL.dll");
   if (libopencl) {
@@ -176,7 +179,8 @@ absl::Status LoadOpenCL() {
   return *status;
 }
 
-void LoadOpenCLFunctionExtensions(cl_platform_id platform_id) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void LoadOpenCLFunctionExtensions(
+    cl_platform_id platform_id) {
   // cl_khr_command_buffer extension
   LoadFunctionExtension(platform_id, clCreateCommandBufferKHR);
   LoadFunctionExtension(platform_id, clRetainCommandBufferKHR);
@@ -198,7 +202,8 @@ void LoadOpenCLFunctionExtensions(cl_platform_id platform_id) {
 #ifdef __WINDOWS__
 void LoadOpenCLFunctions(HMODULE libopencl) {
 #else
-void LoadOpenCLFunctions(void* libopencl, bool use_wrapper) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void LoadOpenCLFunctions(void* libopencl,
+                                                        bool use_wrapper) {
 #ifdef __ANDROID__
   typedef void* (*loadOpenCLPointer_t)(const char* name);
   loadOpenCLPointer_t loadOpenCLPointer;
@@ -471,10 +476,9 @@ PFN_clEnqueueSignalSemaphoresKHR clEnqueueSignalSemaphoresKHR;
 
 DEFINE_QCOM_FUNCTION_PTRS
 
-cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
-                           const cl_image_format* image_format,
-                           const cl_image_desc* image_desc, void* host_ptr,
-                           cl_int* errcode_ret) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI cl_mem CreateImage2DLegacy(
+    cl_context context, cl_mem_flags flags, const cl_image_format* image_format,
+    const cl_image_desc* image_desc, void* host_ptr, cl_int* errcode_ret) {
   if (clCreateImage) {  // clCreateImage available since OpenCL 1.2
     return clCreateImage(context, flags, image_format, image_desc, host_ptr,
                          errcode_ret);
@@ -485,10 +489,9 @@ cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
   }
 }
 
-cl_mem CreateImage3DLegacy(cl_context context, cl_mem_flags flags,
-                           const cl_image_format* image_format,
-                           const cl_image_desc* image_desc, void* host_ptr,
-                           cl_int* errcode_ret) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI cl_mem CreateImage3DLegacy(
+    cl_context context, cl_mem_flags flags, const cl_image_format* image_format,
+    const cl_image_desc* image_desc, void* host_ptr, cl_int* errcode_ret) {
   if (clCreateImage) {  // clCreateImage available since OpenCL 1.2
     return clCreateImage(context, flags, image_format, image_desc, host_ptr,
                          errcode_ret);

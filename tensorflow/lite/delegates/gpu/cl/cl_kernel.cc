@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -28,8 +29,8 @@ namespace gpu {
 namespace cl {
 namespace {
 
-absl::Status GetKernelMaxWorkGroupSize(cl_kernel kernel, cl_device_id device_id,
-                                       int* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status GetKernelMaxWorkGroupSize(
+    cl_kernel kernel, cl_device_id device_id, int* result) {
   size_t max_work_group_size;
   cl_int error_code =
       clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE,
@@ -43,8 +44,8 @@ absl::Status GetKernelMaxWorkGroupSize(cl_kernel kernel, cl_device_id device_id,
   return absl::OkStatus();
 }
 
-absl::Status GetKernelPrivateMemorySize(cl_kernel kernel,
-                                        cl_device_id device_id, int* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status GetKernelPrivateMemorySize(
+    cl_kernel kernel, cl_device_id device_id, int* result) {
   cl_ulong private_mem_size;
   cl_int error_code =
       clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_PRIVATE_MEM_SIZE,
@@ -83,7 +84,7 @@ CLKernel& CLKernel::operator=(CLKernel&& kernel) {
 
 CLKernel::~CLKernel() { Release(); }
 
-absl::Status CLKernel::ReInit() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLKernel::ReInit() const {
   clReleaseKernel(kernel_);
   cl_kernel* kern_ptr = const_cast<cl_kernel*>(&kernel_);
   int error_code;
@@ -96,7 +97,7 @@ absl::Status CLKernel::ReInit() const {
   return absl::OkStatus();
 }
 
-void CLKernel::Release() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void CLKernel::Release() {
   if (kernel_) {
     clReleaseKernel(kernel_);
     clReleaseProgram(program_);
@@ -104,8 +105,8 @@ void CLKernel::Release() {
   }
 }
 
-absl::Status CLKernel::CreateFromProgram(const CLProgram& program,
-                                         const std::string& function_name) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLKernel::CreateFromProgram(
+    const CLProgram& program, const std::string& function_name) {
   int error_code;
   function_name_ = function_name;
   kernel_ =
@@ -134,7 +135,8 @@ absl::Status CLKernel::SetMemoryAuto(cl_mem memory) {
   return SetBytesAuto(&memory, sizeof(cl_mem));
 }
 
-absl::Status CLKernel::SetBytes(int index, const void* ptr, int length) const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLKernel::SetBytes(
+    int index, const void* ptr, int length) const {
   const int error_code = clSetKernelArg(kernel_, index, length, ptr);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(absl::StrCat("Failed to set kernel arguments - ",
@@ -143,7 +145,8 @@ absl::Status CLKernel::SetBytes(int index, const void* ptr, int length) const {
   return absl::OkStatus();
 }
 
-absl::Status CLKernel::SetBytesAuto(const void* ptr, int length) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLKernel::SetBytesAuto(
+    const void* ptr, int length) {
   const int error_code = clSetKernelArg(kernel_, binding_counter_, length, ptr);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(absl::StrCat(

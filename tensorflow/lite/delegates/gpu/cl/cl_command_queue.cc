@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
@@ -51,17 +52,16 @@ CLCommandQueue& CLCommandQueue::operator=(CLCommandQueue&& queue) {
 
 CLCommandQueue::~CLCommandQueue() { Release(); }
 
-void CLCommandQueue::Release() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void CLCommandQueue::Release() {
   if (has_ownership_ && queue_) {
     clReleaseCommandQueue(queue_);
     queue_ = nullptr;
   }
 }
 
-absl::Status CLCommandQueue::Dispatch(const CLKernel& kernel,
-                                      const int3& work_groups_count,
-                                      const int3& work_group_size,
-                                      CLEvent* event) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLCommandQueue::Dispatch(
+    const CLKernel& kernel, const int3& work_groups_count,
+    const int3& work_group_size, CLEvent* event) {
   std::array<size_t, 3> local;
   std::array<size_t, 3> global;
   for (int i = 0; i < 3; ++i) {
@@ -89,7 +89,8 @@ absl::Status CLCommandQueue::Dispatch(const CLKernel& kernel,
   return Dispatch(kernel, work_groups_count, work_group_size, nullptr);
 }
 
-absl::Status CLCommandQueue::EnqueueEvent(CLEvent* event) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLCommandQueue::EnqueueEvent(
+    CLEvent* event) {
   cl_event resulting_event;
   const int error_code = clEnqueueMarker(queue_, &resulting_event);
   *event = CLEvent(resulting_event);
@@ -100,8 +101,8 @@ absl::Status CLCommandQueue::EnqueueEvent(CLEvent* event) {
   return absl::OkStatus();
 }
 
-absl::Status CLCommandQueue::EnqueueWriteImage(cl_mem memory, int3 region,
-                                               const void* data, bool async) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLCommandQueue::EnqueueWriteImage(
+    cl_mem memory, int3 region, const void* data, bool async) {
   const size_t origin[] = {0, 0, 0};
   const size_t r[] = {static_cast<size_t>(region.x),
                       static_cast<size_t>(region.y),
@@ -118,8 +119,8 @@ absl::Status CLCommandQueue::EnqueueWriteImage(cl_mem memory, int3 region,
   return absl::OkStatus();
 }
 
-absl::Status CLCommandQueue::EnqueueReadImage(cl_mem memory, int3 region,
-                                              void* data, bool async) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLCommandQueue::EnqueueReadImage(
+    cl_mem memory, int3 region, void* data, bool async) {
   const size_t origin[] = {0, 0, 0};
   const size_t r[] = {static_cast<size_t>(region.x),
                       static_cast<size_t>(region.y),
@@ -136,9 +137,8 @@ absl::Status CLCommandQueue::EnqueueReadImage(cl_mem memory, int3 region,
   return absl::OkStatus();
 }
 
-absl::Status CLCommandQueue::EnqueueWriteBuffer(cl_mem memory,
-                                                size_t size_in_bytes,
-                                                const void* data, bool async) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLCommandQueue::EnqueueWriteBuffer(
+    cl_mem memory, size_t size_in_bytes, const void* data, bool async) {
   const cl_bool blocking = async ? CL_FALSE : CL_TRUE;
   auto error_code = clEnqueueWriteBuffer(
       queue_, memory, blocking, 0, size_in_bytes, data, 0, nullptr, nullptr);
@@ -150,9 +150,8 @@ absl::Status CLCommandQueue::EnqueueWriteBuffer(cl_mem memory,
   return absl::OkStatus();
 }
 
-absl::Status CLCommandQueue::EnqueueReadBuffer(cl_mem memory,
-                                               size_t size_in_bytes, void* data,
-                                               bool async) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLCommandQueue::EnqueueReadBuffer(
+    cl_mem memory, size_t size_in_bytes, void* data, bool async) {
   const cl_bool blocking = async ? CL_FALSE : CL_TRUE;
   auto error_code = clEnqueueReadBuffer(
       queue_, memory, blocking, 0, size_in_bytes, data, 0, nullptr, nullptr);
@@ -164,7 +163,8 @@ absl::Status CLCommandQueue::EnqueueReadBuffer(cl_mem memory,
   return absl::OkStatus();
 }
 
-absl::Status CLCommandQueue::WaitForCompletion() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status
+CLCommandQueue::WaitForCompletion() {
   auto error_code = clFinish(queue_);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(
@@ -216,9 +216,11 @@ absl::Status ProfilingCommandQueue::Dispatch(const CLKernel& kernel,
   return absl::OkStatus();
 }
 
-absl::Status ProfilingCommandQueue::DispatchNTimes(
-    const CLKernel& kernel, const int3& work_groups_count,
-    const int3& work_group_size, int n, int flush_period) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status
+ProfilingCommandQueue::DispatchNTimes(const CLKernel& kernel,
+                                      const int3& work_groups_count,
+                                      const int3& work_group_size, int n,
+                                      int flush_period) {
   number_of_dispatches_.push_back(n);
   if (n == 1) {
     events_.push_back(CLEvent());
@@ -333,9 +335,8 @@ absl::Status ProfilingCommandQueue::GetBestWorkGroupIndex(
   return absl::OkStatus();
 }
 
-absl::Status CreateCLCommandQueue(const CLDevice& device,
-                                  const CLContext& context,
-                                  CLCommandQueue* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateCLCommandQueue(
+    const CLDevice& device, const CLContext& context, CLCommandQueue* result) {
   int error_code;
   cl_command_queue queue =
       clCreateCommandQueue(context.context(), device.id(), 0, &error_code);
@@ -364,9 +365,9 @@ double ProfilingCommandQueue::GetSumOfEventsTimeMs() const {
   return sum;
 }
 
-absl::Status CreateProfilingCommandQueue(const CLDevice& device,
-                                         const CLContext& context,
-                                         ProfilingCommandQueue* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateProfilingCommandQueue(
+    const CLDevice& device, const CLContext& context,
+    ProfilingCommandQueue* result) {
   int error_code;
   cl_command_queue queue = clCreateCommandQueue(
       context.context(), device.id(), CL_QUEUE_PROFILING_ENABLE, &error_code);

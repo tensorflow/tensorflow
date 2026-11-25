@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -25,8 +26,8 @@ namespace gpu {
 namespace cl {
 namespace {
 
-std::vector<cl_image_format> GetSupportedImage2DFormats(cl_context context,
-                                                        cl_mem_flags flags) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI std::vector<cl_image_format>
+GetSupportedImage2DFormats(cl_context context, cl_mem_flags flags) {
   cl_uint num_image_formats;
   cl_int error = clGetSupportedImageFormats(
       context, flags, CL_MEM_OBJECT_IMAGE2D, 0, nullptr, &num_image_formats);
@@ -71,9 +72,9 @@ void AddSupportedImageFormats(cl_context context, GpuInfo* info) {
   }
 }
 
-absl::Status CreateCLContext(const CLDevice& device,
-                             cl_context_properties* properties,
-                             CLContext* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateCLContext(
+    const CLDevice& device, cl_context_properties* properties,
+    CLContext* result) {
   int error_code;
   cl_device_id device_id = device.id();
   cl_context context =
@@ -115,7 +116,7 @@ CLContext& CLContext::operator=(CLContext&& context) {
 
 CLContext::~CLContext() { Release(); }
 
-void CLContext::Release() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void CLContext::Release() {
   if (has_ownership_ && context_) {
     clReleaseContext(context_);
     context_ = nullptr;

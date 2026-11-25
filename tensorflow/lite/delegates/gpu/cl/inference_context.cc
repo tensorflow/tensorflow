@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
@@ -223,10 +224,9 @@ absl::Status GetBufferAssignment(
   return absl::OkStatus();
 }
 
-absl::Status ClarifyWithCommandBuffer(ProfilingCommandQueue* queue,
-                                      int num_tries, double cb_duration_ms,
-                                      const std::vector<CLNode*>& nodes,
-                                      std::vector<double>* time_ns) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status ClarifyWithCommandBuffer(
+    ProfilingCommandQueue* queue, int num_tries, double cb_duration_ms,
+    const std::vector<CLNode*>& nodes, std::vector<double>* time_ns) {
   auto get_tasks_count = [&](int node_index) {
     const int tasks_count = cb_duration_ms / ((*time_ns)[node_index] * 1e-6f);
     return std::min(256, std::max(1, tasks_count));
@@ -859,13 +859,15 @@ absl::Status InferenceContext::AddCommandBufferToQueue(CLCommandQueue* queue) {
   return absl::OkStatus();
 }
 
-void InferenceContext::FlushQueue(CLCommandQueue* queue) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void InferenceContext::FlushQueue(
+    CLCommandQueue* queue) {
   if (!gpu_info_.opencl_info.IsCLVK()) {
     clFlush(queue->queue());
   }
 }
 
-absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status InferenceContext::AddToQueue(
+    CLCommandQueue* queue) {
   if (recordable_queue_ && recordable_queue_->IsSupported()) {
     return recordable_queue_->Execute(queue);
   }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 
 namespace tflite {
@@ -40,14 +41,14 @@ CLEvent& CLEvent::operator=(CLEvent&& event) {
   return *this;
 }
 
-uint64_t CLEvent::GetStartedTimeNs() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI uint64_t CLEvent::GetStartedTimeNs() const {
   cl_ulong time_ns;
   clGetEventProfilingInfo(event_, CL_PROFILING_COMMAND_START, sizeof(cl_ulong),
                           &time_ns, nullptr);
   return time_ns;
 }
 
-uint64_t CLEvent::GetFinishedTimeNs() const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI uint64_t CLEvent::GetFinishedTimeNs() const {
   cl_ulong time_ns;
   clGetEventProfilingInfo(event_, CL_PROFILING_COMMAND_END, sizeof(cl_ulong),
                           &time_ns, nullptr);
@@ -68,11 +69,13 @@ uint64_t CLEvent::GetEventTimeNs() const {
 
 void CLEvent::SetName(const std::string& name) { name_ = name; }
 
-void CLEvent::Wait() const { clWaitForEvents(1, &event_); }
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void CLEvent::Wait() const {
+  clWaitForEvents(1, &event_);
+}
 
 CLEvent::~CLEvent() { Release(); }
 
-void CLEvent::Release() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void CLEvent::Release() {
   if (event_) {
     clReleaseEvent(event_);
     event_ = nullptr;

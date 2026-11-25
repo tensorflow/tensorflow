@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/time/time.h"
@@ -240,9 +241,9 @@ absl::Status RunSerializedTest(const std::string& model_name) {
   return absl::OkStatus();
 }
 
-absl::Status RunCommandBufferSample(int num_tests, double model_time_ms,
-                                    Environment* env,
-                                    InferenceContext* context) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status RunCommandBufferSample(
+    int num_tests, double model_time_ms, Environment* env,
+    InferenceContext* context) {
   if (!env->device().GetInfo().SupportsExtension("cl_khr_command_buffer")) {
     return absl::OkStatus();
   }

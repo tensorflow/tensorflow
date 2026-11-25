@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_MEMORY_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_MEMORY_H_
 
+#include "absl/base/attributes.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -69,7 +70,7 @@ class CLMemory {
   }
 
  private:
-  void Invalidate() {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI void Invalidate() {
     if (memory_ && has_ownership_) {
       clReleaseMemObject(memory_);
     }

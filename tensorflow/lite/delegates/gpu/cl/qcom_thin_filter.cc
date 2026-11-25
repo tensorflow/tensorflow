@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -62,7 +63,7 @@ absl::Status QcomThinFilter::GetGPUResources(
 
 QcomThinFilter::~QcomThinFilter() { Release(); }
 
-void QcomThinFilter::Release() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void QcomThinFilter::Release() {
   if (filter_) {
     clReleaseMemObject(filter_);
     filter_ = nullptr;

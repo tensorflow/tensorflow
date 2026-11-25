@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
@@ -75,7 +76,8 @@ class ClOperation {
                            operation_->work_group_size_);
   }
 
-  absl::Status AddToCommandBuffer(cl_command_buffer_khr cb) {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status AddToCommandBuffer(
+      cl_command_buffer_khr cb) {
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     std::array<size_t, 3> local;
     std::array<size_t, 3> global;

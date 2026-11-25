@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -528,7 +529,8 @@ std::string CLArguments::GetListOfArgs() {
   return result;
 }
 
-absl::Status CLArguments::Bind(cl_kernel kernel, int offset) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLArguments::Bind(cl_kernel kernel,
+                                                              int offset) {
   for (auto& t : buffers_) {
     const int error_code =
         clSetKernelArg(kernel, offset, sizeof(cl_mem), &t.second.memory);

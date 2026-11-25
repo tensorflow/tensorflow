@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/egl_sync.h"
 
+#include "absl/base/attributes.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 
 namespace tflite {
@@ -75,7 +76,7 @@ EglSync& EglSync::operator=(EglSync&& sync) {
   return *this;
 }
 
-void EglSync::Invalidate() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void EglSync::Invalidate() {
   if (sync_ != EGL_NO_SYNC_KHR) {
     static auto* egl_destroy_sync_khr =
         reinterpret_cast<decltype(&eglDestroySyncKHR)>(

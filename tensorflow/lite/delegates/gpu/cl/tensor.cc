@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
@@ -32,9 +33,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-absl::Status AllocateTensorMemoryInternal(const CLContext& context,
-                                          const TensorDescriptor& descriptor,
-                                          CLMemory* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status AllocateTensorMemoryInternal(
+    const CLContext& context, const TensorDescriptor& descriptor,
+    CLMemory* result) {
   cl_mem_flags mem_flags = CL_MEM_READ_WRITE;
   const uint8_t* data_ptr = nullptr;
   if (!descriptor.GetData().empty()) {
@@ -200,9 +201,9 @@ absl::Status AllocateTensorMemoryInternal(const CLContext& context,
   }
 }
 
-absl::Status CreateImageBufferFromBuffer(const CLContext& context,
-                                         cl_mem memory, DataType data_type,
-                                         int width, cl_mem* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateImageBufferFromBuffer(
+    const CLContext& context, cl_mem memory, DataType data_type, int width,
+    cl_mem* result) {
   cl_image_format format;
   cl_image_desc desc;
   std::memset(&desc, 0, sizeof(desc));
@@ -305,7 +306,7 @@ Tensor& Tensor::operator=(Tensor&& tensor) {
   return *this;
 }
 
-void Tensor::Release() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void Tensor::Release() {
   // image_buffer_memory_ always owned by object
   if (image_buffer_memory_) {
     clReleaseMemObject(image_buffer_memory_);

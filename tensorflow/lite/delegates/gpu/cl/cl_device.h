@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
@@ -62,7 +63,8 @@ class CLDevice {
 absl::Status CreateDefaultGPUDevice(CLDevice* result);
 
 template <typename T>
-T GetDeviceInfo(cl_device_id id, cl_device_info info) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI T GetDeviceInfo(cl_device_id id,
+                                               cl_device_info info) {
   T result;
   cl_int error = clGetDeviceInfo(id, info, sizeof(T), &result, nullptr);
   if (error != CL_SUCCESS) {
@@ -72,7 +74,9 @@ T GetDeviceInfo(cl_device_id id, cl_device_info info) {
 }
 
 template <typename T>
-absl::Status GetDeviceInfo(cl_device_id id, cl_device_info info, T* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status GetDeviceInfo(cl_device_id id,
+                                                          cl_device_info info,
+                                                          T* result) {
   cl_int error = clGetDeviceInfo(id, info, sizeof(T), result, nullptr);
   if (error != CL_SUCCESS) {
     return absl::InvalidArgumentError(CLErrorCodeToString(error));

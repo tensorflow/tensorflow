@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -30,8 +31,8 @@ namespace gpu {
 namespace cl {
 namespace {
 
-std::string GetProgramBuildInfo(cl_program program, cl_device_id id,
-                                cl_program_build_info info) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI std::string GetProgramBuildInfo(
+    cl_program program, cl_device_id id, cl_program_build_info info) {
   size_t size;
   cl_int error_code =
       clGetProgramBuildInfo(program, id, info, 0, nullptr, &size);
@@ -50,7 +51,8 @@ std::string GetProgramBuildInfo(cl_program program, cl_device_id id,
   return result;
 }
 
-absl::Status GetBinarySize(cl_program program, size_t* binary_size) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status GetBinarySize(cl_program program,
+                                                          size_t* binary_size) {
   cl_int error_code = clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES,
                                        sizeof(size_t), binary_size, nullptr);
   if (error_code != CL_SUCCESS) {
@@ -61,8 +63,9 @@ absl::Status GetBinarySize(cl_program program, size_t* binary_size) {
   return absl::OkStatus();
 }
 
-absl::Status BuildProgram(cl_program program, const CLDevice& device,
-                          const std::string& compiler_options) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status BuildProgram(
+    cl_program program, const CLDevice& device,
+    const std::string& compiler_options) {
   const int error_code = clBuildProgram(
       program, 0, nullptr, compiler_options.c_str(), nullptr, nullptr);
   if (error_code != CL_SUCCESS) {
@@ -154,14 +157,15 @@ CLProgram& CLProgram::operator=(CLProgram&& program) {
 
 CLProgram::~CLProgram() { Release(); }
 
-void CLProgram::Release() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void CLProgram::Release() {
   if (program_) {
     clReleaseProgram(program_);
     program_ = nullptr;
   }
 }
 
-absl::Status CLProgram::GetBinary(std::vector<uint8_t>* result) const {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLProgram::GetBinary(
+    std::vector<uint8_t>* result) const {
   size_t binary_size;
   RETURN_IF_ERROR(GetBinarySize(program_, &binary_size));
   result->resize(result->size() + binary_size);
@@ -176,10 +180,9 @@ absl::Status CLProgram::GetBinary(std::vector<uint8_t>* result) const {
   return absl::OkStatus();
 }
 
-absl::Status CreateCLProgram(const std::string& code,
-                             const std::string& compiler_options,
-                             const CLContext& context, const CLDevice& device,
-                             CLProgram* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateCLProgram(
+    const std::string& code, const std::string& compiler_options,
+    const CLContext& context, const CLDevice& device, CLProgram* result) {
   int error_code;
   const char* source = code.c_str();
 
@@ -196,10 +199,9 @@ absl::Status CreateCLProgram(const std::string& code,
   return absl::OkStatus();
 }
 
-absl::Status CreateCLProgramFromBinary(const CLContext& context,
-                                       const CLDevice& device,
-                                       absl::Span<const uint8_t> binary,
-                                       CLProgram* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateCLProgramFromBinary(
+    const CLContext& context, const CLDevice& device,
+    absl::Span<const uint8_t> binary, CLProgram* result) {
   cl_int binary_status;
   cl_int error_code;
   cl_device_id devices_list[] = {device.id()};

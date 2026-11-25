@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <variant>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
@@ -80,8 +81,8 @@ bool IsEglSyncFromClEventSupported() {
   return supported;
 }
 
-absl::Status CreateClEventFromEglSync(cl_context context,
-                                      const EglSync& egl_sync, CLEvent* event) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateClEventFromEglSync(
+    cl_context context, const EglSync& egl_sync, CLEvent* event) {
   cl_int error_code;
   cl_event new_event = clCreateEventFromEGLSyncKHR(
       context, egl_sync.sync(), egl_sync.display(), &error_code);
@@ -98,9 +99,9 @@ bool IsClEventFromEglSyncSupported(const CLDevice& device) {
   return device.GetInfo().SupportsExtension("cl_khr_egl_event");
 }
 
-absl::Status CreateClMemoryFromGlBuffer(GLuint gl_ssbo_id,
-                                        AccessType access_type,
-                                        CLContext* context, CLMemory* memory) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateClMemoryFromGlBuffer(
+    GLuint gl_ssbo_id, AccessType access_type, CLContext* context,
+    CLMemory* memory) {
   cl_int error_code;
   auto mem = clCreateFromGLBuffer(context->context(), ToClMemFlags(access_type),
                                   gl_ssbo_id, &error_code);
@@ -113,10 +114,9 @@ absl::Status CreateClMemoryFromGlBuffer(GLuint gl_ssbo_id,
   return absl::OkStatus();
 }
 
-absl::Status CreateClMemoryFromGlTexture(GLenum texture_target,
-                                         GLuint texture_id,
-                                         AccessType access_type,
-                                         CLContext* context, CLMemory* memory) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateClMemoryFromGlTexture(
+    GLenum texture_target, GLuint texture_id, AccessType access_type,
+    CLContext* context, CLMemory* memory) {
   cl_int error_code;
   auto mem =
       clCreateFromGLTexture(context->context(), ToClMemFlags(access_type),
@@ -137,7 +137,7 @@ bool IsGlSharingSupported(const CLDevice& device) {
 
 AcquiredGlObjects::~AcquiredGlObjects() { Release({}, nullptr).IgnoreError(); }
 
-absl::Status AcquiredGlObjects::Acquire(
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status AcquiredGlObjects::Acquire(
     const std::vector<cl_mem>& memory, cl_command_queue queue,
     const std::vector<cl_event>& wait_events, CLEvent* acquire_event,
     AcquiredGlObjects* objects) {
@@ -159,7 +159,7 @@ absl::Status AcquiredGlObjects::Acquire(
   return absl::OkStatus();
 }
 
-absl::Status AcquiredGlObjects::Release(
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status AcquiredGlObjects::Release(
     const std::vector<cl_event>& wait_events, CLEvent* release_event) {
   if (queue_ && !memory_.empty()) {
     cl_event new_event;

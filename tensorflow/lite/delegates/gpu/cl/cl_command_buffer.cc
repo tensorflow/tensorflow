@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
@@ -41,15 +42,15 @@ CLCommandBuffer& CLCommandBuffer::operator=(CLCommandBuffer&& cb) {
   return *this;
 }
 
-void CLCommandBuffer::Release() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void CLCommandBuffer::Release() {
   if (cb_) {
     clReleaseCommandBufferKHR(cb_);
     cb_ = nullptr;
   }
 }
 
-absl::Status CLCommandBuffer::Init(CLCommandQueue* queue,
-                                   bool simultaneous_use) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLCommandBuffer::Init(
+    CLCommandQueue* queue, bool simultaneous_use) {
   cl_int errcode_ret = CL_SUCCESS;
   std::vector<cl_command_buffer_properties_khr> properties;
   if (simultaneous_use) {
@@ -68,7 +69,7 @@ absl::Status CLCommandBuffer::Init(CLCommandQueue* queue,
   return absl::OkStatus();
 }
 
-absl::Status CLCommandBuffer::Finalize() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLCommandBuffer::Finalize() {
   cl_int errcode_ret = clFinalizeCommandBufferKHR(cb_);
   if (errcode_ret != CL_SUCCESS) {
     return absl::InternalError(
@@ -78,7 +79,8 @@ absl::Status CLCommandBuffer::Finalize() {
   return absl::OkStatus();
 }
 
-absl::Status CLCommandBuffer::Enqueue(CLCommandQueue* queue, CLEvent* event) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CLCommandBuffer::Enqueue(
+    CLCommandQueue* queue, CLEvent* event) {
   cl_event resulting_event;
   cl_command_queue cmd_queue = queue->queue();
   cl_int errcode_ret = clEnqueueCommandBufferKHR(

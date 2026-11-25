@@ -22,6 +22,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -424,7 +425,8 @@ class TrivialCopier : public OpenClConverterImpl {
     return absl::InvalidArgumentError("Unexpected object");
   }
 
-  absl::Status Copy(const OpenClBuffer& input, const OpenClBuffer& output) {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status Copy(const OpenClBuffer& input,
+                                                   const OpenClBuffer& output) {
     if (input.memobj == output.memobj) {
       return absl::OkStatus();
     }
@@ -436,7 +438,8 @@ class TrivialCopier : public OpenClConverterImpl {
         nullptr, nullptr));
   }
 
-  absl::Status Copy(const OpenClTexture& input, const OpenClTexture& output) {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status Copy(
+      const OpenClTexture& input, const OpenClTexture& output) {
     if (input.memobj == output.memobj) {
       return absl::OkStatus();
     }

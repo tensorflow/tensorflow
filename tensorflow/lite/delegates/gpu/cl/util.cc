@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -177,8 +178,11 @@ int ChannelTypeToSizeInBytes(cl_channel_type type) {
 
 bool OpenCLSupported() { return LoadOpenCL().ok(); }
 
-absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,
-                            bool read_only, void* data, cl_mem* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateCLBuffer(cl_context context,
+                                                           int size_in_bytes,
+                                                           bool read_only,
+                                                           void* data,
+                                                           cl_mem* result) {
   cl_mem_flags flags = read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
   if (data) {
     flags |= CL_MEM_COPY_HOST_PTR;
@@ -193,9 +197,9 @@ absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,
   return absl::OkStatus();
 }
 
-absl::Status CreateCLSubBuffer(cl_context context, cl_mem parent,
-                               size_t origin_in_bytes, size_t size_in_bytes,
-                               bool read_only, cl_mem* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateCLSubBuffer(
+    cl_context context, cl_mem parent, size_t origin_in_bytes,
+    size_t size_in_bytes, bool read_only, cl_mem* result) {
   cl_mem_flags flags = read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
 
   cl_buffer_region region{};

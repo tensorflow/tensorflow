@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -82,7 +83,7 @@ Buffer& Buffer::operator=(Buffer&& buffer) {
   return *this;
 }
 
-void Buffer::Release() {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void Buffer::Release() {
   if (owner_ && buffer_) {
     clReleaseMemObject(buffer_);
     buffer_ = nullptr;

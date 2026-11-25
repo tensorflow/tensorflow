@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/debugging/leak_check.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
@@ -99,7 +100,8 @@ static void ParsePowerVRDriverVersion(const std::string& cl_driver_version,
 }
 
 template <>
-std::string GetDeviceInfo<std::string>(cl_device_id id, cl_device_info info) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI std::string GetDeviceInfo<std::string>(
+    cl_device_id id, cl_device_info info) {
   size_t size;
   cl_int error = clGetDeviceInfo(id, info, 0, nullptr, &size);
   if (error != CL_SUCCESS) {
@@ -116,7 +118,8 @@ std::string GetDeviceInfo<std::string>(cl_device_id id, cl_device_info info) {
 
 namespace {
 template <typename T>
-T GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI T GetPlatformInfo(cl_platform_id id,
+                                                 cl_platform_info info) {
   T result;
   cl_int error = clGetPlatformInfo(id, info, sizeof(T), &result, nullptr);
   if (error != CL_SUCCESS) {
@@ -125,7 +128,8 @@ T GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
   return result;
 }
 
-std::string GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI std::string GetPlatformInfo(
+    cl_platform_id id, cl_platform_info info) {
   size_t size;
   cl_int error = clGetPlatformInfo(id, info, 0, nullptr, &size);
   if (error != CL_SUCCESS) {
@@ -140,7 +144,8 @@ std::string GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
   return result;
 }
 
-void GetDeviceWorkDimsSizes(cl_device_id id, int3* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI void GetDeviceWorkDimsSizes(cl_device_id id,
+                                                           int3* result) {
   int dims_count =
       GetDeviceInfo<cl_uint>(id, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS);
   if (dims_count < 3) {
@@ -196,7 +201,8 @@ bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
   return gpu_version >= min_version && gpu_version < max_version;
 }
 
-GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI GpuInfo
+GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   GpuInfo info;
   info.opencl_info.platform_version =
       GetPlatformInfo(platform_id, CL_PLATFORM_VERSION);
@@ -437,7 +443,8 @@ void CLDevice::DisableOneLayerTextureArray() {
   info_.adreno_info.support_one_layer_texture_array = false;
 }
 
-absl::Status CreateDefaultGPUDevice(CLDevice* result) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::Status CreateDefaultGPUDevice(
+    CLDevice* result) {
   // Get num. platforms
   cl_uint num_platforms;
   cl_int status;
