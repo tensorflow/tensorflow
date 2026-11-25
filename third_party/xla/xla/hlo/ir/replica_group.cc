@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -463,12 +464,17 @@ MeshAxesReplicaGroupListProto MeshAxesReplicaGroupList::ToProto() const {
 
 MeshAxesReplicaGroupList MeshAxesReplicaGroupList::FromProto(
     const MeshAxesReplicaGroupListProto& proto) {
-  Mesh mesh = Mesh::FromProto(proto.mesh());
+  // TODO(b/584413505): Propagate errors once
+  // MeshAxesReplicaGroupList::FromProto returns StatusOr.
+  absl::StatusOr<Mesh> mesh = Mesh::FromProto(proto.mesh());
+  CHECK_OK(mesh);
   std::vector<AxisRef> axes;
   for (const AxisRefProto& axis_proto : proto.axes()) {
-    axes.push_back(AxisRef::FromProto(axis_proto));
+    absl::StatusOr<AxisRef> axis = AxisRef::FromProto(axis_proto);
+    CHECK_OK(axis);
+    axes.push_back(*axis);
   }
-  return MeshAxesReplicaGroupList(mesh, axes);
+  return MeshAxesReplicaGroupList(*std::move(mesh), axes);
 }
 
 IotaReplicaGroupList MeshAxesReplicaGroupList::ToIotaReplicaGroupList() const {

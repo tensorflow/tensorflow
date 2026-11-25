@@ -17,25 +17,30 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla_data.pb.h"
 
 using ::tsl::proto_testing::EqualsProto;
 
 namespace xla {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
@@ -85,7 +90,7 @@ TEST(MeshAndAxisTest, AxesToProtoWithSubAxis) {
 TEST(MeshAndAxisTest, AxesFromProto) {
   AxisRefProto expected;
   expected.set_mesh_axis_index(1);
-  EXPECT_THAT(AxisRef(1), AxisRef::FromProto(expected));
+  EXPECT_THAT(AxisRef::FromProto(expected), IsOkAndHolds(AxisRef(1)));
 }
 
 TEST(MeshAndAxisTest, AxesFromProtoWithSubAxis) {
@@ -93,7 +98,7 @@ TEST(MeshAndAxisTest, AxesFromProtoWithSubAxis) {
   expected.set_mesh_axis_index(10);
   expected.mutable_sub_axis_info()->set_pre_size(4);
   expected.mutable_sub_axis_info()->set_size(32);
-  EXPECT_THAT(AxisRef(10, {4, 32}), AxisRef::FromProto(expected));
+  EXPECT_THAT(AxisRef::FromProto(expected), IsOkAndHolds(AxisRef(10, {4, 32})));
 }
 
 TEST(MeshAndAxisTest, MeshToAndFromProtoIotaTiling) {
@@ -108,7 +113,7 @@ TEST(MeshAndAxisTest, MeshToAndFromProtoIotaTiling) {
   Mesh mesh({2, 3, 6}, {"a", "b", "c"});
 
   EXPECT_THAT(mesh.ToProto(), EqualsProto(proto));
-  EXPECT_EQ(mesh, Mesh::FromProto(proto));
+  EXPECT_THAT(Mesh::FromProto(proto), IsOkAndHolds(mesh));
 }
 
 TEST(MeshAndAxisTest, MeshToProtoIotaTilingWithReshapeDims) {
@@ -164,26 +169,28 @@ TEST(MeshAndAxisTest, MeshFromProtoNonIotaTiling) {
 
   Array2D<int64_t> array({{0, 1}, {6, 3}, {7, 4}, {5, 2}});
   std::vector<absl::string_view> axes_xy = {"x", "y"};
-  EXPECT_EQ(Mesh(array, axes_xy), Mesh::FromProto(expected));
+  EXPECT_THAT(Mesh::FromProto(expected), IsOkAndHolds(Mesh(array, axes_xy)));
 }
 
 TEST(MeshAndAxisTest, MeshRoundtripProto) {
   // Simple iota tiling.
   std::vector<absl::string_view> axes_xy = {"data", "model"};
   Mesh mesh_simple_iota({5, 3}, axes_xy);
-  EXPECT_THAT(mesh_simple_iota, Mesh::FromProto(mesh_simple_iota.ToProto()));
+  EXPECT_THAT(Mesh::FromProto(mesh_simple_iota.ToProto()),
+              IsOkAndHolds(mesh_simple_iota));
 
   // Transformed iota tiling.
   Mesh mesh_iota(
       TileAssignment(IotaTileAssignment::Create({5, 3}, {5, 3}, {1, 0})),
       axes_xy);
-  EXPECT_THAT(mesh_iota, Mesh::FromProto(mesh_iota.ToProto()));
+  EXPECT_THAT(Mesh::FromProto(mesh_iota.ToProto()), IsOkAndHolds(mesh_iota));
 
   // Non-iota tiling.
   Array2D<int64_t> array(
       {{14, 7, 6}, {12, 0, 8}, {11, 10, 5}, {1, 9, 3}, {2, 13, 4}});
   Mesh mesh_non_iota(array, axes_xy);
-  EXPECT_THAT(mesh_non_iota, Mesh::FromProto(mesh_non_iota.ToProto()));
+  EXPECT_THAT(Mesh::FromProto(mesh_non_iota.ToProto()),
+              IsOkAndHolds(mesh_non_iota));
 }
 
 TEST(MeshAndAxisTest, ValidatesAxisRef) {
@@ -222,89 +229,254 @@ TEST(MeshAndAxisTest, ValidatesMesh) {
       "Mesh has duplicate axis names. Duplicate axis name: x");
 }
 
+MeshProto MeshProtoWithAxisSizes(absl::Span<const int64_t> sizes) {
+  MeshProto proto;
+  for (int64_t i = 0; i < sizes.size(); ++i) {
+    MeshProto::MeshAxis* axis = proto.add_axes();
+    axis->set_name(absl::StrCat("axis", i));
+    axis->set_size(sizes[i]);
+  }
+  return proto;
+}
+
 TEST(MeshAndAxisTest, FromProtoValidation) {
   {
-    MeshProto proto;
-    auto* axis = proto.add_axes();
-    axis->set_name("x");
-    axis->set_size(1);
-
     // 1 axis of size 1, but 2 device IDs.
+    MeshProto proto = MeshProtoWithAxisSizes({1});
     proto.add_device_ids(0);
     proto.add_device_ids(1);
-
-    EXPECT_DEATH(
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Number of device ids must match the "
+                                   "product of mesh axis sizes")));
+  }
+  {
+    MeshProto proto = MeshProtoWithAxisSizes({0});
+    proto.add_device_ids(0);
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Mesh axis size must be positive")));
+  }
+  {
+    MeshProto proto = MeshProtoWithAxisSizes({-2});
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Mesh axis size must be positive")));
+  }
+  {
+    MeshProto proto;
+    proto.add_device_ids(0);
+    proto.add_device_ids(1);
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Maximal mesh must have exactly 1 device "
+                                   "id")));
+  }
+  {
+    MeshProto proto;
+    proto.add_device_ids(-1);
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Mesh device ids must be non-negative")));
+  }
+  {
+    MeshProto proto;
+    proto.mutable_iota_transform()->add_reshape_dims(1);
+    proto.mutable_iota_transform()->add_transpose_perm(0);
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Mesh without axes must not have an iota "
+                                   "transform")));
+  }
+  {
+    MeshProto proto = MeshProtoWithAxisSizes({2});
+    proto.add_device_ids(1);
+    proto.add_device_ids(0);
+    proto.mutable_iota_transform()->add_reshape_dims(2);
+    proto.mutable_iota_transform()->add_transpose_perm(0);
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Mesh must not have an iota transform and "
+                                   "a device ID list")));
+  }
+  {
+    MeshProto proto = MeshProtoWithAxisSizes({2, 2});
+    proto.mutable_axes(1)->set_name("axis0");
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Mesh has duplicate axis names")));
+  }
+  {
+    MeshProto proto = MeshProtoWithAxisSizes({4});
+    for (int64_t device_id : {0, 1, 2, 4}) {
+      proto.add_device_ids(device_id);
+    }
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Device ids must be a permutation of")));
+  }
+  {
+    // An explicit identity device id list must be encoded as an iota mesh.
+    MeshProto proto = MeshProtoWithAxisSizes({4});
+    for (int64_t device_id : {0, 1, 2, 3}) {
+      proto.add_device_ids(device_id);
+    }
+    EXPECT_THAT(
         Mesh::FromProto(proto),
-        "Number of elements must match the product of array dimensions");
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("Non-iota device assignment has iota device id "
+                           "list")));
   }
+}
 
+TEST(MeshAndAxisTest, FromProtoRejectsDeviceIdCountBeforeAllocation) {
+  // The device array would need 8 TB if it were allocated before checking
+  // the number of device ids.
+  MeshProto proto = MeshProtoWithAxisSizes({1'000'000'000'000});
+  proto.add_device_ids(0);
+  EXPECT_THAT(Mesh::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Number of device ids must match the product "
+                                 "of mesh axis sizes")));
+}
+
+TEST(MeshAndAxisTest, FromProtoRejectsAxisSizeProductOverflow) {
+  // 3 * 6148914691236517206 wraps to 2 in int64_t.
+  MeshProto proto = MeshProtoWithAxisSizes({3, 6148914691236517206});
+  proto.add_device_ids(1);
+  proto.add_device_ids(0);
+  EXPECT_THAT(Mesh::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Product of mesh axis sizes overflows")));
+
+  proto.clear_device_ids();
+  EXPECT_THAT(Mesh::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Product of mesh axis sizes overflows")));
+}
+
+TEST(MeshAndAxisTest, FromProtoRejectsInvalidIotaTransform) {
   {
-    MeshProto proto;
-    auto* axis = proto.add_axes();
-    axis->set_name("x");
-    axis->set_size(0);
-
-    proto.add_device_ids(0);
-
-    EXPECT_DEATH(Mesh::FromProto(proto), "Mesh axis size must be positive");
+    MeshProto proto = MeshProtoWithAxisSizes({2, 2});
+    proto.mutable_iota_transform()->add_reshape_dims(2);
+    proto.mutable_iota_transform()->add_reshape_dims(3);
+    proto.mutable_iota_transform()->add_transpose_perm(1);
+    proto.mutable_iota_transform()->add_transpose_perm(0);
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument));
   }
-
   {
-    MeshProto proto;
-    proto.add_device_ids(0);
-    proto.add_device_ids(1);
-    EXPECT_DEATH(Mesh::FromProto(proto),
-                 "Maximal mesh must have exactly 1 device id");
-  }
-
-  {
-    // 3 * 6148914691236517206 == 2^64 + 2, which wraps around to 2 in int64_t
-    // and would otherwise match the 2 device ids.
-    MeshProto proto;
-    auto* axis_a = proto.add_axes();
-    axis_a->set_name("a");
-    axis_a->set_size(3);
-    auto* axis_b = proto.add_axes();
-    axis_b->set_name("b");
-    axis_b->set_size(6148914691236517206);
-    proto.add_device_ids(1);
-    proto.add_device_ids(0);
-    EXPECT_DEATH(Mesh::FromProto(proto),
-                 "Product of array dimensions overflows");
-  }
-
-  {
-    // Huge (non-overflowing) mesh with too few device ids must be rejected
-    // before allocating the device id array.
-    MeshProto proto;
-    auto* axis_a = proto.add_axes();
-    axis_a->set_name("a");
-    axis_a->set_size(1000000000);
-    auto* axis_b = proto.add_axes();
-    axis_b->set_name("b");
-    axis_b->set_size(1000000000);
-    proto.add_device_ids(1);
-    proto.add_device_ids(0);
-    EXPECT_DEATH(
-        Mesh::FromProto(proto),
-        "Number of elements must match the product of array dimensions");
-  }
-
-  {
-    MeshProto proto;
-    auto* axis_x = proto.add_axes();
-    axis_x->set_name("x");
-    axis_x->set_size(2);
-    auto* axis_y = proto.add_axes();
-    axis_y->set_name("y");
-    axis_y->set_size(2);
+    MeshProto proto = MeshProtoWithAxisSizes({2, 2});
     proto.mutable_iota_transform()->add_reshape_dims(2);
     proto.mutable_iota_transform()->add_reshape_dims(2);
-    // Low 32 bits are [1, 0], which would silently validate if truncated.
-    proto.mutable_iota_transform()->add_transpose_perm(4294967297LL);
-    proto.mutable_iota_transform()->add_transpose_perm(4294967296LL);
-    EXPECT_DEATH(Mesh::FromProto(proto), "out of range");
+    proto.mutable_iota_transform()->add_transpose_perm(0);
+    proto.mutable_iota_transform()->add_transpose_perm(0);
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument));
   }
+  {
+    // The low 32 bits of the entries form the valid permutation [1, 0].
+    MeshProto proto = MeshProtoWithAxisSizes({2, 2});
+    proto.mutable_iota_transform()->add_reshape_dims(2);
+    proto.mutable_iota_transform()->add_reshape_dims(2);
+    proto.mutable_iota_transform()->add_transpose_perm(4294967297);
+    proto.mutable_iota_transform()->add_transpose_perm(4294967296);
+    EXPECT_THAT(Mesh::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("out of range")));
+  }
+}
+
+TEST(MeshAndAxisTest, AxisRefFromProtoValidation) {
+  {
+    AxisRefProto proto;
+    proto.set_mesh_axis_index(-1);
+    EXPECT_THAT(AxisRef::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Axis index must be non-negative")));
+  }
+  {
+    AxisRefProto proto;
+    proto.set_mesh_axis_index(0);
+    proto.mutable_sub_axis_info()->set_pre_size(1);
+    proto.mutable_sub_axis_info()->set_size(1);
+    EXPECT_THAT(AxisRef::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("sub-axis size must be > 1")));
+  }
+  {
+    // 2^62 * 4 wraps to 0 in int64_t.
+    AxisRefProto proto;
+    proto.set_mesh_axis_index(0);
+    proto.mutable_sub_axis_info()->set_pre_size(int64_t{1} << 62);
+    proto.mutable_sub_axis_info()->set_size(4);
+    EXPECT_THAT(AxisRef::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("sub-axis pre_size * size overflows")));
+  }
+}
+
+TEST(MeshAndAxisTest, TryCreateMesh) {
+  EXPECT_THAT(Mesh::TryCreate(TileAssignment({2, 3}), {"x", "y"}),
+              IsOkAndHolds(Mesh({2, 3}, {"x", "y"})));
+  EXPECT_THAT(Mesh::TryCreate(TileAssignment({2, 3}), {"x"}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Number of axes names must match")));
+  // 0-D device assignment with axes.
+  EXPECT_THAT(
+      Mesh::TryCreate(TileAssignment(std::make_shared<const Array<int64_t>>(
+                          std::vector<int64_t>{})),
+                      {"x"}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Number of axes names must match")));
+  // 0-D and 1-D iota device assignments without axes (e.g. from Shardy <[]>
+  // meshes) are canonicalized to Mesh() or Mesh(device_id).
+  auto zero_dim_array =
+      std::make_shared<Array<int64_t>>(std::vector<int64_t>{});
+  *zero_dim_array->begin() = 5;
+  ASSERT_OK_AND_ASSIGN(
+      Mesh zero_dim_array_mesh,
+      Mesh::TryCreate(TileAssignment(std::move(zero_dim_array)), {}));
+  EXPECT_EQ(zero_dim_array_mesh, Mesh(5));
+  EXPECT_EQ(zero_dim_array_mesh.ToString(), "single_device[device_id=5]");
+  EXPECT_FALSE(zero_dim_array_mesh.device_assignment().iota().has_value());
+  EXPECT_THAT(Mesh::FromProto(zero_dim_array_mesh.ToProto()),
+              IsOkAndHolds(zero_dim_array_mesh));
+
+  ASSERT_OK_AND_ASSIGN(
+      Mesh zero_dim_iota_mesh,
+      Mesh::TryCreate(TileAssignment(absl::Span<const int64_t>{}), {}));
+  EXPECT_EQ(zero_dim_iota_mesh, Mesh(0));
+  EXPECT_EQ(zero_dim_iota_mesh.ToString(), "single_device[device_id=0]");
+  EXPECT_FALSE(zero_dim_iota_mesh.device_assignment().iota().has_value());
+  EXPECT_THAT(Mesh::FromProto(zero_dim_iota_mesh.ToProto()),
+              IsOkAndHolds(zero_dim_iota_mesh));
+
+  ASSERT_OK_AND_ASSIGN(
+      Mesh one_dim_iota_single,
+      Mesh::TryCreate(TileAssignment(IotaTileAssignment::Create({1})), {}));
+  EXPECT_EQ(one_dim_iota_single, Mesh(0));
+  EXPECT_FALSE(one_dim_iota_single.device_assignment().iota().has_value());
+
+  ASSERT_OK_AND_ASSIGN(
+      Mesh one_dim_iota_empty,
+      Mesh::TryCreate(TileAssignment(IotaTileAssignment::Create({0})), {}));
+  EXPECT_EQ(one_dim_iota_empty, Mesh());
+  EXPECT_FALSE(one_dim_iota_empty.device_assignment().iota().has_value());
+  // Multi-device assignment without axes.
+  EXPECT_THAT(Mesh::TryCreate(TileAssignment({2, 2}), {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Mesh without axes must have at most 1")));
+  // Zero-sized axis.
+  EXPECT_THAT(Mesh::TryCreate(TileAssignment({0, 2}), {"x", "y"}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Mesh axis size must be positive")));
+  // Single device with a negative id.
+  EXPECT_THAT(Mesh::TryCreate(TileAssignment(-1), {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Mesh device ids must be non-negative")));
+  EXPECT_THAT(Mesh::TryCreate(TileAssignment(5), {}), IsOkAndHolds(Mesh(5)));
+  EXPECT_THAT(Mesh::TryCreate(TileAssignment(), {}), IsOkAndHolds(Mesh()));
 }
 
 TEST(MeshAndAxisTest, MeshToString) {
@@ -382,14 +554,15 @@ TEST(MeshAndAxisTest, ValidateAxisForMesh) {
                HasSubstr("Sub-axis size must be strictly less than the full "
                          "axis size. Sub-axis size: 33, Axis size: 33")));
 
-  // An invalid pre-size is rejected when the AxisRef is constructed, before
+  // An invalid pre-size is rejected when the AxisRef is parsed, before
   // Validate() can run.
   AxisRefProto invalid_pre_size_proto;
   invalid_pre_size_proto.set_mesh_axis_index(0);
   invalid_pre_size_proto.mutable_sub_axis_info()->set_pre_size(0);
   invalid_pre_size_proto.mutable_sub_axis_info()->set_size(2);
-  EXPECT_DEATH(AxisRef::FromProto(invalid_pre_size_proto),
-               "sub-axis pre-size must be >= 1");
+  EXPECT_THAT(AxisRef::FromProto(invalid_pre_size_proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("sub-axis pre-size must be >= 1")));
 }
 
 TEST(MeshAndAxisTest, ValidateSubAxis) {
@@ -470,8 +643,8 @@ TEST(MeshAndAxisTest, EmptyMesh) {
   EXPECT_NE(empty_mesh, Mesh({1}, {"a"}));
   EXPECT_FALSE(empty_mesh.IsSingleDevice());
   EXPECT_THAT(empty_mesh.ToProto(), EqualsProto(MeshProto()));
-  EXPECT_EQ(empty_mesh, Mesh::FromProto(MeshProto()));
-  EXPECT_EQ(empty_mesh, Mesh::FromProto(empty_mesh.ToProto()));
+  EXPECT_THAT(Mesh::FromProto(MeshProto()), IsOkAndHolds(empty_mesh));
+  EXPECT_THAT(Mesh::FromProto(empty_mesh.ToProto()), IsOkAndHolds(empty_mesh));
 }
 
 TEST(MeshAndAxisTest, SingleDeviceMesh) {
@@ -491,9 +664,10 @@ TEST(MeshAndAxisTest, SingleDeviceMesh) {
 
   MeshProto from_proto;
   from_proto.add_device_ids(7);
-  EXPECT_EQ(Mesh(7), Mesh::FromProto(from_proto));
+  EXPECT_THAT(Mesh::FromProto(from_proto), IsOkAndHolds(Mesh(7)));
 
-  EXPECT_EQ(single_device_mesh, Mesh::FromProto(single_device_mesh.ToProto()));
+  EXPECT_THAT(Mesh::FromProto(single_device_mesh.ToProto()),
+              IsOkAndHolds(single_device_mesh));
 }
 
 TEST(MeshAndAxisTest, AxisRefSize) {

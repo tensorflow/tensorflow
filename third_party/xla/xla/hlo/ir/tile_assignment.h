@@ -84,6 +84,7 @@ class IotaTileAssignment {
       absl::Span<const int> transpose_perm);
   static IotaTileAssignment Create(absl::Span<const int64_t> dims,
                                    const MeshProto::IotaTransform& transform);
+  // Same as above, but returns an error if `transform` is invalid for `dims`.
   static absl::StatusOr<IotaTileAssignment> TryCreate(
       absl::Span<const int64_t> dims,
       const MeshProto::IotaTransform& transform);

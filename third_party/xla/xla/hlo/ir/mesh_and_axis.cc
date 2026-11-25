@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -45,15 +46,23 @@ limitations under the License.
 namespace xla {
 
 absl::Status Mesh::Validate() {
-  if (device_assignment_.num_dimensions() == 0) {
-    // Empty mesh or single-device mesh.
-    if (device_assignment_.num_elements() <= 1) {
-      return absl::OkStatus();
+  if (axes_names_.empty()) {
+    // Empty mesh or single-device mesh (0-D or 1-D with at most 1 device id).
+    if (device_assignment_.num_dimensions() > 1 ||
+        device_assignment_.num_elements() > 1) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Mesh without axes must have at most 1 dimension and 1 device id. "
+          "Number of dimensions: ",
+          device_assignment_.num_dimensions(),
+          ", Number of device ids: ", device_assignment_.num_elements()));
     }
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Single-device mesh must have at most 1 device id. Number of "
-        "device ids: ",
-        device_assignment_.num_elements()));
+    if (device_assignment_.num_elements() == 1 &&
+        device_assignment_.first() < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Mesh device ids must be non-negative. Device id: ",
+                       device_assignment_.first()));
+    }
+    return absl::OkStatus();
   }
 
   if (device_assignment_.num_dimensions() != axes_names_.size()) {
@@ -62,6 +71,13 @@ absl::Status Mesh::Validate() {
         "assignment. Number of axes names: ",
         axes_names_.size(),
         ", Number of dimensions: ", device_assignment_.dimensions().size()));
+  }
+
+  for (int64_t axis_size : device_assignment_.dimensions()) {
+    if (axis_size <= 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Mesh axis size must be positive. Axis size: ", axis_size));
+    }
   }
 
   absl::flat_hash_set<std::string> seen_axis_names;
@@ -102,16 +118,33 @@ absl::Status Mesh::Validate() {
 }
 
 Mesh::Mesh(TileAssignment device_assignment,
-           absl::Span<const absl::string_view> axes_names)
-    : device_assignment_(std::move(device_assignment)),
-      axes_names_(axes_names.begin(), axes_names.end()) {
-  CHECK_OK(Validate());
+           absl::Span<const absl::string_view> axes_names) {
+  absl::StatusOr<Mesh> mesh =
+      TryCreate(std::move(device_assignment), axes_names);
+  CHECK_OK(mesh);
+  *this = *std::move(mesh);
+}
+
+absl::StatusOr<Mesh> Mesh::TryCreate(
+    TileAssignment device_assignment,
+    absl::Span<const absl::string_view> axes_names) {
+  Mesh mesh;
+  mesh.device_assignment_ = std::move(device_assignment);
+  mesh.axes_names_.assign(axes_names.begin(), axes_names.end());
+  ABSL_RETURN_IF_ERROR(mesh.Validate());
+  if (mesh.axes_names_.empty()) {
+    mesh.device_assignment_ =
+        mesh.device_assignment_.num_elements() == 0
+            ? TileAssignment()
+            : TileAssignment(mesh.device_assignment_.first());
+  }
+  return mesh;
 }
 
 std::string Mesh::ToString() const {
   if (IsSingleDevice()) {
-    return absl::StrCat(
-        "single_device[device_id=", device_assignment_.array()(0), "]");
+    return absl::StrCat("single_device[device_id=", device_assignment_.first(),
+                        "]");
   }
 
   std::string mesh_str = "mesh";
@@ -180,14 +213,26 @@ MeshProto Mesh::ToProto() const {
   return proto;
 }
 
-Mesh Mesh::FromProto(const MeshProto& proto) {
+absl::StatusOr<Mesh> Mesh::FromProto(const MeshProto& proto) {
   if (proto.axes_size() == 0) {
+    if (proto.has_iota_transform()) {
+      return absl::InvalidArgumentError(
+          "Mesh without axes must not have an iota transform.");
+    }
     if (proto.device_ids_size() == 0) {
       return Mesh();
     }
     // Maximal mesh
-    CHECK_EQ(proto.device_ids_size(), 1)
-        << "Maximal mesh must have exactly 1 device id.";
+    if (proto.device_ids_size() != 1) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Maximal mesh must have exactly 1 device id. Number of device ids: ",
+          proto.device_ids_size()));
+    }
+    if (proto.device_ids(0) < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Mesh device ids must be non-negative. Device id: ",
+                       proto.device_ids(0)));
+    }
     return Mesh(proto.device_ids(0));
   }
 
@@ -195,38 +240,51 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   std::vector<absl::string_view> mesh_axis_names;
   mesh_axis_sizes.reserve(proto.axes_size());
   mesh_axis_names.reserve(proto.axes_size());
+  int64_t num_devices = 1;
   for (const auto& axis : proto.axes()) {
-    CHECK_GT(axis.size(), 0) << "Mesh axis size must be positive.";
+    if (axis.size() <= 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Mesh axis size must be positive. Axis size: ", axis.size()));
+    }
+    auto [product, overflow] = OverflowSafeMultiply(num_devices, axis.size());
+    if (overflow) {
+      return absl::InvalidArgumentError(
+          "Product of mesh axis sizes overflows int64_t.");
+    }
+    num_devices = product;
     mesh_axis_sizes.push_back(axis.size());
     mesh_axis_names.push_back(axis.name());
   }
-  absl::Span<const absl::string_view> mesh_axis_names_span =
-      absl::MakeSpan(mesh_axis_names);
 
   // If device ids are not specified, create a mesh with iota tiling.
   if (proto.device_ids_size() == 0) {
-    if (proto.has_iota_transform()) {
-      // Transformed iota.
-      TileAssignment device_assignment = TileAssignment(
-          IotaTileAssignment::Create(mesh_axis_sizes, proto.iota_transform()));
-      return Mesh(device_assignment, mesh_axis_names_span);
-    }
-    // Simple iota.
-    TileAssignment device_assignment =
-        TileAssignment(IotaTileAssignment::Create(mesh_axis_sizes));
-    return Mesh(device_assignment, mesh_axis_names_span);
+    ABSL_ASSIGN_OR_RETURN(IotaTileAssignment iota,
+                     proto.has_iota_transform()
+                         ? IotaTileAssignment::TryCreate(mesh_axis_sizes,
+                                                         proto.iota_transform())
+                         : IotaTileAssignment::TryCreate(mesh_axis_sizes));
+    return Mesh::TryCreate(TileAssignment(std::move(iota)), mesh_axis_names);
   }
   // The proto must not have defined both a device IDs list and have an
   // iota transform, since the iota transform makes no sense in this case.
-  CHECK(!proto.has_iota_transform())
-      << "Mesh must not have an iota transform and a device ID list";
+  if (proto.has_iota_transform()) {
+    return absl::InvalidArgumentError(
+        "Mesh must not have an iota transform and a device ID list.");
+  }
+  // Check the number of device ids before allocating the device array.
+  if (proto.device_ids_size() != num_devices) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Number of device ids must match the product of mesh axis sizes. "
+        "Number of device ids: ",
+        proto.device_ids_size(),
+        ", product of mesh axis sizes: ", num_devices));
+  }
 
-  // Otherwise, create a mesh with the specific device id ordering. The `Array`
-  // constructor checks that the number of device ids matches the product of
-  // the mesh axis sizes before allocating.
-  TileAssignment tile_assignment = TileAssignment(
-      std::make_shared<Array<int64_t>>(mesh_axis_sizes, proto.device_ids()));
-  return Mesh(tile_assignment, mesh_axis_names_span);
+  // Otherwise, create a mesh with the specific device id ordering.
+  auto device_ids_array =
+      std::make_shared<Array<int64_t>>(mesh_axis_sizes, proto.device_ids());
+  return Mesh::TryCreate(TileAssignment(std::move(device_ids_array)),
+                         mesh_axis_names);
 }
 
 bool Mesh::ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const {
@@ -270,11 +328,17 @@ AxisRefProto AxisRef::ToProto() const {
   return proto;
 }
 
-AxisRef AxisRef::FromProto(const AxisRefProto& proto) {
+absl::StatusOr<AxisRef> AxisRef::FromProto(const AxisRefProto& proto) {
+  if (proto.mesh_axis_index() < 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Axis index must be non-negative. Axis index: ",
+                     proto.mesh_axis_index()));
+  }
   if (proto.has_sub_axis_info()) {
-    return AxisRef(proto.mesh_axis_index(),
-                   SubAxis{proto.sub_axis_info().pre_size(),
-                           proto.sub_axis_info().size()});
+    const int64_t pre_size = proto.sub_axis_info().pre_size();
+    const int64_t size = proto.sub_axis_info().size();
+    ABSL_RETURN_IF_ERROR(ValidateSubAxis(pre_size, size));
+    return AxisRef(proto.mesh_axis_index(), SubAxis{pre_size, size});
   }
   return AxisRef(proto.mesh_axis_index());
 }

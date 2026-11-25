@@ -94,8 +94,10 @@ class Array {
   explicit Array(absl::Span<const int64_t> sizes)
       : sizes_(sizes.size()),
         values_(calculate_elements(sizes), default_init_t{}) {
-    std::memcpy(sizes_.data.get(), sizes.data(),
-                sizeof(int64_t) * sizes.size());
+    if (!sizes.empty()) {
+      std::memcpy(sizes_.data.get(), sizes.data(),
+                  sizeof(int64_t) * sizes.size());
+    }
   }
 
   // Creates a new array with the specified dimensions and specified value for
@@ -545,10 +547,12 @@ class Array {
     CHECK_EQ(new_num_elements, num_elements());
     if (sizes_.size != new_dimensions.size()) {
       OwnedBuffer<int64_t> new_sizes(new_dimensions.size());
-      std::memcpy(new_sizes.data.get(), new_dimensions.data(),
-                  new_dimensions.size() * sizeof(int64_t));
+      if (!new_dimensions.empty()) {
+        std::memcpy(new_sizes.data.get(), new_dimensions.data(),
+                    new_dimensions.size() * sizeof(int64_t));
+      }
       sizes_ = std::move(new_sizes);
-    } else {
+    } else if (!new_dimensions.empty()) {
       std::memmove(sizes_.data.get(), new_dimensions.data(),
                    new_dimensions.size() * sizeof(int64_t));
     }
@@ -667,7 +671,9 @@ class Array {
 
     OwnedBuffer Clone() const {
       OwnedBuffer clone(size);
-      std::memcpy(clone.data.get(), data.get(), size * sizeof(D));
+      if (size > 0) {
+        std::memcpy(clone.data.get(), data.get(), size * sizeof(D));
+      }
       return clone;
     }
 
@@ -688,8 +694,10 @@ class Array {
   // `num_elements` must be the product of `sizes`.
   Array(absl::Span<const int64_t> sizes, size_t num_elements, no_default_init_t)
       : sizes_(sizes.size()), values_(num_elements) {
-    std::memcpy(sizes_.data.get(), sizes.data(),
-                sizeof(int64_t) * sizes.size());
+    if (!sizes.empty()) {
+      std::memcpy(sizes_.data.get(), sizes.data(),
+                  sizeof(int64_t) * sizes.size());
+    }
   }
 
   // Extracts the dimensions of an initializer_list to an array type int64_t.

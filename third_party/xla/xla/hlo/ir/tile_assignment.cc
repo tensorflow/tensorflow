@@ -344,9 +344,15 @@ absl::Status ValidateIotaReshapeAndTranspose(
 
 /*static*/ absl::StatusOr<IotaTileAssignment> IotaTileAssignment::TryCreate(
     absl::Span<const int64_t> dims, const MeshProto::IotaTransform& transform) {
-  const int64_t perm_size = transform.transpose_perm().size();
+  // Range-check the int64_t permutation entries before narrowing them to int.
   // This is an extra copy, but the array will typically be quite small since
   // it scales with the number of dimensions.
+  const int64_t perm_size = transform.transpose_perm().size();
+  if (transform.reshape_dims_size() != perm_size) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Iota reshape_dims size (%d) must match transpose_perm size (%d)",
+        transform.reshape_dims_size(), perm_size));
+  }
   absl::InlinedVector<int, 6> int_perm;
   int_perm.reserve(perm_size);
   for (int64_t perm_dim : transform.transpose_perm()) {
