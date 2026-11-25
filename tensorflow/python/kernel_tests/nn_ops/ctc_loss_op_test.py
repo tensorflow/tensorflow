@@ -1478,6 +1478,54 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
     )
 
   @parameterized.parameters([False, True])
+  def testCtcLossFp64DenseLabels(self, unique):
+    batch_size = 8
+    num_labels = 6
+    max_label_length = 5
+    num_frames = 12
+
+    labels = np.random.randint(1, num_labels, [batch_size, max_label_length])
+    labels = ops.convert_to_tensor(labels, dtypes.int64)
+    fp64_logits = np.random.uniform(size=[num_frames, batch_size, num_labels])
+    fp64_logits = ops.convert_to_tensor(fp64_logits, dtypes.float64)
+    label_length = np.random.randint(2, max_label_length, [batch_size])
+    label_length = ops.convert_to_tensor(label_length, dtypes.int64)
+
+    label_mask = array_ops.sequence_mask(
+        label_length, maxlen=max_label_length, dtype=label_length.dtype)
+    labels *= label_mask
+    logit_length = [num_frames] * batch_size
+
+    def _dense_ctc_loss(logits):
+      with backprop.GradientTape() as t:
+        t.watch(logits)
+        loss = ctc_ops.ctc_loss_dense(
+            labels=labels,
+            logits=logits,
+            label_length=label_length,
+            logit_length=logit_length,
+            unique=ctc_ops.ctc_unique_labels(labels) if unique else None,
+            blank_index=0)
+      return loss, t.gradient(loss, logits)
+
+    fp64_loss, fp64_grad = _dense_ctc_loss(fp64_logits)
+    fp32_loss, fp32_grad = _dense_ctc_loss(
+        math_ops.cast(fp64_logits, dtypes.float32))
+
+    self.assertEqual(fp64_loss.dtype, dtypes.float64)
+    self.assertEqual(fp64_grad.dtype, dtypes.float64)
+    self.assertAllClose(
+        self.evaluate(math_ops.cast(fp32_loss, dtypes.float64)),
+        self.evaluate(fp64_loss),
+        rtol=1e-5,
+        atol=1e-5)
+    self.assertAllClose(
+        self.evaluate(math_ops.cast(fp32_grad, dtypes.float64)),
+        self.evaluate(fp64_grad),
+        rtol=1e-5,
+        atol=1e-5)
+
+  @parameterized.parameters([False, True])
   def testCtcLossWithListLogits(self, sparse_labels):
     batch_size = 8
     num_labels = 6
