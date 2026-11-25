@@ -34,6 +34,10 @@ If the minimum is empty for a given segment ID `i`, it outputs the largest
 possible value for the specific numeric type,
 `output[i] = numeric_limits<T>::max()`.
 
+On CPU without XLA compilation, a NaN input makes the corresponding output
+element NaN. With XLA compilation, NaNs are ignored. An output element with
+no non-NaN inputs gets the same value as it would in an empty segment.
+
 For example:
 
 >>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])

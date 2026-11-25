@@ -34,6 +34,10 @@ If the maximum is empty for a given segment ID `i`, it outputs the smallest
 possible value for the specific numeric type,
 `output[i] = numeric_limits<T>::lowest()`.
 
+On CPU without XLA compilation, a NaN input makes the corresponding output
+element NaN. With XLA compilation, NaNs are ignored. An output element with
+no non-NaN inputs gets the same value as it would in an empty segment.
+
 If the given segment ID `i` is negative, then the corresponding value is
 dropped, and will not be included in the result.
 
