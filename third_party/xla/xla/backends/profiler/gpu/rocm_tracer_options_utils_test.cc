@@ -60,7 +60,7 @@ void SetBool(ProfileOptions& options, absl::string_view key, bool value) {
 void SetString(ProfileOptions& options, absl::string_view key,
                absl::string_view value) {
   (*options.mutable_advanced_configuration())[std::string(key)]
-      .set_string_value(std::string(value));
+      .set_string_value(value);
 }
 
 void SetNoValue(ProfileOptions& options, absl::string_view key) {
