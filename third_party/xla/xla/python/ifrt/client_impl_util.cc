@@ -346,9 +346,9 @@ LoadedExecutableExecuteBundle(
   int64_t expected_total_output_size = 0;
   if (outputs_bundle_slice_sizes.has_value()) {
     for (int size : *outputs_bundle_slice_sizes) {
-      if (size < 0) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Output bundle slice size must be non-negative: ", size));
+      if (size <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Output bundle slice size must be positive: ", size));
       }
       expected_total_output_size += size;
     }

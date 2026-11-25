@@ -65,8 +65,9 @@ class Bundle : public tsl::ReferenceCounted<Bundle>,
   virtual tsl::Future<> Delete() = 0;
 
   // Returns true iff the whole `Bundle` has been deleted or donated using
-  // `Delete()`, or `CopyArrays()`/`ReshardArrays()` with `kDonateInput`. This
-  // does not track whether the values in this `Bundle` have been deleted.
+  // `Delete()`, or `ConcatBundles()`/`GetValues()`/`Slice()`/`CopyArrays()`/
+  // `ReshardArrays()` with `kDonateInput`. This does not track whether the
+  // values in this `Bundle` have been deleted.
   virtual bool IsDeleted() const = 0;
 
   // Returns a string representation of this `Bundle`.

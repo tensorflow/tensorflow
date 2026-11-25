@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/bundle.h"
@@ -62,9 +60,9 @@ absl::Status ValidateSliceSizes(int num_values,
                                 absl::Span<const int> slice_sizes) {
   int64_t total_size = 0;
   for (int size : slice_sizes) {
-    if (size < 0) {
+    if (size <= 0) {
       return absl::InvalidArgumentError(
-          absl::StrCat("Slice size must be non-negative: ", size));
+          absl::StrCat("Slice size must be positive: ", size));
     }
     total_size += size;
   }
@@ -86,7 +84,8 @@ absl::StatusOr<BundleRef> BasicBundle::Create(absl::Span<ValueRef> values,
   ABSL_RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
 
   if (values.empty()) {
-    return tsl::TakeRef<BasicBundle>(new BasicBundle(nullptr, {}));
+    return absl::InvalidArgumentError(
+        "Bundle::Create requires non-empty values");
   }
 
   Client* const client = values.front()->client();
@@ -112,7 +111,8 @@ absl::StatusOr<BundleRef> BasicBundle::ConcatBundles(
   ABSL_RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
 
   if (bundles.empty()) {
-    return tsl::TakeRef<BasicBundle>(new BasicBundle(nullptr, {}));
+    return absl::InvalidArgumentError(
+        "Bundle::ConcatBundles requires non-empty bundles");
   }
 
   Client* const client = bundles.front()->client();
@@ -126,13 +126,23 @@ absl::StatusOr<BundleRef> BasicBundle::ConcatBundles(
     if (basic_bundle->client_ != client) {
       return absl::InvalidArgumentError("Bundles must use the same client");
     }
-    total_size += basic_bundle->values_.size();
+    total_size += basic_bundle->num_values_;
   }
   std::vector<ValueRef> new_values;
   new_values.reserve(total_size);
   for (const BundleRef& bundle : bundles) {
-    absl::c_copy(cast<BasicBundle>(bundle.get())->values_,
-                 std::back_inserter(new_values));
+    auto* const basic_bundle = cast<BasicBundle>(bundle.get());
+    absl::MutexLock lock(basic_bundle->mu_);
+    if (basic_bundle->delete_future_.IsValid()) {
+      return absl::FailedPreconditionError("Bundle is deleted or donated.");
+    }
+    if (semantics == ArrayCopySemantics::kDonateInput) {
+      absl::c_move(basic_bundle->values_, std::back_inserter(new_values));
+      basic_bundle->delete_future_ = absl::OkStatus();
+      basic_bundle->values_.clear();
+    } else {
+      absl::c_copy(basic_bundle->values_, std::back_inserter(new_values));
+    }
   }
   return tsl::TakeRef<BasicBundle>(
       new BasicBundle(client, std::move(new_values)));
@@ -140,15 +150,23 @@ absl::StatusOr<BundleRef> BasicBundle::ConcatBundles(
 
 BasicBundle::BasicBundle(Client* client, std::vector<ValueRef> values)
     : client_(client),
-      values_(std::move(values)),
-      user_context_(UserContextScope::current()) {}
+      num_values_(values.size()),
+      user_context_(UserContextScope::current()),
+      values_(std::move(values)) {}
 
 BasicBundle::~BasicBundle() {
   std::vector<ValueRef> to_delete;
-  for (const auto& value : values_) {
-    if (value->IsUnique()) {
-      to_delete.push_back(value);
+  {
+    absl::MutexLock lock(mu_);
+    if (delete_future_.IsValid()) {
+      return;
     }
+    for (const ValueRef& value : values_) {
+      if (value->IsUnique()) {
+        to_delete.push_back(value);
+      }
+    }
+    values_.clear();
   }
   if (!to_delete.empty()) {
     client_->DeleteValues(absl::MakeSpan(to_delete));
@@ -156,11 +174,10 @@ BasicBundle::~BasicBundle() {
 }
 
 tsl::Future<> BasicBundle::GetReadyFuture() const {
-  if (values_.empty()) {
-    return absl::OkStatus();
-  }
-
   absl::MutexLock lock(mu_);
+  if (delete_future_.IsValid()) {
+    return absl::FailedPreconditionError("Bundle is deleted or donated.");
+  }
   if (!ready_future_.has_value()) {
     ready_future_ = client_->GetReadyFuture(values_);
   }
@@ -170,10 +187,9 @@ tsl::Future<> BasicBundle::GetReadyFuture() const {
 tsl::Future<> BasicBundle::Delete() {
   absl::MutexLock lock(mu_);
   if (!delete_future_.IsValid()) {
-    std::vector<ValueRef> to_delete = values_;
-    delete_future_ = to_delete.empty()
-                         ? tsl::Future<>(absl::OkStatus())
-                         : client_->DeleteValues(absl::MakeSpan(to_delete));
+    std::vector<ValueRef> to_delete = std::move(values_);
+    values_.clear();
+    delete_future_ = client_->DeleteValues(absl::MakeSpan(to_delete));
   }
   return delete_future_;
 }
@@ -184,44 +200,56 @@ bool BasicBundle::IsDeleted() const {
 }
 
 std::string BasicBundle::DebugString() const {
-  return absl::StrCat("BasicBundle(num_values=", values_.size(), ")");
+  return absl::StrCat("BasicBundle(num_values=", num_values_, ")");
 }
 
 absl::StatusOr<std::vector<ValueRef>> BasicBundle::GetValues(
     ArrayCopySemantics semantics) {
   ABSL_RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
+  absl::MutexLock lock(mu_);
+  if (delete_future_.IsValid()) {
+    return absl::FailedPreconditionError("Bundle is deleted or donated.");
+  }
+  if (semantics == ArrayCopySemantics::kDonateInput) {
+    delete_future_ = absl::OkStatus();
+    std::vector<ValueRef> values = std::move(values_);
+    values_.clear();
+    return values;
+  }
   return values_;
 }
 
 absl::StatusOr<absl::Span<const ArraySpec>> BasicBundle::GetArraySpecs() const {
   absl::MutexLock lock(mu_);
+  if (delete_future_.IsValid()) {
+    return absl::FailedPreconditionError("Bundle is deleted or donated.");
+  }
   if (!array_specs_.has_value()) {
-    array_specs_ = [&]() -> absl::StatusOr<std::vector<ArraySpec>> {
-      std::vector<ArraySpec> array_specs;
-      array_specs.reserve(values_.size());
-      for (const ValueRef& value : values_) {
-        if (auto* array = dyn_cast_or_null<Array>(value.get())) {
-          array_specs.push_back(ArraySpec{
-              /*dtype=*/array->dtype(),
-              /*shape=*/array->shape(),
-              /*sharding=*/array->shared_ptr_sharding(),
-              /*layout=*/array->pjrt_layout(),
-          });
-        } else {
-          return absl::InvalidArgumentError(
-              "`Bundle::GetArraySpecs()` requires all values to be `Array`s");
-        }
+    std::vector<ArraySpec> array_specs;
+    array_specs.reserve(values_.size());
+    for (const ValueRef& value : values_) {
+      auto* array = dyn_cast_or_null<Array>(value.get());
+      if (array == nullptr) {
+        array_specs_ = absl::InvalidArgumentError(
+            "`Bundle::GetArraySpecs()` requires all values to be `Array`s");
+        return *array_specs_;
       }
-      return array_specs;
-    }();
+      array_specs.push_back(array->array_spec());
+    }
+    array_specs_ = std::move(array_specs);
   }
   return *array_specs_;
 }
 
 absl::StatusOr<std::vector<BundleRef>> BasicBundle::Slice(
     absl::Span<const int> slice_sizes, ArrayCopySemantics semantics) {
-  ABSL_RETURN_IF_ERROR(ValidateSliceSizes(values_.size(), slice_sizes));
+  ABSL_RETURN_IF_ERROR(ValidateSliceSizes(num_values_, slice_sizes));
   ABSL_RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
+
+  absl::MutexLock lock(mu_);
+  if (delete_future_.IsValid()) {
+    return absl::FailedPreconditionError("Bundle is deleted or donated.");
+  }
 
   std::vector<BundleRef> slices;
   slices.reserve(slice_sizes.size());
@@ -230,12 +258,20 @@ absl::StatusOr<std::vector<BundleRef>> BasicBundle::Slice(
     std::vector<ValueRef> slice_values;
     slice_values.reserve(size);
     for (int j = 0; j < size; ++j) {
-      slice_values.push_back(values_[offset]);
+      if (semantics == ArrayCopySemantics::kDonateInput) {
+        slice_values.push_back(std::move(values_[offset]));
+      } else {
+        slice_values.push_back(values_[offset]);
+      }
       ++offset;
     }
 
     slices.push_back(
         tsl::TakeRef(new BasicBundle(client_, std::move(slice_values))));
+  }
+  if (semantics == ArrayCopySemantics::kDonateInput) {
+    delete_future_ = absl::OkStatus();
+    values_.clear();
   }
   return slices;
 }
@@ -249,28 +285,36 @@ absl::StatusOr<BundleRef> BasicBundle::CopyArrays(
                      "copy_specs: ",
                      slice_sizes.size(), " vs ", copy_specs.size()));
   }
-  ABSL_RETURN_IF_ERROR(ValidateSliceSizes(values_.size(), slice_sizes));
+  ABSL_RETURN_IF_ERROR(ValidateSliceSizes(num_values_, slice_sizes));
 
-  std::vector<ValueRef> new_values;
-  new_values.reserve(values_.size());
-  int offset = 0;
-  for (int i = 0; i < slice_sizes.size(); ++i) {
-    std::vector<ArrayRef> arrays;
-    arrays.reserve(slice_sizes[i]);
-    for (int j = 0; j < slice_sizes[i]; ++j) {
-      if (auto* array = dyn_cast_or_null<Array>(values_[offset].get())) {
-        arrays.push_back(tsl::FormRef(array));
+  std::vector<ArrayRef> all_arrays;
+  all_arrays.reserve(num_values_);
+  {
+    absl::MutexLock lock(mu_);
+    if (delete_future_.IsValid()) {
+      return absl::FailedPreconditionError("Bundle is deleted or donated.");
+    }
+    for (const ValueRef& value : values_) {
+      if (auto* array = dyn_cast_or_null<Array>(value.get())) {
+        all_arrays.push_back(tsl::FormRef(array));
       } else {
         return absl::InvalidArgumentError(
-            "`Bundle:CopyArrays()` requires all values to be `Array`s");
+            "`Bundle::CopyArrays()` requires all values to be `Array`s");
       }
-      ++offset;
     }
+  }
 
-    ABSL_ASSIGN_OR_RETURN(
-        std::vector<ArrayRef> copied_arrays,
-        client_->CopyArrays(absl::MakeSpan(arrays), copy_specs[i].devices,
-                            copy_specs[i].memory_kind, semantics));
+  std::vector<ValueRef> new_values;
+  new_values.reserve(num_values_);
+  int offset = 0;
+  for (int i = 0; i < slice_sizes.size(); ++i) {
+    absl::Span<ArrayRef> arrays =
+        absl::MakeSpan(all_arrays).subspan(offset, slice_sizes[i]);
+    offset += slice_sizes[i];
+
+    ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> copied_arrays,
+                     client_->CopyArrays(arrays, copy_specs[i].devices,
+                                         copy_specs[i].memory_kind, semantics));
     absl::c_move(ToValues(std::move(copied_arrays)),
                  std::back_inserter(new_values));
   }
@@ -279,6 +323,7 @@ absl::StatusOr<BundleRef> BasicBundle::CopyArrays(
     if (!delete_future_.IsValid()) {
       delete_future_ = absl::OkStatus();
     }
+    values_.clear();
   }
   return tsl::TakeRef<BasicBundle>(
       new BasicBundle(client_, std::move(new_values)));
@@ -287,21 +332,27 @@ absl::StatusOr<BundleRef> BasicBundle::CopyArrays(
 absl::StatusOr<BundleRef> BasicBundle::ReshardArrays(
     absl::Span<const xla::ifrt::ArraySpec> array_specs,
     ArrayCopySemantics semantics) {
-  if (array_specs.size() != values_.size()) {
+  if (array_specs.size() != num_values_) {
     return absl::InvalidArgumentError(
         absl::StrCat("Number of array specs does not match number of values "
                      "in the bundle: ",
-                     array_specs.size(), " vs ", values_.size()));
+                     array_specs.size(), " vs ", num_values_));
   }
 
   std::vector<ArrayRef> arrays;
-  arrays.reserve(values_.size());
-  for (const ValueRef& value : values_) {
-    if (auto* array = dyn_cast_or_null<Array>(value.get())) {
-      arrays.push_back(tsl::FormRef(array));
-    } else {
-      return absl::InvalidArgumentError(
-          "`Bundle::ReshardArrays()` requires all values to be `Array`s");
+  arrays.reserve(num_values_);
+  {
+    absl::MutexLock lock(mu_);
+    if (delete_future_.IsValid()) {
+      return absl::FailedPreconditionError("Bundle is deleted or donated.");
+    }
+    for (const ValueRef& value : values_) {
+      if (auto* array = dyn_cast_or_null<Array>(value.get())) {
+        arrays.push_back(tsl::FormRef(array));
+      } else {
+        return absl::InvalidArgumentError(
+            "`Bundle::ReshardArrays()` requires all values to be `Array`s");
+      }
     }
   }
 
@@ -310,7 +361,7 @@ absl::StatusOr<BundleRef> BasicBundle::ReshardArrays(
       client_->ReshardArrays(absl::MakeSpan(arrays), array_specs, semantics));
 
   std::vector<ValueRef> new_values;
-  new_values.reserve(values_.size());
+  new_values.reserve(num_values_);
   absl::c_move(ToValues(std::move(resharded_arrays)),
                std::back_inserter(new_values));
 
@@ -319,6 +370,7 @@ absl::StatusOr<BundleRef> BasicBundle::ReshardArrays(
     if (!delete_future_.IsValid()) {
       delete_future_ = absl::OkStatus();
     }
+    values_.clear();
   }
   return tsl::TakeRef<BasicBundle>(
       new BasicBundle(client_, std::move(new_values)));

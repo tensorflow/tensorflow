@@ -60,7 +60,7 @@ class BasicBundle final : public RTTIExtends<BasicBundle, Bundle> {
 
   std::string DebugString() const final;
 
-  int num_values() const final { return values_.size(); }
+  int num_values() const final { return num_values_; }
 
   absl::StatusOr<std::vector<ValueRef>> GetValues(
       ArrayCopySemantics semantics) final;
@@ -84,14 +84,13 @@ class BasicBundle final : public RTTIExtends<BasicBundle, Bundle> {
   BasicBundle(Client* client, std::vector<ValueRef> values);
 
   Client* const client_;
-  // We avoid moving the elements of `values_` regardless of
-  // `ArrayCopySemantics` so that `value_` is const and needs not be protected
-  // by a mutex.
-  const std::vector<ValueRef> values_;
+  const int num_values_;
   const UserContextRef user_context_;
 
   mutable absl::Mutex mu_;
-  mutable std::optional<absl::StatusOr<std::vector<ArraySpec>>> array_specs_;
+  std::vector<ValueRef> values_ ABSL_GUARDED_BY(mu_);
+  mutable std::optional<absl::StatusOr<std::vector<ArraySpec>>> array_specs_
+      ABSL_GUARDED_BY(mu_);
   mutable std::optional<tsl::Future<>> ready_future_ ABSL_GUARDED_BY(mu_);
   tsl::Future<> delete_future_ ABSL_GUARDED_BY(mu_);
 };

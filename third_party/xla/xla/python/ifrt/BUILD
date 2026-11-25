@@ -1710,7 +1710,6 @@ cc_library(
         ":rtti",
         ":user_context",
         ":value_util",
-        "//xla/pjrt:pjrt_layout",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/algorithm:container",

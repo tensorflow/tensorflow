@@ -1275,6 +1275,40 @@ TEST_P(LoadedExecutableImplTest,
       StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST_P(LoadedExecutableImplTest,
+       CompileAndExecuteBundleWithZeroOutputSliceSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  EXPECT_THAT(
+      CompileAndExecuteBundleWithOutputSliceSizes(
+          client.get(), client->GetDefaultCompiler(),
+          client->addressable_devices().at(0),
+          /*serialize=*/GetParam(), /*outputs_bundle_slice_sizes=*/{0, 3}),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(LoadedExecutableImplTest,
+       CompileAndExecuteBundleWithZeroOutputsWithoutSliceSizesFails) {
+  static constexpr absl::string_view kModule = R"mlir(
+module @nop {
+  func.func @main() {
+    return
+  }
+})mlir";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule, {device},
+                       /*replicated=*/false, /*serialize=*/GetParam()));
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  EXPECT_THAT(executable->ExecuteBundle({}, execute_options),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_P(LoadedExecutableImplTest, CompileAndExecuteBundleDoNotFillStatus) {
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
   Compiler* const compiler = client->GetDefaultCompiler();

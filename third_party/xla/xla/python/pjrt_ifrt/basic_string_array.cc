@@ -368,6 +368,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
   auto [buffers_promise, buffers_future] = tsl::MakePromise<Buffers>();
 
   auto copier = [string_store = std::move(string_store),
+                 src_on_done = on_done_with_buffer_,
                  buffers_promise = std::move(buffers_promise)](
                     absl::StatusOr<Buffers> input_buffers) mutable {
     if (!input_buffers.ok()) {
@@ -417,6 +418,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
   auto [buffers_promise, buffers_future] = tsl::MakePromise<Buffers>();
 
   auto copier = [string_store = std::move(string_store),
+                 src_on_done = on_done_with_buffer_,
                  buffers_promise = std::move(buffers_promise)](
                     absl::StatusOr<Buffers> input_buffers) mutable {
     if (!input_buffers.ok()) {
