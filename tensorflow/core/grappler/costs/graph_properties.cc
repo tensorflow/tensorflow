@@ -999,9 +999,14 @@ class SymbolicShapeRefiner {
       *refined = true;
     }
 
+    InferenceContext* ic = ctx->inference_context.get();
+    if (ic == nullptr) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Inference context has not been created for ", node->name()));
+    }
+
     // Check if the shapes of the nodes in the fan-in of this node have changed,
     // and if they have, update the node input shapes.
-    InferenceContext* ic = ctx->inference_context.get();
     ctx->input_tensors_as_shapes_to_propagate.resize(ic->num_inputs());
     ctx->input_tensor_protos.resize(ic->num_inputs(), nullptr);
 
@@ -1131,7 +1136,7 @@ class SymbolicShapeRefiner {
     ic->set_input_tensors(input_tensors);
 
     // Update the shapes of the outputs.
-    return InferShapes(*node, ctx);
+    return InferShapes(*node, ctx, *ic);
   }
 
   absl::Status SetUnknownShape(const NodeDef* node, int output_port) {
@@ -1938,16 +1943,16 @@ class SymbolicShapeRefiner {
     return absl::OkStatus();
   }
 
-  absl::Status InferShapes(const NodeDef& node, NodeContext* c) {
+  absl::Status InferShapes(const NodeDef& node, NodeContext* c,
+                           InferenceContext& ic) {
     // Infer the shapes of output tensors.
     if (!c->op_data || c->op_data->shape_inference_fn == nullptr ||
-        !c->inference_context->Run(c->op_data->shape_inference_fn).ok()) {
+        !ic.Run(c->op_data->shape_inference_fn).ok()) {
       // Annotate outputs with unknown shapes. Update output shapes with
       // annotated information later on if available.
       // Note that shape inference function may return an error, but we ignore
       // it, and use UnknownShape in that case.
-      TF_RETURN_IF_ERROR(
-          c->inference_context->Run(shape_inference::UnknownShape));
+      TF_RETURN_IF_ERROR(ic.Run(shape_inference::UnknownShape));
     }
     absl::Status status = absl::OkStatus();
     auto it = fed_ports_.find(node.name());
@@ -1966,21 +1971,20 @@ class SymbolicShapeRefiner {
       // Each output is live only in its own branch. Keep known dimensions,
       // but don't let downstream shape constraints refine the input or a
       // sibling output through a shared symbolic handle.
-      InferenceContext* ic = c->inference_context.get();
-      for (int i = 0; i < ic->num_outputs(); ++i) {
-        ShapeHandle shape = ic->output(i);
-        if (!ic->RankKnown(shape)) {
-          ic->set_output(i, GetUnknownOutputShape(&node, i));
-        } else if (!ic->FullyDefined(shape)) {
+      for (int i = 0; i < ic.num_outputs(); ++i) {
+        ShapeHandle shape = ic.output(i);
+        if (!ic.RankKnown(shape)) {
+          ic.set_output(i, GetUnknownOutputShape(&node, i));
+        } else if (!ic.FullyDefined(shape)) {
           std::vector<DimensionHandle> dims;
-          const int rank = ic->Rank(shape);
+          const int rank = ic.Rank(shape);
           dims.reserve(rank);
           for (int d = 0; d < rank; ++d) {
-            DimensionHandle dim = ic->Dim(shape, d);
+            DimensionHandle dim = ic.Dim(shape, d);
             dims.push_back(
-                ic->ValueKnown(dim) ? dim : GetUnknownOutputDim(&node, i, d));
+                ic.ValueKnown(dim) ? dim : GetUnknownOutputDim(&node, i, d));
           }
-          ic->set_output(i, ic->MakeShape(dims));
+          ic.set_output(i, ic.MakeShape(dims));
         }
       }
     }
