@@ -2724,20 +2724,18 @@ absl::Status SetFusionLayouts(HloInstruction* fusion) {
   return absl::OkStatus();
 }
 
-// Copies current operand layouts to outputs that forward those operands.
-// TODO(asrao): Support other ops that forward inputs->outputs.
+// Copies operand layouts to the output subtrees that forward them, as
+// identified by GetForwardedInputOutputPairs.
 absl::Status SetForwardedOperandResultLayouts(HloInstruction* instruction) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kAsyncStart:
-      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-        ABSL_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-            instruction->operand(i)->shape(),
-            ShapeUtil::GetMutableSubshape(instruction->mutable_shape(),
-                                          {0, i})));
-      }
-      break;
-    default:
-      break;
+  for (const auto& [operand, output_prefix] :
+       GetForwardedInputOutputPairs(instruction)) {
+    const Shape& operand_subtree = ShapeUtil::GetSubshape(
+        instruction->operand(operand.operand_number)->shape(),
+        operand.operand_index);
+    Shape* output_subtree = ShapeUtil::GetMutableSubshape(
+        instruction->mutable_shape(), output_prefix);
+    ABSL_RETURN_IF_ERROR(
+        LayoutUtil::CopyLayoutBetweenShapes(operand_subtree, output_subtree));
   }
   return absl::OkStatus();
 }
@@ -2805,9 +2803,9 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
     VLOG(3) << "Instruction after copies on operands:"
             << instruction->ToString() << "\n";
 
-    // Copy operand layouts to forwarded outputs of async-start. Read layouts
-    // from current operands because the dataflow analysis predates the copies
-    // inserted above.
+    // Copy operand layouts to forwarded outputs. Read layouts from current
+    // operands because the dataflow analysis predates the copies inserted
+    // above.
     ABSL_RETURN_IF_ERROR(SetForwardedOperandResultLayouts(instruction));
     VLOG(3) << "Instruction layout after forwarding:"
             << instruction->ToString();

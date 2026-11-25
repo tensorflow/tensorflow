@@ -65,6 +65,8 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 using ::testing::UnorderedElementsAreArray;
 
@@ -6002,6 +6004,243 @@ ENTRY main {
               ElementsAre(HloUse{neg, 0, {}}));
   EXPECT_THAT(analysis->GetValueDefinedAt(neg).GetUses(),
               ElementsAre(HloUse{out, 0, {}}));
+}
+
+// Check that forwarded outputs of `instruction` as specified by
+// GetForwardedInputOutputPairs do not define new values in analysis, and that
+// their value sets match their corresponding operands.
+void ExpectForwardedPairsMatchAnalysis(const HloDataflowAnalysis& analysis,
+                                       const HloInstruction* instruction) {
+  for (const auto& [hlo_operand_index, output_prefix] :
+       GetForwardedInputOutputPairs(instruction)) {
+    const HloInstruction* operand_instruction =
+        instruction->operand(hlo_operand_index.operand_number);
+
+    const Shape& output_subtree =
+        ShapeUtil::GetSubshape(instruction->shape(), output_prefix);
+
+    ShapeUtil::ForEachSubshape(
+        output_subtree, [&](const Shape& subshape, const ShapeIndex& index) {
+          if (!subshape.IsArray()) {
+            return;
+          }
+
+          ShapeIndex output_index = output_prefix;
+          output_index.insert(output_index.end(), index.begin(), index.end());
+          ShapeIndex operand_index = hlo_operand_index.operand_index;
+          operand_index.insert(operand_index.end(), index.begin(), index.end());
+
+          EXPECT_FALSE(analysis.ValueIsDefinedAt(instruction, output_index));
+          EXPECT_TRUE(analysis.GetValueSet(instruction, output_index) ==
+                      analysis.GetValueSet(operand_instruction, operand_index));
+        });
+  }
+}
+
+TEST_P(HloDataflowAnalysisTest, GetForwardedInputOutputPairsBasic) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+
+  tuple0 = (f32[4]) tuple(p0)
+  tuple1 = ((f32[4]), f32[4]) tuple(tuple0, p1)
+  barrier = ((f32[4]), f32[4]) opt-barrier(tuple1)
+
+  tuple0_gte = (f32[4]) get-tuple-element(barrier), index=0
+  p0_gte = f32[4] get-tuple-element(tuple0_gte), index=0
+  p1_gte = f32[4] get-tuple-element(barrier), index=1
+
+  ROOT sum = f32[4] add(p0_gte, p1_gte)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  // For all instructions, the analysis respects forwarding rules.
+  const HloDataflowAnalysis& analysis =
+      RunAnalysis(GetParam(), /*bitcast_defines_value=*/false,
+                  /*run_dce=*/false);
+  for (const HloComputation* computation : module_->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      ExpectForwardedPairsMatchAnalysis(analysis, instruction);
+    }
+  }
+
+  // Check specific instructions' forwarded (operand, output) pairs.
+  const HloInstruction* p0 = FindInstruction(module_.get(), "p0");
+  EXPECT_THAT(GetForwardedInputOutputPairs(p0), IsEmpty());
+
+  const HloInstruction* tuple0 = FindInstruction(module_.get(), "tuple0");
+  EXPECT_THAT(GetForwardedInputOutputPairs(tuple0),
+              ElementsAre(Pair(HloOperandIndex{0, {}}, ShapeIndex{0})));
+
+  const HloInstruction* tuple1 = FindInstruction(module_.get(), "tuple1");
+  EXPECT_THAT(GetForwardedInputOutputPairs(tuple1),
+              ElementsAre(Pair(HloOperandIndex{0, {}}, ShapeIndex{0}),
+                          Pair(HloOperandIndex{1, {}}, ShapeIndex{1})));
+
+  const HloInstruction* barrier = FindInstruction(module_.get(), "barrier");
+  EXPECT_THAT(GetForwardedInputOutputPairs(barrier),
+              ElementsAre(Pair(HloOperandIndex{0, {}}, ShapeIndex{})));
+
+  const HloInstruction* tuple0_gte =
+      FindInstruction(module_.get(), "tuple0_gte");
+  EXPECT_THAT(GetForwardedInputOutputPairs(tuple0_gte),
+              ElementsAre(Pair(HloOperandIndex{0, {0}}, ShapeIndex{})));
+
+  const HloInstruction* p1_gte = FindInstruction(module_.get(), "p1_gte");
+  EXPECT_THAT(GetForwardedInputOutputPairs(p1_gte),
+              ElementsAre(Pair(HloOperandIndex{0, {1}}, ShapeIndex{})));
+
+  const HloInstruction* sum = FindInstruction(module_.get(), "sum");
+  EXPECT_THAT(GetForwardedInputOutputPairs(sum), IsEmpty());
+}
+
+TEST_P(HloDataflowAnalysisTest,
+       GetForwardedInputOutputPairsBasicAsyncStartDone) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+async_comp1 {
+  q0 = f32[2,3] parameter(0)
+  ROOT cc = f32[2,3] custom-call(q0), custom_call_target="foo"
+}
+
+async_comp2 {
+  q0 = f32[2,3] parameter(0)
+  q1 = (f32[2,3], f32[4]) parameter(1)
+  ROOT cc = f32[2,3] custom-call(q0, q1), custom_call_target="foo"
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[4] parameter(1)
+  tup = (f32[2,3], f32[4]) tuple(p0, p1)
+
+  start1 = ((f32[2,3]), f32[2,3], u32[]) async-start(p0), calls=async_comp1
+  done1 = f32[2,3] async-done(start1)
+
+  start2 = ((f32[2,3], (f32[2,3], f32[4])), f32[2,3], u32[]) async-start(p0, tup), calls=async_comp2
+  done2 = f32[2,3] async-done(start2)
+
+  ROOT out = (f32[2,3], f32[2,3]) tuple(done1, done2)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  const HloDataflowAnalysis& analysis =
+      RunAnalysis(GetParam(), /*bitcast_defines_value=*/false,
+                  /*run_dce=*/false);
+
+  // For all instructions, the analysis respects forwarding rules.
+  for (const HloComputation* computation : module_->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      ExpectForwardedPairsMatchAnalysis(analysis, instruction);
+    }
+  }
+
+  // Check specific instructions' forwarded (operand, output) pairs.
+  const HloInstruction* start1 = FindInstruction(module_.get(), "start1");
+  EXPECT_THAT(GetForwardedInputOutputPairs(start1),
+              ElementsAre(Pair(HloOperandIndex{0, {}}, ShapeIndex{0, 0})));
+
+  const HloInstruction* done1 = FindInstruction(module_.get(), "done1");
+  EXPECT_THAT(GetForwardedInputOutputPairs(done1),
+              ElementsAre(Pair(HloOperandIndex{0, {1}}, ShapeIndex{})));
+
+  const HloInstruction* start2 = FindInstruction(module_.get(), "start2");
+  EXPECT_THAT(GetForwardedInputOutputPairs(start2),
+              ElementsAre(Pair(HloOperandIndex{0, {}}, ShapeIndex{0, 0}),
+                          Pair(HloOperandIndex{1, {}}, ShapeIndex{0, 1})));
+
+  const HloInstruction* done2 = FindInstruction(module_.get(), "done2");
+  EXPECT_THAT(GetForwardedInputOutputPairs(done2),
+              ElementsAre(Pair(HloOperandIndex{0, {1}}, ShapeIndex{})));
+}
+
+TEST_P(HloDataflowAnalysisTest,
+       GetForwardedInputOutputPairsLateBoundAsyncOutputs) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+async_comp1 {
+  q0 = f32[2,3] parameter(0)
+  ROOT cc = f32[2,3] custom-call(q0), custom_call_target="cc_1"
+}
+
+async_comp2 {
+  q0 = f32[2,3] parameter(0)
+  ROOT cc = (f32[2,3]) custom-call(q0), custom_call_target="cc_2"
+}
+
+async_comp3 {
+  q0 = f32[2,3] parameter(0)
+  ROOT cc = ((f32[2,3], f32[8]), f16[2], f32[4]) custom-call(q0),
+    custom_call_target="cc_3"
+}
+
+async_comp4 {
+  q0 = f32[2,3] parameter(0)
+  ROOT cc = ((f32[2,3], f32[8]), f16[2], f32[4]) custom-call(q0),
+    custom_call_target="cc_4"
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+
+  start1 = ((f32[2,3]), (), u32[]) async-start(p0),
+    calls=async_comp1
+  done1 = f32[2,3] async-done(start1)
+
+  start2 = ((f32[2,3]), (), u32[]) async-start(p0),
+    calls=async_comp2
+  done2 = (f32[2,3]) async-done(start2)
+
+  start3 = ((f32[2,3]), ((f32[2,3], f32[8]), f16[2]), u32[]) async-start(p0),
+    calls=async_comp3
+  done3 = ((f32[2,3], f32[8]), f16[2], f32[4]) async-done(start3)
+
+  start4 = ((f32[2,3]), ((f32[2,3], ()), f16[2]), u32[]) async-start(p0),
+    calls=async_comp4
+  done4 = ((f32[2,3], f32[8]), f16[2], f32[4]) async-done(start4)
+
+  ROOT out = (((f32[2,3], f32[8]), f16[2], f32[4]),
+              ((f32[2,3], f32[8]), f16[2], f32[4])) tuple(done3, done4)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  const HloDataflowAnalysis& analysis =
+      RunAnalysis(GetParam(), /*bitcast_defines_value=*/false,
+                  /*run_dce=*/false);
+
+  // For all instructions, the analysis respects forwarding rules.
+  for (const HloComputation* computation : module_->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      ExpectForwardedPairsMatchAnalysis(analysis, instruction);
+    }
+  }
+
+  // Check specific instructions' forwarded (operand, output) pairs.
+  const HloInstruction* done1 = FindInstruction(module_.get(), "done1");
+  EXPECT_THAT(GetForwardedInputOutputPairs(done1), IsEmpty());
+
+  const HloInstruction* done2 = FindInstruction(module_.get(), "done2");
+  EXPECT_THAT(GetForwardedInputOutputPairs(done2), IsEmpty());
+
+  const HloInstruction* done3 = FindInstruction(module_.get(), "done3");
+  EXPECT_THAT(GetForwardedInputOutputPairs(done3),
+              ElementsAre(Pair(HloOperandIndex{0, {1, 0, 0}}, ShapeIndex{0, 0}),
+                          Pair(HloOperandIndex{0, {1, 0, 1}}, ShapeIndex{0, 1}),
+                          Pair(HloOperandIndex{0, {1, 1}}, ShapeIndex{1})));
+
+  const HloInstruction* done4 = FindInstruction(module_.get(), "done4");
+  EXPECT_THAT(GetForwardedInputOutputPairs(done4),
+              ElementsAre(Pair(HloOperandIndex{0, {1, 0, 0}}, ShapeIndex{0, 0}),
+                          Pair(HloOperandIndex{0, {1, 1}}, ShapeIndex{1})));
 }
 
 }  // namespace

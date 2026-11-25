@@ -1562,6 +1562,67 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteDoneValueSet(
   return changed;
 }
 
+// TODO(asrao): Implement the remaining forwarding opcodes:
+//   kAddDependency, kAsyncUpdate, kCopy (tuple-shaped only), kAllGatherStart,
+//   kAllGatherDone, kAllReduceDone, kCollectivePermuteStart,
+//   kCollectivePermuteDone, kCopyStart, kCopyDone, kSend, kRecvDone, and the
+//   call-marker custom calls (kCallMarkerBeforeTarget/kCallMarkerAfterTarget).
+// TODO(asrao): Make UpdateInstructionValueSet call this to prevent drift
+// between the two functions.
+std::vector<std::pair<HloOperandIndex, ShapeIndex>>
+GetForwardedInputOutputPairs(const HloInstruction* instruction) {
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> pairs;
+  switch (instruction->opcode()) {
+    case HloOpcode::kAsyncStart:
+      // All operands are forwarded to the bound-input tuple at {0}.
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+        pairs.push_back({HloOperandIndex{i, {}}, {0, i}});
+      }
+      break;
+    case HloOpcode::kAsyncDone: {
+      // The results bound in the async state at {1} are forwarded to the
+      // output.
+      const Shape& bound_results =
+          ShapeUtil::GetSubshape(instruction->operand(0)->shape(), {1});
+
+      // No late-binding so forward the whole subtree.
+      if (ShapeUtil::Compatible(bound_results, instruction->shape())) {
+        pairs.push_back({HloOperandIndex{0, {1}}, {}});
+        break;
+      }
+
+      // We have late-bound outputs so forward each bound leaf.
+      ShapeUtil::ForEachSubshape(bound_results, [&](const Shape& subshape,
+                                                    const ShapeIndex& index) {
+        if (!subshape.IsArray() && !subshape.IsToken()) {
+          return;
+        }
+        ShapeIndex operand_index = {1};
+        operand_index.insert(operand_index.end(), index.begin(), index.end());
+        pairs.push_back({HloOperandIndex{0, operand_index}, index});
+      });
+      break;
+    }
+    case HloOpcode::kGetTupleElement:
+      // The tuple_index-th entry of the input is forwarded to the output.
+      pairs.push_back({HloOperandIndex{0, {instruction->tuple_index()}}, {}});
+      break;
+    case HloOpcode::kTuple:
+      // Operand i is forwarded to element i of the output.
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+        pairs.push_back({HloOperandIndex{i, {}}, {i}});
+      }
+      break;
+    case HloOpcode::kOptimizationBarrier:
+      // Forward operand to result. kOptimizationBarrier takes only one operand.
+      pairs.push_back({HloOperandIndex{0, {}}, {}});
+      break;
+    default:
+      break;
+  }
+  return pairs;
+}
+
 bool HloDataflowAnalysis::UpdateInstructionValueSet(
     HloInstruction* instruction) {
   // Recompute from operands.

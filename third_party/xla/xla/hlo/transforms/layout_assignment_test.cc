@@ -4485,5 +4485,106 @@ ENTRY %main (x: u32[3,64,17]) -> (s16[3,64,17,2], u32[3,64,17]) {
   ExpectLayoutIs(bc->operand(0)->shape(), {1, 2, 0});
 }
 
+TEST_F(LayoutAssignmentTest, SetsForwardedLayoutsAfterCopies) {
+  // async_body's wrapped custom call requires {0,1} for its first operand and
+  // {1,0} for its second, but p0 is {1,0}. A copy is inserted before
+  // async-start for p0. The copy's layout must flow through every intermediary
+  // between async-start and async-done (tuple, opt-barrier, get-tuple-element).
+  const char* module_str = R"hlo(
+HloModule SetsForwardedLayoutsAfterCopies,
+  entry_computation_layout={(f32[4,4]{1,0}, f32[4,4]{1,0})->(f32[4,4]{0,1}, f32[4,4]{1,0})}
+
+async_body {
+  q0 = f32[4,4]{0,1} parameter(0)
+  q1 = f32[4,4]{1,0} parameter(1)
+  ROOT cc = f32[4,4]{0,1} custom-call(q0, q1), custom_call_target="impl",
+    operand_layout_constraints={f32[4,4]{0,1}, f32[4,4]{1,0}}
+}
+
+ENTRY main {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  start = ((f32[4,4]{1,0}, f32[4,4]{1,0}), f32[4,4]{0,1}, s32[])
+    async-start(p0, p1), calls=async_body
+  tup = (((f32[4,4]{1,0}, f32[4,4]{1,0}), f32[4,4]{0,1}, s32[]), f32[4,4]{1,0})
+    tuple(start, p0)
+  barrier = (((f32[4,4]{1,0}, f32[4,4]{1,0}), f32[4,4]{0,1}, s32[]), f32[4,4]{1,0})
+    opt-barrier(tup)
+  start-gte = ((f32[4,4]{1,0}, f32[4,4]{1,0}), f32[4,4]{0,1}, s32[])
+    get-tuple-element(barrier), index=0
+  p0-gte = f32[4,4]{1,0} get-tuple-element(barrier), index=1
+  done = f32[4,4]{0,1} async-done(start-gte)
+  ROOT out = (f32[4,4]{0,1}, f32[4,4]{1,0}) tuple(done, p0-gte)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK(AssignLayoutsToComputation(module.get()));
+
+  // The wrapped computation uses the custom call's constraints.
+  EXPECT_THAT(LayoutOf(module.get(), "q0"), ElementsAre(0, 1));
+  EXPECT_THAT(LayoutOf(module.get(), "q1"), ElementsAre(1, 0));
+  EXPECT_THAT(LayoutOf(module.get(), "cc"), ElementsAre(0, 1));
+
+  // Entry parameters keep their layouts. Only p0 needs a copy before
+  // async-start.
+  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  ASSERT_NE(p0, nullptr);
+  ASSERT_NE(p1, nullptr);
+  ExpectLayoutIs(p0->shape(), {1, 0});
+  ExpectLayoutIs(p1->shape(), {1, 0});
+
+  const HloInstruction* start = FindInstruction(module.get(), "start");
+  ASSERT_NE(start, nullptr);
+  const HloInstruction* copy = start->operand(0);
+  ASSERT_EQ(copy->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(copy->operand(0), p0);
+  ExpectLayoutIs(copy->shape(), {0, 1});
+  EXPECT_EQ(start->operand(1), p1);
+
+  // start has the expected layout.
+  ExpectTupleLayoutIs(ShapeUtil::GetSubshape(start->shape(), {0}),
+                      {{0, 1}, {1, 0}});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(start->shape(), {1}), {0, 1});
+
+  // tup has the expected layout.
+  const HloInstruction* tup = FindInstruction(module.get(), "tup");
+  ASSERT_NE(tup, nullptr);
+  ExpectTupleLayoutIs(ShapeUtil::GetSubshape(tup->shape(), {0, 0}),
+                      {{0, 1}, {1, 0}});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(tup->shape(), {0, 1}), {0, 1});
+
+  // barrier has the expected layout.
+  const HloInstruction* barrier = FindInstruction(module.get(), "barrier");
+  ASSERT_NE(barrier, nullptr);
+  ExpectTupleLayoutIs(ShapeUtil::GetSubshape(barrier->shape(), {0, 0}),
+                      {{0, 1}, {1, 0}});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(barrier->shape(), {0, 1}), {0, 1});
+
+  // start-gte has the expected layout.
+  const HloInstruction* start_gte = FindInstruction(module.get(), "start-gte");
+  ASSERT_NE(start_gte, nullptr);
+  ExpectTupleLayoutIs(ShapeUtil::GetSubshape(start_gte->shape(), {0}),
+                      {{0, 1}, {1, 0}});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(start_gte->shape(), {1}), {0, 1});
+
+  // p0-gte has the expected layout.
+  const HloInstruction* p0_gte = FindInstruction(module.get(), "p0-gte");
+  ASSERT_NE(p0_gte, nullptr);
+  ExpectLayoutIs(p0_gte->shape(), {1, 0});
+
+  // done has the expected layout and still consumes start-gte directly.
+  const HloInstruction* done = FindInstruction(module.get(), "done");
+  ASSERT_NE(done, nullptr);
+  EXPECT_EQ(done->operand(0), start_gte);
+  ExpectLayoutIs(done->shape(), {0, 1});
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
 }  // namespace
 }  // namespace xla

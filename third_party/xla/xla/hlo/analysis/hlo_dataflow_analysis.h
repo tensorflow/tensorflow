@@ -733,6 +733,13 @@ class HloDataflowPropagation {
   HloCallBoundaryOptions options_;
 };
 
+// Each pair {operand, output_index} means: values in the subtree of operand
+// operand.operand_number rooted at operand.operand_index flow to the
+// corresponding indices of the subtree of instruction's result rooted at
+// output_index, except at indices where instruction defines its own value.
+std::vector<std::pair<HloOperandIndex, ShapeIndex>>
+GetForwardedInputOutputPairs(const HloInstruction* instruction);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_ANALYSIS_HLO_DATAFLOW_ANALYSIS_H_
