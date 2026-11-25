@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
@@ -104,10 +103,10 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     uint32_t shared_mem_bytes = 0, bool use_pdl = false);
 
 // Runs loaded kernel on the stream with the provided arguments.
-absl::Status ExecuteKernelOnStream(
-    se::Kernel& kernel, absl::Span<const se::KernelArg> args,
-    const LaunchDimensions& dims,
-    const std::optional<se::ClusterDim>& cluster_dim, se::Stream* stream);
+absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
+                                   absl::Span<const se::KernelArg> args,
+                                   const LaunchDimensions& dims,
+                                   se::Stream* stream);
 
 // Initializes `buffer` with random data on `stream`.
 // `rng_state` is an inout parameter for the pseudorandom generator state.

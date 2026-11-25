@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/assemble_compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
@@ -85,8 +86,11 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_space.h"
+#include "xla/stream_executor/mock_command_buffer.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -103,9 +107,12 @@ namespace xla::gpu {
 namespace {
 using ::absl_testing::StatusIs;
 using ::testing::_;
+using ::testing::An;
 using ::testing::AnyNumber;
 using ::testing::ElementsAre;
+using ::testing::Eq;
 using ::testing::HasSubstr;
+using ::testing::Return;
 using ::testing::StrictMock;
 
 static constexpr absl::string_view kProfileName = "test_kernel_profiler";
@@ -126,8 +133,7 @@ TEST(CollectiveKernelThunkTest, ToStringIncludesPdlOnlyWhenEnabled) {
               std::string("kernel=five_argument_kernel, "
                           "profile_annotation=test_kernel_profiler, "
                           "launch dimensions=blocks: {3, 2, 1}, "
-                          "threads/block: {4, 5, 6}, "
-                          "cluster_dim=nullopt, shmem_bytes=42") +
+                          "threads/block: {4, 5, 6}, shmem_bytes=42") +
                   (use_pdl ? ", use_pdl=true" : ""));
   }
 }
@@ -858,6 +864,153 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
                            Command::RecordUpdate{cmd}, command_buffer.get()));
   EXPECT_EQ(updated_cmd, cmd);
   ASSERT_OK(command_buffer->Finalize());
+}
+
+class FakeCommand : public se::CommandBuffer::Command {};
+
+TEST(CollectiveKernelThunkTest, RecordForwardsClusterDimsToCreateAndUpdate) {
+  se::StreamExecutor* executor = GetGpuExecutor(0);
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper() &&
+      !executor->GetDeviceDescription().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP()
+        << "Collective kernel requires Hopper or newer, or a ROCm device";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto async_stream, executor->CreateStream());
+
+  constexpr int64_t kLength = 4;
+  constexpr int64_t kByteLength = sizeof(float) * kLength;
+
+  se::DeviceAddress<float> src1 = executor->AllocateArray<float>(kLength, 0);
+  se::DeviceAddress<float> dst1 = executor->AllocateArray<float>(kLength, 0);
+  se::DeviceAddress<float> src2 = executor->AllocateArray<float>(kLength, 0);
+  se::DeviceAddress<float> dst2 = executor->AllocateArray<float>(kLength, 0);
+
+  BufferAllocation alloc_src(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, kByteLength, /*color=*/0);
+  std::vector<CollectiveThunk::Buffer> buffers = {
+      MakeNoOpBuffer(alloc_src, alloc_dst, kLength)};
+
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  CollectiveConfig collective_config{
+      /*operand_element_type=*/{F32},
+      /*replica_groups=*/{replica_group},
+      /*group_mode=*/
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
+      /*use_symmetric_buffer=*/false};
+
+  const se::ClusterDim cluster_dims(2, 1, 1);
+  const LaunchDimensions launch_dimensions(
+      se::BlockDim(2, 1, 1), se::ThreadDim(kLength, 1, 1), cluster_dims);
+
+  auto collective_kernel_thunk = std::make_unique<CollectiveKernelThunk>(
+      Thunk::ThunkInfo(), collective_config,
+      CreateCollectiveKernelSpec(/*num_elements=*/kLength, /*signal_size=*/1,
+                                 /*remote_size=*/1,
+                                 /*is_multimem_enabled=*/false),
+      buffers, /*is_collective_kernel_enabled=*/true, std::string(kKernelName),
+      launch_dimensions, /*devices_in_process=*/1);
+
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/1);
+  device_assignment(0, 0) = 0;
+
+  GpuExecutableRunOptions gpu_options;
+  gpu_options.set_gpu_global_device_ids(GpuExecutableRunOptions::DeviceIdMap{
+      std::make_pair(LocalDeviceId(0), GlobalDeviceId(0))});
+
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  run_options.mutable_run_options()->set_device_assignment(&device_assignment);
+  run_options.mutable_run_options()->set_gpu_executable_run_options(
+      &gpu_options);
+  run_options.mutable_run_options()->set_local_device_count(1);
+
+  std::vector<se::Stream*> async_streams = {async_stream.get()};
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, async_streams,
+                               LocalDeviceId(executor->device_ordinal())));
+
+  ASSERT_OK_AND_ASSIGN(
+      GpuCliqueKey clique_key,
+      GetCollectiveGpuCliqueKey(collective_params, collective_config));
+  absl::Status is_supported = collective_kernel_thunk->IsSupported(
+      clique_key, *executor, collective_params);
+  if (!is_supported.ok()) {
+    GTEST_SKIP() << "Collective kernel is not supported on this executor: "
+                 << is_supported;
+  }
+
+  BufferAllocations allocations1({src1, dst1}, 0, nullptr);
+  BufferAllocations allocations2({src2, dst2}, 0, nullptr);
+
+  TestThunkParams thunk_params(executor, &allocations1, stream.get());
+  thunk_params.WithRunOptions(&run_options)
+      .WithExecutableSource({/*text=*/kKernelSource})
+      .WithCollectiveParams(&collective_params);
+  ASSERT_OK(collective_kernel_thunk->Prepare(thunk_params.PrepareParams()));
+
+  CollectiveMemoryCache collective_memory_cache(/*num_devices=*/2);
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveCliques collective_cliques,
+      AcquireCollectiveCliques(collective_params,
+                               thunk_params.collective_clique_requests()));
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveMemory collective_memory,
+      AcquireCollectiveMemory(collective_params, collective_cliques,
+                              thunk_params.collective_memory_requests(),
+                              collective_memory_cache));
+
+  thunk_params.WithCollectiveCliques(&collective_cliques)
+      .WithCollectiveMemory(&collective_memory);
+  ASSERT_OK(
+      collective_kernel_thunk->Initialize(thunk_params.InitializeParams()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+  StrictMock<se::MockCommandBuffer> mock_command_buffer;
+  FakeCommand fake_cmd;
+
+  EXPECT_CALL(
+      mock_command_buffer,
+      CreateLaunch(launch_dimensions.thread_counts_per_block(),
+                   launch_dimensions.block_counts(),
+                   Eq(std::optional<se::ClusterDim>(cluster_dims)),
+                   An<const se::Kernel&>(), An<const se::KernelArgs&>(), _, _))
+      .WillOnce(Return(&fake_cmd));
+
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd,
+      collective_kernel_thunk->Record(
+          thunk_params.ExecuteParams(), record_params,
+          Command::RecordCreate{/*dependencies=*/{}}, &mock_command_buffer));
+  EXPECT_EQ(cmd, &fake_cmd);
+
+  Thunk::ExecuteParams params2 =
+      thunk_params.WithBufferAllocations(&allocations2).ExecuteParams();
+  std::vector<BufferAllocation::Index> updated_allocs = {0, 1};
+  Command::RecordParams update_record_params = {state,
+                                                std::move(updated_allocs)};
+
+  EXPECT_CALL(
+      mock_command_buffer,
+      UpdateLaunch(&fake_cmd, launch_dimensions.thread_counts_per_block(),
+                   launch_dimensions.block_counts(),
+                   Eq(std::optional<se::ClusterDim>(cluster_dims)),
+                   An<const se::Kernel&>(), An<const se::KernelArgs&>()))
+      .WillOnce(Return(absl::OkStatus()));
+
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* updated_cmd,
+                       collective_kernel_thunk->Record(
+                           params2, update_record_params,
+                           Command::RecordUpdate{cmd}, &mock_command_buffer));
+  EXPECT_EQ(updated_cmd, &fake_cmd);
 }
 
 class CollectiveKernelThunkCliqueSplitTest

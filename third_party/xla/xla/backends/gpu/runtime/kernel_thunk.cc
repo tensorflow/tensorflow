@@ -63,7 +63,6 @@ namespace gpu {
 KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
                          const emitters::KernelArguments& kernel_arguments,
                          LaunchDimensions launch_dimensions,
-                         std::optional<se::ClusterDim> cluster_dim,
                          int64_t shmem_bytes,
                          stream_executor::gpu::TmaMetadata tma_metadata,
                          int devices_per_host,
@@ -75,7 +74,6 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
       zeroed_output_buffer_indices_(std::move(zeroed_output_buffer_indices)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
-      cluster_dim_(std::move(cluster_dim)),
       shmem_bytes_(shmem_bytes),
       tma_metadata_(std::move(tma_metadata)),
       use_pdl_(use_pdl),
@@ -83,8 +81,7 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
 
 std::string KernelThunk::ToString(int indent) const {
   return KernelThunkToString(kernel_name_, thunk_info().profile_annotation,
-                             launch_dimensions_, cluster_dim_, shmem_bytes_,
-                             use_pdl_);
+                             launch_dimensions_, shmem_bytes_, use_pdl_);
 }
 
 absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
@@ -99,8 +96,11 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
   }
   kernel_proto->set_kernel_name(kernel_name_);
   *kernel_proto->mutable_launch_dimensions() = launch_dimensions_.ToProto();
-  if (cluster_dim_) {
-    *kernel_proto->mutable_cluster_dim() = cluster_dim_->ToProto();
+  // Forward-compatibility dual-write for runtimes up to 2 weeks older.
+  // TODO(akuegel): Remove after December 3, 2026.
+  if (launch_dimensions_.cluster_dims().has_value()) {
+    *kernel_proto->mutable_cluster_dim() =
+        launch_dimensions_.cluster_dims()->ToProto();
   }
   kernel_proto->set_shmem_bytes(shmem_bytes_);
   kernel_proto->set_use_pdl(use_pdl_);
@@ -118,11 +118,26 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
     int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                    LaunchDimensions::FromProto(proto.launch_dimensions()));
-  std::optional<stream_executor::ClusterDim> cluster_dim;
+  // Backward-compatibility fallback for legacy AOT-compiled kernels without
+  // LaunchDimensionsProto.cluster_dims.
+  // Can be removed in June 2027 (6 months after dual-writing in ToProto ends).
   if (proto.has_cluster_dim()) {
     ABSL_ASSIGN_OR_RETURN(
-        cluster_dim.emplace(),
+        stream_executor::ClusterDim legacy_cluster_dim,
         stream_executor::ClusterDim::FromProto(proto.cluster_dim()));
+    if (launch_dimensions.cluster_dims().has_value()) {
+      if (*launch_dimensions.cluster_dims() != legacy_cluster_dim) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Mismatched cluster dimensions between launch_dimensions (%s) and "
+            "legacy cluster_dim (%s).",
+            launch_dimensions.cluster_dims()->ToString(),
+            legacy_cluster_dim.ToString()));
+      }
+    } else {
+      launch_dimensions = LaunchDimensions(
+          launch_dimensions.block_counts(),
+          launch_dimensions.thread_counts_per_block(), legacy_cluster_dim);
+    }
   }
 
   if (proto.written().size() != proto.args().size() ||
@@ -154,9 +169,10 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
 
   return std::make_unique<KernelThunk>(
       thunk_info, proto.kernel_name(),
-      emitters::KernelArguments(std::move(arguments)), launch_dimensions,
-      cluster_dim, proto.shmem_bytes(), tma_metadata, devices_per_host,
-      std::move(zeroed_output_buffer_indices), proto.use_pdl());
+      emitters::KernelArguments(std::move(arguments)),
+      std::move(launch_dimensions), proto.shmem_bytes(), tma_metadata,
+      devices_per_host, std::move(zeroed_output_buffer_indices),
+      proto.use_pdl());
 }
 
 /*static*/ std::unique_ptr<KernelThunk> KernelThunk::MakeKernelThunk(
@@ -174,8 +190,7 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
   return std::make_unique<KernelThunk>(
       Thunk::ThunkInfo(), std::move(kernel_name),
       emitters::KernelArguments(std::move(kernel_args)), std::move(dims),
-      /*cluster_dim=*/std::nullopt, shmem_bytes, std::move(tma_metadata),
-      devices_per_host);
+      shmem_bytes, std::move(tma_metadata), devices_per_host);
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {
@@ -253,7 +268,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   return ExecuteKernelOnStream(
       *kernel,
       absl::Span<se::KernelArg>(kernel_args.data(), kernel_args.size()),
-      launch_dimensions_, cluster_dim_, stream);
+      launch_dimensions_, stream);
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*> KernelThunk::Record(
@@ -284,9 +299,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> KernelThunk::Record(
         const se::CommandBuffer::Command* command,
         command_buffer->CreateLaunch(
             launch_dimensions_.thread_counts_per_block(),
-            launch_dimensions_.block_counts(), cluster_dim_, *kernel,
-            *packed_args, zeroed.dependencies(create->dependencies),
-            priority()));
+            launch_dimensions_.block_counts(),
+            launch_dimensions_.cluster_dims(), *kernel, *packed_args,
+            zeroed.dependencies(create->dependencies), priority()));
     ABSL_RETURN_IF_ERROR(AttachZeroedOutputs(this, record_params, command_buffer,
                                         command, std::move(zeroed)));
     return command;
@@ -294,8 +309,8 @@ absl::StatusOr<const se::CommandBuffer::Command*> KernelThunk::Record(
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
     ABSL_RETURN_IF_ERROR(command_buffer->UpdateLaunch(
         update->command, launch_dimensions_.thread_counts_per_block(),
-        launch_dimensions_.block_counts(), cluster_dim_, *kernel,
-        *packed_args));
+        launch_dimensions_.block_counts(), launch_dimensions_.cluster_dims(),
+        *kernel, *packed_args));
     return update->command;
   }
   return Internal("Invalid record action");

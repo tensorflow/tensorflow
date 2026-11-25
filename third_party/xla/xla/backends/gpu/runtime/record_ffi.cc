@@ -96,7 +96,6 @@ ResolveDependencies(const XLA_FFI_RecordContext* ctx,
 
 struct FfiLaunchParams {
   LaunchDimensions launch_dimensions;
-  std::optional<stream_executor::ClusterDim> cluster_dims;
 
   std::variant<se::Kernel*, se::NativeKernel> kernel;
   uint32_t shared_mem_bytes;
@@ -120,11 +119,10 @@ struct FfiLaunchParams {
 template <typename Sink>
 void AbslStringify(Sink& sink, const FfiLaunchParams& params) {
   absl::Format(&sink,
-               "FfiLaunchParams(launch_dimensions=%s, cluster_dims=%s, "
-               "kernel=%s, shared_mem_bytes=%u)",
-               params.launch_dimensions.ToString(),
-               params.cluster_dims.value_or(se::ClusterDim{0, 0, 0}).ToString(),
-               params.kernel_name(), params.shared_mem_bytes);
+               "FfiLaunchParams(launch_dimensions=%s, kernel=%s, "
+               "shared_mem_bytes=%u)",
+               params.launch_dimensions.ToString(), params.kernel_name(),
+               params.shared_mem_bytes);
 }
 
 class FfiKernelCache : public se::CommandBuffer::Resource {
@@ -189,8 +187,7 @@ XLA_FFI_Error* RecordKernelLaunch(
   const std::optional<se::ClusterDim>& cluster_dims = dims->cluster;
 
   FfiLaunchParams params{
-      /*.launch_dimensions = */ LaunchDimensions(blocks, threads),
-      /*.cluster_dims =*/cluster_dims,
+      /*.launch_dimensions = */ LaunchDimensions(blocks, threads, cluster_dims),
       /*.kernel =*/std::move(kernel_target),
       /*.shared_mem_bytes = */ shared_mem_bytes,
   };
@@ -318,14 +315,14 @@ XLA_FFI_Error* FfiUpdateLaunch(XLA_FFI_RecordContext* ctx,
           [&](se::Kernel* k) {
             return cmd_buffer->UpdateLaunch(
                 cmd, params->launch_dimensions.thread_counts_per_block(),
-                params->launch_dimensions.block_counts(), params->cluster_dims,
-                *k, kernel_args);
+                params->launch_dimensions.block_counts(),
+                params->launch_dimensions.cluster_dims(), *k, kernel_args);
           },
           [&](const se::NativeKernel& nk) {
             return cmd_buffer->UpdateLaunch(
                 cmd, params->launch_dimensions.thread_counts_per_block(),
-                params->launch_dimensions.block_counts(), params->cluster_dims,
-                nk, kernel_args);
+                params->launch_dimensions.block_counts(),
+                params->launch_dimensions.cluster_dims(), nk, kernel_args);
           }},
       params->kernel);
   if (!status.ok()) {

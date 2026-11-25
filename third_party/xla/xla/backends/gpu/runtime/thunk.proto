@@ -101,6 +101,9 @@ message KernelThunkProto {
   repeated bool written = 2;
   string kernel_name = 3;
   LaunchDimensionsProto launch_dimensions = 4;
+  // Deprecated: cluster dimensions are now stored in
+  // LaunchDimensionsProto.cluster_dims. Kept for AOT compatibility; can be
+  // removed and reserved in June 2027.
   optional stream_executor.ClusterDimProto cluster_dim = 5;
   int64 shmem_bytes = 6;
   optional stream_executor.gpu.TmaMetadataProto tma_metadata = 7;

@@ -17,20 +17,17 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_KERNEL_THUNK_UTILS_H_
 
 #include <cstdint>
-#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
 
-std::string KernelThunkToString(
-    absl::string_view kernel_name, absl::string_view profile_annotation,
-    const LaunchDimensions& launch_dimensions,
-    std::optional<stream_executor::ClusterDim> cluster_dim, int64_t shmem_bytes,
-    bool use_pdl);
+std::string KernelThunkToString(absl::string_view kernel_name,
+                                absl::string_view profile_annotation,
+                                const LaunchDimensions& launch_dimensions,
+                                int64_t shmem_bytes, bool use_pdl);
 
 }  // namespace xla::gpu
 

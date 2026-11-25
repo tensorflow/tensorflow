@@ -507,8 +507,7 @@ struct CollectiveKernelRecordState : public CommandState {
 
 std::string CollectiveKernelThunk::ToString(int indent) const {
   return KernelThunkToString(kernel_name_, thunk_info().profile_annotation,
-                             launch_dimensions_, /*cluster_dim=*/std::nullopt,
-                             shmem_bytes_, use_pdl_);
+                             launch_dimensions_, shmem_bytes_, use_pdl_);
 }
 
 absl::Status CollectiveKernelThunk::IsSupported(
@@ -909,8 +908,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
         params.stream->Memcpy(plan.copy_dst, plan.copy_src, plan.copy_size));
   }
   return ExecuteKernelOnStream(*plan.kernel, plan.kernel_args,
-                               launch_dimensions_,
-                               /*cluster_dim=*/std::nullopt, params.stream);
+                               launch_dimensions_, params.stream);
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*> CollectiveKernelThunk::Record(
@@ -959,12 +957,12 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectiveKernelThunk::Record(
                        command_buffer->CreateChildCommand(*nested, deps));
       deps = absl::MakeConstSpan(&copy_cmd, 1);
     }
-    ABSL_ASSIGN_OR_RETURN(
-        const se::CommandBuffer::Command* launch_cmd,
-        command_buffer->CreateLaunch(
-            launch_dimensions_.thread_counts_per_block(),
-            launch_dimensions_.block_counts(), /*cluster_dims=*/std::nullopt,
-            *plan.kernel, *packed_args, deps, priority()));
+    ABSL_ASSIGN_OR_RETURN(const se::CommandBuffer::Command* launch_cmd,
+                     command_buffer->CreateLaunch(
+                         launch_dimensions_.thread_counts_per_block(),
+                         launch_dimensions_.block_counts(),
+                         launch_dimensions_.cluster_dims(), *plan.kernel,
+                         *packed_args, deps, priority()));
     if (copy_cmd != nullptr) {
       state->launch_to_copy[launch_cmd] = RecordedCopy{
           copy_cmd, plan.copy_dst->opaque(), plan.copy_src.opaque()};
@@ -990,7 +988,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectiveKernelThunk::Record(
     }
     ABSL_RETURN_IF_ERROR(command_buffer->UpdateLaunch(
         action.command, launch_dimensions_.thread_counts_per_block(),
-        launch_dimensions_.block_counts(), /*cluster_dims=*/std::nullopt,
+        launch_dimensions_.block_counts(), launch_dimensions_.cluster_dims(),
         *plan.kernel, *packed_args));
     return action.command;
   };

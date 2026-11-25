@@ -28,6 +28,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
@@ -68,6 +69,8 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 using Kind = Thunk::Kind;
@@ -77,7 +80,6 @@ TEST(KernelThunkTest, CreateWithDefaultValues) {
                     /*kernel_name=*/"",
                     /*kernel_arguments=*/emitters::KernelArguments({}),
                     /*launch_dimensions=*/LaunchDimensions(),
-                    /*cluster_dim=*/se::ClusterDim(),
                     /*shmem_bytes=*/0,
                     /*tma_metadata=*/se::gpu::TmaMetadata(),
                     /*devices_per_host=*/1);
@@ -88,12 +90,11 @@ TEST(KernelThunkTest, CreateWithDefaultValues) {
   EXPECT_EQ(thunk.launch_dimensions().block_counts(), se::BlockDim(1, 1, 1));
   EXPECT_EQ(thunk.launch_dimensions().thread_counts_per_block(),
             se::ThreadDim(1, 1, 1));
-  EXPECT_EQ(thunk.cluster_dim(), se::ClusterDim(1, 1, 1));
+  EXPECT_EQ(thunk.launch_dimensions().cluster_dims(), std::nullopt);
   EXPECT_EQ(thunk.shmem_bytes(), 0);
   EXPECT_EQ(thunk.ToString(0),
             "kernel=, profile_annotation=, launch dimensions="
-            "blocks: {1, 1, 1}, threads/block: {1, 1, 1}, "
-            "cluster_dim=ClusterDim{1, 1, 1}, shmem_bytes=0");
+            "blocks: {1, 1, 1}, threads/block: {1, 1, 1}, shmem_bytes=0");
 }
 
 TEST(KernelThunkTest, CreateAndGettersAndToString) {
@@ -114,13 +115,13 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   emitters::KernelArguments kernel_arguments({arg0, arg1});
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
-                                     se::ThreadDim(256, 255, 254));
+                                     se::ThreadDim(256, 255, 254),
+                                     se::ClusterDim(1, 1, 1));
 
   KernelThunk thunk(thunk_info,
                     /*kernel_name=*/"kernel123",
                     /*kernel_arguments=*/kernel_arguments,
                     /*launch_dimensions=*/launch_dimensions,
-                    /*cluster_dim=*/se::ClusterDim(1, 1, 1),
                     /*shmem_bytes=*/1024,
                     /*tma_metadata=*/se::gpu::TmaMetadata(),
                     /*devices_per_host=*/1,
@@ -135,13 +136,13 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   EXPECT_EQ(thunk.launch_dimensions().block_counts(), se::BlockDim(32, 31, 30));
   EXPECT_EQ(thunk.launch_dimensions().thread_counts_per_block(),
             se::ThreadDim(256, 255, 254));
-  EXPECT_EQ(thunk.cluster_dim(), se::ClusterDim(1, 1, 1));
+  EXPECT_EQ(thunk.launch_dimensions().cluster_dims(), se::ClusterDim(1, 1, 1));
   EXPECT_EQ(thunk.shmem_bytes(), 1024);
   EXPECT_EQ(
       thunk.ToString(0),
       "kernel=kernel123, profile_annotation=DotGeneral, "
       "launch dimensions=blocks: {32, 31, 30}, threads/block: {256, 255, 254}, "
-      "cluster_dim=ClusterDim{1, 1, 1}, shmem_bytes=1024, use_pdl=true");
+      "cluster: {1, 1, 1}, shmem_bytes=1024, use_pdl=true");
 }
 
 TEST(KernelThunkTest, ToProto) {
@@ -162,7 +163,8 @@ TEST(KernelThunkTest, ToProto) {
   emitters::KernelArguments kernel_arguments({arg0, arg1});
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
-                                     se::ThreadDim(256, 255, 254));
+                                     se::ThreadDim(256, 255, 254),
+                                     se::ClusterDim(8, 7, 6));
 
   ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaDescriptor descriptor,
                        stream_executor::gpu::TmaDescriptor::Create(
@@ -179,7 +181,6 @@ TEST(KernelThunkTest, ToProto) {
                     /*kernel_name=*/"kernel123",
                     /*kernel_arguments=*/kernel_arguments,
                     /*launch_dimensions=*/launch_dimensions,
-                    /*cluster_dim=*/se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
                     /*tma_metadata=*/tma_metadata,
                     /*devices_per_host=*/1,
@@ -210,6 +211,7 @@ TEST(KernelThunkTest, ToProto) {
           launch_dimensions {
             block_counts { coordinates { x: 32 y: 31 z: 30 } }
             thread_counts_per_block { coordinates { x: 256 y: 255 z: 254 } }
+            cluster_dims { coordinates { x: 8 y: 7 z: 6 } }
           }
           cluster_dim { coordinates { x: 8 y: 7 z: 6 } }
           shmem_bytes: 1024
@@ -260,8 +262,8 @@ TEST(KernelThunkTest, ToAndFromProto) {
   emitters::KernelArguments kernel_arguments({arg0, arg1});
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
-                                     se::ThreadDim(256, 255, 254));
-  se::ClusterDim cluster_dim(8, 7, 6);
+                                     se::ThreadDim(256, 255, 254),
+                                     se::ClusterDim(8, 7, 6));
   constexpr absl::string_view kKernelName = "kernel123";
   constexpr int kSharedMemoryBytes = 1024;
 
@@ -277,8 +279,8 @@ TEST(KernelThunkTest, ToAndFromProto) {
                                              std::move(descriptor));
 
   KernelThunk thunk(thunk_info, std::string{kKernelName}, kernel_arguments,
-                    launch_dimensions, cluster_dim, kSharedMemoryBytes,
-                    tma_metadata, /*devices_per_host=*/1,
+                    launch_dimensions, kSharedMemoryBytes, tma_metadata,
+                    /*devices_per_host=*/1,
                     /*zeroed_output_buffer_indices=*/{},
                     /*use_pdl=*/true);
   ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
@@ -288,7 +290,6 @@ TEST(KernelThunkTest, ToAndFromProto) {
       KernelThunk::FromProto(thunk_info, proto.kernel_thunk(), allocations,
                              /*devices_per_host=*/1));
 
-  EXPECT_THAT(reconstructed_thunk->cluster_dim(), cluster_dim);
   EXPECT_THAT(reconstructed_thunk->kernel_name(), kKernelName);
   EXPECT_THAT(reconstructed_thunk->launch_dimensions(), launch_dimensions);
   EXPECT_THAT(reconstructed_thunk->shmem_bytes(), kSharedMemoryBytes);
@@ -299,6 +300,62 @@ TEST(KernelThunkTest, ToAndFromProto) {
                                      ShapedSlice{slice1, arg1.shape()}));
   EXPECT_THAT(reconstructed_thunk->tma_metadata(), tma_metadata);
   EXPECT_TRUE(reconstructed_thunk->use_pdl());
+}
+
+TEST(KernelThunkTest, FromProtoLegacyClusterDimOnly) {
+  KernelThunkProto proto = ParseTextProtoOrDie<KernelThunkProto>(R"pb(
+    kernel_name: "legacy_clustered_kernel"
+    launch_dimensions {
+      block_counts { coordinates { x: 16 y: 1 z: 1 } }
+      thread_counts_per_block { coordinates { x: 128 y: 1 z: 1 } }
+    }
+    cluster_dim { coordinates { x: 2 y: 1 z: 1 } }
+  )pb");
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelThunk> thunk,
+                       KernelThunk::FromProto(Thunk::ThunkInfo(), proto,
+                                              /*buffer_allocations=*/{},
+                                              /*devices_per_host=*/1));
+  EXPECT_EQ(thunk->launch_dimensions(),
+            LaunchDimensions(se::BlockDim(16, 1, 1), se::ThreadDim(128, 1, 1),
+                             se::ClusterDim(2, 1, 1)));
+}
+
+TEST(KernelThunkTest, FromProtoLaunchDimensionsClusterDimsOnly) {
+  KernelThunkProto proto = ParseTextProtoOrDie<KernelThunkProto>(R"pb(
+    kernel_name: "clustered_kernel"
+    launch_dimensions {
+      block_counts { coordinates { x: 16 y: 1 z: 1 } }
+      thread_counts_per_block { coordinates { x: 128 y: 1 z: 1 } }
+      cluster_dims { coordinates { x: 4 y: 1 z: 1 } }
+    }
+  )pb");
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelThunk> thunk,
+                       KernelThunk::FromProto(Thunk::ThunkInfo(), proto,
+                                              /*buffer_allocations=*/{},
+                                              /*devices_per_host=*/1));
+  EXPECT_EQ(thunk->launch_dimensions(),
+            LaunchDimensions(se::BlockDim(16, 1, 1), se::ThreadDim(128, 1, 1),
+                             se::ClusterDim(4, 1, 1)));
+}
+
+TEST(KernelThunkTest, FromProtoRejectsMismatchedLegacyClusterDim) {
+  KernelThunkProto proto = ParseTextProtoOrDie<KernelThunkProto>(R"pb(
+    kernel_name: "mismatched_clustered_kernel"
+    launch_dimensions {
+      block_counts { coordinates { x: 16 y: 1 z: 1 } }
+      thread_counts_per_block { coordinates { x: 128 y: 1 z: 1 } }
+      cluster_dims { coordinates { x: 2 y: 1 z: 1 } }
+    }
+    cluster_dim { coordinates { x: 4 y: 1 z: 1 } }
+  )pb");
+
+  EXPECT_THAT(KernelThunk::FromProto(Thunk::ThunkInfo(), proto,
+                                     /*buffer_allocations=*/{},
+                                     /*devices_per_host=*/1),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Mismatched cluster dimensions")));
 }
 
 TEST(KernelThunkTest, ConvertToCommandsPropagatesUsePdl) {
@@ -314,7 +371,6 @@ TEST(KernelThunkTest, ConvertToCommandsPropagatesUsePdl) {
       /*kernel_arguments=*/
       emitters::KernelArguments(std::vector<emitters::KernelArgument>{arg}),
       /*launch_dimensions=*/LaunchDimensions(),
-      /*cluster_dim=*/se::ClusterDim(),
       /*shmem_bytes=*/0,
       /*tma_metadata=*/se::gpu::TmaMetadata(),
       /*devices_per_host=*/1,
@@ -350,7 +406,7 @@ TEST(KernelThunkTest, BufferUsesReturnsCorrectBuffers) {
   arg1.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0, arg1});
   KernelThunk thunk(Thunk::ThunkInfo(), "kernel", kernel_arguments,
-                    LaunchDimensions(), se::ClusterDim(), /*shmem_bytes=*/0,
+                    LaunchDimensions(), /*shmem_bytes=*/0,
                     se::gpu::TmaMetadata(), /*devices_per_host=*/1);
 
   Thunk::BufferUses buffers = thunk.buffer_uses();
@@ -371,7 +427,7 @@ TEST(KernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {
   arg1.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0, arg1});
   KernelThunk thunk(Thunk::ThunkInfo(), "kernel", kernel_arguments,
-                    LaunchDimensions(), se::ClusterDim(), /*shmem_bytes=*/0,
+                    LaunchDimensions(), /*shmem_bytes=*/0,
                     se::gpu::TmaMetadata(), /*devices_per_host=*/1);
 
   Thunk::BufferUses buffers1 = thunk.buffer_uses();
@@ -645,10 +701,10 @@ static absl::StatusOr<std::unique_ptr<KernelThunk>> MakeAddI32KernelThunk(
       /*kernel_name=*/"AddI32",
       /*kernel_arguments=*/emitters::KernelArguments({arg_a, arg_b, arg_c}),
       /*launch_dimensions=*/
-      LaunchDimensions(se::BlockDim(1, 1, 1), se::ThreadDim(1, 1, 1)),
-      /*cluster_dim=*/
-      use_cluster_dim ? std::make_optional(se::ClusterDim(1, 1, 1))
-                      : std::nullopt,
+      LaunchDimensions(se::BlockDim(1, 1, 1), se::ThreadDim(1, 1, 1),
+                       use_cluster_dim
+                           ? std::make_optional(se::ClusterDim(1, 1, 1))
+                           : std::nullopt),
       /*shmem_bytes=*/0,
       /*tma_metadata=*/se::gpu::TmaMetadata(),
       /*devices_per_host=*/1,
@@ -1238,7 +1294,7 @@ TEST(KernelThunkTest, ExecuteFailsWithoutInitialize) {
       Thunk::ThunkInfo(), /*kernel_name=*/"AddI32",
       emitters::KernelArguments({arg_a, arg_b, arg_c}),
       LaunchDimensions(se::BlockDim(1, 1, 1), se::ThreadDim(1, 1, 1)),
-      /*cluster_dim=*/std::nullopt, /*shmem_bytes=*/0, se::gpu::TmaMetadata(),
+      /*shmem_bytes=*/0, se::gpu::TmaMetadata(),
       /*devices_per_host=*/1, /*zeroed_output_buffer_indices=*/{2});
   // Intentionally skip Initialize().
 

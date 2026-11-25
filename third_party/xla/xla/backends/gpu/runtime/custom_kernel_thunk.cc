@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/service/shaped_slice.pb.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -76,12 +75,9 @@ CustomKernelThunk::CustomKernelThunk(
       device_states_(devices_in_process) {}
 
 std::string CustomKernelThunk::ToString(int indent) const {
-  return KernelThunkToString(custom_kernel_.name(),
-                             thunk_info().profile_annotation,
-                             LaunchDimensions(custom_kernel_.block_dims(),
-                                              custom_kernel_.thread_dims()),
-                             custom_kernel_.cluster_dims(),
-                             custom_kernel_.shared_memory_bytes(), use_pdl_);
+  return KernelThunkToString(
+      custom_kernel_.name(), thunk_info().profile_annotation,
+      launch_dimensions(), custom_kernel_.shared_memory_bytes(), use_pdl_);
 }
 
 absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {

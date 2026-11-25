@@ -80,7 +80,8 @@ class CustomKernelThunk : public Command {
 
   LaunchDimensions launch_dimensions() const {
     return LaunchDimensions(custom_kernel_.block_dims(),
-                            custom_kernel_.thread_dims());
+                            custom_kernel_.thread_dims(),
+                            custom_kernel_.cluster_dims());
   }
 
   int64_t shmem_bytes() const { return custom_kernel_.shared_memory_bytes(); }

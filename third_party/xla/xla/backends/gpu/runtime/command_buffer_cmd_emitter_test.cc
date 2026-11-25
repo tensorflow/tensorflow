@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
@@ -67,7 +66,6 @@ class FakeKernelThunk : public KernelThunk {
                     /*kernel_name=*/"kernel",
                     /*kernel_arguments=*/BuildKernelArguments(slice),
                     /*launch_dimensions=*/LaunchDimensions(),
-                    /*cluster_dim=*/se::ClusterDim(),
                     /*shmem_bytes=*/0,
                     /*tma_metadata=*/se::gpu::TmaMetadata(),
                     /*devices_per_host=*/1,

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
@@ -72,8 +70,7 @@ class KernelThunk : public Command {
   // `mlir::memref::ViewOp`).
   KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
               const emitters::KernelArguments& kernel_arguments,
-              LaunchDimensions launch_dimensions,
-              std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
+              LaunchDimensions launch_dimensions, int64_t shmem_bytes,
               stream_executor::gpu::TmaMetadata tma_metadata,
               int devices_per_host,
               std::vector<int64_t> zeroed_output_buffer_indices = {},
@@ -111,9 +108,6 @@ class KernelThunk : public Command {
   const std::string& kernel_name() const { return kernel_name_; }
   const LaunchDimensions& launch_dimensions() const {
     return launch_dimensions_;
-  }
-  const std::optional<se::ClusterDim>& cluster_dim() const {
-    return cluster_dim_;
   }
   // The shared memory required by the kernel.
   int64_t shmem_bytes() const { return shmem_bytes_; }
@@ -156,11 +150,9 @@ class KernelThunk : public Command {
   // Entry kernel name for the computation.
   const std::string kernel_name_;
 
-  // The thread and block dimension used to launch the kernel.
+  // The thread, block, and optional cluster dimensions used to launch the
+  // kernel.
   const LaunchDimensions launch_dimensions_;
-
-  // The cluster dimensions used to launch the kernel.
-  const std::optional<se::ClusterDim> cluster_dim_;
 
   int64_t shmem_bytes_;
 

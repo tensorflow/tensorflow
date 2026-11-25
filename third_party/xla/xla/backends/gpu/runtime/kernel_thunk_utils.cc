@@ -16,26 +16,22 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/kernel_thunk_utils.h"
 
 #include <cstdint>
-#include <optional>
 #include <string>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
 
-std::string KernelThunkToString(
-    absl::string_view kernel_name, absl::string_view profile_annotation,
-    const LaunchDimensions& launch_dimensions,
-    std::optional<stream_executor::ClusterDim> cluster_dim, int64_t shmem_bytes,
-    bool use_pdl) {
+std::string KernelThunkToString(absl::string_view kernel_name,
+                                absl::string_view profile_annotation,
+                                const LaunchDimensions& launch_dimensions,
+                                int64_t shmem_bytes, bool use_pdl) {
   return absl::StrFormat(
       "kernel=%s, profile_annotation=%s, launch dimensions=%s, "
-      "cluster_dim=%s, shmem_bytes=%d%s",
+      "shmem_bytes=%d%s",
       kernel_name, profile_annotation, launch_dimensions.ToString(),
-      cluster_dim.has_value() ? cluster_dim->ToString() : "nullopt",
       shmem_bytes, use_pdl ? ", use_pdl=true" : "");
 }
 

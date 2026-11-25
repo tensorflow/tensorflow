@@ -122,7 +122,6 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         thunk_info,
         /*kernel_name=*/"test_kernel", emitters::KernelArguments({}),
         LaunchDimensions(),
-        /*cluster_dim=*/std::nullopt,
         /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata(),
         gpu_topology.num_devices_per_host());
     GpuKernelSpec spec{"custom_kernel_name", LaunchDimensions{},

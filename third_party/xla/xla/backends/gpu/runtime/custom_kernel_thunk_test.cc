@@ -87,7 +87,7 @@ TEST(CustomKernelThunkTest, ToStringIncludesPdlOnlyWhenEnabled) {
   EXPECT_EQ(thunk.ToString(0),
             "kernel=name, profile_annotation=test_kernel_profiler, "
             "launch dimensions=blocks: {3, 2, 1}, threads/block: {4, 5, 6}, "
-            "cluster_dim=nullopt, shmem_bytes=42");
+            "shmem_bytes=42");
 
   GpuKernelSpec clustered_kernel_spec{
       "clustered_name",
@@ -101,10 +101,12 @@ TEST(CustomKernelThunkTest, ToStringIncludesPdlOnlyWhenEnabled) {
           /*ptx=*/"", /*kernel_name=*/"clustered_name", /*arity=*/0));
   CustomKernelThunk pdl_thunk(thunk_info, clustered_kernel, kernel_arguments,
                               /*devices_in_process=*/1, /*use_pdl=*/true);
+  EXPECT_EQ(pdl_thunk.launch_dimensions().cluster_dims(),
+            se::ClusterDim(2, 2, 2));
   EXPECT_EQ(pdl_thunk.ToString(0),
             "kernel=clustered_name, profile_annotation=test_kernel_profiler, "
             "launch dimensions=blocks: {6, 4, 2}, threads/block: {8, 10, 12}, "
-            "cluster_dim=ClusterDim{2, 2, 2}, shmem_bytes=84, use_pdl=true");
+            "cluster: {2, 2, 2}, shmem_bytes=84, use_pdl=true");
 }
 
 TEST(CustomKernelThunkTest, BufferUsesReturnsCorrectBuffers) {

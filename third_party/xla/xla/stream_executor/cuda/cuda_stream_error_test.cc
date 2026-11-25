@@ -77,9 +77,8 @@ TEST_F(CudaStreamTest, StreamErrorPropagatesToCallback) {
       tsl::MakePromise<>();
   auto& promise = promise_and_future.first;
   auto& future = promise_and_future.second;
-  EXPECT_THAT(xla::gpu::ExecuteKernelOnStream(*kernel, {},
-                                              xla::gpu::LaunchDimensions(1, 1),
-                                              std::nullopt, stream.get()),
+  EXPECT_THAT(xla::gpu::ExecuteKernelOnStream(
+                  *kernel, {}, xla::gpu::LaunchDimensions(1, 1), stream.get()),
               absl_testing::IsOk());
   EXPECT_THAT(stream->DoHostCallbackWithStatus(
                   [&promise]() {
@@ -113,9 +112,8 @@ TEST_F(CudaStreamTest, StreamSuccessPropagatesToCallback) {
       tsl::MakePromise<>();
   auto& promise = promise_and_future.first;
   auto& future = promise_and_future.second;
-  EXPECT_THAT(xla::gpu::ExecuteKernelOnStream(*kernel, {},
-                                              xla::gpu::LaunchDimensions(1, 1),
-                                              std::nullopt, stream.get()),
+  EXPECT_THAT(xla::gpu::ExecuteKernelOnStream(
+                  *kernel, {}, xla::gpu::LaunchDimensions(1, 1), stream.get()),
               absl_testing::IsOk());
   EXPECT_THAT(stream->DoHostCallbackWithStatus(
                   [&promise]() {
