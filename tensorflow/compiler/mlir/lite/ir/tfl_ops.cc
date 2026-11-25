@@ -2385,9 +2385,50 @@ LogicalResult DequantizeOp::verify() {
                                        input_type.getShape());
 }
 
+// Verifies the per-axis quantization parameters of a (sparse) quantized
+// constant op against the shape of its value.
+template <typename QConstOpT>
+static LogicalResult VerifyPerAxisQuantParams(QConstOpT op) {
+  // The value always has a static shape, while qtype and the result type can
+  // be dynamic or differ from each other, so check both against the value.
+  ShapedType value_type = op.getValue().getShapedType();
+  const int64_t value_rank = value_type.hasRank() ? value_type.getRank() : 0;
+  for (ShapedType type : {mlir::cast<ShapedType>(op.getQtype()),
+                          mlir::cast<ShapedType>(op.getOutput().getType())}) {
+    auto per_axis_type = mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+        type.getElementType());
+    if (!per_axis_type) continue;
+    const int64_t quantized_dimension = per_axis_type.getQuantizedDimension();
+    if (quantized_dimension < 0 || quantized_dimension >= value_rank) {
+      return op.emitOpError("expects the quantized dimension ")
+             << quantized_dimension << " to be in the range [0, " << value_rank
+             << ") of value " << value_type;
+    }
+    const int64_t num_scales =
+        static_cast<int64_t>(per_axis_type.getScales().size());
+    const int64_t num_zero_points =
+        static_cast<int64_t>(per_axis_type.getZeroPoints().size());
+    if (value_type.getDimSize(quantized_dimension) != num_scales ||
+        value_type.getDimSize(quantized_dimension) != num_zero_points) {
+      return op.emitOpError("expects ")
+             << value_type.getDimSize(quantized_dimension)
+             << " scales and zero points to match dimension "
+             << quantized_dimension << " of value, got " << num_scales
+             << " scales and " << num_zero_points << " zero points";
+    }
+  }
+  return success();
+}
+
+LogicalResult SparseQConstOp::verify() {
+  return VerifyPerAxisQuantParams(*this);
+}
+
 LogicalResult QConstOp::verify() {
+  if (failed(VerifyPerAxisQuantParams(*this))) return failure();
+
   auto output_type = mlir::dyn_cast<RankedTensorType>(getOutput().getType());
-  if (!output_type) return success();
+  if (!output_type || !output_type.hasRank()) return success();
   auto blockwise_type =
       mlir::dyn_cast<BlockwiseQuantType>(output_type.getElementType());
   if (!blockwise_type) return success();
