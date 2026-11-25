@@ -292,7 +292,7 @@ class SumReductionTest(BaseReductionTest):
     self.assertAllClose(tf_out_mean, 1.)
 
   @test_util.run_deprecated_v1
-  def testFloat16Accumulation(self):
+  def testFloat16SumAccumulation(self):
     with self.session(use_gpu=False):
       x = constant_op.constant(10000.0, dtype=dtypes.float16, shape=[3, 2])
       # The true sum is representable, but rounding partial sums loses bits.
@@ -594,7 +594,7 @@ class MeanReductionTest(BaseReductionTest):
       self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1
-  def testFloat16Accumulation(self):
+  def testFloat16MeanAccumulation(self):
     with self.session(use_gpu=False):
       # The mean fits in float16 even when the intermediate sum does not.
       for size in (6, 10):
@@ -691,7 +691,7 @@ class EuclideanNormReductionTest(BaseReductionTest, parameterized.TestCase):
       self._compareAll(np_arr, None)
 
   @test_util.run_deprecated_v1
-  def testFloat16Accumulation(self):
+  def testFloat16EuclideanNormAccumulation(self):
     with self.session(use_gpu=False):
       x = constant_op.constant(200.0, dtype=dtypes.float16, shape=[4])
       # The norm is representable even though the sum of squares overflows.
