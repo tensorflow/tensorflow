@@ -222,6 +222,59 @@ TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
+TEST_F(HloShardingTest, FromProtoFailsWithInvalidNamedSharding) {
+  // Axis index out of bounds.
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    named_sharding {
+      mesh { axes { name: "a" size: 4 } }
+      dim_shardings { axes { mesh_axis_index: 1 } }
+    }
+  )pb");
+  EXPECT_THAT(HloSharding::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Axis index must be less than number of "
+                                 "axes")));
+
+  // Same error for a named sharding inside a tuple.
+  OpSharding tuple_proto;
+  tuple_proto.set_type(OpSharding::TUPLE);
+  *tuple_proto.add_tuple_shardings() = proto;
+  EXPECT_THAT(HloSharding::FromProto(tuple_proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Axis index must be less than number of "
+                                 "axes")));
+
+  // The device array would need 8 TB if it were allocated before checking the
+  // number of device ids.
+  proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    named_sharding {
+      mesh {
+        axes { name: "a" size: 1000000000000 }
+        device_ids: [ 0 ]
+      }
+    }
+  )pb");
+  EXPECT_THAT(HloSharding::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Number of device ids must match")));
+
+  // pre_size * size wraps to 0 in int64_t.
+  proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    named_sharding {
+      mesh { axes { name: "a" size: 8 } }
+      dim_shardings {
+        axes {
+          mesh_axis_index: 0
+          sub_axis_info { pre_size: 4611686018427387904 size: 4 }
+        }
+      }
+    }
+  )pb");
+  EXPECT_THAT(HloSharding::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("sub-axis pre_size * size overflows")));
+}
+
 TEST_F(HloShardingTest, FromProtoFailsWithNegativeOrOverflowingDimensions) {
   auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
     type: OTHER

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -55,7 +56,7 @@ class NamedSharding {
     std::string ToString(const Mesh* mesh = nullptr) const;
 
     NamedShardingProto::DimensionSharding ToProto() const;
-    static DimensionSharding FromProto(
+    static absl::StatusOr<DimensionSharding> FromProto(
         const NamedShardingProto::DimensionSharding& proto);
 
     // Note that by default we assume closed sharding.
@@ -122,7 +123,9 @@ class NamedSharding {
   std::string ToString(bool include_metadata = false) const;
 
   NamedShardingProto ToProto() const;
-  static NamedSharding FromProto(const NamedShardingProto& proto);
+  // Returns an error if `proto` does not describe a valid named sharding.
+  static absl::StatusOr<NamedSharding> FromProto(
+      const NamedShardingProto& proto);
 
   explicit NamedSharding(Mesh mesh,
                          absl::Span<const DimensionSharding> dim_shardings = {},
@@ -131,6 +134,16 @@ class NamedSharding {
                          absl::Span<const AxisRef> manual_axes = {},
                          absl::Span<const OpMetadata> metadata = {},
                          ReductionOp reduction_op = ReductionOp::kSum);
+
+  // Same as the constructor above, but returns an error instead of crashing if
+  // the named sharding is invalid.
+  static absl::StatusOr<NamedSharding> TryCreate(
+      Mesh mesh, absl::Span<const DimensionSharding> dim_shardings = {},
+      absl::Span<const AxisRef> replicated_axes = {},
+      absl::Span<const AxisRef> unreduced_axes = {},
+      absl::Span<const AxisRef> manual_axes = {},
+      absl::Span<const OpMetadata> metadata = {},
+      ReductionOp reduction_op = ReductionOp::kSum);
 
   const Mesh& mesh() const { return mesh_; }
   absl::Span<const DimensionSharding> dim_shardings() const {
@@ -250,6 +263,9 @@ class NamedSharding {
 
  private:
   friend class HloSharding;
+
+  // Constructs an empty named sharding for `TryCreate` to populate.
+  NamedSharding() = default;
 
   void InitShardedSizes() {
     sharded_sizes_.reserve(dim_shardings_.size());
