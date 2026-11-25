@@ -99,6 +99,67 @@ func.func @push_squeeze_dims_up_through_reduce(%arg0: tensor<8x4x1xf32>) -> tens
 
 // -----
 
+// CHECK-LABEL: func @squeeze_reduce_to_scalar
+func.func @squeeze_reduce_to_scalar(%arg0: tensor<1x8xf32>) -> tensor<1xf32> {
+  // CHECK: %[[SQUEEZED:.*]] = triton_xla.squeeze_dims %arg0 <axis = 0> : tensor<1x8xf32> -> tensor<8xf32>
+  // CHECK: %[[REDUCED:.*]] = "tt.reduce"(%[[SQUEEZED]]) <{axis = 0 : i32}> ({
+  // CHECK: }) : (tensor<8xf32>) -> f32
+  // CHECK: %[[SPLAT:.*]] = tt.splat %[[REDUCED]] : f32 -> tensor<1xf32>
+  // CHECK: return %[[SPLAT]] : tensor<1xf32>
+  %0 = "tt.reduce"(%arg0) <{axis = 1 : i32}> ({
+  ^bb0(%arg1: f32, %arg2: f32):
+    %1 = arith.addf %arg1, %arg2 : f32
+    tt.reduce.return %1 : f32
+  }) : (tensor<1x8xf32>) -> tensor<1xf32>
+  return %0 : tensor<1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @squeeze_reduce_of_expand_dims_to_scalar
+func.func @squeeze_reduce_of_expand_dims_to_scalar(%arg0: tensor<8xf32>) -> tensor<1x1xf32> {
+  // CHECK-NOT: tt.expand_dims
+  // CHECK: %[[REDUCED:.*]] = "tt.reduce"(%arg0) <{axis = 0 : i32}> ({
+  // CHECK: }) : (tensor<8xf32>) -> f32
+  // CHECK: tt.splat %[[REDUCED]] : f32 -> tensor<1x1xf32>
+  %0 = tt.expand_dims %arg0 {axis = 0 : i32} : tensor<8xf32> -> tensor<1x8xf32>
+  %1 = tt.expand_dims %0 {axis = 2 : i32} : tensor<1x8xf32> -> tensor<1x8x1xf32>
+  %2 = "tt.reduce"(%1) <{axis = 1 : i32}> ({
+  ^bb0(%arg1: f32, %arg2: f32):
+    %3 = arith.maximumf %arg1, %arg2 : f32
+    tt.reduce.return %3 : f32
+  }) : (tensor<1x8x1xf32>) -> tensor<1x1xf32>
+  return %2 : tensor<1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @skip_reduce_with_non_unit_dims
+func.func @skip_reduce_with_non_unit_dims(%arg0: tensor<2x8xf32>) -> tensor<2xf32> {
+  // CHECK-NOT: tt.splat
+  // CHECK: }) : (tensor<2x8xf32>) -> tensor<2xf32>
+  %0 = "tt.reduce"(%arg0) <{axis = 1 : i32}> ({
+  ^bb0(%arg1: f32, %arg2: f32):
+    %1 = arith.addf %arg1, %arg2 : f32
+    tt.reduce.return %1 : f32
+  }) : (tensor<2x8xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @fold_squeeze_dims_of_splat
+func.func @fold_squeeze_dims_of_splat(%arg0: f32) -> tensor<1xf32> {
+  // CHECK-NOT: triton_xla.squeeze_dims
+  // CHECK: %[[SPLAT:.*]] = tt.splat %arg0 : f32 -> tensor<1xf32>
+  // CHECK: return %[[SPLAT]]
+  %0 = tt.splat %arg0 : f32 -> tensor<1x1xf32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 0> : tensor<1x1xf32> -> tensor<1xf32>
+  return %1 : tensor<1xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @fold_squeeze_of_expand_cancelling
 func.func @fold_squeeze_of_expand_cancelling(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
   // CHECK-NOT: tt.expand_dims

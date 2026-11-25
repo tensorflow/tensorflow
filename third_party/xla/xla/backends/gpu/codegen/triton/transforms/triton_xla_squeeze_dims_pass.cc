@@ -397,6 +397,70 @@ LogicalResult PushSqueezeDimsUpThroughReduce(SqueezeDimsOp op,
   return success();
 }
 
+// Reduces along the only non-unit dimension to scalars. Otherwise the reduction
+// keeps its unit dimensions while its producers get squeezed, and Triton
+// converts the whole operand to the reduction's layout through shared memory.
+// Example:
+//   %1 = tt.reduce(%0) axis=1 : tensor<1x8xf32> -> tensor<1xf32>
+// is rewritten to:
+//   %1 = squeeze_dims %0, axis=0 : tensor<1x8xf32> -> tensor<8xf32>
+//   %2 = tt.reduce(%1) axis=0 : tensor<8xf32> -> f32
+//   %3 = tt.splat %2 : f32 -> tensor<1xf32>
+LogicalResult SqueezeReduceToScalar(ReduceOp op, PatternRewriter& rewriter) {
+  RankedTensorType type = op.getInputTypes().front();
+  if (type.getRank() < 2) {
+    return rewriter.notifyMatchFailure(op, "Expected operands of rank >= 2.");
+  }
+
+  SmallVector<uint32_t> squeeze_dims;
+  for (auto [dim, size] : llvm::enumerate(type.getShape())) {
+    if (dim == op.getAxis()) {
+      continue;
+    }
+    if (size != 1) {
+      return rewriter.notifyMatchFailure(op, "Expected unit non-reduced dims.");
+    }
+    squeeze_dims.push_back(dim);
+  }
+
+  SmallVector<Value> operands;
+  operands.reserve(op.getOperands().size());
+  for (Value operand : op.getOperands()) {
+    operands.push_back(SqueezeTensorValue(rewriter, operand, squeeze_dims));
+  }
+  auto new_reduce =
+      ReduceOp::create(rewriter, op.getLoc(), op.getElementTypes(), operands,
+                       /*axis=*/uint32_t{0});
+  rewriter.cloneRegionBefore(op->getRegion(0), new_reduce->getRegion(0),
+                             new_reduce->getRegion(0).begin());
+
+  SmallVector<Value> results;
+  results.reserve(op.getNumResults());
+  for (auto [result, scalar] :
+       llvm::zip_equal(op.getResults(), new_reduce.getResults())) {
+    results.push_back(
+        SplatOp::create(rewriter, op.getLoc(), result.getType(), scalar));
+  }
+  rewriter.replaceOp(op, results);
+  return success();
+}
+
+// Folds squeeze_dims into tt.splat.
+// Example:
+//   %1 = tt.splat %0 : f32 -> tensor<1x1xf32>
+//   %2 = squeeze_dims %1, axis=0 : tensor<1x1xf32> -> tensor<1xf32>
+// is rewritten to:
+//   %2 = tt.splat %0 : f32 -> tensor<1xf32>
+LogicalResult FoldSqueezeDimsOfSplat(SqueezeDimsOp op,
+                                     PatternRewriter& rewriter) {
+  auto splat = op.getSrc().getDefiningOp<SplatOp>();
+  if (!splat) {
+    return rewriter.notifyMatchFailure(op, "Expected splat producer.");
+  }
+  rewriter.replaceOpWithNewOp<SplatOp>(op, op.getType(), splat.getSrc());
+  return success();
+}
+
 // Pushes squeeze_dims up through tt.expand_dims, or folds them.
 // Example:
 //   %1 = tt.expand_dims %0, axis=1
@@ -567,6 +631,8 @@ class TritonXLASqueezeDimsPass
     patterns.add(PushSqueezeDimsUpIntoIf);
     patterns.add(PushSqueezeDimsUpThroughJoin);
     patterns.add(PushSqueezeDimsUpThroughReduce);
+    patterns.add(SqueezeReduceToScalar);
+    patterns.add(FoldSqueezeDimsOfSplat);
     patterns.add(PushSqueezeDimsUpThroughTrans);
     patterns.add(ReorderSqueezeDims);
     patterns.add(PushSqueezeDimsUpThroughMask);

@@ -1,0 +1,42 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-%{PTX} %s
+
+// The reduction must not convert the 1x32768 row between layouts through
+// shared memory: at 16 warps that needs 128 KB, more than the 64 KB per block
+// on MI200 and MI300.
+// CHECK-PTX: define ptx_kernel void @triton_rmsnorm(
+// CHECK-GCN: define amdgpu_kernel void @triton_rmsnorm(
+
+HloModule TritonSingleRowReduction, is_scheduled=true
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT sum = f32[] add(a, b)
+}
+
+triton_rmsnorm_computation {
+  p0 = bf16[4,32768] parameter(0)
+  x = f32[4,32768] convert(p0)
+  sq = f32[4,32768] multiply(x, x)
+  zero = f32[] constant(0)
+  ss = f32[4] reduce(sq, zero), dimensions={1}, to_apply=add
+  eps = f32[] constant(1e-6)
+  beps = f32[4] broadcast(eps), dimensions={}
+  me = f32[4] add(ss, beps)
+  r = f32[4] rsqrt(me)
+  br = f32[4,32768] broadcast(r), dimensions={0}
+  y = f32[4,32768] multiply(x, br)
+  ROOT out = bf16[4,32768] convert(y)
+}
+
+ENTRY main {
+  p0 = bf16[4,32768] parameter(0)
+  ROOT triton_rmsnorm = bf16[4,32768] fusion(p0), kind=kCustom,
+    calls=triton_rmsnorm_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["1","32768"]}],
+                                   "num_warps":"16",
+                                   "num_ctas":"1",
+                                   "num_stages":"1"}}}
+}

@@ -856,6 +856,7 @@ lit_test_suite_for_gpus(
             "triton_calling_convention.hlo",
             "triton_naming.hlo",
             "triton_scan_bf16.hlo",
+            "triton_single_row_reduction.hlo",
             "triton_tdm_elemwise.hlo",
             "vectorization.hlo",
             "zero_clamp_abs_index.hlo",
