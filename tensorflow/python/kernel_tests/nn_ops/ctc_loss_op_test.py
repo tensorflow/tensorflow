@@ -1479,6 +1479,7 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([False, True])
   def testCtcLossFp64DenseLabels(self, unique):
+    np.random.seed(0)
     batch_size = 8
     num_labels = 6
     max_label_length = 5
