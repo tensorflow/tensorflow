@@ -63,6 +63,10 @@ class ReductionFusion : public MlirKernelEmitter {
 
   LaunchDimensions launch_dimensions() const override;
 
+  const HloFusionAnalysis* fusion_analysis() const override {
+    return &analysis_;
+  }
+
   const ReductionGroups& GetGroups() const { return groups_; }
 
  protected:

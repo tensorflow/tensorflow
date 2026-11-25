@@ -51,6 +51,10 @@ class TransposeFusionBase : public MlirKernelEmitter {
   TransposeFusionBase(const HloFusionAnalysis& analysis,
                       int64_t num_threads_per_block);
 
+  const HloFusionAnalysis* fusion_analysis() const override {
+    return &analysis_;
+  }
+
  protected:
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,

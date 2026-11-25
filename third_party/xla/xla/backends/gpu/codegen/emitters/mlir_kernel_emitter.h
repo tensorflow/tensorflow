@@ -71,6 +71,12 @@ class MlirKernelEmitter {
   virtual LaunchDimensions launch_dimensions() const = 0;
   virtual int unroll_factor() const { return 0; }
 
+  // Whether this emitter writes every output element once (loop, concatenate).
+  virtual bool WritesOutputsContiguously() const { return false; }
+
+  // The analysis this emitter was created with; null if it has none.
+  virtual const HloFusionAnalysis* fusion_analysis() const { return nullptr; }
+
   absl::StatusOr<MlirKernelSource> Emit(
       mlir::MLIRContext* mlir_context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,

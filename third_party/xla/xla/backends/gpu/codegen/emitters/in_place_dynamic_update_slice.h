@@ -52,6 +52,9 @@ class InPlaceDynamicUpdateSliceFusion : public MlirKernelEmitter {
             analysis, dus_ops_[0].instruction().operand(1)->shape())) {}
 
   LaunchDimensions launch_dimensions() const override;
+  const HloFusionAnalysis* fusion_analysis() const override {
+    return &analysis_;
+  }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* mlir_context) const override {

@@ -64,6 +64,19 @@ void PropagateSliceIndicesPass::runOnOperation() {
         if (auto aliased = entry.getArgAttr(i, kXlaAliasedAttr)) {
           func.setArgAttr(i, kXlaAliasedAttr, aliased);
         }
+        if (auto streamed_once = entry.getArgAttr(i, kXlaStreamedOnceAttr)) {
+          func.setArgAttr(i, kXlaStreamedOnceAttr, streamed_once);
+        }
+        if (auto not_broadcast = entry.getArgAttr(i, kXlaNotBroadcastAttr)) {
+          func.setArgAttr(i, kXlaNotBroadcastAttr, not_broadcast);
+        }
+        if (auto read_elsewhere = entry.getArgAttr(i, kXlaReadElsewhereAttr)) {
+          func.setArgAttr(i, kXlaReadElsewhereAttr, read_elsewhere);
+        }
+        if (auto piecewise_reads =
+                entry.getArgAttr(i, kXlaPiecewiseReadsAttr)) {
+          func.setArgAttr(i, kXlaPiecewiseReadsAttr, piecewise_reads);
+        }
       } else {
         break;
       }

@@ -150,6 +150,8 @@ def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
     Option<"gpu_compute_capability_", "gpu_compute_capability", "std::string",
            /*default=*/"",
            "Serialized stream_executor::GpuComputeCapabilityProto.">,
+    Option<"l2_cache_size_", "l2_cache_size", "int64_t", /*default=*/"0",
+           "L2 cache size in bytes.">,
   ];
 }
 

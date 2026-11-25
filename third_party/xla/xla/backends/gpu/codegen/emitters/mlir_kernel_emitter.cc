@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -85,6 +86,8 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/nontemporal_hints.h"
+#include "xla/backends/gpu/codegen/emitters/transforms/nontemporal_hint_targets.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
@@ -131,6 +134,7 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -375,6 +379,24 @@ absl::Status AnnotateMlirKernelLlvmModule(
                                         kernel_func, module);
 }
 
+namespace {
+
+// Whether the ROCm non-temporal hints are enabled and `device` gets some.
+bool NontemporalHintsEnabled(const HloFusionInstruction& fusion,
+                             const se::DeviceDescription& device) {
+  if (!fusion.GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_enable_nontemporal_hints()) {
+    return false;
+  }
+  const NontemporalHintTargets targets =
+      GetNontemporalHintTargets(device.gpu_compute_capability());
+  return targets.loads || targets.stores;
+}
+
+}  // namespace
+
 AsyncThunkSequence MlirKernelFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
@@ -383,9 +405,19 @@ AsyncThunkSequence MlirKernelFusion::Emit(
       emitters::KernelArguments args,
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));
+  // The hints depend on which operands other instructions read, which the
+  // fused computation and the arguments do not capture.
+  std::string discriminator = "MlirKernelFusion";
+  if (NontemporalHintsEnabled(fusion, ir_emitter_context.gpu_device_info())) {
+    absl::StrAppend(&discriminator, ",nontemporal_hints,read_elsewhere=");
+    for (bool read_elsewhere : ComputeReadElsewhere(
+             fusion,
+             &ir_emitter_context.buffer_assignment().dataflow_analysis())) {
+      discriminator += read_elsewhere ? '1' : '0';
+    }
+  }
   std::string fingerprint = emitters::GetComputationFingerprint(
-      fusion.fused_instructions_computation(), args.args(),
-      /*discriminator=*/"MlirKernelFusion");
+      fusion.fused_instructions_computation(), args.args(), discriminator);
   auto [future_entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
       fingerprint, args, [&]() -> xla::Future<KernelReuseCache::Entry> {
         std::string kernel_name = ir_emitter_context.GetSanitizedUniqueName(
@@ -487,6 +519,74 @@ absl::Status CheckSupportedGpuFmaOps(const HloComputation& computation,
   return absl::OkStatus();
 }
 
+// Marks xla.piecewise_reads on operand args whose lines a load reads in pieces.
+void AnnotatePiecewiseReads(mlir::ModuleOp module,
+                            absl::string_view entry_function_name,
+                            const HloFusionInstruction& fusion,
+                            const se::DeviceDescription& device,
+                            const MlirKernelEmitter& emitter,
+                            mlir::MLIRContext* mlir_context) {
+  const HloFusionAnalysis* analysis = emitter.fusion_analysis();
+  auto entry = module.lookupSymbol<mlir::func::FuncOp>(
+      llvm::StringRef(entry_function_name.data(), entry_function_name.size()));
+  if (!entry) {
+    return;
+  }
+  // Scatter operands have no indexing maps (see ComputeOperandReads).
+  const bool has_scatter = absl::c_any_of(
+      fusion.fused_instructions(), HloPredicateIsOp<HloOpcode::kScatter>);
+  std::vector<const HloInstruction*> operands(fusion.operands().begin(),
+                                              fusion.operands().end());
+  llvm::SmallVector<IndexingMap, 4> logical_to_linearized =
+      MapLogicalToLinearizedPhysicalShape(operands, mlir_context);
+  GroupedByOpIndexingMap thread_id_to_operand;
+  const int64_t num_roots =
+      analysis != nullptr && !has_scatter ? analysis->fusion_root_count() : 0;
+  for (int64_t root = 0; root < num_roots; ++root) {
+    const std::optional<std::vector<IndexingMap>> hero_maps =
+        emitter.ComputeThreadIdToInputIndexing(root, mlir_context);
+    if (!hero_maps.has_value()) {
+      continue;
+    }
+    GetThreadIdToInputMemoryLayoutsMaps(
+        analysis->fusion(), *hero_maps, analysis->fusion_hero(root), operands,
+        logical_to_linearized, mlir_context, thread_id_to_operand);
+  }
+  mlir::Builder builder(mlir_context);
+  const int64_t num_args = entry.getNumArguments();
+  for (int64_t i = 0; i < static_cast<int64_t>(operands.size()) && i < num_args;
+       ++i) {
+    const Shape& shape = operands[i]->shape();
+    if (!shape.IsArray()) {
+      continue;
+    }
+    // Byte offsets do not locate sub-byte elements.
+    if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+      entry.setArgAttr(i, emitters::kXlaPiecewiseReadsAttr,
+                       builder.getUnitAttr());
+      continue;
+    }
+    // Without a map (e.g. epilogue side inputs, scatter) the reads are unknown.
+    auto it = thread_id_to_operand.find(operands[i]);
+    if (it == thread_id_to_operand.end()) {
+      entry.setArgAttr(i, emitters::kXlaPiecewiseReadsAttr,
+                       builder.getUnitAttr());
+      continue;
+    }
+    const int64_t element_bytes =
+        ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
+    for (const IndexingMap& map : it->second) {
+      if (map.IsUndefined() ||
+          ReadsLinesInPieces(map, device.threads_per_warp(), element_bytes,
+                             ShapeUtil::ByteSizeOf(shape))) {
+        entry.setArgAttr(i, emitters::kXlaPiecewiseReadsAttr,
+                         builder.getUnitAttr());
+        break;
+      }
+    }
+  }
+}
+
 }  // namespace
 
 absl::StatusOr<MlirKernelSource> MlirKernelFusion::EmitMlirSource(
@@ -502,12 +602,27 @@ absl::StatusOr<MlirKernelSource> MlirKernelFusion::EmitMlirSource(
   mlir_context.loadAllAvailableDialects();
 
   ABSL_ASSIGN_OR_RETURN(MlirKernelSource source,
-                        emitter_->Emit(&mlir_context, fusion,
-                                       entry_function_name, buffer_assignment));
+                   emitter_->Emit(&mlir_context, fusion, entry_function_name,
+                                  buffer_assignment));
 
   if (frontend::DoesPdlLaunch(fusion)) {
     source.module()->setAttr(frontend::kXlaPdlLaunch,
                              mlir::UnitAttr::get(&mlir_context));
+  }
+
+  // Facts for the ROCm non-temporal hints.
+  if (NontemporalHintsEnabled(fusion, device)) {
+    AnnotateNontemporalHintFacts(source.module(), entry_function_name, fusion,
+                                 buffer_assignment != nullptr
+                                     ? &buffer_assignment->dataflow_analysis()
+                                     : nullptr,
+                                 emitter_->WritesOutputsContiguously()
+                                     ? OutputContiguity::kContiguous
+                                     : OutputContiguity::kNonContiguous);
+    if (GetNontemporalHintTargets(device.gpu_compute_capability()).loads) {
+      AnnotatePiecewiseReads(source.module(), entry_function_name, fusion,
+                             device, *emitter_, &mlir_context);
+    }
   }
   return source;
 }
@@ -667,7 +782,8 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
 void AddLoweringPasses(mlir::OpPassManager& pm,
                        const se::DeviceDescription& device) {
   pm.addNestedPass<FuncOp>(emitters::createConvertPureCallOpsPass());
-  pm.addPass(createLowerTensorsPass(device.gpu_compute_capability()));
+  pm.addPass(createLowerTensorsPass(device.gpu_compute_capability(),
+                                    device.l2_cache_size()));
   pm.addPass(emitters::createLowerPdlWaitPass());
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(emitters::createMergePointersToSameSlicePass());

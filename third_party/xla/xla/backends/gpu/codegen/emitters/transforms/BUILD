@@ -15,6 +15,8 @@
 
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -42,6 +44,29 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "nontemporal_hint_targets",
+    srcs = ["nontemporal_hint_targets.cc"],
+    hdrs = ["nontemporal_hint_targets.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+    ],
+)
+
+xla_cc_test(
+    name = "nontemporal_hint_targets_test",
+    srcs = ["nontemporal_hint_targets_test.cc"],
+    deps = [
+        ":nontemporal_hint_targets",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "passes",
     srcs = [
         "convert_float_amd.cc",
@@ -58,6 +83,7 @@ cc_library(
     ],
     hdrs = ["passes.h"],
     deps = [
+        ":nontemporal_hint_targets",
         ":passes_inc_gen",
         "//xla:frontend_attributes",
         "//xla:util",

@@ -622,6 +622,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_triton_scan(true);
   opts.set_xla_gpu_experimental_enable_reduction_dimension_tiling(true);
   opts.set_xla_gpu_experimental_multi_phase_fusion(false);
+  opts.set_xla_gpu_enable_nontemporal_hints(false);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -4414,6 +4415,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         debug_options->xla_gpu_experimental_enable_horizontal_fusion(),
         "Enable experimental thread-block specialized horizontal fusion of "
         "independent small-grid GPU kernels."));
+    flag_list->push_back(tsl::Flag(
+        "xla_gpu_enable_nontemporal_hints",
+        bool_setter_for(&DebugOptions::set_xla_gpu_enable_nontemporal_hints),
+        debug_options->xla_gpu_enable_nontemporal_hints(),
+        "Non-temporal cache hints for MLIR kernels on gfx942 (MI300)."));
   }();
 }  // NOLINT(readability/fn_size)
 

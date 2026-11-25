@@ -94,6 +94,27 @@ void ReplaceApplyIndexingOp(mlir::PatternRewriter& rewriter,
 namespace emitters {
 inline constexpr absl::string_view kXlaInvariantAttr = "xla.invariant";
 inline constexpr absl::string_view kXlaAliasedAttr = "xla.aliased";
+
+// Facts for the ROCm non-temporal hints, set by the GPU emitter on the entry
+// function and its arguments. LowerGpuTensors uses and removes them.
+
+// Read exactly once per output element, with no reuse.
+inline constexpr absl::string_view kXlaStreamedOnceAttr = "xla.streamed_once";
+
+// No map reads an element of the operand more than once.
+inline constexpr absl::string_view kXlaNotBroadcastAttr = "xla.not_broadcast";
+
+// Another instruction, or another operand of the fusion, reads the buffer too;
+// its loads stay temporal below 64x L2.
+inline constexpr absl::string_view kXlaReadElsewhereAttr = "xla.read_elsewhere";
+
+// A wavefront load reads part of a 128-byte line; other loads read the rest.
+inline constexpr absl::string_view kXlaPiecewiseReadsAttr =
+    "xla.piecewise_reads";
+
+// Each output element is written once, as loop and concatenate emitters do.
+inline constexpr absl::string_view kXlaContiguousOutputAttr =
+    "xla.contiguous_output";
 }  // namespace emitters
 
 }  // namespace xla
