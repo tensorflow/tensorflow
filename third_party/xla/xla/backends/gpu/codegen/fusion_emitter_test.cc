@@ -82,6 +82,25 @@ TEST(AnnotateKernelLaunchDimensionsTest, AnnotatesNvptxWithValidClusterDims) {
             "2,2,1");
 }
 
+TEST(AnnotateKernelLaunchDimensionsTest, AnnotatesAmdgpuFlatWorkGroupSize) {
+  llvm::LLVMContext context;
+  llvm::Module module("test_module", context);
+  llvm::Function* kernel = CreateTestKernel(&module, "amdgcn-amd-amdhsa");
+  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI300DeviceInfo();
+
+  // The flat work group size is the total number of threads per block
+  // (16 * 8 * 2), independent of the block counts.
+  LaunchDimensions dims(se::BlockDim(8, 4, 1), se::ThreadDim(16, 8, 2));
+  EXPECT_THAT(
+      AnnotateKernelLaunchDimensions(device_info, dims, kernel, &module),
+      IsOk());
+  // Our launch bounds are exact, so min and max are equal.
+  EXPECT_EQ(kernel->getFnAttribute("amdgpu-flat-work-group-size")
+                .getValueAsString()
+                .str(),
+            "256,256");
+}
+
 TEST(AnnotateKernelLaunchDimensionsTest, RejectsClusterDimsOnNonNvptxTarget) {
   llvm::LLVMContext context;
   llvm::Module module("test_module", context);
