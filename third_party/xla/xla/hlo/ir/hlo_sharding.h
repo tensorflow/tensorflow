@@ -984,7 +984,11 @@ class HloSharding {
         manual_(false),
         unknown_(false),
         unreduced_(false),
-        replicate_on_last_tile_dim_(false) {}
+        replicate_on_last_tile_dim_(false) {
+    DCHECK(absl::c_none_of(tuple_elements_, [](const HloSharding& sharding) {
+      return sharding.IsTuple();
+    }));
+  }
 
   // Test-only constructor for sharding format code coverage. Copies the
   // original sharding with provided tile assignment.
@@ -1102,11 +1106,11 @@ class HloSharding {
   // format.
   //
   // Note that for tuple NamedShardings, we reuse HloSharding's tuple_elements_
-  // field. If named sharding format is enabled each element in tuple_elements_
-  // will be an HloSharding, which itself can be a tuple or should only have
-  // named_sharding_ populated. This approach is taken to maintain backward
-  // compatibility with the existing `tuple_elements()` method, which provides a
-  // modifiable reference to a `std::vector<HloSharding>`.
+  // field. If named sharding format is enabled, each element in tuple_elements_
+  // must be a non-tuple (leaf) HloSharding with only named_sharding_ populated.
+  // This approach is taken to maintain backward compatibility with the existing
+  // `tuple_elements()` method, which provides a modifiable reference to a
+  // `std::vector<HloSharding>`.
   //
   // Note that instead of reusing HloSharding's fields like metadata, we have
   // separate fields in NamedSharding to treat it as a standalone message which

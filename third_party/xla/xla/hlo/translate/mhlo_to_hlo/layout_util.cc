@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -38,32 +39,50 @@ absl::Status RewriteLayoutWithShardedShape(
     const LayoutPreferenceFn& layout_preference_fn,
     const ShapeRepresentationFn& shape_representation_fn,
     xla::Shape* xla_shape) {
-  if (sharding && !sharding->IsReplicatedOrSingleDevice() &&
-      !sharding->IsManual() && !sharding->IsUnreduced()) {
-    // After sharding, per core shape might have different layout. For example,
-    // before sharding, a shape [128, 128] will be assigned default
-    // minor-to-major {1, 0}. But after we shard this shape to [128, 64] * 2,
-    // the sharded shapes will have minor-to-major {0, 1}.
-    //
-    // As a result, for sharded shapes, we set their layout to per core shape's
-    // layout.
-    //
-    // TODO(endlessroad): for variable input & update, we might have
-    // different layouts which will prevent input output aliasing and
-    // increase memory usage. Investigate such cases.
-    xla::Shape per_device_xla_shape = sharding->TileShape(*xla_shape);
-    ABSL_ASSIGN_OR_RETURN(auto layout_preference,
-                     layout_preference_fn
-                         ? layout_preference_fn(per_device_xla_shape)
-                         : XlaLayoutPreference::kNoPreference);
-    ABSL_ASSIGN_OR_RETURN(
-        per_device_xla_shape,
-        shape_representation_fn
-            ? shape_representation_fn(per_device_xla_shape, use_fast_memory,
-                                      layout_preference)
-            : per_device_xla_shape);
-    *xla_shape->mutable_layout() = per_device_xla_shape.layout();
+  if (!sharding || sharding->IsReplicatedOrSingleDevice() ||
+      sharding->IsManual() || sharding->IsUnreduced() ||
+      sharding->IsUnknown()) {
+    return absl::OkStatus();
   }
+  if (xla_shape->IsTuple()) {
+    ABSL_ASSIGN_OR_RETURN(xla::ShapeTree<xla::HloSharding> sharding_tree,
+                     sharding->AsShapeTree(*xla_shape));
+    return xla::ShapeUtil::ForEachMutableSubshapeWithStatus(
+        xla_shape, [&](xla::Shape* subshape, const xla::ShapeIndex& index) {
+          if (!subshape->IsArray()) {
+            return absl::OkStatus();
+          }
+          return RewriteLayoutWithShardedShape(
+              sharding_tree.element(index), use_fast_memory,
+              layout_preference_fn, shape_representation_fn, subshape);
+        });
+  }
+  if (sharding->IsTuple() || !xla_shape->IsArray()) {
+    return absl::OkStatus();
+  }
+  // After sharding, per core shape might have different layout. For example,
+  // before sharding, a shape [128, 128] will be assigned default
+  // minor-to-major {1, 0}. But after we shard this shape to [128, 64] * 2,
+  // the sharded shapes will have minor-to-major {0, 1}.
+  //
+  // As a result, for sharded shapes, we set their layout to per core shape's
+  // layout.
+  //
+  // TODO(endlessroad): for variable input & update, we might have
+  // different layouts which will prevent input output aliasing and
+  // increase memory usage. Investigate such cases.
+  xla::Shape per_device_xla_shape = sharding->TileShape(*xla_shape);
+  ABSL_ASSIGN_OR_RETURN(auto layout_preference,
+                   layout_preference_fn
+                       ? layout_preference_fn(per_device_xla_shape)
+                       : XlaLayoutPreference::kNoPreference);
+  ABSL_ASSIGN_OR_RETURN(
+      per_device_xla_shape,
+      shape_representation_fn
+          ? shape_representation_fn(per_device_xla_shape, use_fast_memory,
+                                    layout_preference)
+          : per_device_xla_shape);
+  *xla_shape->mutable_layout() = per_device_xla_shape.layout();
   return absl::OkStatus();
 }
 

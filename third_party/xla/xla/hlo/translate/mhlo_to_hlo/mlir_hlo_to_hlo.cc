@@ -5998,6 +5998,8 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
     xla::OpSharding sharding;
     sharding.set_type(xla::OpSharding::TUPLE);
     for (const auto& arg_sharding : llvm::enumerate(arg_shardings)) {
+      int64_t leaf_count =
+          xla::ShapeUtil::GetLeafCount((*arg_shapes)[arg_sharding.index()]);
       if (arg_sharding.value().has_value()) {
         auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
         if (!hlo_sharding.ok()) {
@@ -6013,12 +6015,30 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
           return block->getParentOp()->emitError() << status.message();
         }
 
-        *sharding.add_tuple_shardings() = *arg_sharding.value();
+        if (!arg_sharding.value()->has_named_sharding() &&
+            arg_sharding.value()->type() == xla::OpSharding::TUPLE) {
+          if (leaf_count > 0) {
+            for (const xla::OpSharding& subsharding :
+                 arg_sharding.value()->tuple_shardings()) {
+              *sharding.add_tuple_shardings() = subsharding;
+            }
+          }
+        } else {
+          for (int64_t i = 0; i < leaf_count; ++i) {
+            *sharding.add_tuple_shardings() = *arg_sharding.value();
+          }
+        }
       } else {
         xla::OpSharding fallback_sharding;
         fallback_sharding.set_type(xla::OpSharding::REPLICATED);
-        *sharding.add_tuple_shardings() = fallback_sharding;
+        for (int64_t i = 0; i < leaf_count; ++i) {
+          *sharding.add_tuple_shardings() = fallback_sharding;
+        }
       }
+    }
+    if (sharding.tuple_shardings().empty()) {
+      // HloSharding::RequiredLeaves returns 1 for an empty tuple shape.
+      sharding.add_tuple_shardings()->set_type(xla::OpSharding::REPLICATED);
     }
 
     builder->SetSharding(sharding);

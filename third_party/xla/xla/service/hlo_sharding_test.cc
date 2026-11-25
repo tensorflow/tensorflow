@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -2035,6 +2036,76 @@ TEST_F(HloShardingTest, FromProtoIotaWithinMaterializationBudget) {
                                {OpSharding::REPLICATED, OpSharding::MANUAL}),
       IsOkAndHolds(HloSharding::Subgroup(
           Array<int64_t>({2, 3}, {5, 4, 3, 2, 1, 0}), {OpSharding::MANUAL})));
+}
+
+TEST_F(HloShardingTest, FromProtoRejectsNestedTupleShardings) {
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+                type: TUPLE
+                tuple_shardings {
+                  type: TUPLE
+                  tuple_shardings { type: REPLICATED }
+                }
+              )pb")),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Nested tuple shardings")));
+
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+                type: TUPLE
+                tuple_shardings { type: TUPLE }
+              )pb")),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Nested tuple shardings")));
+
+  // Build a deeply nested in-memory OpSharding chain and tear it down
+  // iteratively so ~OpSharding() cannot stack-overflow under sanitizers.
+  auto deep_proto = std::make_unique<OpSharding>();
+  OpSharding* cur = deep_proto.get();
+  for (int i = 0; i < 10000; ++i) {
+    cur->set_type(OpSharding::TUPLE);
+    cur = cur->add_tuple_shardings();
+  }
+  cur->set_type(OpSharding::REPLICATED);
+
+  EXPECT_THAT(HloSharding::FromProto(*deep_proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Nested tuple shardings")));
+
+  while (deep_proto != nullptr) {
+    std::unique_ptr<OpSharding> next;
+    if (!deep_proto->tuple_shardings().empty()) {
+      next.reset(deep_proto->mutable_tuple_shardings()->ReleaseLast());
+    }
+    deep_proto = std::move(next);
+  }
+
+  // A flat tuple containing a NamedSharding leaf and a MAXIMAL leaf succeeds
+  // and round-trips cleanly.
+  OpSharding named_leaf_proto =
+      HloSharding(NamedSharding::Replicate()).ToProto();
+  ASSERT_TRUE(named_leaf_proto.has_named_sharding());
+  OpSharding flat_v3_tuple;
+  flat_v3_tuple.set_type(OpSharding::TUPLE);
+  *flat_v3_tuple.add_tuple_shardings() = named_leaf_proto;
+  *flat_v3_tuple.add_tuple_shardings() = HloSharding::SingleDevice(0).ToProto();
+
+  ASSERT_OK_AND_ASSIGN(HloSharding flat_v3_sharding,
+                       HloSharding::FromProto(flat_v3_tuple));
+  EXPECT_TRUE(flat_v3_sharding.IsTuple());
+  ASSERT_EQ(flat_v3_sharding.tuple_elements().size(), 2);
+  EXPECT_TRUE(flat_v3_sharding.tuple_elements()[0].UseNamedShardingLeaf());
+  EXPECT_EQ(flat_v3_sharding.tuple_elements()[1], HloSharding::SingleDevice(0));
+  EXPECT_THAT(flat_v3_sharding.ToProto(), EqualsProto(flat_v3_tuple));
+}
+
+TEST_F(HloShardingTest, ValidateRejectsNestedTupleElement) {
+  HloSharding sharding = HloSharding::FlatTuple({HloSharding::Replicate()});
+  sharding.tuple_elements()[0] =
+      HloSharding::FlatTuple({HloSharding::Replicate()});
+  Shape tuple_shape =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4})});
+  EXPECT_THAT(sharding.Validate(tuple_shape),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Nested tuple sharding")));
 }
 
 }  // namespace

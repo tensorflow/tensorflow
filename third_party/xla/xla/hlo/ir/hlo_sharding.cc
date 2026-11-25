@@ -1180,6 +1180,11 @@ absl::Status DeviceInRange(int64_t device, std::optional<int64_t> num_devices) {
 
 absl::Status HloSharding::ValidateNonTuple(
     const Shape& shape, std::optional<int64_t> num_devices) const {
+  if (IsTuple()) {
+    return absl::InvalidArgumentError(
+        "Nested tuple sharding is not supported (tuple element is itself a "
+        "tuple).");
+  }
   if (shape.IsTuple()) {
     return absl::InvalidArgumentError(
         "Validation shape is a tuple but sharding is not.");
@@ -1340,6 +1345,11 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
     std::vector<HloSharding> tuple_shardings;
     tuple_shardings.reserve(proto.tuple_shardings().size());
     for (const OpSharding& tuple_sharding_proto : proto.tuple_shardings()) {
+      if (!tuple_sharding_proto.has_named_sharding() &&
+          tuple_sharding_proto.type() == OpSharding::TUPLE) {
+        return absl::InvalidArgumentError(
+            "Nested tuple shardings are not supported.");
+      }
       ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
                        FromProtoWithBudget(tuple_sharding_proto,
                                            iota_materialization_budget));

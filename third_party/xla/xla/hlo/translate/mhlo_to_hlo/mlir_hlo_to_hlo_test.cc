@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "benchmark/benchmark.h"
@@ -35,11 +36,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/hlo/translate/register.h"
+#include "xla/layout_util.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 // This file should contain tests for interfaces that can't be tested at the
 // MLIR level.
@@ -183,6 +190,131 @@ TEST(ConvertMlirHloToHloModuleTest, PacksSpmdParametersShardingsForTupleArgs) {
   ASSERT_EQ((*hlo_module)->spmd_parameters_shardings().size(), 1);
   EXPECT_EQ((*hlo_module)->spmd_parameters_shardings()[0].ToString(),
             "{{devices=[1,2]<=[2]}, {replicated}, {devices=[2,1]<=[2]}}");
+}
+
+TEST(ConvertMlirHloToHloModuleTest, FlattensEntryTupleShardingsForTupleArgs) {
+  const std::string kMlirModule = R"mlir(
+    module {
+      func.func @main(
+          %arg0: tensor<2x4xf32> {mhlo.sharding = "{devices=[1,2]<=[2]}"},
+          %arg1: tuple<tensor<f32>, tensor<2x4xf32>> {mhlo.sharding = "{{replicated}, {devices=[2,1]<=[2]}}"},
+          %arg2: tuple<tensor<f32>, tensor<f32>>,
+          %arg3: tuple<tensor<f32>, tensor<2x4xf32>> {mhlo.sharding = "{replicated}"},
+          %arg4: tuple<> {mhlo.sharding = "{replicated}"},
+          %arg5: tuple<> {mhlo.sharding = "{{replicated}}"}) -> tensor<2x4xf32> {
+        return %arg0 : tensor<2x4xf32>
+      }
+    }
+  )mlir";
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+
+  mlir::BaseScopedDiagnosticHandler handler(&context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(kMlirModule, &context);
+  ASSERT_THAT(handler.ConsumeStatus(), absl_testing::IsOk());
+  ASSERT_TRUE(module);
+
+  MlirToHloConversionOptions options;
+  options.use_tuple_args = true;
+  options.shape_representation_fn =
+      [](const xla::Shape& shape, bool /*fast_mem*/,
+         XlaLayoutPreference /*layout_preference*/)
+      -> absl::StatusOr<xla::Shape> {
+    xla::Shape result = shape;
+    if (result.IsArray() && result.dimensions().size() == 2 &&
+        result.dimensions(0) == 1 && result.dimensions(1) == 4) {
+      *result.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
+    }
+    return result;
+  };
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
+                       ConvertMlirHloToHloModule(*module, options));
+
+  const xla::HloComputation* entry = hlo_module->entry_computation();
+  ASSERT_NE(entry, nullptr);
+  ASSERT_EQ(entry->num_parameters(), 1);
+  const xla::HloInstruction* param = entry->parameter_instruction(0);
+  ASSERT_TRUE(param->has_sharding());
+  EXPECT_TRUE(param->sharding().IsTuple());
+  EXPECT_EQ(param->sharding().ToString(),
+            "{{devices=[1,2]<=[2]}, {replicated}, {devices=[2,1]<=[2]}, "
+            "{replicated}, {replicated}, /*index=5*/{replicated}, "
+            "{replicated}}");
+  for (const xla::HloSharding& element : param->sharding().tuple_elements()) {
+    EXPECT_FALSE(element.IsTuple());
+  }
+  EXPECT_THAT(param->sharding().Validate(param->shape()), absl_testing::IsOk());
+  EXPECT_THAT(xla::HloSharding::FromProto(param->sharding().ToProto()),
+              absl_testing::IsOk());
+  // The tiled subshape of %arg1 should have its layout rewritten to {0, 1},
+  // while the replicated subshape of %arg3 should retain default layout {1, 0}.
+  EXPECT_EQ(param->shape().tuple_shapes(1).tuple_shapes(1).layout(),
+            xla::LayoutUtil::MakeLayout({0, 1}));
+  EXPECT_EQ(param->shape().tuple_shapes(3).tuple_shapes(1).layout(),
+            xla::LayoutUtil::MakeLayout({1, 0}));
+}
+
+TEST(ConvertMlirHloToHloModuleTest, EmptyTupleOnlyEntryArgForTupleArgs) {
+  const std::string kMlirModule = R"mlir(
+    module {
+      func.func @main(
+          %arg0: tuple<> {mhlo.sharding = "{replicated}"}) -> tuple<> {
+        return %arg0 : tuple<>
+      }
+    }
+  )mlir";
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+
+  mlir::BaseScopedDiagnosticHandler handler(&context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(kMlirModule, &context);
+  ASSERT_THAT(handler.ConsumeStatus(), absl_testing::IsOk());
+  ASSERT_TRUE(module);
+
+  MlirToHloConversionOptions options;
+  options.use_tuple_args = true;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
+                       ConvertMlirHloToHloModule(*module, options));
+
+  const xla::HloInstruction* param =
+      hlo_module->entry_computation()->parameter_instruction(0);
+  ASSERT_TRUE(param->has_sharding());
+  EXPECT_EQ(param->sharding().ToString(), "{{replicated}}");
+  EXPECT_THAT(param->sharding().Validate(param->shape()), absl_testing::IsOk());
+}
+
+TEST(RewriteLayoutWithShardedShapeTest, EarlyReturnsForUnknownAndMismatched) {
+  bool called = false;
+  ShapeRepresentationFn shape_rep_fn =
+      [&](const xla::Shape& shape, bool /*fast_mem*/,
+          XlaLayoutPreference /*layout_preference*/)
+      -> absl::StatusOr<xla::Shape> {
+    called = true;
+    return shape;
+  };
+
+  xla::Shape array_shape =
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::F32, {2, 4}, {1, 0});
+  EXPECT_THAT(RewriteLayoutWithShardedShape(xla::HloSharding::Unknown(),
+                                            /*use_fast_memory=*/false,
+                                            /*layout_preference_fn=*/nullptr,
+                                            shape_rep_fn, &array_shape),
+              absl_testing::IsOk());
+  EXPECT_FALSE(called);
+
+  EXPECT_THAT(
+      RewriteLayoutWithShardedShape(
+          xla::HloSharding::FlatTuple({xla::HloSharding::IotaTile({2, 1})}),
+          /*use_fast_memory=*/false,
+          /*layout_preference_fn=*/nullptr, shape_rep_fn, &array_shape),
+      absl_testing::IsOk());
+  EXPECT_FALSE(called);
 }
 
 TEST(ConvertMlirHloToHloModuleTest, MemoizesRepeatedNamedShardings) {
