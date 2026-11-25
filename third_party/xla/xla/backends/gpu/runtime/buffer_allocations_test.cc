@@ -54,21 +54,7 @@ TEST(BufferAllocationsTest, FindAllocationIndexReturnsCorrectIndex) {
   EXPECT_EQ(allocs.FindAllocationIndex(se::DeviceAddressBase(buf1 + 32, 1)), 1);
 }
 
-TEST(BufferAllocationsTest, FindAllocationIndexReturnsNulloptForUnknown) {
-  char buf[64];
-  char other[64];
-  std::vector<se::DeviceAddressBase> buffers = {
-      se::DeviceAddressBase(buf, 64),
-  };
-
-  BufferAllocations allocs(buffers, /*device_ordinal=*/0,
-                           /*memory_allocator=*/nullptr);
-
-  EXPECT_EQ(allocs.FindAllocationIndex(se::DeviceAddressBase(other, 1)),
-            std::nullopt);
-}
-
-TEST(BufferAllocationsTest, FindAllocationIndexExcludesEndBoundary) {
+TEST(BufferAllocationsTest, FindAllocationIndexMatchesLastByte) {
   char buf[64];
   std::vector<se::DeviceAddressBase> buffers = {
       se::DeviceAddressBase(buf, 64),
@@ -77,11 +63,6 @@ TEST(BufferAllocationsTest, FindAllocationIndexExcludesEndBoundary) {
   BufferAllocations allocs(buffers, /*device_ordinal=*/0,
                            /*memory_allocator=*/nullptr);
 
-  // Address at exactly buf + size should NOT match (strict less-than).
-  EXPECT_EQ(allocs.FindAllocationIndex(se::DeviceAddressBase(buf + 64, 1)),
-            std::nullopt);
-
-  // Address at buf + size - 1 should still match.
   EXPECT_EQ(allocs.FindAllocationIndex(se::DeviceAddressBase(buf + 63, 1)), 0);
 }
 
@@ -90,6 +71,23 @@ constexpr uintptr_t kBase = 0x7f0000000000;
 
 se::DeviceAddressBase Addr(uintptr_t ptr, uint64_t size) {
   return se::DeviceAddressBase(tsl::safe_reinterpret_cast<void*>(ptr), size);
+}
+
+TEST(BufferAllocationsTest, FindAllocationIndexReturnsNulloptBelowAllocations) {
+  std::vector<se::DeviceAddressBase> buffers = {Addr(kBase, 64)};
+  BufferAllocations allocs(buffers, 0, nullptr);
+
+  EXPECT_EQ(allocs.FindAllocationIndex(Addr(kBase - 1, 1)), std::nullopt);
+}
+
+TEST(BufferAllocationsTest, FindAllocationIndexIgnoresAddressSize) {
+  std::vector<se::DeviceAddressBase> buffers = {Addr(kBase, 64)};
+  BufferAllocations allocs(buffers, 0, nullptr);
+
+  // Addresses that start inside the allocation match even when their size
+  // extends past its end (b/590382967).
+  EXPECT_EQ(allocs.FindAllocationIndex(Addr(kBase, 128)), 0);
+  EXPECT_EQ(allocs.FindAllocationIndex(Addr(kBase + 63, 2)), 0);
 }
 
 TEST(BufferAllocationsTest, FindAllocationIndexAdjacentAllocations) {
@@ -106,7 +104,6 @@ TEST(BufferAllocationsTest, FindAllocationIndexAdjacentAllocations) {
   EXPECT_EQ(allocs.FindAllocationIndex(Addr(kBase, 64)), 0);
   EXPECT_EQ(allocs.FindAllocationIndex(Addr(kBase + 63, 1)), 0);
   EXPECT_EQ(allocs.FindAllocationIndex(Addr(kBase + 64, 64)), 1);
-  EXPECT_EQ(allocs.FindAllocationIndex(Addr(kBase + 63, 2)), std::nullopt);
 }
 
 TEST(BufferAllocationsTest, FindAllocationIndexRejectsNestedOverlap) {
@@ -178,7 +175,6 @@ TEST(BufferAllocationsTest, FindAllocationIndexDuplicateAllocations) {
   EXPECT_THAT(allocs.FindAllocationIndex(Addr(kBase + 8, 1)),
               Optional(AnyOf(1, 2)));
   EXPECT_EQ(allocs.FindAllocationIndex(Addr(kBase + 1024, 1)), 0);
-  EXPECT_EQ(allocs.FindAllocationIndex(Addr(kBase + 64, 1)), std::nullopt);
 }
 
 TEST(BufferAllocationsTest, FindAllocationIndexNearMaxAddress) {
@@ -186,8 +182,6 @@ TEST(BufferAllocationsTest, FindAllocationIndexNearMaxAddress) {
   BufferAllocations allocs(buffers, 0, nullptr);
 
   EXPECT_EQ(allocs.FindAllocationIndex(Addr(UINTPTR_MAX, 1)), 0);
-  EXPECT_EQ(allocs.FindAllocationIndex(Addr(UINTPTR_MAX - 15, 32)),
-            std::nullopt);
   EXPECT_EQ(allocs.FindAllocationIndex(Addr(UINTPTR_MAX - 1024, 1)),
             std::nullopt);
 }
@@ -239,7 +233,6 @@ TEST(BufferAllocationsTest, FindAllocationIndexAfterMove) {
   ASSERT_EQ(assigned.FindAllocationIndex(Addr(kBase + 1024, 1)), 0);
   assigned = std::move(moved);
   EXPECT_EQ(assigned.FindAllocationIndex(Addr(kBase, 1)), 0);
-  EXPECT_EQ(assigned.FindAllocationIndex(Addr(kBase + 1024, 1)), std::nullopt);
 }
 
 }  // namespace
