@@ -73,6 +73,8 @@ class SliceTest(test.TestCase):
         self.assertAllEqual(expected, array_ops.strided_slice(
             x, [begin], [end], [stride], inclusive_end=True))
 
+    self.assertAllEqual(
+        x, array_ops.strided_slice(x, [], [], inclusive_end=True))
     self.assertAllEqual([1, 2], array_ops.strided_slice(
         x, [1], [2], inclusive_end=True))
     self.assertAllEqual([4, 3, 2, 1, 0], array_ops.strided_slice(

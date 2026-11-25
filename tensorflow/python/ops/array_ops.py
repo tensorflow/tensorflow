@@ -1018,14 +1018,16 @@ def slice(input_, begin, size, name=None):
 
 def _inclusive_slice_indices(begin, end, strides):
   """Translate an inclusive end to the exclusive end used by StridedSlice."""
-  indices = []
-  for value in (begin, end, strides):
+  def as_int64_index(value):
     index = ops.convert_to_tensor(value, preferred_dtype=dtypes.int64)
     if index.dtype not in (dtypes.int16, dtypes.int32, dtypes.int64):
       raise TypeError(
-          f"Slice indices must be int16, int32 or int64, got {index.dtype.name}.")
-    indices.append(gen_math_ops.cast(index, dtypes.int64))
-  begin, end, strides = indices
+          f"Expected int16, int32 or int64 indices, got {index.dtype.name}.")
+    return gen_math_ops.cast(index, dtypes.int64)
+
+  begin = as_int64_index(begin)
+  end = as_int64_index(end)
+  strides = ones_like(begin) if strides is None else as_int64_index(strides)
 
   # Incrementing -1 would wrap back to the first element. Likewise,
   # decrementing 0 would wrap to the last. StridedSlice clips the int64
@@ -1143,11 +1145,10 @@ def strided_slice(input_,
     A `Tensor` the same type as `input`.
   """
 
-  if strides is None:
-    strides = ones_like(begin)
-
   if inclusive_end:
     begin, end, strides = _inclusive_slice_indices(begin, end, strides)
+  elif strides is None:
+    strides = ones_like(begin)
 
   op = gen_array_ops.strided_slice(
       input=input_,
