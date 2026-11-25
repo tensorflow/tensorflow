@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -85,6 +86,14 @@ bool CanRunOn(const CudaComputeCapability& kernel_cc,
 // architectures found.
 absl::StatusOr<absl::Span<const uint8_t>> FindCubinForArch(
     absl::Span<const uint8_t> fatbin, const CudaComputeCapability& cc);
+
+// Walks the CUDA fatbinary container `fatbin` and returns the unique compute
+// capabilities (including any accelerated or family-compatible feature
+// extensions encoded in entry flags) of all embedded PTX entries in container
+// order. Returns an InvalidArgumentError if `fatbin` is not a valid CUDA
+// fatbinary container.
+absl::StatusOr<std::vector<CudaComputeCapability>> ParseFatbinPtxArchs(
+    absl::Span<const uint8_t> fatbin);
 
 // Parses NVIDIA's `.nv.info.<kernel>` TLV blob, filling in the fields of
 // `attrs` that it encodes.

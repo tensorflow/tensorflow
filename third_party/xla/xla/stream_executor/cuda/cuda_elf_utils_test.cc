@@ -37,6 +37,8 @@ namespace {
 
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
+using ::testing::IsEmpty;
 
 Elf64_Ehdr MakeElfHeader(uint8_t abi_version, uint32_t flags) {
   Elf64_Ehdr header{};
@@ -471,12 +473,29 @@ TEST(CudaElfUtilsTest, FindCubinForArchFatbinCompressedEntries) {
                          /*flags=*/kFatbinFlagCompressed | kFatbinFlag64Bit,
                          /*compressed_size=*/64,
                          /*header_size=*/sizeof(FatEntryHeader),
+                         /*payload=*/compressed_blob},
+                        {/*kind=*/kFatbinKindElf,
+                         /*arch=*/100,
+                         /*flags=*/kFatbinFlagCompressed | kFatbinFlag64Bit |
+                             kFatbinFlagAccelerated,
+                         /*compressed_size=*/64,
+                         /*header_size=*/96,
+                         /*payload=*/compressed_blob},
+                        {/*kind=*/kFatbinKindElf,
+                         /*arch=*/100,
+                         /*flags=*/kFatbinFlagCompressed | kFatbinFlag64Bit |
+                             kFatbinFlagFamilyCompatible,
+                         /*compressed_size=*/64,
+                         /*header_size=*/96,
                          /*payload=*/compressed_blob}});
 
   auto found = FindCubinForArch(fatbin, CudaComputeCapability(8, 0));
-  EXPECT_THAT(found, StatusIs(absl::StatusCode::kNotFound,
-                              ::testing::HasSubstr(
-                                  "Found compressed architectures: [sm_80]")));
+  EXPECT_THAT(
+      found,
+      StatusIs(
+          absl::StatusCode::kNotFound,
+          ::testing::HasSubstr(
+              "Found compressed architectures: [sm_80, sm_100a, sm_100f]")));
 }
 
 TEST(CudaElfUtilsTest, FindCubinForArchFatbinExtendedHeader) {
@@ -513,6 +532,137 @@ TEST(CudaElfUtilsTest, FindCubinForArchMalformedFatbin) {
 
   EXPECT_THAT(FindCubinForArch(fatbin, CudaComputeCapability(8, 0)),
               StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(CudaElfUtilsTest, ParseFatbinPtxArchsMixedCompressedAndExtendedHeaders) {
+  std::vector<uint8_t> cubin_sm80 = CreateMinimalCubin(7, 0x50, 128);
+  std::vector<uint8_t> ptx_data = {'.', 'v', 'e', 'r', 's', 'i', 'o', 'n'};
+  std::vector<uint8_t> compressed_ptx(32, 0xbb);
+
+  std::vector<uint8_t> fatbin = CreateTestFatbin(
+      kFatbinMagicCompressed,
+      {{/*kind=*/kFatbinKindElf, /*arch=*/80, /*flags=*/kFatbinFlag64Bit,
+        /*compressed_size=*/0, /*header_size=*/sizeof(FatEntryHeader),
+        /*payload=*/cubin_sm80},
+       {/*kind=*/kFatbinKindPtx, /*arch=*/80, /*flags=*/kFatbinFlag64Bit,
+        /*compressed_size=*/0, /*header_size=*/sizeof(FatEntryHeader),
+        /*payload=*/ptx_data},
+       {/*kind=*/kFatbinKindPtx, /*arch=*/100,
+        /*flags=*/kFatbinFlag64Bit | kFatbinFlagCompressed,
+        /*compressed_size=*/32, /*header_size=*/96,
+        /*payload=*/compressed_ptx},
+       // Duplicate compute_80 entry should be deduplicated.
+       {/*kind=*/kFatbinKindPtx, /*arch=*/80, /*flags=*/kFatbinFlag64Bit,
+        /*compressed_size=*/0, /*header_size=*/sizeof(FatEntryHeader),
+        /*payload=*/ptx_data},
+       {/*kind=*/kFatbinKindPtx, /*arch=*/120, /*flags=*/kFatbinFlag64Bit,
+        /*compressed_size=*/0, /*header_size=*/96,
+        /*payload=*/ptx_data}});
+
+  EXPECT_THAT(ParseFatbinPtxArchs(fatbin),
+              IsOkAndHolds(ElementsAre(CudaComputeCapability(8, 0),
+                                       CudaComputeCapability(10, 0),
+                                       CudaComputeCapability(12, 0))));
+}
+
+TEST(CudaElfUtilsTest, ParseFatbinPtxArchsFeatureExtensions) {
+  std::vector<uint8_t> ptx_data = {'.', 'v', 'e', 'r', 's', 'i', 'o', 'n'};
+
+  std::vector<uint8_t> fatbin = CreateTestFatbin(
+      kFatbinMagicCompressed,
+      {{/*kind=*/kFatbinKindPtx, /*arch=*/100,
+        /*flags=*/kFatbinFlag64Bit | kFatbinFlagAccelerated,
+        /*compressed_size=*/0, /*header_size=*/96,
+        /*payload=*/ptx_data},
+       {/*kind=*/kFatbinKindPtx, /*arch=*/100,
+        /*flags=*/kFatbinFlag64Bit | kFatbinFlagFamilyCompatible,
+        /*compressed_size=*/0, /*header_size=*/96,
+        /*payload=*/ptx_data},
+       {/*kind=*/kFatbinKindPtx, /*arch=*/100, /*flags=*/kFatbinFlag64Bit,
+        /*compressed_size=*/0, /*header_size=*/96,
+        /*payload=*/ptx_data},
+       // Duplicate compute_100a entry should be deduplicated.
+       {/*kind=*/kFatbinKindPtx, /*arch=*/100,
+        /*flags=*/kFatbinFlag64Bit | kFatbinFlagAccelerated,
+        /*compressed_size=*/0, /*header_size=*/96,
+        /*payload=*/ptx_data}});
+
+  EXPECT_THAT(
+      ParseFatbinPtxArchs(fatbin),
+      IsOkAndHolds(ElementsAre(
+          CudaComputeCapability(
+              10, 0,
+              CudaComputeCapability::FeatureExtension::kAcceleratedFeatures),
+          CudaComputeCapability(10, 0,
+                                CudaComputeCapability::FeatureExtension::
+                                    kFamilyCompatibleFeatures),
+          CudaComputeCapability(
+              10, 0, CudaComputeCapability::FeatureExtension::kNone))));
+}
+
+TEST(CudaElfUtilsTest, ParseFatbinPtxArchsElfOnlyAndEmptyFatbin) {
+  std::vector<uint8_t> cubin_sm90 = CreateMinimalCubin(7, 0x5a, 128);
+  std::vector<uint8_t> elf_only = CreateTestFatbin(
+      kFatbinMagicUncompressed,
+      {{/*kind=*/kFatbinKindElf, /*arch=*/90, /*flags=*/kFatbinFlag64Bit,
+        /*compressed_size=*/0, /*header_size=*/sizeof(FatEntryHeader),
+        /*payload=*/cubin_sm90}});
+  EXPECT_THAT(ParseFatbinPtxArchs(elf_only), IsOkAndHolds(IsEmpty()));
+
+  std::vector<uint8_t> empty_fatbin =
+      CreateTestFatbin(kFatbinMagicCompressed, {});
+  EXPECT_THAT(ParseFatbinPtxArchs(empty_fatbin), IsOkAndHolds(IsEmpty()));
+}
+
+TEST(CudaElfUtilsTest, ParseFatbinPtxArchsInvalidInputs) {
+  // Truncated header.
+  std::vector<uint8_t> truncated(sizeof(FatHeader) - 1, 0);
+  EXPECT_THAT(ParseFatbinPtxArchs(truncated),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Raw CUBIN ELF (not a fatbinary container).
+  std::vector<uint8_t> raw_cubin = CreateMinimalCubin(7, 0x50, 128);
+  EXPECT_THAT(ParseFatbinPtxArchs(raw_cubin),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Header size larger than the input buffer.
+  FatHeader oversized_header{};
+  oversized_header.magic = kFatbinMagicCompressed;
+  oversized_header.header_size = sizeof(FatHeader) + 32;
+  std::vector<uint8_t> oversized_buf(sizeof(FatHeader));
+  std::memcpy(oversized_buf.data(), &oversized_header, sizeof(FatHeader));
+  EXPECT_THAT(ParseFatbinPtxArchs(oversized_buf),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(CudaElfUtilsTest, ParseFatbinPtxArchsSkipsZeroArchAndStopsOnMalformed) {
+  std::vector<uint8_t> ptx_data = {'.', 'v', 'e', 'r', 's', 'i', 'o', 'n'};
+  std::vector<uint8_t> fatbin = CreateTestFatbin(
+      kFatbinMagicUncompressed,
+      {{/*kind=*/kFatbinKindPtx, /*arch=*/0, /*flags=*/kFatbinFlag64Bit,
+        /*compressed_size=*/0, /*header_size=*/sizeof(FatEntryHeader),
+        /*payload=*/ptx_data},
+       {/*kind=*/kFatbinKindPtx, /*arch=*/90, /*flags=*/kFatbinFlag64Bit,
+        /*compressed_size=*/0, /*header_size=*/sizeof(FatEntryHeader),
+        /*payload=*/ptx_data}});
+
+  // Append a malformed entry whose header_size is smaller than FatEntryHeader.
+  FatEntryHeader bad_ehdr{};
+  bad_ehdr.kind = kFatbinKindPtx;
+  bad_ehdr.arch = 100;
+  bad_ehdr.header_size = 10;
+  size_t old_size = fatbin.size();
+  fatbin.resize(old_size + sizeof(bad_ehdr));
+  std::memcpy(fatbin.data() + old_size, &bad_ehdr, sizeof(bad_ehdr));
+
+  // Update fat_size to cover the malformed trailing entry.
+  FatHeader fhdr{};
+  std::memcpy(&fhdr, fatbin.data(), sizeof(FatHeader));
+  fhdr.fat_size += sizeof(bad_ehdr);
+  std::memcpy(fatbin.data(), &fhdr, sizeof(FatHeader));
+
+  EXPECT_THAT(ParseFatbinPtxArchs(fatbin),
+              IsOkAndHolds(ElementsAre(CudaComputeCapability(9, 0))));
 }
 
 TEST(CudaElfUtilsTest, ParseNvInfoAttributes) {

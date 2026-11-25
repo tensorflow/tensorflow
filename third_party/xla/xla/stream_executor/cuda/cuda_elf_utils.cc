@@ -253,42 +253,86 @@ std::optional<ParsedCudaElf> ParseCudaElf(absl::Span<const uint8_t> candidate) {
   return parsed;
 }
 
+// Iterates over all entries in a CUDA fatbinary container, invoking
+// `callback(entry)` for each valid entry until the container ends or a
+// malformed entry is encountered. Returns false if `fatbin` does not start with
+// a valid fatbinary header whose header_size fits within `fatbin`.
+template <typename Callback>
+bool ForEachFatEntry(absl::Span<const uint8_t> fatbin, Callback&& callback) {
+  std::optional<FatHeader> fat_header = ParseFatHeader(fatbin);
+  if (!fat_header.has_value() || fat_header->header_size > fatbin.size()) {
+    return false;
+  }
+  const size_t header_size = static_cast<size_t>(fat_header->header_size);
+  const size_t entries_size = std::min(
+      static_cast<size_t>(fat_header->fat_size), fatbin.size() - header_size);
+  absl::Span<const uint8_t> entries = fatbin.subspan(header_size, entries_size);
+
+  while (!entries.empty()) {
+    std::optional<ParsedFatEntry> entry = ParseFatEntry(entries);
+    if (!entry.has_value() || entry->total_size == 0) {
+      break;
+    }
+    callback(*entry);
+    entries = entries.subspan(entry->total_size);
+  }
+  return true;
+}
+
+CudaComputeCapability::FeatureExtension DecodeFatbinFeatureExtension(
+    uint64_t flags) {
+  if ((flags & kFatbinFlagAccelerated) != 0) {
+    return CudaComputeCapability::FeatureExtension::kAcceleratedFeatures;
+  }
+  if ((flags & kFatbinFlagFamilyCompatible) != 0) {
+    return CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures;
+  }
+  return CudaComputeCapability::FeatureExtension::kNone;
+}
+
+std::optional<CudaComputeCapability> ParseFatEntryComputeCapability(
+    const FatEntryHeader& header) {
+  if (header.arch < 10) {
+    return std::nullopt;
+  }
+  return CudaComputeCapability(static_cast<int>(header.arch / 10),
+                               static_cast<int>(header.arch % 10),
+                               DecodeFatbinFeatureExtension(header.flags));
+}
+
 // Result of parsing the entries within a CUDA fatbinary container.
 struct FatbinContainerEntries {
   std::vector<ParsedCudaElf> elfs;
   std::vector<std::string> compressed_archs;
 };
 
-// Iterates through all entries in a fatbinary container entries region,
-// collecting valid CUDA ELF images and names of compressed architectures.
-FatbinContainerEntries ParseContainerEntries(
-    absl::Span<const uint8_t> entries) {
+// Iterates through all entries in a fatbinary container, collecting valid CUDA
+// ELF images and names of compressed architectures.
+FatbinContainerEntries ParseContainerEntries(absl::Span<const uint8_t> fatbin) {
   FatbinContainerEntries result;
-  while (!entries.empty()) {
-    std::optional<ParsedFatEntry> entry = ParseFatEntry(entries);
-    if (!entry.has_value() || entry->total_size == 0) {
-      break;
+  ForEachFatEntry(fatbin, [&](const ParsedFatEntry& entry) {
+    if (entry.header.kind != kFatbinKindElf &&
+        entry.header.kind != kFatbinKindElfAlt) {
+      return;
     }
-
-    if (entry->header.kind == kFatbinKindElf ||
-        entry->header.kind == kFatbinKindElfAlt) {
-      if ((entry->header.flags & kFatbinFlagCompressed) != 0 ||
-          entry->header.compressed_size != 0) {
-        std::string comp_arch = absl::StrFormat("sm_%d", entry->header.arch);
-        if (absl::c_find(result.compressed_archs, comp_arch) ==
-            result.compressed_archs.end()) {
-          result.compressed_archs.push_back(comp_arch);
-        }
-      } else if (IsCudaElf(entry->payload)) {
-        std::optional<ParsedCudaElf> elf = ParseCudaElf(entry->payload);
-        if (elf.has_value()) {
-          result.elfs.push_back(*elf);
-        }
+    if ((entry.header.flags & kFatbinFlagCompressed) != 0 ||
+        entry.header.compressed_size != 0) {
+      std::optional<CudaComputeCapability> entry_cc =
+          ParseFatEntryComputeCapability(entry.header);
+      std::string comp_arch = entry_cc.has_value()
+                                  ? entry_cc->GetPtxAsTargetName()
+                                  : absl::StrFormat("sm_%d", entry.header.arch);
+      if (absl::c_find(result.compressed_archs, comp_arch) ==
+          result.compressed_archs.end()) {
+        result.compressed_archs.push_back(std::move(comp_arch));
+      }
+    } else if (IsCudaElf(entry.payload)) {
+      std::optional<ParsedCudaElf> elf = ParseCudaElf(entry.payload);
+      if (elf.has_value()) {
+        result.elfs.push_back(*elf);
       }
     }
-
-    entries = entries.subspan(entry->total_size);
-  }
+  });
   return result;
 }
 
@@ -326,19 +370,11 @@ absl::StatusOr<absl::Span<const uint8_t>> FindCubinForArch(
   if (IsFatbin(fatbin)) {
     // 1. CUDA fatbinary container. All target architectures for this
     // compilation unit are stored as entries within this single container.
-    auto fat_header = ParseFatHeader(fatbin);
-    if (fat_header.has_value() && fat_header->header_size <= fatbin.size()) {
-      const size_t header_size = static_cast<size_t>(fat_header->header_size);
-      const size_t payload_size = static_cast<size_t>(fat_header->fat_size);
-      const size_t entries_size =
-          std::min(payload_size, fatbin.size() - header_size);
-      FatbinContainerEntries container =
-          ParseContainerEntries(fatbin.subspan(header_size, entries_size));
-      compressed_archs = std::move(container.compressed_archs);
-      for (const ParsedCudaElf& elf : container.elfs) {
-        if (update_best_matching_cubin(elf)) {
-          return *best_cubin;
-        }
+    FatbinContainerEntries container = ParseContainerEntries(fatbin);
+    compressed_archs = std::move(container.compressed_archs);
+    for (const ParsedCudaElf& elf : container.elfs) {
+      if (update_best_matching_cubin(elf)) {
+        return *best_cubin;
       }
     }
   } else if (IsCudaElf(fatbin)) {
@@ -379,6 +415,27 @@ absl::StatusOr<absl::Span<const uint8_t>> FindCubinForArch(
   return absl::NotFoundError(absl::StrFormat(
       "No CUBIN for %s found in fatbinary. Found architectures: [%s].",
       cc.GetPtxAsTargetName(), absl::StrJoin(found_archs, ", ")));
+}
+
+absl::StatusOr<std::vector<CudaComputeCapability>> ParseFatbinPtxArchs(
+    absl::Span<const uint8_t> fatbin) {
+  std::vector<CudaComputeCapability> ptx_archs;
+  const bool valid = ForEachFatEntry(fatbin, [&](const ParsedFatEntry& entry) {
+    if (entry.header.kind != kFatbinKindPtx) {
+      return;
+    }
+    std::optional<CudaComputeCapability> ptx_cc =
+        ParseFatEntryComputeCapability(entry.header);
+    if (ptx_cc.has_value() &&
+        absl::c_find(ptx_archs, *ptx_cc) == ptx_archs.end()) {
+      ptx_archs.push_back(*ptx_cc);
+    }
+  });
+  if (!valid) {
+    return absl::InvalidArgumentError(
+        "Input is not a valid CUDA fatbinary container");
+  }
+  return ptx_archs;
 }
 
 namespace {

@@ -48,6 +48,8 @@ constexpr uint16_t kFatbinKindElfAlt = 0x0010;
 constexpr uint64_t kFatbinFlag64Bit = 0x00000001;
 constexpr uint64_t kFatbinFlagDebug = 0x00000002;
 constexpr uint64_t kFatbinFlagCompressed = 0x00002000;
+constexpr uint64_t kFatbinFlagAccelerated = 0x00100000;
+constexpr uint64_t kFatbinFlagFamilyCompatible = 0x00200000;
 
 // NVIDIA CUDA ELF machine type (EM_CUDA). Not defined by every <elf.h>.
 constexpr uint16_t kElfMachineCuda = 190;
