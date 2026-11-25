@@ -75,7 +75,7 @@ diff --git b/third_party/intel/BUILD b/third_party/intel/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/intel/BUILD
-@@ -0,0 +1,555 @@
+@@ -0,0 +1,559 @@
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
 +package(
@@ -436,6 +436,7 @@ new file mode 100644
 +        ":triton_gen_ops_inc_gen",
 +        ":triton_gpu_to_triton_gen_inc_gen",
 +        "@llvm-project//mlir:ArithToLLVM",
++        "@llvm-project//mlir:ControlFlowDialect",
 +        "@llvm-project//mlir:FuncToLLVM",
 +        "@llvm-project//mlir:GPUToGPURuntimeTransforms",
 +        "@llvm-project//mlir:GPUDialect",
@@ -606,6 +607,7 @@ new file mode 100644
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:ArithToLLVM",
++        "@llvm-project//mlir:ArithUtils",
 +        "@llvm-project//mlir:ControlFlowDialect",
 +        "@llvm-project//mlir:ControlFlowToLLVM",
 +        "@llvm-project//mlir:ConvertToLLVM",
@@ -616,6 +618,7 @@ new file mode 100644
 +        "@llvm-project//mlir:IndexDialect",
 +        "@llvm-project//mlir:LLVMCommonConversion",
 +        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:MathDialect",
 +        "@llvm-project//mlir:MathToLLVM",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
@@ -623,6 +626,7 @@ new file mode 100644
 +        "@llvm-project//mlir:SPIRVDialect",
 +        "@llvm-project//mlir:SPIRVToLLVM",
 +        "@llvm-project//mlir:Support",
++        "@llvm-project//mlir:TensorDialect",
 +        "@llvm-project//mlir:TransformUtils",
 +        "@llvm-project//mlir:Transforms",
 +        "@llvm-project//mlir:UBToLLVM",
