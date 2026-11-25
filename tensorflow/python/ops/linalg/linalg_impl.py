@@ -1275,6 +1275,14 @@ def lu_reconstruct_assertions(lower_upper, perm, validate_args):
         array_ops.shape(lower_upper)[-2:], num_or_size_splits=2)
     assertions.append(check_ops.assert_equal(m, n, message=message))
 
+  if validate_args:
+    # Out-of-range indices are not caught by every backend's gather (e.g. GPU
+    # silently returns zeros), so check them explicitly.
+    message = '`perm` must have values in `[0, lower_upper.shape[-1])`.'
+    n = array_ops.shape(lower_upper, out_type=perm.dtype)[-1]
+    assertions.append(check_ops.assert_non_negative(perm, message=message))
+    assertions.append(check_ops.assert_less(perm, n, message=message))
+
   return assertions
 
 

@@ -730,6 +730,29 @@ class LUSolveDynamic(test.TestCase, _LUSolve):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class LUPermValidationTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters(([3],), ([-1],))
+  def test_out_of_range_perm_raises(self, bad_perm):
+    lower_upper = constant_op.constant([[2.0]])
+    perm = constant_op.constant(bad_perm)
+    rhs = constant_op.constant([[1.0]])
+    for fn in (
+        lambda: linalg.lu_reconstruct(lower_upper, perm, validate_args=True),
+        lambda: linalg.lu_matrix_inverse(lower_upper, perm, validate_args=True),
+        lambda: linalg.lu_solve(lower_upper, perm, rhs, validate_args=True),
+    ):
+      with self.assertRaisesOpError("`perm` must have values in"):
+        self.evaluate(fn())
+
+  def test_valid_perm_passes(self):
+    lower_upper = constant_op.constant([[2.0]])
+    perm = constant_op.constant([0])
+    y = linalg.lu_matrix_inverse(lower_upper, perm, validate_args=True)
+    self.assertAllClose([[0.5]], self.evaluate(y))
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class LUNumpyInputTest(test.TestCase):
 
   def test_float64_and_complex_numpy_inputs_keep_dtype(self):
