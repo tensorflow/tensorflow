@@ -154,6 +154,14 @@ absl::Status NormalizeAndAssignSharing(HloInstructionProto* instr,
   return absl::OkStatus();
 }
 
+// Builds a Tuple without inheriting the builder's current frontend attributes.
+XlaOp TupleWithoutFrontendAttributes(XlaBuilder* builder,
+                                     absl::Span<const XlaOp> operands) {
+  XlaScopedFrontendAttributesAssignment frontend_attributes_scope(
+      builder, FrontendAttributes());
+  return Tuple(builder, operands);
+}
+
 }  // namespace
 
 namespace internal {
@@ -3616,6 +3624,9 @@ XlaOp XlaBuilder::AllReduceImpl(XlaOp operand, XlaComputationId computation,
       if (operand_shape->tuple_shapes().size() == 0) {
         return Unimplemented("0 element tuple AllReduce is not supported");
       }
+      // Operand-unpacking GTEs must not inherit the op's frontend attributes.
+      XlaScopedFrontendAttributesAssignment frontend_attributes_scope(
+          this, FrontendAttributes());
       for (int i = 0; i < operand_shape->tuple_shapes().size(); ++i) {
         if (operand_shape->tuple_shapes(i).element_type() !=
             operand_shape->tuple_shapes(0).element_type()) {
@@ -3670,7 +3681,8 @@ XlaOp XlaBuilder::AllReduceImpl(XlaOp operand, XlaComputationId computation,
       // For a single-element tuple, wrap the result into a tuple.
       TF_RET_CHECK(operand_shapes.size() == 1);
       TF_RET_CHECK(ShapeUtil::Compatible(*operand_shapes[0], inferred_shape));
-      return Tuple({all_reduce});
+      // Result-wrapping tuple must not inherit the op's frontend attributes.
+      return TupleWithoutFrontendAttributes(this, {all_reduce});
     }
     return all_reduce;
   });
@@ -3706,6 +3718,9 @@ XlaOp XlaBuilder::AllGatherImpl(XlaOp operand, int64_t all_gather_dimension,
       if (operand_shape->tuple_shapes().size() == 0) {
         return Unimplemented("0 element tuple AllGather is not supported");
       }
+      // Operand-unpacking GTEs must not inherit the op's frontend attributes.
+      XlaScopedFrontendAttributesAssignment frontend_attributes_scope(
+          this, FrontendAttributes());
       for (int i = 0; i < operand_shape->tuple_shapes().size(); ++i) {
         operand_shapes.push_back(&operand_shape->tuple_shapes(i));
         operands.push_back(GetTupleElement(operand, i));
@@ -4385,6 +4400,9 @@ XlaOp XlaBuilder::ReduceScatterWithDeviceList(
       if (operand_shape->tuple_shapes().size() == 0) {
         return Unimplemented("0 element tuple ReduceScatter is not supported");
       }
+      // Operand-unpacking GTEs must not inherit the op's frontend attributes.
+      XlaScopedFrontendAttributesAssignment frontend_attributes_scope(
+          this, FrontendAttributes());
       for (int i = 0; i < operand_shape->tuple_shapes().size(); ++i) {
         if (operand_shape->tuple_shapes(i).element_type() !=
             operand_shape->tuple_shapes(0).element_type()) {
@@ -6488,9 +6506,10 @@ XlaOp AllGatherTuple(absl::Span<const XlaOp> operands,
                      const std::optional<Layout>& layout,
                      const std::optional<bool> use_global_device_ids) {
   CHECK(!operands.empty());
-  return operands[0].builder()->AllGather(
-      operands[0].builder()->Tuple(operands), all_gather_dimension, shard_count,
-      replica_groups, channel_id, layout, use_global_device_ids);
+  XlaBuilder* builder = operands[0].builder();
+  return builder->AllGather(TupleWithoutFrontendAttributes(builder, operands),
+                            all_gather_dimension, shard_count, replica_groups,
+                            channel_id, layout, use_global_device_ids);
 }
 
 XlaOp CrossReplicaSum(const XlaOp operand,
@@ -6536,9 +6555,10 @@ XlaOp AllReduceTuple(absl::Span<const XlaOp> operands,
                      const std::optional<Shape>& shape_with_layout,
                      const std::optional<bool> use_global_device_ids) {
   CHECK(!operands.empty());
-  return operands[0].builder()->AllReduce(
-      operands[0].builder()->Tuple(operands), computation, replica_groups,
-      channel_id, shape_with_layout, use_global_device_ids);
+  XlaBuilder* builder = operands[0].builder();
+  return builder->AllReduce(TupleWithoutFrontendAttributes(builder, operands),
+                            computation, replica_groups, channel_id,
+                            shape_with_layout, use_global_device_ids);
 }
 
 XlaOp ReduceScatter(const XlaOp operand, XlaComputationId computation,
@@ -7208,9 +7228,10 @@ XlaOp AllGatherTupleWithDeviceList(
     const std::optional<Layout>& layout,
     std::optional<bool> use_global_device_ids) {
   CHECK(!operands.empty());
-  return operands[0].builder()->AllGatherWithDeviceList(
-      operands[0].builder()->Tuple(operands), all_gather_dimension, shard_count,
-      replica_groups, channel_id, layout, use_global_device_ids);
+  XlaBuilder* builder = operands[0].builder();
+  return builder->AllGatherWithDeviceList(
+      TupleWithoutFrontendAttributes(builder, operands), all_gather_dimension,
+      shard_count, replica_groups, channel_id, layout, use_global_device_ids);
 }
 
 XlaOp AllReduceWithDeviceList(const XlaOp operand,
@@ -7241,9 +7262,10 @@ XlaOp AllReduceTupleWithDeviceList(
     const std::optional<Shape>& shape_with_layout,
     std::optional<bool> use_global_device_ids) {
   CHECK(!operands.empty());
-  return operands[0].builder()->AllReduceWithDeviceList(
-      operands[0].builder()->Tuple(operands), computation, replica_groups,
-      channel_id, shape_with_layout, use_global_device_ids);
+  XlaBuilder* builder = operands[0].builder();
+  return builder->AllReduceWithDeviceList(
+      TupleWithoutFrontendAttributes(builder, operands), computation,
+      replica_groups, channel_id, shape_with_layout, use_global_device_ids);
 }
 
 XlaOp AllReduceTupleWithDeviceList(

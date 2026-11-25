@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -2167,6 +2168,121 @@ TEST(XlaBuilderTest, AddFrontendAttribute) {
 
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   ExpectInstructionsAttributesMatch(*module, expected);
+}
+
+absl::StatusOr<XlaComputation> BuildScalarAddComputation() {
+  XlaBuilder builder("sum");
+  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+  Add(Parameter(&builder, 0, scalar_shape, "x"),
+      Parameter(&builder, 1, scalar_shape, "y"));
+  return builder.Build();
+}
+
+TEST(XlaBuilderTest,
+     AllReduceSingleElementTupleDropsFrontendAttributesOnHelperOps) {
+  XlaBuilder b(TestName());
+  ASSERT_OK_AND_ASSIGN(const XlaComputation sum, BuildScalarAddComputation());
+  XlaOp p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "p0");
+
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["_xla_stream_annotation"] = "collective";
+  b.SetFrontendAttributes(attributes);
+  AllReduceTuple({p0}, sum);
+
+  ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                       BuildHloModule(b));
+  const HloInstruction* root = GetRoot(*module);
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::AllReduce(
+                        m::GetTupleElement(m::Tuple(m::Parameter(0)), 0)))));
+  EXPECT_FALSE(root->has_frontend_attributes());
+
+  const HloInstruction* all_reduce = root->operand(0);
+  ExpectAttributesMatch(all_reduce->frontend_attributes(), attributes);
+
+  const HloInstruction* operand_gte = all_reduce->operand(0);
+  EXPECT_FALSE(operand_gte->has_frontend_attributes());
+
+  const HloInstruction* operand_tuple = operand_gte->operand(0);
+  EXPECT_FALSE(operand_tuple->has_frontend_attributes());
+}
+
+TEST(XlaBuilderTest,
+     ReduceScatterWithDeviceListTupleDropsFrontendAttributesOnHelperOps) {
+  XlaBuilder b(TestName());
+  ASSERT_OK_AND_ASSIGN(const XlaComputation sum, BuildScalarAddComputation());
+  XlaOp p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "p0");
+  XlaOp p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {16, 4}), "p1");
+  XlaOp input_tuple = Tuple(&b, {p0, p1});
+
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["_xla_stream_annotation"] = "collective";
+  b.SetFrontendAttributes(attributes);
+  ReduceScatterWithDeviceList(input_tuple, sum, /*scatter_dimension=*/1,
+                              /*shard_count=*/2,
+                              CollectiveDeviceList({{0, 1}}));
+
+  ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                       BuildHloModule(b));
+  const HloInstruction* root = GetRoot(*module);
+  ASSERT_THAT(root,
+              GmockMatch(m::ReduceScatter(m::GetTupleElement(m::Tuple(), 0),
+                                          m::GetTupleElement(m::Tuple(), 1))));
+  ExpectAttributesMatch(root->frontend_attributes(), attributes);
+  EXPECT_FALSE(root->operand(0)->has_frontend_attributes());
+  EXPECT_FALSE(root->operand(1)->has_frontend_attributes());
+}
+
+TEST(XlaBuilderTest,
+     AllGatherTupleWithDeviceListDropsFrontendAttributesOnHelperOps) {
+  XlaBuilder b(TestName());
+  XlaOp p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {128, 4}), "p0");
+  XlaOp p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {128, 8}), "p1");
+
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["_xla_stream_annotation"] = "collective";
+  b.SetFrontendAttributes(attributes);
+  AllGatherTupleWithDeviceList({p0, p1}, /*all_gather_dimension=*/1,
+                               /*shard_count=*/2,
+                               CollectiveDeviceList({{0, 1}}));
+
+  ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                       BuildHloModule(b));
+  const HloInstruction* root = GetRoot(*module);
+  ASSERT_THAT(
+      root,
+      GmockMatch(m::AllGather(
+          m::GetTupleElement(m::Tuple(m::Parameter(0), m::Parameter(1)), 0),
+          m::GetTupleElement(m::Tuple(m::Parameter(0), m::Parameter(1)), 1))));
+  ExpectAttributesMatch(root->frontend_attributes(), attributes);
+  EXPECT_FALSE(root->operand(0)->has_frontend_attributes());
+  EXPECT_FALSE(root->operand(1)->has_frontend_attributes());
+  EXPECT_FALSE(root->operand(0)->operand(0)->has_frontend_attributes());
+}
+
+TEST(XlaBuilderTest,
+     AllReduceTupleWithDeviceListDropsFrontendAttributesOnHelperOps) {
+  XlaBuilder b(TestName());
+  ASSERT_OK_AND_ASSIGN(const XlaComputation sum, BuildScalarAddComputation());
+  XlaOp p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "p0");
+  XlaOp p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {1, 2}), "p1");
+
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["_xla_stream_annotation"] = "collective";
+  b.SetFrontendAttributes(attributes);
+  AllReduceTupleWithDeviceList({p0, p1}, sum, CollectiveDeviceList({{0, 1}}));
+
+  ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                       BuildHloModule(b));
+  const HloInstruction* root = GetRoot(*module);
+  ASSERT_THAT(
+      root,
+      GmockMatch(m::AllReduce(
+          m::GetTupleElement(m::Tuple(m::Parameter(0), m::Parameter(1)), 0),
+          m::GetTupleElement(m::Tuple(m::Parameter(0), m::Parameter(1)), 1))));
+  ExpectAttributesMatch(root->frontend_attributes(), attributes);
+  EXPECT_FALSE(root->operand(0)->has_frontend_attributes());
+  EXPECT_FALSE(root->operand(1)->has_frontend_attributes());
+  EXPECT_FALSE(root->operand(0)->operand(0)->has_frontend_attributes());
 }
 
 TEST(XlaBuilderTest, SetAndGetSharding) {
