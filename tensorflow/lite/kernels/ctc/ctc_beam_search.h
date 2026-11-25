@@ -367,8 +367,8 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
           }
           leaves_.push(&c);
         } else {
-          // Deactivate child.
-          c.oldp.Reset();
+          // Deactivate the child for this step. Its previous-step scores may
+          // still be needed when expanding the previous beam.
           c.newp.Reset();
         }
       }
