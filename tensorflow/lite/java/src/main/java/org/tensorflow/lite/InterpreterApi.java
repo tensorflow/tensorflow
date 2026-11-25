@@ -411,6 +411,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     running inference.
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
    *     interrupted by {@code setCancelled(true)}.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   void run(Object input, Object output);
 
@@ -452,6 +453,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     Tensor#asReadOnlyBuffer()}).
    * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} is
    *     null, or if an error occurs when running inference.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   void runForMultipleInputsOutputs(
       Object @NonNull [] inputs, @NonNull Map<Integer, Object> outputs);
@@ -466,19 +468,21 @@ public interface InterpreterApi extends AutoCloseable {
    * execution if any input tensors have been resized. This call is most useful in determining the
    * shapes for any output tensors before executing the graph, e.g.,
    *
-   * <pre> {@code
+   * <pre>{@code
    * interpreter.resizeInput(0, new int[]{1, 4, 4, 3}));
    * interpreter.allocateTensors();
    * FloatBuffer input = FloatBuffer.allocate(interpreter.getInputTensor(0).numElements());
    * // Populate inputs...
    * FloatBuffer output = FloatBuffer.allocate(interpreter.getOutputTensor(0).numElements());
    * interpreter.run(input, output)
-   * // Process outputs...}</pre>
+   * // Process outputs...
+   * }</pre>
    *
    * <p>Note: Some graphs have dynamically shaped outputs, in which case the output shape may not
    * fully propagate until inference is executed.
    *
-   * @throws IllegalStateException if the graph's tensors could not be successfully allocated.
+   * @throws IllegalStateException if the graph's tensors could not be successfully allocated, or if
+   *     called after {@link #close()}.
    */
   void allocateTensors();
 
@@ -487,6 +491,7 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * @throws IllegalArgumentException if {@code idx} is negative or is not smaller than the number
    *     of model inputs; or if error occurs when resizing the idx-th input.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   void resizeInput(int idx, int @NonNull [] dims);
 
@@ -499,10 +504,15 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code idx} is negative or is not smaller than the number
    *     of model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
    *     occurs when attempting to resize a tensor with fixed dimensions when `strict` is True.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   void resizeInput(int idx, int @NonNull [] dims, boolean strict);
 
-  /** Gets the number of input tensors. */
+  /**
+   * Gets the number of input tensors.
+   *
+   * @throws IllegalStateException if called after {@link #close()}.
+   */
   int getInputTensorCount();
 
   /**
@@ -510,6 +520,7 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * @throws IllegalArgumentException if {@code opName} does not match any input in the model used
    *     to initialize the interpreter.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   int getInputIndex(String opName);
 
@@ -518,10 +529,15 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * @throws IllegalArgumentException if {@code inputIndex} is negative or is not smaller than the
    *     number of model inputs.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   Tensor getInputTensor(int inputIndex);
 
-  /** Gets the number of output Tensors. */
+  /**
+   * Gets the number of output Tensors.
+   *
+   * @throws IllegalStateException if called after {@link #close()}.
+   */
   int getOutputTensorCount();
 
   /**
@@ -529,6 +545,7 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * @throws IllegalArgumentException if {@code opName} does not match any output in the model used
    *     to initialize the interpreter.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   int getOutputIndex(String opName);
 
@@ -544,6 +561,7 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * @throws IllegalArgumentException if {@code outputIndex} is negative or is not smaller than the
    *     number of model outputs.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   Tensor getOutputTensor(int outputIndex);
 
@@ -560,6 +578,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @param signatureKey Signature key identifying the SignatureDef.
    * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} or
    *     {@code signatureKey} is null, or if an error occurs when running inference.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   public void runSignature(
       @NonNull Map<String, Object> inputs,
@@ -570,6 +589,8 @@ public interface InterpreterApi extends AutoCloseable {
    * Same as {@link #runSignature(Map, Map, String)} but doesn't require passing a signatureKey,
    * assuming the model has one SignatureDef. If the model has more than one SignatureDef it will
    * throw an exception.
+   *
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   public void runSignature(
       @NonNull Map<String, Object> inputs, @NonNull Map<String, Object> outputs);
@@ -582,16 +603,29 @@ public interface InterpreterApi extends AutoCloseable {
    *     one signature.
    * @throws IllegalArgumentException if {@code inputName} or {@code signatureKey} is null or empty,
    *     or invalid name provided.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   public Tensor getInputTensorFromSignature(String inputName, String signatureKey);
 
-  /** Gets the list of SignatureDef exported method names available in the model. */
+  /**
+   * Gets the list of SignatureDef exported method names available in the model.
+   *
+   * @throws IllegalStateException if called after {@link #close()}.
+   */
   public String[] getSignatureKeys();
 
-  /** Gets the list of SignatureDefs inputs for method {@code signatureKey}. */
+  /**
+   * Gets the list of SignatureDefs inputs for method {@code signatureKey}.
+   *
+   * @throws IllegalStateException if called after {@link #close()}.
+   */
   public String[] getSignatureInputs(String signatureKey);
 
-  /** Gets the list of SignatureDefs outputs for method {@code signatureKey}. */
+  /**
+   * Gets the list of SignatureDefs outputs for method {@code signatureKey}.
+   *
+   * @throws IllegalStateException if called after {@link #close()}.
+   */
   public String[] getSignatureOutputs(String signatureKey);
 
   /**
@@ -609,6 +643,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     one signature.
    * @throws IllegalArgumentException if {@code outputName} or {@code signatureKey} is null or
    *     empty, or invalid name provided.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   public Tensor getOutputTensorFromSignature(String outputName, String signatureKey);
 
@@ -616,6 +651,7 @@ public interface InterpreterApi extends AutoCloseable {
    * Returns native inference timing.
    *
    * @throws IllegalArgumentException if the model is not initialized by the interpreter.
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   Long getLastNativeInferenceDurationNanoseconds();
 
