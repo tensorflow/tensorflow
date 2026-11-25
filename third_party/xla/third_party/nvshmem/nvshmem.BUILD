@@ -17,7 +17,6 @@
 
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
-load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 options_substitions = {
@@ -106,25 +105,5 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@xla//xla/tsl/cuda:nvshmem_stub",
-    ],
-)
-
-# This additional header allows us to determine the configured NVSHMEM version
-# without including the rest of NVSHMEM.
-write_file(
-    name = "nvshmem_config_header",
-    out = "nvshmem_config.h",
-    content = [
-        "constexpr static char XLA_NVSHMEM_VERSION[] = \"{}\";".format(NVSHMEM_MAJOR),
-    ],
-)
-
-cc_library(
-    name = "nvshmem_config",
-    hdrs = ["nvshmem_config.h"],
-    include_prefix = "third_party/nvshmem",
     visibility = ["//visibility:public"],
 )
