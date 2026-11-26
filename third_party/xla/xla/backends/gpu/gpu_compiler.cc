@@ -1946,9 +1946,14 @@ absl::Status GpuCompiler::OptimizeHloModule(
 absl::Status GpuCompiler::RunPreSchedulingCopyInsertion(
     HloModule& hlo_module, const se::DeviceDescription& device_description,
     const GpuAliasInfo* alias_info) {
+  // Computations wrapped by the stream-annotation async wrappers run on the
+  // parallel execution thread. Copy insertion is required for correctness
+  // there too (e.g. in-place loop-carried updates in while loops need copies
+  // or ordering edges), so run the pipeline on both threads.
   return PreSchedulingCopyInsertionPipeline(hlo_module.config(), alias_info,
                                             device_description)
-      .Run(&hlo_module, {HloInstruction::kMainExecutionThread})
+      .Run(&hlo_module, {HloInstruction::kMainExecutionThread,
+                         HloInstruction::kParallelExecutionThread})
       .status();
 }
 

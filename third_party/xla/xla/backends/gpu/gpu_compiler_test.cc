@@ -4960,6 +4960,65 @@ TEST_F(GpuCompilerTest,
                         Layout::kCollectiveMemorySpace);
 }
 
+constexpr absl::string_view kStreamAnnotatedDusLoopHlo = R"(
+HloModule m
+
+cond {
+  p = (s32[], s32[8,4]) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  n = s32[] constant(8)
+  ROOT lt = pred[] compare(i, n), direction=LT
+}
+
+body {
+  p = (s32[], s32[8,4]) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  out = s32[8,4] get-tuple-element(p), index=1
+  row = s32[1,4] broadcast(i), dimensions={}
+  zero = s32[] constant(0)
+  dus = s32[8,4] dynamic-update-slice(out, row, i, zero)
+  one = s32[] constant(1)
+  next = s32[] add(i, one)
+  ROOT r = (s32[], s32[8,4]) tuple(next, dus)
+}
+
+f {
+  zero = s32[] constant(0)
+  init_out = s32[8,4] broadcast(zero), dimensions={}
+  init = (s32[], s32[8,4]) tuple(zero, init_out)
+  loop = (s32[], s32[8,4]) while(init), condition=cond, body=body
+  ROOT res = s32[8,4] get-tuple-element(loop), index=1
+}
+
+ENTRY main {
+  ROOT call = s32[8,4] call(), to_apply=f,
+    frontend_attributes={_xla_stream_annotation="1",inlineable="false"}
+}
+)";
+
+TEST_F(GpuCompilerTest,
+       CopyInsertionOrdersLoopCounterUpdateInParallelExecutionThread) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module_and_executable,
+      GetOptimizedModuleForExecutable(kStreamAnnotatedDusLoopHlo,
+                                      GetModuleConfigForTest()));
+  const HloComputation* body =
+      module_and_executable.first->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  EXPECT_EQ(body->execution_thread(), HloInstruction::kParallelExecutionThread);
+
+  // The counter increment (tuple operand 0) updates its buffer in place, so it
+  // must be ordered after the dynamic-update-slice that reads the old value.
+  const HloInstruction* root = body->root_instruction();
+  EXPECT_THAT(root->operand(0)->control_predecessors(),
+              Contains(root->operand(1)))
+      << body->ToString();
+}
+
+TEST_F(GpuCompilerTest, StreamAnnotatedLoopWithDynamicUpdateSliceIsCorrect) {
+  EXPECT_TRUE(RunAndCompare(kStreamAnnotatedDusLoopHlo, ErrorSpec{0, 0}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
