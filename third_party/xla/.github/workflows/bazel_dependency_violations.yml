@@ -39,17 +39,33 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.action != 'closed'
     strategy:
       matrix:
-        tag: [gpu, cuda-only, rocm-only]
-    name: no-${{ matrix.tag }}-targets-in-cpu-build
+        include:
+          - name: no-gpu-targets-in-cpu-build
+            config: ""
+            check_gpu: true
+            check_cuda_only: true
+            check_rocm_only: true
+          - name: no-rocm-only-targets-in-cuda-build
+            config: "cuda_clang"
+            check_gpu: false
+            check_cuda_only: false
+            check_rocm_only: true
+          - name: no-cuda-only-targets-in-rocm-build
+            config: "rocm_clang_hermetic"
+            check_gpu: false
+            check_cuda_only: true
+            check_rocm_only: false
+    name: ${{ matrix.name }}
     runs-on: "linux-x86-n4-16"
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest" # zizmor: ignore[unpinned-images]
     defaults:
       run:
         shell: bash
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: "Checking out repository"
+        id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -69,7 +85,7 @@ jobs:
             git fetch --no-tags --depth=1 origin "$BASE_SHA"
           fi
           CHANGED_BUILD_FILES=$(git diff --name-only "$BASE_SHA" HEAD |
-            grep -E '(^|/)(BUILD(\.bazel)?|WORKSPACE(\.bzlmod)?|MODULE\.bazel(\.lock)?|.*\.bzl|.*\.bazelrc)$' || true)
+            grep -E '(^|/)(BUILD(\.bazel)?|WORKSPACE(\.bzlmod)?|MODULE\.bazel(\.lock)?|.*\.bzl|.*\.bazelrc)$|^build_tools/dependencies/|^\.github/workflows/bazel_dependency_violations\.yml$' || true)
           if [ -z "$CHANGED_BUILD_FILES" ]; then
             echo "No BUILD, .bzl, WORKSPACE, MODULE.bazel, or .bazelrc files changed; skipping dependency violation cquery."
             echo "should_run=false" >> "$GITHUB_OUTPUT"
@@ -78,31 +94,48 @@ jobs:
             echo "$CHANGED_BUILD_FILES"
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           fi
-      - name: "Run bazel cquery ... //xla/..."
-        if: github.event_name != 'pull_request' || steps.check_changes.outputs.should_run == 'true'
-        run: |
-          set -euo pipefail
-          TAG_WITH_UNDERSCORES="${{ matrix.tag }}"
-          TAG_WITH_UNDERSCORES="${TAG_WITH_UNDERSCORES/-/_}"
-          if ! OUTPUT=$(bazel cquery --aspects "build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag" //xla/... 2>&1); then
-            echo "Failed to run bazel cquery. Output:"
-            echo "$OUTPUT"
-            exit 1
-          fi
-          if echo "$OUTPUT" | grep 'Violation' >/dev/null; then
-            echo "The following dependency violations were found:"
-            echo "$OUTPUT" | grep 'Violation' | sed -e 's/^.*\[Violation\]/ -/'
-            echo ""
-            echo ""
-            echo "There are a couple of potential solutions for this/these violation(s):"
-            echo ""
-            echo "1. Tag the dependent target with the same tag as the dependee."
-            echo ""
-            echo "2. If unavoidable make the dependency selective using the"
-            echo "   'if_{gpu|cuda|rocm}_is_configured' macro. This is discouraged"
-            echo "   outside of stream_executor."
-            echo ""
-            exit 1
-          fi
+      - name: "Check no 'gpu' targets"
+        if: >-
+          !cancelled() &&
+          steps.checkout.outcome == 'success' &&
+          matrix.check_gpu &&
+          (github.event_name != 'pull_request' || steps.check_changes.outputs.should_run == 'true')
+        env:
+          BAZEL_CONFIG: ${{ matrix.config }}
+        run: bash ./build_tools/dependencies/check_dependency_violations.sh gpu
+      - name: "Check no 'cuda-only' targets"
+        if: >-
+          !cancelled() &&
+          steps.checkout.outcome == 'success' &&
+          matrix.check_cuda_only &&
+          (github.event_name != 'pull_request' || steps.check_changes.outputs.should_run == 'true')
+        env:
+          BAZEL_CONFIG: ${{ matrix.config }}
+        run: bash ./build_tools/dependencies/check_dependency_violations.sh cuda-only
+      - name: "Check no 'rocm-only' targets"
+        if: >-
+          !cancelled() &&
+          steps.checkout.outcome == 'success' &&
+          matrix.check_rocm_only &&
+          (github.event_name != 'pull_request' || steps.check_changes.outputs.should_run == 'true')
+        env:
+          BAZEL_CONFIG: ${{ matrix.config }}
+        run: bash ./build_tools/dependencies/check_dependency_violations.sh rocm-only
 
-          echo "No dependency violations found for tag '${{ matrix.tag }}'."
+  # Temporary pass-through stubs while Copybara's HEAD config still waits on the
+  # legacy CPU check names; removed in the follow-up CL once copy.bara.sky drops
+  # them. All 3 CPU checks are already enforced by `no-gpu-targets-in-cpu-build`.
+  legacy-cpu-check-stubs:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    permissions: {}
+    strategy:
+      matrix:
+        name:
+          - no-cuda-only-targets-in-cpu-build
+          - no-rocm-only-targets-in-cpu-build
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: "Consolidated into no-gpu-targets-in-cpu-build"
+        run: echo "Consolidated into no-gpu-targets-in-cpu-build"
