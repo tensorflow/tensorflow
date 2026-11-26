@@ -21,6 +21,7 @@ load(
     "NVIDIA_GPU_DEFAULT_BACKENDS",
     "xla_test",
 )
+load("//xla/tsl:tsl.bzl", "if_google")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -128,7 +129,10 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
-    ],
+    ] + if_google([
+        # For non-GEMM cuDNN fusions.
+        "@local_config_cuda//cuda:cudnn_engines_tensor_ir",
+    ]),
 )
 
 xla_test(

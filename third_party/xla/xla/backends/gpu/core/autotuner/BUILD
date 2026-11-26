@@ -8,6 +8,7 @@ load(
     "GPU_DEFAULT_BACKENDS",
     "xla_test",
 )
+load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -433,7 +434,10 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + if_google([
+        # For non-GEMM cuDNN fusions.
+        "@local_config_cuda//cuda:cudnn_engines_tensor_ir",
+    ]),
 )
 
 cc_library(

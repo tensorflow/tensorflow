@@ -9,7 +9,7 @@ load(
     "NVIDIA_GPU_DEFAULT_BACKENDS",
     "xla_test",
 )
-load("//xla/tsl:tsl.bzl", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -4438,7 +4438,10 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:path",
-    ],
+    ] + if_google([
+        # For non-GEMM cuDNN fusions.
+        "@local_config_cuda//cuda:cudnn_engines_tensor_ir",
+    ]),
 )
 
 cc_library(
