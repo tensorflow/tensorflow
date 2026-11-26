@@ -568,6 +568,24 @@ func.func @lower_convert_ui32_to_i1(%arg0: tensor<2x4xui32>) -> tensor<2x4xi1> {
 
 // -----
 
+func.func @lower_convert_i32_to_ui32(%arg0: tensor<2x4xi32>) -> tensor<2x4xui32> {
+  // CHECK: %[[RES:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xi32> to tensor<2x4xui32>
+  // CHECK: return %[[RES]] : tensor<2x4xui32>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xi32>) -> tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+// -----
+
+func.func @lower_convert_ui32_to_i32(%arg0: tensor<2x4xui32>) -> tensor<2x4xi32> {
+  // CHECK: %[[RES:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: return %[[RES]] : tensor<2x4xi32>
+  %0 = stablehlo.convert %arg0 : (tensor<2x4xui32>) -> tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+// -----
+
 func.func @lower_convert_f32_to_ui32(%arg0: tensor<2x4xf32>) -> tensor<2x4xui32> {
   // CHECK-DAG: %[[ZERO_INT:.*]] = arith.constant dense<0> : tensor<2x4xi32>
   // CHECK-DAG: %[[ZERO_FLOAT:.*]] = arith.constant dense<0.000000e+00> : tensor<2x4xf32>
@@ -588,7 +606,8 @@ func.func @lower_convert_f32_to_ui32(%arg0: tensor<2x4xf32>) -> tensor<2x4xui32>
 
 // -----
 
-func.func @lower_convert_ui32_to_f32(%arg0: tensor<2x4xui32>) -> tensor<2x4xf32> {
+func.func @lower_convert_ui32_to_f32(%arg0: tensor<2x4xui32>)
+    -> tensor<2x4xf32> {
   // CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xui32> to tensor<2x4xi32>
   // CHECK: %[[RES:.*]] = arith.uitofp %[[CAST]] : tensor<2x4xi32> to tensor<2x4xf32>
   // CHECK: return %[[RES]] : tensor<2x4xf32>
@@ -598,7 +617,8 @@ func.func @lower_convert_ui32_to_f32(%arg0: tensor<2x4xui32>) -> tensor<2x4xf32>
 
 // -----
 
-func.func @lower_fma(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>, %arg2: tensor<2x4xf32>) -> tensor<2x4xf32> {
+func.func @lower_fma(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>,
+                     %arg2: tensor<2x4xf32>) -> tensor<2x4xf32> {
   // CHECK: %[[RES:.*]] = math.fma %arg0, %arg1, %arg2 : tensor<2x4xf32>
   // CHECK: return %[[RES]] : tensor<2x4xf32>
   %0 = stablehlo.fma %arg0, %arg1, %arg2 : tensor<2x4xf32>

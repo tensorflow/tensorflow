@@ -265,6 +265,9 @@ Value LowerIntegerToIntegerConvert(ImplicitLocOpBuilder& builder, Location loc,
     result = mlir::arith::CmpIOp::create(
         builder, loc, mlir::arith::CmpIPredicate::ne, value,
         ::xla::xtile::ZerosLike(builder, value));
+  } else if (src_element_ty.getIntOrFloatBitWidth() ==
+             dst_element_ty.getIntOrFloatBitWidth()) {
+    result = value;
   } else {
     result =
         mlir::arith::TruncIOp::create(builder, loc, signless_dst_ty, value);
