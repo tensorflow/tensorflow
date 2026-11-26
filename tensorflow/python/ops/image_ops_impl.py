@@ -4028,9 +4028,10 @@ def non_max_suppression_with_scores(boxes,
   box coordinates corresponding to the selected indices can then be obtained
   using the `tf.gather` operation.  For example:
     ```python
-    selected_indices, selected_scores = tf.image.non_max_suppression_padded(
-        boxes, scores, max_output_size, iou_threshold=1.0, score_threshold=0.1,
-        soft_nms_sigma=0.5)
+    selected_indices, selected_scores = (
+        tf.image.non_max_suppression_with_scores(
+            boxes, scores, max_output_size, iou_threshold=1.0,
+            score_threshold=0.1, soft_nms_sigma=0.5))
     selected_boxes = tf.gather(boxes, selected_indices)
     ```
 
@@ -4040,7 +4041,7 @@ def non_max_suppression_with_scores(boxes,
   of other overlapping boxes instead of directly causing them to be pruned.
   Consequently, in contrast to `tf.image.non_max_suppression`,
   `tf.image.non_max_suppression_with_scores` returns the new scores of each
-  input box in the second output, `selected_scores`.
+  selected box in the second output, `selected_scores`.
 
   To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
   larger than 0.  When `soft_nms_sigma` equals 0, the behavior of
@@ -5615,7 +5616,7 @@ def non_max_suppression_padded(boxes,
         boxes, scores, max_output_size, iou_threshold,
         score_threshold, pad_to_max_output_size=True)
     selected_indices = tf.slice(
-        selected_indices_padded, tf.constant([0]), num_valid)
+        selected_indices_padded, tf.constant([0]), [num_valid])
     selected_boxes = tf.gather(boxes, selected_indices)
     ```
 
@@ -5945,7 +5946,7 @@ def non_max_suppression_padded_v1(boxes,
         boxes, scores, max_output_size, iou_threshold,
         score_threshold, pad_to_max_output_size=True)
     selected_indices = tf.slice(
-        selected_indices_padded, tf.constant([0]), num_valid)
+        selected_indices_padded, tf.constant([0]), [num_valid])
     selected_boxes = tf.gather(boxes, selected_indices)
     ```
 
