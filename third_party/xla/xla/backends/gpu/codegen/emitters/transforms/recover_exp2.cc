@@ -80,8 +80,10 @@ class RecoverExp2Pattern : public mlir::OpRewritePattern<mlir::math::ExpOp> {
   using WidestNarrowType = std::tuple_element_t<0, SupportedNarrowTypes>;
 
   template <typename TupleT, std::size_t Idx = 0>
-      std::enable_if_t < Idx<std::tuple_size_v<TupleT>> prefillLogs2From(
-                             const llvm::APFloat& main_log2) {
+      static std::enable_if_t <
+      Idx<std::tuple_size_v<TupleT>> prefillLogs2From(
+          const llvm::APFloat& main_log2,
+          std::array<float, 3 * std::tuple_size_v<TupleT>>& logs2) {
     using FloatT = std::tuple_element_t<Idx, TupleT>;
 
     auto f_obj = FloatT{};
@@ -98,46 +100,37 @@ class RecoverExp2Pattern : public mlir::OpRewritePattern<mlir::math::ExpOp> {
     log2_prev.next(false);
     assert(log2_typed != log2_prev);
 
-    static_assert(std::tuple_size_v<decltype(logs2_)> ==
-                  3 * std::tuple_size_v<TupleT>);
     // preferring exact values to be nearer the beginning of the list
-    logs2_[0 + Idx] = log2_typed.convertToFloat();
-    logs2_[std::tuple_size_v<TupleT> + 2 * Idx + 0] =
-        log2_next.convertToFloat();
-    logs2_[std::tuple_size_v<TupleT> + 2 * Idx + 1] =
-        log2_prev.convertToFloat();
+    logs2[0 + Idx] = log2_typed.convertToFloat();
+    logs2[std::tuple_size_v<TupleT> + 2 * Idx + 0] = log2_next.convertToFloat();
+    logs2[std::tuple_size_v<TupleT> + 2 * Idx + 1] = log2_prev.convertToFloat();
 
     // the snippet below simply adding support for a new type by helping to
     // check what the values are and that they are unique. #include <cstdio>
-    /*std::fprintf(stderr, "%d: %.8f, %.8f, %.8f\n", Idx, logs2_[0 + Idx],
-                 logs2_[std::tuple_size_v<TupleT> + 2 * Idx + 0],
-                 logs2_[std::tuple_size_v<TupleT> + 2 * Idx + 1]);*/
+    /*std::fprintf(stderr, "%d: %.8f, %.8f, %.8f\n", Idx, logs2[0 + Idx],
+                 logs2[std::tuple_size_v<TupleT> + 2 * Idx + 0],
+                 logs2[std::tuple_size_v<TupleT> + 2 * Idx + 1]);*/
 
     if constexpr (Idx + 1 < std::tuple_size_v<TupleT>) {
-      prefillLogs2From<TupleT, Idx + 1>(main_log2);
+      prefillLogs2From<TupleT, Idx + 1>(main_log2, logs2);
     }
   }
 
-  template <typename Types>
-  void initStaticsIfNeeded() {
-    static_assert(std::tuple_size_v<Types> > 0);
-    if (logs2_[0] == 0.) {
-      auto log2 = llvm::APFloat(WidestNarrowType{}.getFloatSemantics());
-      (void)log2.convertFromString("0.6931471805599453",
-                                   llvm::APFloat::rmNearestTiesToEven);
-      assert(log2.convertToFloat() == 0.6931471805599453F);
-      prefillLogs2From<Types>(log2);
-      assert(std::none_of(logs2_.begin(), logs2_.end(),
-                          [](auto v) -> bool { return v == decltype(v){}; }));
-    }
+  static std::array<float, 3 * std::tuple_size_v<SupportedNarrowTypes>>
+  initStaticsIfNeeded() {
+    std::array<float, 3 * std::tuple_size_v<SupportedNarrowTypes>> logs2{};
+    auto log2 = llvm::APFloat(WidestNarrowType{}.getFloatSemantics());
+    (void)log2.convertFromString("0.6931471805599453",
+                                 llvm::APFloat::rmNearestTiesToEven);
+    assert(log2.convertToFloat() == 0.6931471805599453F);
+    prefillLogs2From<SupportedNarrowTypes>(log2, logs2);
+    assert(std::none_of(logs2.begin(), logs2.end(),
+                        [](auto v) -> bool { return v == decltype(v){}; }));
+    return logs2;
   }
 
  public:
-  template <typename... PrmsT>
-  explicit RecoverExp2Pattern(PrmsT&&... prms)
-      : OpRewritePattern<mlir::math::ExpOp>(std::forward<PrmsT>(prms)...) {
-    initStaticsIfNeeded<SupportedNarrowTypes>();
-  }
+  using OpRewritePattern<mlir::math::ExpOp>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
       mlir::math::ExpOp op, mlir::PatternRewriter& rewriter) const override {
@@ -173,6 +166,8 @@ class RecoverExp2Pattern : public mlir::OpRewritePattern<mlir::math::ExpOp> {
     // promoted to it, is costlier than just checking against all values in
     // logs2_. This could slightly raise FP rate, but hopefully this shouldn't
     // be a problem.
+    static const std::array<float, 3 * std::tuple_size_v<SupportedNarrowTypes>>
+        logs2_ = initStaticsIfNeeded();
     if (std::any_of(logs2_.begin(), logs2_.end(),
                     [could_be = could_be_log_2.convertToFloat()](
                         auto v) -> bool { return v == could_be; })) {
@@ -185,13 +180,6 @@ class RecoverExp2Pattern : public mlir::OpRewritePattern<mlir::math::ExpOp> {
     return rewriter.notifyMatchFailure(
         op, "The constant didn't match expected log(2) representation");
   }
-
- private:
-  /// storage for precomputed log(2) cropped to different types precision +/-
-  /// 1ulp. We need something directly iterable by index to account for possible
-  /// type promotions in the code.
-  inline static std::array<float, 3 * std::tuple_size_v<SupportedNarrowTypes>>
-      logs2_{};
 };
 
 class RecoverExp2Pass : public impl::RecoverExp2PassBase<RecoverExp2Pass> {

@@ -34,7 +34,6 @@ race:xla::LiteralBase::Piece::Storage::Storage
 race:xla::LocalClient::TransferFromOutfeedLocal
 race:llvm::cl::opt_storage<bool, false, false>::setValue<int>
 
-race:xla::gpu::(anonymous namespace)::RecoverExp2Pattern::initStaticsIfNeeded*
 race:lld::lldMain
 race:llvm::*
 race:xla::gpu::GpuExecutable::ExecuteAsyncOnStream
