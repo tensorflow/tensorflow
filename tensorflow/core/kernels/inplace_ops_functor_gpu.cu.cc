@@ -27,14 +27,13 @@ namespace functor {
 typedef Eigen::GpuDevice Device;
 
 template <typename T>
-__global__ void DoParallelConcatOpKernel(int nthreads, const int64_t rows,
-                                         const int64_t cols, int32_t loc,
-                                         const T* __restrict__ src,
+__global__ void DoParallelConcatOpKernel(int nthreads, const int64_t cols,
+                                         int32_t loc, const T* __restrict__ src,
                                          T* __restrict__ dst) {
   GPU_1D_KERNEL_LOOP(idx, nthreads) {
     int64_t c = idx % cols;
-    int64_t r = (loc % rows + rows) % rows;  // Guard index range.
-    T* p = dst + r * cols + c;
+    // The caller guarantees that 0 <= loc < number of rows.
+    T* p = dst + loc * cols + c;
     const T* q = src + idx;
     *p = ldg(q);
   }
@@ -46,13 +45,12 @@ absl::Status DoParallelConcatUpdate(const Device& d, const Tensor& value,
   const int64_t nelem = value.NumElements();
   GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
   auto Toutput = output->flat_outer_dims<T>();
-  const int64_t nrows = Toutput.dimension(0);
   const int64_t ncols = Toutput.dimension(1);
   const T* src = value.flat<T>().data();
   T* dst = output->flat<T>().data();
-  TF_CHECK_OK(GpuLaunchKernel(
-      DoParallelConcatOpKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
-      d.stream(), cfg.virtual_thread_count, nrows, ncols, loc, src, dst));
+  TF_CHECK_OK(GpuLaunchKernel(DoParallelConcatOpKernel<T>, cfg.block_count,
+                              cfg.thread_per_block, 0, d.stream(),
+                              cfg.virtual_thread_count, ncols, loc, src, dst));
   return absl::OkStatus();
 }
 

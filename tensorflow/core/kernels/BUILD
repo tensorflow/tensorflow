@@ -1260,7 +1260,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "inplace_ops",
     prefix = "inplace_ops",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/framework:op_requires",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
