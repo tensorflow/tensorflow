@@ -18,6 +18,9 @@
 // indices must each get their own large_custom_options_offset and size. The
 // distinct large_custom_options_size values (4 vs 8) verify that the two ops
 // are matched to their respective entries rather than the same entry.
+//
+// Payloads must also be laid out in insertion order. Each one here is shorter
+// than 16 bytes, so consecutive offsets differ by 16.
 
 module {
 func.func @sub1(%arg0: tensor<4xf32>) -> tensor<4xf32> attributes {tf.entry_function = {inputs = "x", outputs = "y"}} {
@@ -27,21 +30,35 @@ func.func @sub1(%arg0: tensor<4xf32>) -> tensor<4xf32> attributes {tf.entry_func
 
 func.func @sub2(%arg0: tensor<4xf32>) -> tensor<4xf32> attributes {tf.entry_function = {inputs = "x", outputs = "y"}} {
   %0 = "tfl.custom"(%arg0) {custom_code = "MyCustomOp", custom_option = #tfl<const_bytes : "0x05060708090a0b0c">} : (tensor<4xf32>) -> tensor<4xf32>
-  func.return %0 : tensor<4xf32>
+  %1 = "tfl.custom"(%0) {custom_code = "MyCustomOp", custom_option = #tfl<const_bytes : "0x10">} : (tensor<4xf32>) -> tensor<4xf32>
+  %c0 = "tfl.pseudo_const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  %c1 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %c2 = "tfl.pseudo_const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %c3 = "tfl.pseudo_const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %2 = "tfl.custom"(%1, %c0, %c1, %c2, %c3) {custom_code = "MyCustomOp", custom_option = #tfl<const_bytes : "0x2021">} : (tensor<4xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xf32>
+  func.return %2 : tensor<4xf32>
 }
 }
 
 // CHECK:      operators: [ {
 // CHECK-NEXT:   inputs: [ 0 ],
 // CHECK-NEXT:   outputs: [ 1 ],
-// CHECK-NEXT:   large_custom_options_offset: {{[1-9][0-9]+}},
+// CHECK-NEXT:   large_custom_options_offset: [[#OFF:]],
 // CHECK-NEXT:   large_custom_options_size: 4
 // CHECK-NEXT: } ],
 // CHECK-NEXT: name: "sub1"
 // CHECK:      operators: [ {
 // CHECK-NEXT:   inputs: [ 0 ],
 // CHECK-NEXT:   outputs: [ 1 ],
-// CHECK-NEXT:   large_custom_options_offset: {{[1-9][0-9]+}},
+// CHECK-NEXT:   large_custom_options_offset: [[#OFF+16]],
 // CHECK-NEXT:   large_custom_options_size: 8
-// CHECK-NEXT: } ],
-// CHECK-NEXT: name: "sub2"
+// CHECK:        large_custom_options_offset: [[#OFF+32]],
+// CHECK-NEXT:   large_custom_options_size: 1
+// CHECK:        large_custom_options_offset: [[#OFF+48]],
+// CHECK-NEXT:   large_custom_options_size: 2
+// CHECK:      name: "sub2"
+// CHECK:      buffers: [
+// CHECK:        offset: [[#COFF:]],
+// CHECK:        offset: [[#COFF+16]],
+// CHECK:        offset: [[#COFF+32]],
+// CHECK:        offset: [[#COFF+48]],

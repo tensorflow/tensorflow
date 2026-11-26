@@ -59,6 +59,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -858,7 +859,8 @@ class ExportBufferStorage {
 
  private:
   // Store pointers to the base class
-  absl::flat_hash_map<KeyT, std::unique_ptr<ExportBuffer>> buffers_;
+  // AppendBufferData() writes payloads in iteration order.
+  llvm::MapVector<KeyT, std::unique_ptr<ExportBuffer>> buffers_;
 };
 
 absl::string_view ToAbslStringView(llvm::StringRef ref) {
