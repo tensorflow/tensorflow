@@ -56,7 +56,7 @@ class DatasetIterator
  public:
   explicit DatasetIterator(data::DatasetBase* dataset) : dataset_(dataset) {}
 
-  ~DatasetIterator() override {}
+  ~DatasetIterator() override = default;
 
   absl::Status Init(OpKernelContext* ctx) {
     data::IteratorContext::Params params(ctx);
