@@ -562,6 +562,57 @@ TEST_F(CpuFusionEmitterTest, ScatterEmptyShapesShortCircuit) {
   }
 }
 
+TEST_F(CpuFusionEmitterTest, ScatterRankZeroOperandEmitsLoop) {
+  constexpr absl::string_view kMultiUpdateScalarHlo = R"hlo(
+    HloModule scatter_rank0_multi
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+    scatter_computation {
+      operand = s32[] parameter(0)
+      indices = s32[3,0]{1,0} parameter(1)
+      updates = s32[3]{0} parameter(2)
+      ROOT s = s32[] scatter(operand, indices, updates),
+        update_window_dims={},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={},
+        index_vector_dim=1,
+        to_apply=add
+    }
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      p1 = s32[3,0]{1,0} parameter(1)
+      p2 = s32[3]{0} parameter(2)
+      ROOT wrapped_scatter = s32[] fusion(p0, p1, p2),
+        kind=kLoop, calls=scatter_computation
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kMultiUpdateScalarHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                       RunBufferAssignment(*module));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  std::unique_ptr<mlir::MLIRContext> mlir_context =
+      FusionCompiler::CreateContext();
+  ASSERT_OK_AND_ASSIGN(
+      KernelDefinition<MlirKernelSource> kernel_definition,
+      EmitFusionKernel(*mlir_context, *fusion, buffer_assignment.get(),
+                       /*use_unique_c_name=*/false,
+                       /*enable_tiled_emitter=*/false));
+  EXPECT_THAT(RunFileCheck(kernel_definition.source().ToString(), R"(
+    CHECK: func.func @wrapped_scatter(
+    CHECK:   xla.loop
+    CHECK:     tensor.extract %{{.+}}[] : tensor<i32>
+    CHECK:     arith.addi
+    CHECK:     tensor.insert %{{.+}} into %{{.+}}[] : tensor<i32>
+  )"),
+              absl_testing::IsOkAndHolds(true));
+}
+
 TEST_F(CpuFusionEmitterTest, ScatterVectorSizeUsesWidestOperandOrUpdateType) {
   // Operand 0 is s8 (1 byte) and operand 1 is c128 (16 bytes). With a 64 byte
   // vectorization budget, max_vectorized_elements must be 64 / 16 = 4 (giving

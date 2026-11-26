@@ -344,6 +344,169 @@ TEST_F(ScatterSimplifierTest, VariadicScatterIntoScalar) {
   )");
 }
 
+TEST_F(ScatterSimplifierTest, MultiUpdateScatterIntoScalar) {
+  constexpr absl::string_view kAlreadySimplified = R"hlo(
+    HloModule scatter_simplifier
+
+    add_s32 {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      operand = s32[] parameter(0)
+      indices = s32[3,0]{1,0} parameter(1)
+      updates = s32[3]{0} parameter(2)
+      ROOT scatter = s32[] scatter(operand, indices, updates),
+          update_window_dims={},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={},
+          index_vector_dim=1,
+          to_apply=add_s32
+    }
+  )hlo";
+  RunAndFilecheckHloRewrite(kAlreadySimplified, ScatterSimplifier(),
+                            std::nullopt);
+  RunAndFilecheckHloRewrite(
+      kAlreadySimplified,
+      ScatterSimplifier(/*reorder_operand_dims_for_coalescing=*/true),
+      std::nullopt);
+
+  constexpr absl::string_view kMultiScatterDim = R"hlo(
+    HloModule scatter_simplifier
+
+    add_s32 {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      operand = s32[] parameter(0)
+      indices = s32[2,3,0]{2,1,0} parameter(1)
+      updates = s32[2,3]{1,0} parameter(2)
+      ROOT scatter = s32[] scatter(operand, indices, updates),
+          update_window_dims={},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={},
+          index_vector_dim=2,
+          to_apply=add_s32
+    }
+  )hlo";
+  constexpr absl::string_view kMultiScatterDimExpected = R"(
+    CHECK: %[[IDX:.*]] = s32[6,0]{1,0} reshape(%indices)
+    CHECK: %[[UPD:.*]] = s32[6]{0} reshape(%updates)
+    CHECK: ROOT %{{.*}} = s32[] scatter(%operand, %[[IDX]], %[[UPD]]),
+    CHECK-SAME: index_vector_dim=1
+  )";
+  RunAndFilecheckHloRewrite(kMultiScatterDim, ScatterSimplifier(),
+                            kMultiScatterDimExpected);
+  RunAndFilecheckHloRewrite(
+      kMultiScatterDim,
+      ScatterSimplifier(/*reorder_operand_dims_for_coalescing=*/true),
+      kMultiScatterDimExpected);
+
+  // Non trailing index_vector_dim (for example produced by LayoutNormalization)
+  // must transpose indices from [0, 3] to [3, 0].
+  constexpr absl::string_view kNonTrailingIndexVectorDim = R"hlo(
+    HloModule scatter_simplifier
+
+    add_s32 {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      operand = s32[] parameter(0)
+      indices = s32[0,3]{1,0} parameter(1)
+      updates = s32[3]{0} parameter(2)
+      ROOT scatter = s32[] scatter(operand, indices, updates),
+          update_window_dims={},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={},
+          index_vector_dim=0,
+          to_apply=add_s32
+    }
+  )hlo";
+  RunAndFilecheckHloRewrite(kNonTrailingIndexVectorDim, ScatterSimplifier(), R"(
+    CHECK: %[[TR:.*]] = s32[3,0]{{.*}} transpose(%indices), dimensions={1,0}
+    CHECK: ROOT %{{.*}} = s32[] scatter(%operand, %[[TR]], %updates),
+    CHECK-SAME: index_vector_dim=1
+  )");
+
+  constexpr absl::string_view kVariadicMultiScatterDim = R"hlo(
+    HloModule scatter_simplifier
+
+    reducer {
+      lhs0 = s32[] parameter(0)
+      lhs1 = f32[] parameter(1)
+      rhs0 = s32[] parameter(2)
+      rhs1 = f32[] parameter(3)
+      sum0 = s32[] add(lhs0, rhs0)
+      sum1 = f32[] add(lhs1, rhs1)
+      ROOT out = (s32[], f32[]) tuple(sum0, sum1)
+    }
+
+    ENTRY main {
+      op0 = s32[] parameter(0)
+      op1 = f32[] parameter(1)
+      indices = s32[2,3,0]{2,1,0} parameter(2)
+      upd0 = s32[2,3]{1,0} parameter(3)
+      upd1 = f32[2,3]{1,0} parameter(4)
+      ROOT scatter = (s32[], f32[]) scatter(op0, op1, indices, upd0, upd1),
+          update_window_dims={},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={},
+          index_vector_dim=2,
+          to_apply=reducer
+    }
+  )hlo";
+  RunAndFilecheckHloRewrite(kVariadicMultiScatterDim, ScatterSimplifier(), R"(
+    CHECK: %[[IDX:.*]] = s32[6,0]{1,0} reshape(%indices)
+    CHECK: %[[U0:.*]] = s32[6]{0} reshape(%upd0)
+    CHECK: %[[U1:.*]] = f32[6]{0} reshape(%upd1)
+    CHECK: ROOT %{{.*}} = (s32[], f32[]) scatter(%op0, %op1, %[[IDX]], %[[U0]], %[[U1]]),
+    CHECK-SAME: index_vector_dim=1
+  )");
+}
+
+TEST_F(ScatterSimplifierTest, ScalarUpdateIntoNonScalarOperand) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule scatter_simplifier
+
+    add_s32 {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      operand = s32[4]{0} parameter(0)
+      indices = s32[1]{0} parameter(1)
+      updates = s32[] parameter(2)
+      ROOT scatter = s32[4]{0} scatter(operand, indices, updates),
+          update_window_dims={},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=0,
+          to_apply=add_s32
+    }
+  )hlo";
+  RunAndFilecheckHloRewrite(kHlo, ScatterSimplifier(), R"(
+    CHECK: %[[IDX:.*]] = s32[1,1]{1,0} reshape(%indices)
+    CHECK: %[[UPD_SCATTER:.*]] = s32[1]{0} reshape(%updates)
+    CHECK: %[[UPD:.*]] = s32[1,1]{1,0} reshape(%[[UPD_SCATTER]])
+    CHECK: ROOT %{{.*}} = s32[4]{0} scatter(%operand, %[[IDX]], %[[UPD]]),
+    CHECK-SAME: update_window_dims={1},
+    CHECK-SAME: inserted_window_dims={},
+    CHECK-SAME: scatter_dims_to_operand_dims={0},
+    CHECK-SAME: index_vector_dim=1,
+    CHECK-SAME: to_apply=%add_s32
+  )");
+}
+
 TEST_F(ScatterSimplifierTest, ReordersOperandDimsForCoalescing) {
   // The scatter writes strided [4,1] columns of the operand. With
   // reorder_operand_dims_for_coalescing, the operand dims are permuted so

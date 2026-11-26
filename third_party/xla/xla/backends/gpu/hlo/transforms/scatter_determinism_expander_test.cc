@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/hlo/transforms/scatter_determinism_expander.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -1262,6 +1264,95 @@ TEST_F(ScatterDeterminismExpanderTest, UnsupportedVariadicScatter) {
   ASSERT_OK_AND_ASSIGN(bool result,
                        RunScatterDeterminismExpander(module.get()));
   EXPECT_FALSE(result);
+}
+
+TEST_F(ScatterDeterminismExpanderTest,
+       DoesNotMatchZeroIndexColumnScalarUpdateScatter) {
+  constexpr absl::string_view kRankZeroHlo = R"hlo(
+    HloModule rank0_deterministic_scatter
+
+    add_f32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      operand = f32[] parameter(0)
+      indices = s32[3,0]{1,0} parameter(1)
+      updates = f32[3]{0} parameter(2)
+      ROOT s = f32[] scatter(operand, indices, updates),
+        update_window_dims={},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={},
+        index_vector_dim=1,
+        to_apply=add_f32
+    }
+  )hlo";
+
+  constexpr absl::string_view kRankOneNoIndexColsHlo = R"hlo(
+    HloModule rank1_zero_index_cols_scatter
+
+    add_f32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      operand = f32[4]{0} parameter(0)
+      indices = s32[3,0]{1,0} parameter(1)
+      updates = f32[3]{0} parameter(2)
+      ROOT s = f32[4]{0} scatter(operand, indices, updates),
+        update_window_dims={},
+        inserted_window_dims={0},
+        scatter_dims_to_operand_dims={},
+        index_vector_dim=1,
+        to_apply=add_f32
+    }
+  )hlo";
+
+  for (const auto& [name, hlo] :
+       {std::pair<absl::string_view, absl::string_view>{"rank0", kRankZeroHlo},
+        std::pair<absl::string_view, absl::string_view>{
+            "rank1_zero_index_cols", kRankOneNoIndexColsHlo}}) {
+    SCOPED_TRACE(name);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo));
+    ScatterDeterminismExpander pass;
+    ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+    EXPECT_FALSE(changed);
+  }
+}
+
+TEST_F(ScatterDeterminismExpanderTest,
+       MatchesZeroIndexColumnWithNonEmptyUpdateWindowDims) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule zero_index_cols_window_update_scatter
+
+    add_f32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      operand = f32[4]{0} parameter(0)
+      indices = s32[3,0]{1,0} parameter(1)
+      updates = f32[3,2]{1,0} parameter(2)
+      ROOT s = f32[4]{0} scatter(operand, indices, updates),
+        update_window_dims={1},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={},
+        index_vector_dim=1,
+        to_apply=add_f32
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ScatterDeterminismExpander pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
 }
 
 INSTANTIATE_TEST_SUITE_P(ScatterDeterminismExpanderTestSuite,

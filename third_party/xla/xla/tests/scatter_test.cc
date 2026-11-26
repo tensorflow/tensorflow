@@ -976,6 +976,60 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+TEST_F(ScatterTest, ScatterMultiUpdateIntoScalar) {
+  constexpr absl::string_view kS32Hlo = R"hlo(
+HloModule ScatterMultiUpdateIntoScalarS32
+
+add_s32 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT sum = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  operand = s32[] parameter(0)
+  indices = s32[2,3,0]{2,1,0} parameter(1)
+  updates = s32[2,3]{1,0} parameter(2)
+  ROOT scatter = s32[] scatter(operand, indices, updates),
+      update_window_dims={},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={},
+      index_vector_dim=2,
+      to_apply=add_s32
+}
+)hlo";
+  Literal s32_operand = LiteralUtil::CreateR0<int32_t>(10);
+  Literal s32_indices(ShapeUtil::MakeShape(S32, {2, 3, 0}));
+  Literal s32_updates = LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, -6}});
+  RunTest(kS32Hlo, &s32_operand, &s32_indices, &s32_updates);
+
+  constexpr absl::string_view kF32Hlo = R"hlo(
+HloModule ScatterMultiUpdateIntoScalarF32
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  operand = f32[] parameter(0)
+  indices = s32[3,0]{1,0} parameter(1)
+  updates = f32[3]{0} parameter(2)
+  ROOT scatter = f32[] scatter(operand, indices, updates),
+      update_window_dims={},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={},
+      index_vector_dim=1,
+      to_apply=add_f32
+}
+)hlo";
+  Literal f32_operand = LiteralUtil::CreateR0<float>(10.0f);
+  Literal f32_indices(ShapeUtil::MakeShape(S32, {3, 0}));
+  Literal f32_updates = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 4.0f});
+  RunTest(kF32Hlo, &f32_operand, &f32_indices, &f32_updates);
+}
+
 TEST_F(ScatterTest, Multioutput) {
   constexpr char hlo_text[] = R"(
 HloModule MultioutputScatter

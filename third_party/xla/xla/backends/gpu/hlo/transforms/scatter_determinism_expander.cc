@@ -963,8 +963,18 @@ bool IsSupportedIndicesType(PrimitiveType primitive_type) {
 bool ScatterDeterminismExpander::InstructionMatchesPattern(
     HloInstruction* inst) {
   auto* scatter = DynCast<HloScatterInstruction>(inst);
-
-  return (scatter != nullptr) && !IsScatterDeterministic(scatter) &&
+  if (scatter == nullptr) {
+    return false;
+  }
+  const ScatterDimensionNumbers& dims = scatter->scatter_dimension_numbers();
+  // When both scatter_dims_to_operand_dims and update_window_dims are empty,
+  // FindLastOccurrenceIndices sees 0 index columns and cannot write an out of
+  // bounds sentinel to deduplicate colliding rows.
+  if (dims.scatter_dims_to_operand_dims().empty() &&
+      dims.update_window_dims().empty()) {
+    return false;
+  }
+  return !IsScatterDeterministic(scatter) &&
          scatter->scatter_operand_count() == 1 &&
          IsSupportedIndicesType(
              scatter->scatter_indices()->shape().element_type()) &&

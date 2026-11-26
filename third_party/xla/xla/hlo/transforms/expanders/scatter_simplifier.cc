@@ -177,10 +177,13 @@ absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
   const auto& attrs = scatter->scatter_dimension_numbers();
   const int operand_rank =
       attrs.update_window_dims().size() + attrs.inserted_window_dims().size();
-  // Rewrite the scatter into the scalar operand.
-  if (operand_rank == 0) {
+  // Rewrite a scatter with scalar updates into a direct call on the scalar
+  // operands. Scatters with scatter dimensions over scalar operands are
+  // canonicalized to rank 1 updates below.
+  if (operand_rank == 0 &&
+      ShapeUtil::IsScalar(scatter->scatter_updates().front()->shape())) {
     absl::InlinedVector<HloInstruction*, 2> scatter_operands_and_updates;
-    scatter_operands_and_updates.reserve(2 * scatter->operand_count());
+    scatter_operands_and_updates.reserve(2 * scatter->scatter_operand_count());
     absl::c_copy(scatter->scatter_operands(),
                  std::back_inserter(scatter_operands_and_updates));
     absl::c_copy(scatter->scatter_updates(),
@@ -262,12 +265,6 @@ absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
 bool ScatterSimplifier::IsSimplifiedScatter(
     const HloScatterInstruction* scatter) {
   const auto& dims = scatter->scatter_dimension_numbers();
-  auto operand_rank =
-      scatter->scatter_operands().front()->shape().dimensions().size();
-  if (operand_rank == 0) {
-    return false;
-  }
-
   bool standard_index_vector_dim =
       dims.index_vector_dim() + 1 ==
       scatter->scatter_indices()->shape().dimensions().size();
@@ -278,7 +275,7 @@ bool ScatterSimplifier::IsSimplifiedScatter(
       !absl::c_linear_search(dims.update_window_dims(), 0);
   bool update_window_dims_sorted = absl::c_is_sorted(dims.update_window_dims());
 
-  return standard_index_vector_dim && num_scatter_dims <= 1 &&
+  return standard_index_vector_dim && num_scatter_dims == 1 &&
          first_dim_not_in_update_window_dims && update_window_dims_sorted &&
          dims.inserted_window_dims().empty();
 }
