@@ -16,11 +16,14 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/exceptions.h"
+#include "xla/service/gpu_topology.h"
 
 namespace xla {
 
@@ -28,14 +31,32 @@ namespace nb = nanobind;
 
 namespace {
 
+std::vector<std::string> GetDeviceDescriptions(
+    gpu::GpuModel gpu_model, const gpu::GpuTargetConfig& config) {
+  for (const GpuPlatformConfig& platform : GetSupportedGpuPlatformConfigs()) {
+    if (platform.gpu_model == gpu_model) {
+      return platform.device_descriptions;
+    }
+  }
+  return {config.device_description_str};
+}
+
 class GpuTargetConfigWrapper {
  public:
-  explicit GpuTargetConfigWrapper(gpu::GpuTargetConfig config)
-      : config_(std::move(config)) {}
+  GpuTargetConfigWrapper(gpu::GpuTargetConfig config,
+                         std::vector<std::string> device_descriptions)
+      : config_(std::move(config)),
+        device_descriptions_(std::move(device_descriptions)) {}
 
   const std::string& platform_name() const { return config_.platform_name; }
   const std::string& device_description_str() const {
     return config_.device_description_str;
+  }
+
+  // A GPU model can report several device descriptions at runtime, e.g. SKU
+  // variants.
+  const std::vector<std::string>& device_descriptions() const {
+    return device_descriptions_;
   }
 
   std::string arch_name() const {
@@ -67,6 +88,7 @@ class GpuTargetConfigWrapper {
 
  private:
   gpu::GpuTargetConfig config_;
+  std::vector<std::string> device_descriptions_;
 };
 
 }  // namespace
@@ -78,6 +100,8 @@ NB_MODULE(_gpu_spec, m) {
       .def_prop_ro("platform_name", &GpuTargetConfigWrapper::platform_name)
       .def_prop_ro("device_description_str",
                    &GpuTargetConfigWrapper::device_description_str)
+      .def_prop_ro("device_descriptions",
+                   &GpuTargetConfigWrapper::device_descriptions)
       .def_prop_ro("arch_name", &GpuTargetConfigWrapper::arch_name)
       .def_prop_ro("compute_capability",
                    &GpuTargetConfigWrapper::compute_capability)
@@ -124,7 +148,10 @@ NB_MODULE(_gpu_spec, m) {
           throw xla::XlaRuntimeError(
               maybe_target_config.status().message().data());
         }
-        return GpuTargetConfigWrapper(std::move(*maybe_target_config));
+        std::vector<std::string> device_descriptions =
+            GetDeviceDescriptions(gpu_model, *maybe_target_config);
+        return GpuTargetConfigWrapper(std::move(*maybe_target_config),
+                                      std::move(device_descriptions));
       },
       nb::arg("gpu_model"));
 }

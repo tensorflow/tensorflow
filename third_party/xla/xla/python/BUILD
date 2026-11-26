@@ -595,6 +595,7 @@ nanobind_pywrap_extension(
     deps = [
         "//xla/backends/gpu/target_config",
         "//xla/pjrt:exceptions",
+        "//xla/service:gpu_topology",
         "@nanobind",
     ],
 )
