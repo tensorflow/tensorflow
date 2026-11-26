@@ -41,7 +41,7 @@ class SwitchOp : public OpKernel {
   explicit SwitchOp(OpKernelConstruction* context) : OpKernel(context) {}
   void Compute(OpKernelContext* context) override;
   bool IsExpensive() override { return false; }
-  ~SwitchOp() override {}
+  ~SwitchOp() override = default;
 
   SwitchOp(const SwitchOp&) = delete;
   void operator=(const SwitchOp&) = delete;
@@ -57,7 +57,7 @@ class SwitchNOp : public OpKernel {
   explicit SwitchNOp(OpKernelConstruction* context) : OpKernel(context) {}
   void Compute(OpKernelContext* context) override;
   bool IsExpensive() override { return false; }
-  ~SwitchNOp() override {}
+  ~SwitchNOp() override = default;
 
   SwitchNOp(const SwitchNOp&) = delete;
   void operator=(const SwitchNOp&) = delete;
@@ -71,7 +71,7 @@ class MergeOp : public OpKernel {
   explicit MergeOp(OpKernelConstruction* context);
   void Compute(OpKernelContext* context) override;
   bool IsExpensive() override { return false; }
-  ~MergeOp() override {}
+  ~MergeOp() override = default;
 
   MergeOp(const MergeOp&) = delete;
   void operator=(const MergeOp&) = delete;
@@ -85,7 +85,7 @@ class EnterOp : public OpKernel {
   explicit EnterOp(OpKernelConstruction* context) : OpKernel(context) {}
   void Compute(OpKernelContext* context) override;
   bool IsExpensive() override { return false; }
-  ~EnterOp() override {}
+  ~EnterOp() override = default;
 
   EnterOp(const EnterOp&) = delete;
   void operator=(const EnterOp&) = delete;
@@ -99,7 +99,7 @@ class ExitOp : public OpKernel {
   explicit ExitOp(OpKernelConstruction* context) : OpKernel(context) {}
   void Compute(OpKernelContext* context) override;
   bool IsExpensive() override { return false; }
-  ~ExitOp() override {}
+  ~ExitOp() override = default;
 
   ExitOp(const ExitOp&) = delete;
   void operator=(const ExitOp&) = delete;
@@ -112,7 +112,7 @@ class NextIterationOp : public OpKernel {
   explicit NextIterationOp(OpKernelConstruction* context) : OpKernel(context) {}
   void Compute(OpKernelContext* context) override;
   bool IsExpensive() override { return false; }
-  ~NextIterationOp() override {}
+  ~NextIterationOp() override = default;
 
   NextIterationOp(const NextIterationOp&) = delete;
   void operator=(const NextIterationOp&) = delete;
