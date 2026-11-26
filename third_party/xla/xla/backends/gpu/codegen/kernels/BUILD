@@ -115,6 +115,7 @@ xla_test(
         ":custom_kernel",
         ":ptx_custom_kernel",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/service/gpu:launch_dimensions",
