@@ -121,8 +121,8 @@ toc:
     path: /xla/tpu_on_device_debugging/overview
   - title: Analyze core dumps
     path: /xla/tpu_on_device_debugging/analyze_core_dumps
-  - title: Debug callbacks
-    path: /xla/tpu_on_device_debugging/debug_callbacks
+  - title: Debug callback
+    path: /xla/tpu_on_device_debugging/debug_callback
   - title: Hang diagnostics
     path: /xla/tpu_on_device_debugging/hang_diagnostics
   - title: "Debugging hangs: sync flag wait timeout"

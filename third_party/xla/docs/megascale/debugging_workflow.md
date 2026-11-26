@@ -394,8 +394,8 @@ that they occur during periods of very high network bandwidth utilization,
 meaning that network latency is what's likely driving their slowness. In this
 case, the maximum bandwidth of the profiled machine is 200 GiB/s.
 
-<section class="zippy" markdown="1">
-Step-by-step example
+<details>
+<summary>Step-by-step example</summary>
 
 1.  Use the [recv-done ops
     query](https://openxla.org/xprof/megascale_viewer_sql#recv-done_ops) to list
@@ -423,7 +423,7 @@ Step-by-step example
     mostly driven by two slow network sends (accounting for 71 + 38 = 109
     milliseconds) and two network receives. (accounting for 22 + 10 = 32
     milliseconds)
-    ![megascale action graph](./images/megascale_network_usage_4.png)
+    ![megascale action graph trace](./images/megascale_network_usage_4.png)
 5.  Click on the slowest NetworkSend. Observe that the action took 71
     milliseconds to transfer 1 MiB to one peer and to the same worker
     (loopback). This is very slow.
@@ -439,7 +439,8 @@ Step-by-step example
     the slow network sends and receives occur. This indicates that the slowdown
     here is caused by network bandwidth bottleneck.
     ![network bandwidth during collective execution](./images/megascale_network_usage_7.png)
-</section>
+
+</details>
 
 To mitigate bandwidth bound models, you can:
 
