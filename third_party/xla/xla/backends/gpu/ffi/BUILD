@@ -76,6 +76,8 @@ xla_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_ffi_aot_custom_call",
+        "//xla/backends/gpu:nvptx_compiler",
+        "//xla/backends/gpu:nvptx_compiler_impl",  # buildcleaner: keep
         "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
@@ -83,8 +85,6 @@ xla_cc_binary(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:gpu_topology",
-        "//xla/service/gpu:nvptx_compiler",
-        "//xla/service/gpu:nvptx_compiler_impl",  # buildcleaner: keep
         "//xla/stream_executor/cuda:all_runtime",
         "//xla/stream_executor/cuda:cuda_platform",
         "//xla/stream_executor/cuda:cuda_platform_id",

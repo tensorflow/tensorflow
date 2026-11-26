@@ -1201,9 +1201,9 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:path",
     ] + if_cuda_is_configured([
-        "//xla/service/gpu:nvptx_compiler",
+        "//xla/backends/gpu:nvptx_compiler",
     ]) + if_rocm_is_configured([
-        "//xla/service/gpu:amdgpu_compiler",
+        "//xla/backends/gpu:amdgpu_compiler",
     ]),
 )
 

@@ -81,6 +81,8 @@ xla_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":write_value_thunk_folded_handler",
+        "//xla/backends/gpu:nvptx_compiler",
+        "//xla/backends/gpu:nvptx_compiler_impl",  # buildcleaner: keep
         "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
@@ -88,8 +90,6 @@ xla_cc_binary(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:gpu_topology",
-        "//xla/service/gpu:nvptx_compiler",
-        "//xla/service/gpu:nvptx_compiler_impl",  # buildcleaner: keep
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor/cuda:all_runtime",
         "//xla/stream_executor/cuda:cuda_platform",

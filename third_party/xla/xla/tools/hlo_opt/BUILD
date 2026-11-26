@@ -98,6 +98,7 @@ cc_library(
     deps = [
         ":compiled_opt_lib",
         "//xla:shape_util",
+        "//xla/backends/gpu:gpu_compiler",
         "//xla/backends/gpu/hlo/analysis:alias_info",
         "//xla/backends/gpu/hlo/analysis:nvptx_alias_info",
         "//xla/backends/gpu/hlo/transforms:cudnn_custom_call_converter",
@@ -131,7 +132,6 @@ cc_library(
         "//xla/service:hlo_graph_dumper",
         "//xla/service:llvm_compiler",
         "//xla/service/gpu:compile_module_to_llvm_ir",
-        "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/spmd:schedule_aware_collective_ops_cse",

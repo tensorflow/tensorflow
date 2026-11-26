@@ -98,16 +98,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_constants",
-    hdrs = ["gpu_constants.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/runtime:gpu_constants",
-    ],
-)
-
-cc_library(
     name = "gpu_memory_space_assignment",
     srcs = ["gpu_memory_space_assignment.cc"],
     hdrs = ["gpu_memory_space_assignment.h"],
@@ -654,40 +644,9 @@ xla_cc_test(
     ],
 )
 
-cc_library(
-    name = "buffer_allocations",
-    hdrs = ["buffer_allocations.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/runtime:buffer_allocations",
-    ],
-)
-
 bool_flag(
     name = "enable_xlir",
     build_setting_default = if_google(True, False),
-)
-
-cc_library(
-    name = "gpu_executable_buffer_allocator",
-    hdrs = [
-        "gpu_executable_buffer_allocator.h",
-        "gpu_executable_va_remap_allocator.h",
-    ],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/runtime:gpu_executable_buffer_allocator",
-    ],
-)
-
-cc_library(
-    name = "gpu_module_globals",
-    hdrs = ["gpu_module_globals.h"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/runtime:gpu_module_globals",
-    ],
 )
 
 cc_library(
@@ -1056,15 +1015,6 @@ tf_proto_library(
 )
 
 cc_library(
-    name = "fusion_process_dump",
-    hdrs = ["fusion_process_dump.h"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/hlo/transforms/fusion:fusion_process_dump",
-    ],
-)
-
-cc_library(
     name = "cudnn_support_utils",
     srcs = ["cudnn_support_utils.cc"],
     hdrs = ["cudnn_support_utils.h"],
@@ -1424,24 +1374,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "early_exit_compilation_result",
-    hdrs = ["early_exit_compilation_result.h"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/runtime:early_exit_compilation_result",
-    ],
-)
-
-cc_library(
-    name = "gpu_aot_compilation_result",
-    hdrs = ["gpu_aot_compilation_result.h"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/runtime:gpu_aot_compilation_result",
-    ],
-)
-
 xla_test(
     name = "gpu_offloading_test",
     srcs = ["gpu_offloading_test.cc"],
@@ -1517,8 +1449,8 @@ xla_test(
     ],
     use_legacy_runtime = True,
     deps = [
-        ":nvptx_compiler_impl",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu:nvptx_compiler_impl",
         "//xla/backends/gpu/runtime:gpu_executable",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
@@ -1558,10 +1490,10 @@ xla_test(
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
     ],
     deps = if_cuda_is_configured([
-        ":nvptx_compiler_impl",
+        "//xla/backends/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:cuda_platform",
     ]) + if_rocm_is_configured([
-        ":amdgpu_compiler_impl",
+        "//xla/backends/gpu:amdgpu_compiler_impl",
     ]) + [
         ":gpu_transfer_manager",
         "//xla:literal",
@@ -1681,15 +1613,6 @@ cc_library(
         "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:notification",
         "@tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "gpu_hlo_schedule",
-    hdrs = ["gpu_hlo_schedule.h"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/hlo/transforms/hlo_scheduling:gpu_hlo_schedule",
     ],
 )
 
@@ -1849,16 +1772,6 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "alias_info",
-    hdrs = ["alias_info.h"],
-    compatible_with = get_compatible_with_portable(),
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/hlo/analysis:alias_info",
     ],
 )
 
@@ -2222,15 +2135,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "gpu_latency_hiding_scheduler",
-    hdrs = ["gpu_latency_hiding_scheduler.h"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/hlo/transforms/hlo_scheduling:gpu_latency_hiding_scheduler",
-    ],
-)
-
-cc_library(
     name = "ptx_compile_options_from_debug_options",
     srcs = ["ptx_compile_options_from_debug_options.cc"],
     hdrs = ["ptx_compile_options_from_debug_options.h"],
@@ -2277,41 +2181,6 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:hlo_module_config",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "intel_gpu_compiler",
-    tags = [
-        "gpu",
-        "oneapi-only",
-    ] + if_google([
-        "avoid_dep",
-        # TODO(b/456585142): Currently we don't support building the SYCL backend.
-        "notap",
-        "nobuilder",
-        "manual",
-    ]),
-    deps = [
-        "//xla/backends/gpu:intel_gpu_compiler",
-    ],
-)
-
-cc_library(
-    name = "intel_gpu_compiler_impl",
-    hdrs = ["intel_gpu_compiler.h"],
-    tags = [
-        "gpu",
-        "oneapi-only",
-    ] + if_google([
-        "avoid_dep",
-        # TODO(b/456585142): Currently we don't support building the SYCL backend.
-        "notap",
-        "nobuilder",
-        "manual",
-    ]),
-    deps = [
-        "//xla/backends/gpu:intel_gpu_compiler_impl",
     ],
 )
 
