@@ -620,6 +620,7 @@ absl::Status TilingSpace::InitializeDimensions(
     const Shape& root_shape = root.shape();
     const HloInstruction& root_hlo = root.instruction();
     if (!root_shape.IsArray() && root.opcode() != HloOpcode::kReduce &&
+        root.opcode() != HloOpcode::kReduceWindow &&
         root.opcode() != HloOpcode::kScan) {
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported root shape ", root_shape.ToString(),

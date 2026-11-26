@@ -2939,5 +2939,317 @@ TEST_F(TilePropagationTest,
   )"));
 }
 
+TEST_F(TilePropagationTest,
+       CanPropagateSymbolicAndConcreteTileThroughReduceWindow) {
+  HloInstruction* root = ParseAndGetRoot(R"hlo(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      operand = f32[15,11] parameter(0)
+      init = f32[] constant(0)
+      ROOT rw = f32[7,11] reduce-window(operand, init),
+        window={size=3x2 stride=2x1 pad=1_1x0_1 rhs_dilate=2x1}, to_apply=add
+    }
+  )hlo");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> symbolic_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles symbolic_operands,
+      PropagateTileToInput(*symbolic_space, *root,
+                           symbolic_space->tiled_roots()[0], 0));
+  EXPECT_THAT(symbolic_operands, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0 * 2 - 1, tid_1 * ts_1]
+            sizes [ts_0 + 2, ts_1 + 1]
+            strides [2, 1]
+            upper bounds [15, 11]
+    1) (tid_0, tid_1)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> concrete_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK(concrete_space->AssignTileSizes({4, 8}));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles concrete_operands,
+      PropagateTileToInput(*concrete_space, *root,
+                           concrete_space->tiled_roots()[0], 0));
+  EXPECT_THAT(concrete_operands, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0 * 8 - 1, tid_1 * 8]
+            sizes [8, 16]
+            strides [2, 1]
+            upper bounds [15, 11]
+    1) (tid_0, tid_1)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+}
+
+TEST_F(TilePropagationTest,
+       CanPropagateTileThroughReduceWindowWithNegativePadding) {
+  HloInstruction* root = ParseAndGetRoot(R"hlo(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      operand = f32[16,10] parameter(0)
+      init = f32[] constant(0)
+      ROOT rw = f32[12,11] reduce-window(operand, init),
+        window={size=2x1 pad=-1_-2x0_1}, to_apply=add
+    }
+  )hlo");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({4, 8}));
+  ASSERT_OK_AND_ASSIGN(Tiles operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+  EXPECT_THAT(operands, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0 * 4 + 1, tid_1 * 8]
+            sizes [8, 8]
+            strides [1, 1]
+            upper bounds [14, 10]
+    1) (tid_0, tid_1)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+}
+
+TEST_F(TilePropagationTest,
+       CanPropagateTileThroughReduceWindowOverReshapeAndGather) {
+  HloInstruction* fusion = ParseAndGetRoot(R"hlo(
+    HloModule m
+    max_fn {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT res = bf16[] maximum(lhs, rhs)
+    }
+    f {
+      operand = bf16[200,4096] parameter(0)
+      indices = s32[1,1] parameter(1)
+      init = bf16[] constant(-inf)
+      gather = bf16[1,8,4096] gather(operand, indices),
+        offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0},
+        index_vector_dim=1, slice_sizes={8,4096}
+      reshape = bf16[1,8,8,512] reshape(gather)
+      ROOT rw = bf16[1,4,4,512] reduce-window(reshape, init),
+        window={size=1x2x2x1 stride=1x2x2x1}, to_apply=max_fn
+    }
+    ENTRY e {
+      operand = bf16[200,4096] parameter(0)
+      indices = s32[1,1] parameter(1)
+      ROOT fusion = bf16[1,4,4,512] fusion(operand, indices),
+        kind=kCustom, calls=f
+    }
+  )hlo");
+  const HloComputation* fused = fusion->fused_instructions_computation();
+  const HloInstruction* rw = fused->root_instruction();
+  const HloInstruction* reshape = rw->operand(0);
+  const HloInstruction* gather = reshape->operand(0);
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({1, 4, 1, 512}));
+  ASSERT_OK_AND_ASSIGN(Tiles rw_operands,
+                       PropagateTileToInput(*tiling_space, *rw,
+                                            tiling_space->tiled_roots()[0], 0));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles reshape_operands,
+      PropagateTileToInput(*tiling_space, *reshape, rw_operands[0], 0));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles gather_operands,
+      PropagateTileToInput(*tiling_space, *gather, reshape_operands[0], 0));
+  EXPECT_THAT(gather_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [rt_0, tid_2 * 1024]
+            sizes [8, 1024]
+            strides [1, 1]
+            upper bounds [rt_0 + 8, tid_2 * 1024 + 1024]
+    1) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [0, 0]
+            sizes [1, 1]
+            strides [1, 1]
+            upper bounds [1, 1]
+  )"));
+}
+
+TEST_F(TilePropagationTest,
+       CanPropagateSizeOneOutputTileThroughDilatedReduceWindow) {
+  HloInstruction* root = ParseAndGetRoot(R"hlo(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      operand = f32[16] parameter(0)
+      init = f32[] constant(0)
+      ROOT rw = f32[12] reduce-window(operand, init),
+        window={size=3 rhs_dilate=2}, to_apply=add
+    }
+  )hlo");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({1}));
+  ASSERT_OK_AND_ASSIGN(Tiles operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+  EXPECT_THAT(operands, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0]
+            sizes [4]
+            strides [2]
+            upper bounds [16]
+    1) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+}
+
+TEST_F(TilePropagationTest,
+       CanPropagateTileThroughReduceWindowWithNonConstantStride) {
+  HloInstruction* root = ParseAndGetRoot(R"hlo(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      operand = f32[15] parameter(0)
+      init = f32[] constant(0)
+      ROOT rw = f32[7] reduce-window(operand, init),
+        window={size=3 stride=2 pad=1_1 rhs_dilate=2}, to_apply=add
+    }
+  )hlo");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  Tile output_tile = tiling_space->tiled_roots()[0];
+  SmallVector<DimTile> dim_tiles(output_tile.dim_tiles());
+  dim_tiles[0].stride = CreateDimExpr(0, &mlir_context_) + 1;
+  ASSERT_OK_AND_ASSIGN(
+      Tiles operands,
+      PropagateTileToInput(*tiling_space, *root,
+                           output_tile.CloneWithNewDims(std::move(dim_tiles)),
+                           0));
+  EXPECT_THAT(operands, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0 * ts_0 * 2 - 1]
+            sizes [tid_0 * ts_0 * 2 - tid_0 * 2 + ts_0 * 2 + 3]
+            strides [1]
+            upper bounds [15]
+    1) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+}
+
+TEST_F(TilePropagationTest, ReduceWindowVariadicIsRejected) {
+  HloInstruction* root = ParseAndGetRoot(R"hlo(
+    HloModule m
+    add_pair {
+      a0 = f32[] parameter(0)
+      a1 = f32[] parameter(1)
+      b0 = f32[] parameter(2)
+      b1 = f32[] parameter(3)
+      sum0 = f32[] add(a0, b0)
+      sum1 = f32[] add(a1, b1)
+      ROOT t = (f32[], f32[]) tuple(sum0, sum1)
+    }
+    ENTRY e {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      c0 = f32[] constant(0)
+      ROOT rw = (f32[7], f32[7]) reduce-window(p0, p1, c0, c0),
+        window={size=2}, to_apply=add_pair
+    }
+  )hlo");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(PropagateTileToInput(*tiling_space, *root,
+                                   tiling_space->tiled_roots()[0], 0),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("Variadic reduce-window is not supported")));
+}
+
+TEST_F(TilePropagationTest, ReduceWindowBaseDilationIsRejected) {
+  HloInstruction* root = ParseAndGetRoot(R"hlo(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      operand = f32[8,8] parameter(0)
+      init = f32[] constant(0)
+      ROOT rw = f32[14,7] reduce-window(operand, init),
+        window={size=2x2 lhs_dilate=2x1}, to_apply=add
+    }
+  )hlo");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *root, tiling_space->tiled_roots()[0],
+                           0),
+      StatusIs(
+          absl::StatusCode::kUnimplemented,
+          HasSubstr("Reduce-window with base dilation != 1 is not supported")));
+}
+
+TEST_F(TilePropagationTest, ReduceWindowReversalIsRejected) {
+  HloInstruction* root = ParseAndGetRoot(R"hlo(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      operand = f32[8,8] parameter(0)
+      init = f32[] constant(0)
+      ROOT rw = f32[7,7] reduce-window(operand, init),
+        window={size=2x2 rhs_reversal=1x0}, to_apply=add
+    }
+  )hlo");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *root, tiling_space->tiled_roots()[0],
+                           0),
+      StatusIs(
+          absl::StatusCode::kUnimplemented,
+          HasSubstr("Reduce-window with window reversal is not supported")));
+}
+
 }  // namespace
 }  // namespace xla::gpu

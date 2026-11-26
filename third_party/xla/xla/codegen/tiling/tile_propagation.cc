@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -38,6 +40,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/reshape_analysis.h"
@@ -1134,6 +1137,128 @@ Tiles PropagateTileToInputForReduceOp(const TilingSpace& tiling_space,
   return Tiles{std::move(operand_tiles)};
 }
 
+// Propagates `output_tile` along `dim` of `reduce_window` (assuming
+// `base_dilation == 1` and no window reversal) to the corresponding input
+// `DimTile`.
+//
+// For output element `i` and window element `w`, the accessed input index is
+// `in_offset + i * (out_stride * window_stride) + w * window_dilation`.
+absl::StatusOr<DimTile> PropagateDimTileToInputForReduceWindow(
+    const TilingSpace& tiling_space,
+    const HloReduceWindowInstruction& reduce_window, const Tile& output_tile,
+    int64_t dim) {
+  MLIRContext* ctx = output_tile.mlir_context();
+  const WindowDimension& window_dim = reduce_window.window().dimensions(dim);
+  const DimTile& result_dim_tile = output_tile.dim_tiles()[dim];
+  DimTile simplified = result_dim_tile;
+  if (!tiling_space.IsSymbolic()) {
+    simplified.Simplify(tiling_space, output_tile.constraints());
+  }
+  const bool is_size_one = IsConstantValue(simplified.size, 1);
+  const int64_t operand_dim =
+      reduce_window.inputs()[0]->shape().dimensions(dim);
+  const int64_t valid_upper_bound = std::max<int64_t>(
+      0, operand_dim + std::min<int64_t>(0, window_dim.padding_high()));
+
+  const SymbolicExpr in_offset =
+      (result_dim_tile.offset * window_dim.stride() - window_dim.padding_low())
+          .Canonicalize();
+  const SymbolicExpr in_upper_bound =
+      CreateSymbolicConstant(valid_upper_bound, ctx);
+
+  if (window_dim.size() == 1) {
+    return DimTile{
+        /*offset=*/in_offset,
+        /*size=*/result_dim_tile.size,
+        /*stride=*/
+        is_size_one
+            ? CreateSymbolicConstant(1, ctx)
+            : (result_dim_tile.stride * window_dim.stride()).Canonicalize(),
+        /*upper_bound=*/in_upper_bound,
+    };
+  }
+
+  // A size-1 output tile has no output step, so treat its stride as 0;
+  // gcd(0, window_dilation) == window_dilation.
+  std::optional<int64_t> stride_const =
+      is_size_one ? std::optional<int64_t>(0)
+                  : TryGetConstantValue(simplified.stride);
+  if (stride_const.has_value()) {
+    const int64_t scaled_stride = *stride_const * window_dim.stride();
+    const int64_t in_stride =
+        std::gcd(std::abs(scaled_stride), window_dim.window_dilation());
+    const int64_t out_step = scaled_stride / in_stride;
+    const int64_t win_span =
+        (window_dim.size() - 1) * (window_dim.window_dilation() / in_stride);
+
+    SymbolicExpr in_size;
+    if (tiling_space.IsSymbolic()) {
+      in_size = ((result_dim_tile.size - 1) * out_step + (win_span + 1))
+                    .Canonicalize();
+    } else {
+      std::optional<int64_t> size_const = TryGetConstantValue(simplified.size);
+      if (!size_const.has_value() || *size_const < 1) {
+        return absl::InternalError(absl::StrCat(
+            "Expected positive constant tile size for dimension ", dim, " in ",
+            reduce_window.ToString(), ", got ", simplified.size.ToString()));
+      }
+      const int64_t span = (*size_const - 1) * out_step + win_span + 1;
+      in_size = CreateSymbolicConstant(llvm::PowerOf2Ceil(span), ctx);
+    }
+    return DimTile{
+        /*offset=*/in_offset,
+        /*size=*/in_size,
+        /*stride=*/CreateSymbolicConstant(in_stride, ctx),
+        /*upper_bound=*/in_upper_bound,
+    };
+  }
+  return DimTile{
+      /*offset=*/in_offset,
+      /*size=*/
+      ((result_dim_tile.size - 1) * result_dim_tile.stride *
+           window_dim.stride() +
+       ((window_dim.size() - 1) * window_dim.window_dilation() + 1))
+          .Canonicalize(),
+      /*stride=*/CreateSymbolicConstant(1, ctx),
+      /*upper_bound=*/in_upper_bound,
+  };
+}
+
+absl::StatusOr<Tiles> PropagateTileToInputForReduceWindowOp(
+    const TilingSpace& tiling_space,
+    const HloReduceWindowInstruction& reduce_window, const Tile& output_tile) {
+  if (reduce_window.input_count() != 1) {
+    return absl::UnimplementedError(
+        absl::StrCat("Variadic reduce-window is not supported in ",
+                     reduce_window.ToString()));
+  }
+
+  const int64_t output_rank = reduce_window.shape().dimensions().size();
+  SmallVector<DimTile> input_dim_tiles;
+  input_dim_tiles.reserve(output_rank);
+  for (int64_t dim = 0; dim < output_rank; ++dim) {
+    const WindowDimension& window_dim = reduce_window.window().dimensions(dim);
+    if (window_dim.base_dilation() != 1) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Reduce-window with base dilation != 1 is not supported in ",
+          reduce_window.ToString()));
+    }
+    if (window_dim.window_reversal()) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Reduce-window with window reversal is not supported in ",
+          reduce_window.ToString()));
+    }
+    ABSL_ASSIGN_OR_RETURN(DimTile input_dim_tile,
+                     PropagateDimTileToInputForReduceWindow(
+                         tiling_space, reduce_window, output_tile, dim));
+    input_dim_tiles.push_back(std::move(input_dim_tile));
+  }
+
+  Tile operand_tile = output_tile.CloneWithNewDims(std::move(input_dim_tiles));
+  Tile init_value_tile{output_tile.tiling_space(), {}, {}, {}, {}};
+  return Tiles{std::move(operand_tile), std::move(init_value_tile)};
+}
+
 Tiles PropagateTileToOutputForReduceOp(const HloReduceInstruction& reduce,
                                        const Tile& input_tile) {
   absl::flat_hash_set<int64_t> reduce_dims(reduce.dimensions().begin(),
@@ -2032,6 +2157,12 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   if (hlo.opcode() == HloOpcode::kReduce) {
     const HloReduceInstruction& reduce = *Cast<HloReduceInstruction>(&hlo);
     return PropagateTileToInputForReduceOp(tiling_space, reduce, output_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kReduceWindow) {
+    const HloReduceWindowInstruction& reduce_window =
+        *Cast<HloReduceWindowInstruction>(&hlo);
+    return PropagateTileToInputForReduceWindowOp(tiling_space, reduce_window,
+                                                 output_tile);
   }
   if (hlo.opcode() == HloOpcode::kTranspose) {
     return PropagateTileToInputForTransposeOp(hlo, output_tile);

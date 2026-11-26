@@ -432,5 +432,37 @@ ENTRY entry {
   EXPECT_THAT(tile_sizes, ElementsAre(1, 128));
 }
 
+TEST_F(GetTileTilingSpaceConcreteSizesTest,
+       ReduceWindowUsesParallelOutputTileSizesOnly) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+f {
+  p0 = f32[8,16,32] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT rw = f32[8,8,16] reduce-window(p0, c0),
+    window={size=1x3x2 stride=1x2x2 pad=0_0x1_0x0_0}, to_apply=add
+}
+
+ENTRY entry {
+  param_0 = f32[8,16,32] parameter(0)
+  ROOT fusion = f32[8,8,16] fusion(param_0),
+    kind=kCustom, calls=f,
+    backend_config={fusion_backend_config:{block_level_fusion_config:{
+      output_tiles:[{sizes:[1, 4, 16]}]
+    }}}
+}
+)hlo"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(llvm::SmallVector<int64_t> tile_sizes,
+                       ComputeConcreteTileSizesOfFusion(root));
+  EXPECT_THAT(tile_sizes, ElementsAre(1, 4, 16));
+}
+
 }  // namespace
 }  // namespace xla::xtile

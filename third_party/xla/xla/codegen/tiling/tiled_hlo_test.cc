@@ -1664,5 +1664,40 @@ TEST_F(SameShapeMultiOutputFusionTileAnalysisTest,
   EXPECT_EQ(reduces[0]->operands().size(), 4);
 }
 
+TEST_P(TileAnalysisTest, ReduceWindowKeepsProducersInRootRegion) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    f {
+      p0 = f32[15,11] parameter(0)
+      exp0 = f32[15,11] exponential(p0)
+      c0 = f32[] constant(1.5)
+      ROOT rw = f32[7,11] reduce-window(exp0, c0),
+        window={size=3x2 stride=2x1 pad=1_1x0_1 rhs_dilate=2x1}, to_apply=add
+    }
+
+    ENTRY e {
+      arg0 = f32[15,11] parameter(0)
+      ROOT fusion = f32[7,11] fusion(arg0), kind=kCustom, calls=f
+    })hlo",
+                                    {4, 8}));
+
+  EXPECT_TRUE(tiled_computation.roots()[0]->hlo_regions().empty());
+  EXPECT_THAT(RunFileCheck(tiled_computation.ToString(), R"(
+    CHECK: Tiled HLO:
+    CHECK:   arg0.tile_0 = parameter(0)  offsets [tid_0 * 8 - 1, tid_1 * 8] sizes [8, 16] strides [2, 1] upper bounds [15, 11]
+    CHECK:   exp0.tile_0 = exponential(arg0.tile_0)  offsets [tid_0 * 8 - 1, tid_1 * 8] sizes [8, 16] strides [2, 1] upper bounds [15, 11]
+    CHECK:   c0.tile_0 = constant()  offsets [] sizes [] strides [] upper bounds []
+    CHECK:   rw.tile_0 = reduce-window(exp0.tile_0, c0.tile_0)  offsets [tid_0 * 4, tid_1 * 8] sizes [4, 8] strides [1, 1] upper bounds [7, 11]
+    CHECK-NOT: region #0
+  )"),
+              IsOkAndHolds(true));
+}
+
 }  // namespace
 }  // namespace xla::gpu
