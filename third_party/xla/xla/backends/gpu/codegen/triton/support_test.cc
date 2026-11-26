@@ -1156,15 +1156,29 @@ TEST_F(ScanSupportTest, ScanMustReturnTuple) {
   })");
 }
 
-TEST_F(ScanSupportTest, ReverseScanNotSupported) {
-  ExpectScanNotSupported("Reverse scan is not supported in Triton.", R"(
-  ENTRY main {
+TEST_F(ScanSupportTest, ReverseScanSupported) {
+  constexpr absl::string_view kHloText = R"(
+  add {
+    Arg_0 = f32[] parameter(0)
+    Arg_1 = f32[] parameter(1)
+    add = f32[] add(Arg_0, Arg_1)
+    ROOT t = (f32[], f32[]) tuple(add, add)
+  }
+
+  ENTRY triton_computation {
     param = f32[10] parameter(0)
     init = f32[] constant(0)
     scan = (f32[10], f32[]) scan(param, init), dimensions={0}, to_apply=add,
       num_carries=1, is_associative=true, is_reverse=true
     ROOT gte = f32[10] get-tuple-element(scan), index=0
-  })");
+  })";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(
+                           kHloText, PRIMITIVE_TYPE_INVALID, HloOpcode::kScan));
+  EXPECT_TRUE(IsTritonSupportedInstruction(
+      ti.Instruction(), se::CudaComputeCapability::Hopper()));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{},
+                 se::CudaComputeCapability::Hopper());
 }
 
 TEST_F(ScanSupportTest, MultiInputScanNotSupported) {

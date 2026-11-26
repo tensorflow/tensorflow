@@ -229,7 +229,7 @@ ENTRY main {
   EXPECT_FALSE(changed);
 }
 
-TEST_F(ScanRewriterTritonTest, ReverseScanNotRewritten) {
+TEST_F(ScanRewriterTritonTest, ReverseScanRewritten) {
   constexpr absl::string_view kHloText = R"(
 HloModule reverse_scan
 
@@ -253,7 +253,7 @@ ENTRY main {
   ScanRewriterTriton rewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
                               &mlir_context_);
   ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-  EXPECT_FALSE(changed);
+  EXPECT_TRUE(changed);
 }
 
 TEST_F(ScanRewriterTritonTest, SmallBatchLargeScanDimNotRewritten) {

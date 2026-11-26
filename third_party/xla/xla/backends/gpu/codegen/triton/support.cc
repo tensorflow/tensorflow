@@ -385,9 +385,6 @@ CodegenDecision CanTritonHandleScan(
   if (!scan.shape().IsTuple()) {
     return CodegenDecision::Forbid("Scan must return a tuple.");
   }
-  if (scan.is_reverse()) {
-    return CodegenDecision::Forbid("Reverse scan is not supported in Triton.");
-  }
   if (scan.inputs().size() != 1 || scan.num_carries() != 1) {
     return CodegenDecision::Forbid(
         "Only single-input, single-carry scans are supported in Triton.");

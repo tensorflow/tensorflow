@@ -2798,6 +2798,48 @@ ENTRY entry_computation {
   RunAndCompareScan(kHloText);
 }
 
+// The scan dimension size 30001 is not a multiple of the tile size, so the last
+// tile is partial. The reverse scan visits it first.
+TEST_F(ScanTritonEmitterTest, ReverseScanOverLastDimensionWithPartialTile) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  add = f32[8] add(p0, p1)
+  ROOT tuple = (f32[8], f32[8]) tuple(add, add)
+}
+
+ENTRY entry_computation {
+  p0 = f32[8,30001] parameter(0)
+  p1 = f32[8] parameter(1)
+  scan = (f32[8,30001], f32[8]) scan(p0, p1), dimensions={1}, is_reverse=true,
+    num_carries=1, is_associative=true, to_apply=add_computation
+  ROOT get-tuple-element = f32[8,30001] get-tuple-element(scan), index=0
+})";
+  RunAndCompareTritonScanWithHloPasses(kHloText);
+}
+
+// A scan dimension of at most `kMaxRowLocalScanDimSize` elements is covered by
+// a single tile, padded to 128 elements here.
+TEST_F(ScanTritonEmitterTest, ReverseScanOverLastDimensionWithSingleTile) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  add = f32[8] add(p0, p1)
+  ROOT tuple = (f32[8], f32[8]) tuple(add, add)
+}
+
+ENTRY entry_computation {
+  p0 = f32[8,100] parameter(0)
+  p1 = f32[8] parameter(1)
+  scan = (f32[8,100], f32[8]) scan(p0, p1), dimensions={1}, is_reverse=true,
+    num_carries=1, is_associative=true, to_apply=add_computation
+  ROOT get-tuple-element = f32[8,100] get-tuple-element(scan), index=0
+})";
+  RunAndCompareTritonScanWithHloPasses(kHloText);
+}
+
 TEST_F(ScanTritonEmitterTest, TopPMaskEndToEnd8x128) {
   constexpr absl::string_view kHloText = R"(
 HloModule top_p_mask_8x128
