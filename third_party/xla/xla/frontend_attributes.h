@@ -56,6 +56,10 @@ inline constexpr absl::string_view kXlaLatencyMetadata = "latency_metadata";
 
 std::optional<int64_t> GetLatencyMetadataNs(const HloInstruction& instruction);
 
+// Frontend attribute name for collective cost metadata.
+inline constexpr absl::string_view kXlaCollectiveCostMetadata =
+    "collective_cost_metadata";
+
 // Attribute which indicates that copy insertion should avoid inserting copies
 // for while loops. Can be set as a frontend attribute on kWhile instructions
 // or via xla_backend_extra_options in DebugOptions.
