@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -30,6 +32,11 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 CollectiveDeviceListProto CreateDeviceListProto(
     const std::vector<std::vector<int64_t>>& replica_groups) {
@@ -416,6 +423,58 @@ TEST(MeshAxesReplicaGroupListTest, ValidatesIncompatibleAxes) {
       "Sub-axis size must be strictly less than the full axis size");
 }
 
+TEST(MeshAxesReplicaGroupListTest, TryCreateRejectsIncompatibleAxes) {
+  Mesh mesh({10}, {"u"});
+  EXPECT_THAT(MeshAxesReplicaGroupList::TryCreate(mesh, {AxisRef(1)}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Axis index must be less than number of "
+                                 "axes")));
+  EXPECT_THAT(MeshAxesReplicaGroupList::TryCreate(mesh, {AxisRef(0)}), IsOk());
+}
+
+TEST(MeshAxesReplicaGroupListTest, FromProtoRoundTrip) {
+  MeshAxesReplicaGroupList list(Mesh({2, 4}, {"a", "b"}), {AxisRef(1, {1, 2})});
+  EXPECT_THAT(MeshAxesReplicaGroupList::FromProto(list.ToProto()),
+              IsOkAndHolds(list));
+}
+
+TEST(MeshAxesReplicaGroupListTest, FromProtoRejectsInvalidProtos) {
+  const MeshAxesReplicaGroupListProto base =
+      MeshAxesReplicaGroupList(Mesh({2, 4}, {"a", "b"}), {AxisRef(0)})
+          .ToProto();
+  {
+    MeshAxesReplicaGroupListProto proto = base;
+    proto.mutable_axes(0)->set_mesh_axis_index(2);
+    EXPECT_THAT(MeshAxesReplicaGroupList::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Axis index must be less than number of "
+                                   "axes")));
+  }
+  {
+    MeshAxesReplicaGroupListProto proto = base;
+    proto.add_axes()->set_mesh_axis_index(0);
+    EXPECT_THAT(MeshAxesReplicaGroupList::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Axes cannot coexist or axes overlap")));
+  }
+  {
+    MeshAxesReplicaGroupListProto proto = base;
+    proto.mutable_axes(0)->mutable_sub_axis_info()->set_pre_size(int64_t{1}
+                                                                 << 62);
+    proto.mutable_axes(0)->mutable_sub_axis_info()->set_size(4);
+    EXPECT_THAT(MeshAxesReplicaGroupList::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("sub-axis pre_size * size overflows")));
+  }
+  {
+    MeshAxesReplicaGroupListProto proto = base;
+    proto.mutable_mesh()->add_device_ids(0);
+    EXPECT_THAT(MeshAxesReplicaGroupList::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("Number of device ids must match")));
+  }
+}
+
 TEST(MeshAxesReplicaGroupListTest, ToReplicaGroupV2) {
   Mesh mesh_ab({6, 6}, {"a", "b"});
 
@@ -584,7 +643,8 @@ TEST(CollectiveDeviceListTest, DefaultListFromProto) {
   HloInstructionProto initial_proto;
   *(initial_proto.mutable_collective_device_list()) =
       CreateDeviceListProto({{1, 2}, {3, 4}});
-  CollectiveDeviceList list = CollectiveDeviceList::FromProto(initial_proto);
+  ASSERT_OK_AND_ASSIGN(CollectiveDeviceList list,
+                       CollectiveDeviceList::FromProto(initial_proto));
   EXPECT_EQ(list.replica_groups().size(), 2);
   EXPECT_THAT(list.replica_groups()[0].replica_ids(),
               testing::ElementsAre(1, 2));
@@ -596,7 +656,8 @@ TEST(CollectiveDeviceListTest, DefaultListFromProto2) {
   HloInstructionProto initial_proto;
   *(initial_proto.mutable_collective_device_list()) =
       CreateDeviceListProto({{1, 2, 3, 4, 5, 6, 7}});
-  CollectiveDeviceList list = CollectiveDeviceList::FromProto(initial_proto);
+  ASSERT_OK_AND_ASSIGN(CollectiveDeviceList list,
+                       CollectiveDeviceList::FromProto(initial_proto));
   EXPECT_EQ(list.replica_groups().size(), 1);
   EXPECT_THAT(list.replica_groups()[0].replica_ids(),
               testing::ElementsAre(1, 2, 3, 4, 5, 6, 7));
@@ -612,12 +673,109 @@ TEST(CollectiveDeviceListTest, FromProtoWithIota) {
   iota_proto->add_iota_transpose_perm(0);
 
   // flattened: [0, 1], [2, 3]
-  CollectiveDeviceList list = CollectiveDeviceList::FromProto(initial_proto);
+  ASSERT_OK_AND_ASSIGN(CollectiveDeviceList list,
+                       CollectiveDeviceList::FromProto(initial_proto));
   EXPECT_EQ(list.replica_groups().size(), 2);
   EXPECT_THAT(list.replica_groups()[0].replica_ids(),
               testing::ElementsAre(0, 1));
   EXPECT_THAT(list.replica_groups()[1].replica_ids(),
               testing::ElementsAre(2, 3));
+}
+
+TEST(CollectiveDeviceListTest, FromProtoRejectsInvalidIota) {
+  HloInstructionProto proto;
+  IotaReplicaGroupListProto* iota_proto =
+      proto.mutable_iota_collective_device_list();
+  iota_proto->set_num_replica_groups(2);
+  iota_proto->set_num_devices_per_group(2);
+  iota_proto->add_iota_reshape_dims(3);
+  iota_proto->add_iota_transpose_perm(0);
+  EXPECT_THAT(CollectiveDeviceList::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(CollectiveDeviceListBase::DeviceListFromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(CollectiveDeviceListTest, FromProtoWithMeshAxes) {
+  MeshAxesReplicaGroupList expected(Mesh({2, 2}, {"x", "y"}), {AxisRef(0)});
+  HloInstructionProto proto;
+  *proto.mutable_mesh_axes_replica_group_list() = expected.ToProto();
+
+  ASSERT_OK_AND_ASSIGN(CollectiveDeviceList list,
+                       CollectiveDeviceList::FromProto(proto));
+  EXPECT_THAT(list.flattened_replica_groups(),
+              testing::ElementsAre(testing::ElementsAre(0, 2),
+                                   testing::ElementsAre(1, 3)));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       CollectiveDeviceListBase::DeviceListFromProto(proto));
+  EXPECT_EQ(*device_list, expected);
+}
+
+TEST(CollectiveDeviceListTest, FromProtoRejectsInvalidMeshAxes) {
+  HloInstructionProto proto;
+  MeshAxesReplicaGroupListProto* mesh_axes_proto =
+      proto.mutable_mesh_axes_replica_group_list();
+  *mesh_axes_proto->mutable_mesh() = Mesh({2}, {"a"}).ToProto();
+  mesh_axes_proto->add_axes()->set_mesh_axis_index(1);
+  EXPECT_THAT(CollectiveDeviceList::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(CollectiveDeviceListBase::DeviceListFromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(IotaReplicaGroupListTest, FromProtoRoundTrip) {
+  for (const IotaReplicaGroupList& list :
+       {IotaReplicaGroupList(0, 0), IotaReplicaGroupList(0, 4),
+        IotaReplicaGroupList(2, 10),
+        IotaReplicaGroupList(2, 10, {4, 5}, {1, 0})}) {
+    EXPECT_THAT(IotaReplicaGroupList::FromProto(list.ToProto()),
+                IsOkAndHolds(list))
+        << list.ToString();
+  }
+}
+
+TEST(IotaReplicaGroupListTest, FromProtoRejectsInvalidProtos) {
+  auto make_proto =
+      [](int64_t num_replica_groups, int64_t num_devices_per_group,
+         std::vector<int64_t> reshape_dims, std::vector<int> transpose_perm) {
+        IotaReplicaGroupListProto proto;
+        proto.set_num_replica_groups(num_replica_groups);
+        proto.set_num_devices_per_group(num_devices_per_group);
+        for (int64_t dim : reshape_dims) {
+          proto.add_iota_reshape_dims(dim);
+        }
+        for (int perm : transpose_perm) {
+          proto.add_iota_transpose_perm(perm);
+        }
+        return proto;
+      };
+  // Product of reshape_dims does not match.
+  EXPECT_THAT(IotaReplicaGroupList::FromProto(make_proto(2, 2, {3}, {0})),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  // Invalid permutation.
+  EXPECT_THAT(IotaReplicaGroupList::FromProto(make_proto(2, 2, {2, 2}, {0, 0})),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(IotaReplicaGroupList::FromProto(make_proto(2, 2, {2, 2}, {0, 2})),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  // Negative sizes.
+  EXPECT_THAT(IotaReplicaGroupList::FromProto(make_proto(-2, -2, {4}, {0})),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      IotaReplicaGroupList::FromProto(make_proto(-1, 0, {0, 2}, {0, 1})),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("nonnegative")));
+  // Product overflows int64_t.
+  EXPECT_THAT(IotaReplicaGroupList::FromProto(
+                  make_proto(int64_t{1} << 32, int64_t{1} << 32, {1}, {0})),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  // Non-empty groups list with empty groups.
+  EXPECT_THAT(IotaReplicaGroupList::FromProto(make_proto(2, 0, {0}, {0})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must have a positive number of devices")));
+  // Empty list with reshape_dims other than [0].
+  EXPECT_THAT(IotaReplicaGroupList::FromProto(make_proto(0, 2, {0, 2}, {0, 1})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must have reshape_dims [0]")));
 }
 
 TEST(IotaReplicaGroupListTest, ToString) {

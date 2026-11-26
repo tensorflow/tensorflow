@@ -797,8 +797,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.dimensions().size() == 1)
           << "AllGather cannot have more than 1 all-gather dimensions";
       int64_t all_gather_dimension = proto.dimensions(0);
-      std::unique_ptr<CollectiveDeviceListBase> device_list =
-          CollectiveDeviceListBase::DeviceListFromProto(proto);
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       CollectiveDeviceListBase::DeviceListFromProto(proto));
 
       if (opcode == HloOpcode::kAllGather) {
         instruction =
@@ -829,8 +829,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
-      std::unique_ptr<CollectiveDeviceListBase> device_list =
-          CollectiveDeviceListBase::DeviceListFromProto(proto);
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       CollectiveDeviceListBase::DeviceListFromProto(proto));
       if (opcode == HloOpcode::kAllReduce) {
         instruction =
             CreateAllReduce(shape, all_operands(), computations(0),
@@ -867,8 +867,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                "is specified";
         split_dimension = proto.dimensions(0);
       }
-      std::unique_ptr<CollectiveDeviceListBase> device_list =
-          CollectiveDeviceListBase::DeviceListFromProto(proto);
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       CollectiveDeviceListBase::DeviceListFromProto(proto));
       instruction =
           CreateAllToAll(shape, all_operands(), std::move(device_list),
                          proto.constrain_layout(), channel_id, split_dimension);
@@ -877,15 +877,15 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kRaggedAllToAll: {
       TF_RET_CHECK(all_operands().size() == 6)
           << "RaggedAllToAll must have 6 operands";
-      std::unique_ptr<CollectiveDeviceListBase> device_list =
-          CollectiveDeviceListBase::DeviceListFromProto(proto);
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       CollectiveDeviceListBase::DeviceListFromProto(proto));
       instruction = CreateRaggedAllToAll(shape, all_operands(),
                                          std::move(device_list), channel_id);
       break;
     }
     case HloOpcode::kCollectiveBroadcast: {
-      std::unique_ptr<CollectiveDeviceListBase> device_list =
-          CollectiveDeviceListBase::DeviceListFromProto(proto);
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       CollectiveDeviceListBase::DeviceListFromProto(proto));
       bool has_dynamic_root = proto.has_dynamic_root();
       instruction = CreateCollectiveBroadcast(shape, all_operands(),
                                               std::move(device_list), false,

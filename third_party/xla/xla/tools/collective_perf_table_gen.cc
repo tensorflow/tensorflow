@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -418,7 +419,11 @@ IotaReplicaGroupList GetIotaReplicaGroupList(
   IotaReplicaGroupListProto proto;
   if (tsl::protobuf::TextFormat::ParseFromString(
           collective_device_list_unparsed, &proto)) {
-    return IotaReplicaGroupList::FromProto(proto);
+    absl::StatusOr<IotaReplicaGroupList> iota =
+        IotaReplicaGroupList::FromProto(proto);
+    CHECK_OK(iota) << "Failed to parse collective device list: "
+                   << collective_device_list_unparsed;
+    return *std::move(iota);
   }
   LOG(FATAL) << "Failed to parse collective device list: "
              << collective_device_list_unparsed;

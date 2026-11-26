@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -168,6 +169,18 @@ absl::StatusOr<InterpolationSpecification> Spec(
       CollectiveOpSpecInfo{list_of_devices, comm}};
 }
 
+std::optional<CollectiveDeviceList> ParseCollectiveDeviceList(
+    const HloInstructionProfile& profile) {
+  absl::StatusOr<IotaReplicaGroupList> iota = IotaReplicaGroupList::FromProto(
+      profile.instruction().iota_collective_device_list());
+  if (!iota.ok()) {
+    VLOG(1) << "Cannot parse iota collective device list: " << iota.status()
+            << " " << profile.DebugString();
+    return std::nullopt;
+  }
+  return CollectiveDeviceList(iota->flattened_replica_groups());
+}
+
 std::unique_ptr<HloModule> AllReduceModule(
     const HloInstructionProfile& profile) {
   HloModuleConfig config;
@@ -191,10 +204,11 @@ std::unique_ptr<HloModule> AllReduceModule(
   wrapped_computation.AddInstruction(
       HloInstruction::CreateBinary(s, HloOpcode::kAdd, a, b));
 
-  CollectiveDeviceList collective_device_list(
-      IotaReplicaGroupList::FromProto(
-          profile.instruction().iota_collective_device_list())
-          .flattened_replica_groups());
+  std::optional<CollectiveDeviceList> collective_device_list =
+      ParseCollectiveDeviceList(profile);
+  if (!collective_device_list.has_value()) {
+    return nullptr;
+  }
 
   HloComputation* subcomp =
       module->AddEmbeddedComputation(wrapped_computation.Build());
@@ -202,7 +216,8 @@ std::unique_ptr<HloModule> AllReduceModule(
       HloInstruction::CreateParameter(0, *shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateAllReduce(
       *shape, {p0}, subcomp,
-      std::make_shared<CollectiveDeviceList>(collective_device_list),
+      std::make_shared<CollectiveDeviceList>(
+          *std::move(collective_device_list)),
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids()));
@@ -233,10 +248,11 @@ std::unique_ptr<HloModule> ReduceScatterModule(
   wrapped_computation.AddInstruction(
       HloInstruction::CreateBinary(s, HloOpcode::kAdd, a, b));
 
-  CollectiveDeviceList collective_device_list(
-      IotaReplicaGroupList::FromProto(
-          profile.instruction().iota_collective_device_list())
-          .flattened_replica_groups());
+  std::optional<CollectiveDeviceList> collective_device_list =
+      ParseCollectiveDeviceList(profile);
+  if (!collective_device_list.has_value()) {
+    return nullptr;
+  }
 
   HloComputation* subcomp =
       module->AddEmbeddedComputation(wrapped_computation.Build());
@@ -247,7 +263,7 @@ std::unique_ptr<HloModule> ReduceScatterModule(
   std::vector<int64_t> new_dims(shape->dimensions().begin(),
                                 shape->dimensions().end());
   auto num_participating_devices =
-      GetNumParticipatingDevices(collective_device_list);
+      GetNumParticipatingDevices(*collective_device_list);
   if (!num_participating_devices.ok()) {
     VLOG(1) << "Cannot get num participating devices: "
             << profile.DebugString();
@@ -259,7 +275,8 @@ std::unique_ptr<HloModule> ReduceScatterModule(
       HloInstruction::CreateParameter(0, p_shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateReduceScatter(
       *shape, {p0}, subcomp,
-      std::make_shared<CollectiveDeviceList>(collective_device_list),
+      std::make_shared<CollectiveDeviceList>(
+          *std::move(collective_device_list)),
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids(),
@@ -280,17 +297,18 @@ std::unique_ptr<HloModule> AllGatherModule(
 
   HloComputation::Builder entry_builder("entry");
 
-  CollectiveDeviceList collective_device_list(
-      IotaReplicaGroupList::FromProto(
-          profile.instruction().iota_collective_device_list())
-          .flattened_replica_groups());
+  std::optional<CollectiveDeviceList> collective_device_list =
+      ParseCollectiveDeviceList(profile);
+  if (!collective_device_list.has_value()) {
+    return nullptr;
+  }
 
   if (shape->dimensions().size() != 1) {
     VLOG(1) << "Unsupported number of dimensions: " << profile.DebugString();
     return nullptr;
   }
   auto num_participating_devices =
-      GetNumParticipatingDevices(collective_device_list);
+      GetNumParticipatingDevices(*collective_device_list);
   if (!num_participating_devices.ok()) {
     VLOG(1) << "Cannot get num participating devices: "
             << profile.DebugString();
@@ -304,7 +322,8 @@ std::unique_ptr<HloModule> AllGatherModule(
       HloInstruction::CreateParameter(0, p_shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateAllGather(
       *shape, {p0}, /*all_gather_dimension=*/0,
-      std::make_shared<CollectiveDeviceList>(collective_device_list),
+      std::make_shared<CollectiveDeviceList>(
+          *std::move(collective_device_list)),
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids()));
@@ -323,16 +342,18 @@ std::unique_ptr<HloModule> AllToAllModule(
   }
 
   HloComputation::Builder entry_builder("entry");
-  CollectiveDeviceList collective_device_list(
-      IotaReplicaGroupList::FromProto(
-          profile.instruction().iota_collective_device_list())
-          .flattened_replica_groups());
+  std::optional<CollectiveDeviceList> collective_device_list =
+      ParseCollectiveDeviceList(profile);
+  if (!collective_device_list.has_value()) {
+    return nullptr;
+  }
 
   HloInstruction* p0 = entry_builder.AddInstruction(
       HloInstruction::CreateParameter(0, *shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateAllToAll(
       *shape, {p0},
-      std::make_shared<CollectiveDeviceList>(collective_device_list),
+      std::make_shared<CollectiveDeviceList>(
+          *std::move(collective_device_list)),
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids()));

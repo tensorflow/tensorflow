@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -131,20 +133,24 @@ CollectiveDeviceListBase::MaybeConvertToIotaReplicaGroupList() const {
   }
 }
 
-std::unique_ptr<CollectiveDeviceListBase>
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
 CollectiveDeviceListBase::DeviceListFromProto(
     const HloInstructionProto& proto) {
   if (proto.has_iota_collective_device_list()) {
-    return std::make_unique<IotaReplicaGroupList>(
+    ABSL_ASSIGN_OR_RETURN(
+        IotaReplicaGroupList iota,
         IotaReplicaGroupList::FromProto(proto.iota_collective_device_list()));
+    return std::make_unique<IotaReplicaGroupList>(std::move(iota));
   }
   if (proto.has_mesh_axes_replica_group_list()) {
-    return std::make_unique<MeshAxesReplicaGroupList>(
-        MeshAxesReplicaGroupList::FromProto(
-            proto.mesh_axes_replica_group_list()));
+    ABSL_ASSIGN_OR_RETURN(MeshAxesReplicaGroupList mesh_axes,
+                     MeshAxesReplicaGroupList::FromProto(
+                         proto.mesh_axes_replica_group_list()));
+    return std::make_unique<MeshAxesReplicaGroupList>(std::move(mesh_axes));
   }
-  return std::make_unique<CollectiveDeviceList>(
-      CollectiveDeviceList::FromProto(proto));
+  ABSL_ASSIGN_OR_RETURN(CollectiveDeviceList device_list,
+                   CollectiveDeviceList::FromProto(proto));
+  return std::make_unique<CollectiveDeviceList>(std::move(device_list));
 }
 
 std::string ReplicaGroupsToString(
@@ -241,6 +247,15 @@ MeshAxesReplicaGroupList::MeshAxesReplicaGroupList(Mesh mesh,
   // MeshAxesReplicaGroupList can have groups of size 1 (NO-OP reduce).
 
   CHECK_OK(ValidateSpanOfAxes(axes_, mesh_));
+}
+
+absl::StatusOr<MeshAxesReplicaGroupList> MeshAxesReplicaGroupList::TryCreate(
+    Mesh mesh, std::vector<AxisRef> axes) {
+  ABSL_RETURN_IF_ERROR(ValidateSpanOfAxes(axes, mesh));
+  MeshAxesReplicaGroupList list;
+  list.mesh_ = std::move(mesh);
+  list.axes_ = std::move(axes);
+  return list;
 }
 
 int64_t MeshAxesReplicaGroupList::num_replica_groups() const {
@@ -462,19 +477,16 @@ MeshAxesReplicaGroupListProto MeshAxesReplicaGroupList::ToProto() const {
   return proto;
 }
 
-MeshAxesReplicaGroupList MeshAxesReplicaGroupList::FromProto(
+absl::StatusOr<MeshAxesReplicaGroupList> MeshAxesReplicaGroupList::FromProto(
     const MeshAxesReplicaGroupListProto& proto) {
-  // TODO(b/584413505): Propagate errors once
-  // MeshAxesReplicaGroupList::FromProto returns StatusOr.
-  absl::StatusOr<Mesh> mesh = Mesh::FromProto(proto.mesh());
-  CHECK_OK(mesh);
+  ABSL_ASSIGN_OR_RETURN(Mesh mesh, Mesh::FromProto(proto.mesh()));
   std::vector<AxisRef> axes;
+  axes.reserve(proto.axes_size());
   for (const AxisRefProto& axis_proto : proto.axes()) {
-    absl::StatusOr<AxisRef> axis = AxisRef::FromProto(axis_proto);
-    CHECK_OK(axis);
-    axes.push_back(*axis);
+    ABSL_ASSIGN_OR_RETURN(AxisRef axis, AxisRef::FromProto(axis_proto));
+    axes.push_back(axis);
   }
-  return MeshAxesReplicaGroupList(*std::move(mesh), axes);
+  return TryCreate(std::move(mesh), std::move(axes));
 }
 
 IotaReplicaGroupList MeshAxesReplicaGroupList::ToIotaReplicaGroupList() const {
@@ -505,6 +517,29 @@ MeshAxesReplicaGroupList::ToCollectiveDeviceList() const {
 }
 
 /************** IotaReplicaGroupList implementation ***************************/
+IotaReplicaGroupList::IotaReplicaGroupList(int64_t num_replica_groups,
+                                           int64_t num_devices_per_group)
+    : iota_tile_assignment_(IotaTileAssignment::Create(
+          {num_replica_groups, num_devices_per_group})),
+      num_replica_groups_(num_replica_groups),
+      num_devices_per_group_(num_devices_per_group) {
+  CHECK(!(num_replica_groups > 0 && num_devices_per_group == 0))
+      << "Iota replica group list with " << num_replica_groups
+      << " replica groups must have a positive number of devices per group.";
+}
+
+IotaReplicaGroupList::IotaReplicaGroupList(
+    int64_t num_replica_groups, int64_t num_devices_per_group,
+    absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm)
+    : IotaReplicaGroupList([&] {
+        absl::StatusOr<IotaReplicaGroupList> list =
+            TryCreate(num_replica_groups, num_devices_per_group, reshape_dims,
+                      transpose_perm);
+        CHECK_OK(list);
+        return *std::move(list);
+      }()) {}
+
 int64_t IotaReplicaGroupList::num_replica_groups() const {
   DCHECK_GE(num_replica_groups_, 0);
   return num_replica_groups_;
@@ -553,14 +588,33 @@ IotaReplicaGroupListProto IotaReplicaGroupList::ToProto() const {
   return proto;
 }
 
-IotaReplicaGroupList IotaReplicaGroupList::FromProto(
+absl::StatusOr<IotaReplicaGroupList> IotaReplicaGroupList::TryCreate(
+    int64_t num_replica_groups, int64_t num_devices_per_group,
+    absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm) {
+  ABSL_ASSIGN_OR_RETURN(
+      IotaTileAssignment iota_tile_assignment,
+      IotaTileAssignment::TryCreate({num_replica_groups, num_devices_per_group},
+                                    reshape_dims, transpose_perm));
+  // Reject empty groups: otherwise `flattened_replica_groups` reserves
+  // `num_replica_groups` entries for a 0-element array and returns 0 groups.
+  if (num_replica_groups > 0 && num_devices_per_group == 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Iota replica group list with ", num_replica_groups,
+        " replica groups must have a positive number of devices per group."));
+  }
+  if (num_replica_groups == 0 && reshape_dims.size() != 1) {
+    return absl::InvalidArgumentError(
+        "Iota replica group list without devices must have reshape_dims [0].");
+  }
+  return IotaReplicaGroupList(num_replica_groups, num_devices_per_group,
+                              iota_tile_assignment);
+}
+
+absl::StatusOr<IotaReplicaGroupList> IotaReplicaGroupList::FromProto(
     const IotaReplicaGroupListProto& proto) {
-  return IotaReplicaGroupList(
-      proto.num_replica_groups(), proto.num_devices_per_group(),
-      std::vector<int64_t>(proto.iota_reshape_dims().begin(),
-                           proto.iota_reshape_dims().end()),
-      std::vector<int>(proto.iota_transpose_perm().begin(),
-                       proto.iota_transpose_perm().end()));
+  return TryCreate(proto.num_replica_groups(), proto.num_devices_per_group(),
+                   proto.iota_reshape_dims(), proto.iota_transpose_perm());
 }
 
 std::vector<std::vector<int64_t>>
@@ -635,7 +689,7 @@ CollectiveDeviceList CollectiveDeviceList::FromProto(
   return CollectiveDeviceList();
 }
 
-CollectiveDeviceList CollectiveDeviceList::FromProto(
+absl::StatusOr<CollectiveDeviceList> CollectiveDeviceList::FromProto(
     const HloInstructionProto& proto) {
   // Create CollectiveDeviceList from legacy field (replica_groups) if it is
   // populated.
@@ -647,15 +701,17 @@ CollectiveDeviceList CollectiveDeviceList::FromProto(
   }
 
   if (proto.has_iota_collective_device_list()) {
-    return CollectiveDeviceList(
-        IotaReplicaGroupList::FromProto(proto.iota_collective_device_list())
-            .flattened_replica_groups());
+    ABSL_ASSIGN_OR_RETURN(
+        IotaReplicaGroupList iota,
+        IotaReplicaGroupList::FromProto(proto.iota_collective_device_list()));
+    return CollectiveDeviceList(iota.flattened_replica_groups());
   }
 
   if (proto.has_mesh_axes_replica_group_list()) {
-    return *MeshAxesReplicaGroupList::FromProto(
-                proto.mesh_axes_replica_group_list())
-                .ToCollectiveDeviceList();
+    ABSL_ASSIGN_OR_RETURN(MeshAxesReplicaGroupList mesh_axes,
+                     MeshAxesReplicaGroupList::FromProto(
+                         proto.mesh_axes_replica_group_list()));
+    return *mesh_axes.ToCollectiveDeviceList();
   }
 
   if (!proto.has_collective_device_list()) {

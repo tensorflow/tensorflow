@@ -1394,6 +1394,42 @@ ENTRY %main (p0: f32[], p1: f32[]) -> (f32[], f32[]) {
                   HasSubstr("has shape index {0,0} that is invalid")));
 }
 
+TEST_F(HloInstructionTest, CreateFromProtoRejectsInvalidDeviceList) {
+  std::unique_ptr<HloInstruction> operand = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {2}), "operand");
+  absl::flat_hash_map<int64_t, HloInstruction*> instruction_map = {
+      {0, operand.get()}};
+
+  HloInstructionProto proto;
+  proto.set_opcode("all-gather");
+  proto.set_name("ag");
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {4}).ToProto();
+  proto.add_operand_ids(0);
+  proto.add_dimensions(0);
+
+  IotaReplicaGroupListProto* iota_proto =
+      proto.mutable_iota_collective_device_list();
+  iota_proto->set_num_replica_groups(2);
+  iota_proto->set_num_devices_per_group(2);
+  iota_proto->add_iota_reshape_dims(3);
+  iota_proto->add_iota_transpose_perm(0);
+  EXPECT_THAT(HloInstruction::CreateFromProto(proto, instruction_map),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Product of iota reshape_dims")));
+
+  proto.clear_iota_collective_device_list();
+  MeshAxesReplicaGroupListProto* mesh_axes_proto =
+      proto.mutable_mesh_axes_replica_group_list();
+  auto* axis = mesh_axes_proto->mutable_mesh()->add_axes();
+  axis->set_name("a");
+  axis->set_size(2);
+  mesh_axes_proto->add_axes()->set_mesh_axis_index(1);
+  EXPECT_THAT(
+      HloInstruction::CreateFromProto(proto, instruction_map),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Axis index must be less than number of axes")));
+}
+
 // Deserializes an in-place collective-permute proto with `operand_count`
 // operands and the given flat `slice_sizes`, and returns the slice sizes of the
 // resulting instruction. The buffer operands have shape `buffer_shape` and the
