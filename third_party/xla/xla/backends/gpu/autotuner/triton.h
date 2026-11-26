@@ -76,6 +76,15 @@ class TritonBackend : public GpuCodegenBackend {
   absl::StatusOr<std::vector<TritonGemmConfig>> GetSupportedConfigsForScaledDot(
       const HloInstruction* instr);
 
+  // Returns the set of TritonGemmConfig candidates for a kRaggedDot
+  // instruction routed through the Triton XTile backend
+  // (kTritonFusionKind / "__triton").  The search space covers
+  // {16,32,64,128,256}³ block sizes, {2,4,8} num_warps, and {1,2} num_stages,
+  // pruned by the actual M/K/N dimension sizes and a hardware-dependent
+  // elements-per-thread register budget (64 on NVIDIA, 256 on ROCm/MI300X).
+  absl::StatusOr<std::vector<TritonGemmConfig>> GetSupportedConfigsForRaggedDot(
+      const HloInstruction* instr);
+
   absl::StatusOr<std::vector<TritonGemmConfig>> GetOverriddenConfigs(
       const HloInstruction* instr);
 

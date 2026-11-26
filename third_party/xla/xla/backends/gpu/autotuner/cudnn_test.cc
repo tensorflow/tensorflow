@@ -172,7 +172,7 @@ absl::string_view kRaggedDotTritonFusionHlo = R"hlo(
     p1 = bf16[2,9,8] parameter(1)
     p2 = s64[2] parameter(2)
     ROOT _ = bf16[64,8] fusion(p0, p1, p2), kind=kCustom, calls=fusion1,
-      backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
+      backend_config={"fusion_backend_config": {kind: "__triton"}}
   })hlo";
 
 absl::string_view kLoopDotFusionHlo = R"hlo(

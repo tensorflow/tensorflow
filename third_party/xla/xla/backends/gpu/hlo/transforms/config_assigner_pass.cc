@@ -186,6 +186,9 @@ AutotuneDecision ShouldAssignConfigToGemmFusion(
     }
     return AutotuneDecision::Allow();
   }
+  if (IsRaggedDotTritonFusion(instruction)) {
+    return AutotuneDecision::Allow();
+  }
   return AutotuneDecision::Forbid(
       "Fusion kind is not supported for GEMM autotuning");
 }
@@ -219,6 +222,13 @@ AutotuneDecision ShouldAssignConfigToGenericFusion(
   if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
     return AutotuneDecision::Forbid(
         "Custom fusions are not supported for generic fusion autotuning");
+  }
+  // Skip constant-only fusions (operand_count == 0): these are trivial
+  // computations (e.g. broadcast-of-constant group-sizes tensors created by
+  // priority_fusion) that no backend can tune and that need no profiling.
+  if (fusion->operand_count() == 0) {
+    return AutotuneDecision::Forbid(
+        "Constant fusion (no operands) needs no autotuning");
   }
   if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
                      HloPredicateIsOp<HloOpcode::kScatter>)) {
@@ -258,6 +268,16 @@ AutotuneDecision ShouldAssignConfigToInstruction(
     }
     const FusionBackendConfig& backend_config =
         gpu_config->fusion_backend_config();
+    // Ragged-dot XTile fusions are tuned by the Triton backend only;
+    // BlockLevelEmitterBackend rejects them. With Triton disabled no backend
+    // supports them, so leave them the default BlockLevelFusionConfig that
+    // GemmRewriter assigned rather than failing to find any config.
+    if (IsRaggedDotTritonFusion(instruction)) {
+      if (!enabled_backends.contains(autotuner::Backend::TRITON)) {
+        return AutotuneDecision::Forbid("Triton backend is disabled");
+      }
+      return ShouldAssignConfigToGemmFusion(instruction);
+    }
     if (backend_config.kind() == kTritonGemmFusionKind ||
         backend_config.kind() == kCuDnnFusionKind ||
         backend_config.kind() == kCustomFusionKind) {

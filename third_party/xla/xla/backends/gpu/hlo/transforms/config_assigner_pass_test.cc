@@ -989,6 +989,86 @@ ENTRY main {
       GetEnabledBackendTypes(debug_options, gpu_version))(fusion));
 }
 
+TEST_F(AutotunerFlagsTest, RaggedDotFusionIsOnlyAutotunedWithTritonEnabled) {
+  // Ragged-dot XTile fusions are claimed by the Triton backend only, so when
+  // it is disabled they must keep the default block-level config GemmRewriter
+  // gave them rather than be sent to an autotuner that no backend supports.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ragged_dot_computation {
+  p0 = bf16[128,32]{1,0} parameter(0)
+  p1 = bf16[4,32,16]{2,1,0} parameter(1)
+  p2 = s32[4]{0} parameter(2)
+  ROOT rd = bf16[128,16]{1,0} ragged-dot(p0, p1, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+
+ENTRY main {
+  p0 = bf16[128,32]{1,0} parameter(0)
+  p1 = bf16[4,32,16]{2,1,0} parameter(1)
+  p2 = s32[4]{0} parameter(2)
+  ROOT fusion = bf16[128,16]{1,0} fusion(p0, p1, p2), kind=kCustom,
+    calls=ragged_dot_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["32","16"]}],
+      "num_warps":"4","num_ctas":1,"num_stages":1}}}
+}
+)"));
+  const HloInstruction& fusion =
+      *module->entry_computation()->root_instruction();
+  const se::GpuComputeCapability gpu_version =
+      stream_executor_->GetDeviceDescription().gpu_compute_capability();
+  DebugOptions debug_options = GetDebugOptionsForTest();
+
+  EXPECT_TRUE(GetShouldAssignConfigToInstructionFn(
+      debug_options,
+      GetEnabledBackendTypes(debug_options, gpu_version))(fusion));
+
+  // Deterministic ops drop the Triton backend.
+  debug_options.set_xla_gpu_deterministic_ops(true);
+  EXPECT_FALSE(GetShouldAssignConfigToInstructionFn(
+      debug_options,
+      GetEnabledBackendTypes(debug_options, gpu_version))(fusion));
+
+  // So does leaving Triton out of the explicit backend list.
+  debug_options.set_xla_gpu_deterministic_ops(false);
+  debug_options.clear_xla_config_assigner_backends();
+  debug_options.add_xla_config_assigner_backends(
+      autotuner::Backend::BLOCK_LEVEL_EMITTER);
+  EXPECT_FALSE(GetShouldAssignConfigToInstructionFn(
+      debug_options,
+      GetEnabledBackendTypes(debug_options, gpu_version))(fusion));
+}
+
+TEST_F(AutotunerFlagsTest, ConstantFusionWithoutOperandsIsNotAutotuned) {
+  // priority_fusion creates broadcast-of-constant fusions, e.g. for group-size
+  // tensors, that no backend can tune and that need no profiling.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+constant_computation {
+  c = s32[] constant(4)
+  ROOT b = s32[8]{0} broadcast(c), dimensions={}
+}
+
+ENTRY main {
+  ROOT fusion = s32[8]{0} fusion(), kind=kLoop, calls=constant_computation
+}
+)"));
+  const HloInstruction& fusion =
+      *module->entry_computation()->root_instruction();
+  const se::GpuComputeCapability gpu_version =
+      stream_executor_->GetDeviceDescription().gpu_compute_capability();
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  EXPECT_FALSE(GetShouldAssignConfigToInstructionFn(
+      debug_options,
+      GetEnabledBackendTypes(debug_options, gpu_version))(fusion));
+}
+
 TEST_F(AutotunerFlagsTest, FailOnAutotuneCacheMissExpectsAllInCache) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   EXPECT_FALSE(

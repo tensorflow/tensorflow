@@ -25,17 +25,21 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/profiler.h"
+#include "xla/backends/gpu/autotuner/redzone_buffers.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
@@ -51,6 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -293,6 +298,74 @@ class GpuProfilerTest : public HloHardwareIndependentTestBase {
     return profile.scratch_bytes;
   }
 
+  // Returns a kRaggedNonContracting XTile fusion, as emitted by
+  // GemmRewriter::HandleRaggedDot, whose group_sizes operand has element type
+  // `gs_type`: 130 ragged rows split over 4 groups.
+  static std::string RaggedDotHlo(absl::string_view gs_type) {
+    return absl::Substitute(R"(
+      HloModule module
+
+      fusion1 {
+        p0 = bf16[130,32] parameter(0)
+        p1 = bf16[4,32,16] parameter(1)
+        p2 = $0[4] parameter(2)
+        ROOT rd = bf16[130,16] ragged-dot(p0, p1, p2),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1},
+          lhs_ragged_dims={0}, rhs_group_dims={0}
+      }
+
+      ENTRY main {
+        p0 = bf16[130,32] parameter(0)
+        p1 = bf16[4,32,16] parameter(1)
+        p2 = $0[4] parameter(2)
+        ROOT fusion = bf16[130,16] fusion(p0, p1, p2), kind=kCustom,
+          calls=fusion1,
+          backend_config={"fusion_backend_config": {kind: "__triton"}}
+      })",
+                            gs_type);
+  }
+
+  // Creates input buffers for the ragged-dot fusion in `hlo` and returns its
+  // group_sizes buffer read back from the device. Fails if initializing that
+  // buffer wrote outside of it.
+  absl::StatusOr<Literal> ReadInitializedGroupSizes(absl::string_view hlo) {
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo));
+    const HloInstruction* fusion =
+        module->entry_computation()->root_instruction();
+    MockExecutable mock_executable(module, /*duration_ns=*/1000);
+
+    // Redzones turn a write past the end of the group_sizes buffer into a
+    // detectable mismatch rather than silent corruption of whatever device
+    // memory follows it.
+    ProfileOptions options;
+    options.redzone_padding_bytes = 1024;
+    std::unique_ptr<GpuProfiler> profiler =
+        GpuProfiler::Create(stream_exec_, options, allocator_.get());
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
+                     profiler->CreateInputBuffers(&mock_executable, fusion));
+    const RedzoneBuffers& rz_buffers =
+        absl::down_cast<const GpuInputBuffers&>(*buffers).redzone_buffers;
+
+    ABSL_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check,
+                     rz_buffers.RedzoneAllocator().CheckRedzones());
+    if (!rz_check.ok()) {
+      return absl::InternalError(
+          absl::StrCat("group_sizes initialization wrote out of bounds: ",
+                       rz_check.RedzoneFailureMsg()));
+    }
+
+    ABSL_ASSIGN_OR_RETURN(Literal group_sizes,
+                     Literal::Make(fusion->operand(2)->shape()));
+    ABSL_ASSIGN_OR_RETURN(se::Stream * stream,
+                     allocator_->GetStream(stream_exec_->device_ordinal()));
+    ABSL_RETURN_IF_ERROR(stream->Memcpy(group_sizes.untyped_data(),
+                                   rz_buffers.input_buffers()[2],
+                                   group_sizes.size_bytes()));
+    ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    return group_sizes;
+  }
+
   se::StreamExecutor* stream_exec_;
   std::unique_ptr<se::DeviceAddressAllocator> allocator_;
 };
@@ -318,6 +391,84 @@ TEST_F(GpuProfilerTest, CreateInputBuffersAndProfile) {
             ShapeUtil::MakeShape(S32, {}));
   EXPECT_EQ(profile.scratch_bytes, 0);
   EXPECT_EQ(mock_executable.num_profiled_runs(), 1);
+}
+
+TEST_F(GpuProfilerTest, InitializesRaggedDotGroupSizesForEveryIndexType) {
+  // The emitter sign-extends group_sizes from any of S8, S16, S32 and S64, so
+  // the buffer must be filled with elements of exactly that width: filling a
+  // narrower buffer with wider elements runs past its end.
+  for (absl::string_view gs_type : {"s8", "s16", "s32", "s64"}) {
+    SCOPED_TRACE(gs_type);
+    ASSERT_OK_AND_ASSIGN(Literal group_sizes,
+                         ReadInitializedGroupSizes(RaggedDotHlo(gs_type)));
+    ASSERT_OK_AND_ASSIGN(Literal widened, group_sizes.Convert(S64));
+    // 130 rows over 4 groups: the first 130 % 4 == 2 groups get an extra row,
+    // so the group sizes sum to exactly 130.
+    EXPECT_EQ(widened, LiteralUtil::CreateR1<int64_t>({33, 33, 32, 32}));
+  }
+}
+
+TEST_F(GpuProfilerTest, RejectsRaggedDotGroupSizesOfUnexpectedType) {
+  EXPECT_THAT(ReadInitializedGroupSizes(RaggedDotHlo("u32")),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       ::testing::HasSubstr("Unexpected group_sizes type")));
+}
+
+TEST_F(GpuProfilerTest, InitializesRaggedDotGroupSizesPerBatchElement) {
+  // A batched kRaggedNonContracting dot takes one [G] row of group sizes per
+  // batch element, so the whole [B, G] buffer has to be filled.
+  constexpr absl::string_view kBatchedRaggedDotHlo = R"(
+    HloModule module
+
+    fusion1 {
+      p0 = bf16[2,130,32] parameter(0)
+      p1 = bf16[4,2,32,16] parameter(1)
+      p2 = s32[2,4] parameter(2)
+      ROOT rd = bf16[2,130,16] ragged-dot(p0, p1, p2),
+        lhs_batch_dims={0}, rhs_batch_dims={1},
+        lhs_contracting_dims={2}, rhs_contracting_dims={2},
+        lhs_ragged_dims={1}, rhs_group_dims={0}
+    }
+
+    ENTRY main {
+      p0 = bf16[2,130,32] parameter(0)
+      p1 = bf16[4,2,32,16] parameter(1)
+      p2 = s32[2,4] parameter(2)
+      ROOT fusion = bf16[2,130,16] fusion(p0, p1, p2), kind=kCustom,
+        calls=fusion1,
+        backend_config={"fusion_backend_config": {kind: "__triton"}}
+    })";
+  ASSERT_OK_AND_ASSIGN(Literal group_sizes,
+                       ReadInitializedGroupSizes(kBatchedRaggedDotHlo));
+  EXPECT_EQ(group_sizes, LiteralUtil::CreateR2<int32_t>(
+                             {{33, 33, 32, 32}, {33, 33, 32, 32}}));
+}
+
+TEST_F(GpuProfilerTest, LeavesRaggedDotGroupSizesAloneWhenThereAreNoGroups) {
+  // Nothing to balance across zero groups, and nothing to divide by.
+  constexpr absl::string_view kNoGroupsRaggedDotHlo = R"(
+    HloModule module
+
+    fusion1 {
+      p0 = bf16[128,32] parameter(0)
+      p1 = bf16[0,32,16] parameter(1)
+      p2 = s32[0] parameter(2)
+      ROOT rd = bf16[128,16] ragged-dot(p0, p1, p2),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1},
+        lhs_ragged_dims={0}, rhs_group_dims={0}
+    }
+
+    ENTRY main {
+      p0 = bf16[128,32] parameter(0)
+      p1 = bf16[0,32,16] parameter(1)
+      p2 = s32[0] parameter(2)
+      ROOT fusion = bf16[128,16] fusion(p0, p1, p2), kind=kCustom,
+        calls=fusion1,
+        backend_config={"fusion_backend_config": {kind: "__triton"}}
+    })";
+  ASSERT_OK_AND_ASSIGN(Literal group_sizes,
+                       ReadInitializedGroupSizes(kNoGroupsRaggedDotHlo));
+  EXPECT_EQ(group_sizes.element_count(), 0);
 }
 
 class GpuProfilerSingleRunEarlyStopTest
