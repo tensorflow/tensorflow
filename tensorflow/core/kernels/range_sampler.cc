@@ -269,6 +269,19 @@ absl::Status FixedUnigramSampler::SetDistributionSampler(
   return absl::OkStatus();
 }
 
+absl::Status FixedUnigramSampler::ValidateUniqueSampleCount(
+    int64_t num_sampled) const {
+  const int64_t num_positive_weights =
+      std::count_if(weights_.begin(), weights_.end(),
+                    [](float weight) { return weight > 0; });
+  if (num_sampled > num_positive_weights) {
+    return errors::InvalidArgument("Cannot sample ", num_sampled,
+                                   " unique IDs from ", num_positive_weights,
+                                   " IDs with positive weight.");
+  }
+  return absl::OkStatus();
+}
+
 float FixedUnigramSampler::Probability(int64_t value) const {
   if (value < 0 || static_cast<size_t>(value) >= weights_.size()) {
     return 0.0;

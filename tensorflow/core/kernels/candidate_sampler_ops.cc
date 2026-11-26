@@ -117,6 +117,9 @@ class BaseCandidateSamplerOp : public OpKernel {
   }
 
  protected:
+  int32_t required_distinct_samples() const {
+    return unique_ ? num_sampled_ : 0;
+  }
   void set_sampler(RangeSampler* sampler) { sampler_.reset(sampler); }
 
  private:
@@ -200,14 +203,19 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
     OP_REQUIRES_OK(context, context->GetAttr("num_shards", &num_shards));
     int64_t shard;
     OP_REQUIRES_OK(context, context->GetAttr("shard", &shard));
-    FixedUnigramSampler* sampler = new FixedUnigramSampler(
+    auto sampler = std::make_unique<FixedUnigramSampler>(
         range_max, distortion, num_reserved_ids, num_shards, shard);
     if (!vocab_file.empty())
       OP_REQUIRES_OK(
           context, sampler->SetDistributionSampler(context->env(), vocab_file));
     else
       OP_REQUIRES_OK(context, sampler->SetDistributionSampler(unigrams));
-    set_sampler(sampler);
+    // The base class checks the ID range, which includes zero-weight entries.
+    const int32_t unique_count = required_distinct_samples();
+    if (unique_count > 0 && unique_count <= range_max) {
+      OP_REQUIRES_OK(context, sampler->ValidateUniqueSampleCount(unique_count));
+    }
+    set_sampler(sampler.release());
   }
 };
 
