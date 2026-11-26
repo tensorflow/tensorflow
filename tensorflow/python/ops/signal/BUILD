@@ -74,9 +74,11 @@ py_library(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
