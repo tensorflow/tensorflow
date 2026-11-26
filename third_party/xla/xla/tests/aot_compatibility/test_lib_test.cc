@@ -672,7 +672,6 @@ TEST_P(CompareGPUExecutablesDebugOptionsTest, IgnoresCompileOnlyFields) {
       DebugOptions::kXlaConfigAssignerBackendsFieldNumber,
       DebugOptions::kXlaGpuExperimentalDeterministicOpsTritonFieldNumber,
       DebugOptions::kXlaGpuExperimentalEnableConvFusionFieldNumber,
-      DebugOptions::kXlaGpuExperimentalGemmFusionV2FieldNumber,
       DebugOptions::kXlaGpuUnsupportedUseCrossHostOneShotKernelFieldNumber,
   };
   DebugOptions fresh_options;

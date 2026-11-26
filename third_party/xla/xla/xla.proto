@@ -1155,10 +1155,6 @@ message DebugOptions {
   // the heuristic.
   optional int32 xla_gpu_experimental_force_split_k = 472;
 
-  // Enable GEMM fusion v2 pass for building Triton fusions.
-  // TODO(b/487920266): Remove this flag entirely.
-  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475 [deprecated = true];
-
   // Controls max unroll factor on Blackwell architectures. This is also
   // guarded with a heuristic, but the heuristic is not perfect, so changing
   // this flag can cause both performance improvements and performance
@@ -2255,6 +2251,7 @@ message DebugOptions {
   reserved "xla_gpu_gemm_autotuner_override_file";
   reserved "xla_gpu_override_gemm_autotuner";
   reserved "xla_gpu_experimental_enable_fusion_block_level_rewriter";
+  reserved "xla_gpu_experimental_gemm_fusion_v2";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
       158, 160, 161, 162, 165, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179,
@@ -2264,7 +2261,7 @@ message DebugOptions {
       278, 279, 281, 282, 286, 292, 295, 298, 299, 300, 302, 303, 309, 313, 314,
       316, 319, 320, 325, 326, 332, 334, 346, 352, 354, 355, 358, 361, 367, 369,
       371, 376, 385, 388, 389, 394, 396, 398, 402, 413, 420, 423, 430, 434, 435,
-      442, 443, 445, 446, 450, 456, 458, 464, 477, 480;
+      442, 443, 445, 446, 450, 456, 458, 464, 475, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.
