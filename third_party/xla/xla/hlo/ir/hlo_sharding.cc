@@ -25,7 +25,6 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
