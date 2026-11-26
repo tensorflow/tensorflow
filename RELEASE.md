@@ -75,6 +75,11 @@
     indices and loop-invariant params now handles negative `batch_dims` and
     symbolic `axis` tensors instead of raising shape errors or
     `OperatorNotAllowedInGraphError`.
+*   `tf.vectorized_map` / `parallel_for`: `BiasAdd` and `BiasAddGrad` now
+    handle `NCW` and `NCDHW` (`NC...`) data formats of any rank instead of
+    hardcoding 4-D `NCHW` axes, which previously caused shape errors,
+    invalid reduction dimensions, or silent wrong outputs when `N == C` or
+    `D == C`.
 
 ## Thanks to our Contributors
 

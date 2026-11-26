@@ -3022,7 +3022,7 @@ def _convert_biasadd(pfor_input: _PforInput):
     if compat.as_bytes(data_format) == b"NCHW":
       b_shape = array_ops.shape(bias)
       new_b_shape = array_ops.concat(
-          [b_shape[:-3], b_shape[-1:], b_shape[-3:-1]], axis=0)
+          [b_shape[:2], b_shape[-1:], b_shape[2:-1]], axis=0)
       bias = array_ops.reshape(bias, new_b_shape)
     return wrap(math_ops.add(t, bias), True)
   else:
@@ -3372,7 +3372,14 @@ def _convert_biasaddgrad(pfor_input: _PforInput):
   grad = pfor_input.stacked_input(0)
   fmt = pfor_input.get_attr("data_format")
   if fmt == b"NCHW":
-    output = math_ops.reduce_sum(grad, axis=[1, 3, 4], keepdims=False)
+    if grad.shape.rank is not None:
+      axes = [1] + list(range(3, grad.shape.rank))
+      output = math_ops.reduce_sum(grad, axis=axes, keepdims=False)
+    else:
+      grad_shape = array_ops.shape(grad)
+      output = array_ops.reshape(
+          grad, [grad_shape[0], grad_shape[1], grad_shape[2], -1])
+      output = math_ops.reduce_sum(output, axis=[1, 3], keepdims=False)
   else:
     grad_shape = array_ops.shape(grad)
     last_dim_shape = grad_shape[-1]
