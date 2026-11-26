@@ -1056,5 +1056,61 @@ TEST_F(GpuHloCostAnalysisTest,
             expected_utilization);
 }
 
+TEST_F(GpuHloCostAnalysisTest,
+       AsyncFusionInsideWhilePostOrderMatchesEntryAccept) {
+  absl::string_view hlo_string = R"(
+  HloModule m
+
+  fused_body {
+    p0 = f32[16,16] parameter(0)
+    ROOT mul = f32[16,16] multiply(p0, p0)
+  }
+
+  async_comp {
+    p0 = f32[16,16] parameter(0)
+    ROOT fus = f32[16,16] fusion(p0), kind=kLoop, calls=fused_body
+  }
+
+  while_cond {
+    st = (s32[], f32[16,16]) parameter(0)
+    iter = s32[] get-tuple-element(st), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  while_body {
+    st = (s32[], f32[16,16]) parameter(0)
+    iter = s32[] get-tuple-element(st), index=0
+    val = f32[16,16] get-tuple-element(st), index=1
+    one = s32[] constant(1)
+    next_iter = s32[] add(iter, one)
+    as = ((f32[16,16]), f32[16,16], s32[]) async-start(val), calls=async_comp
+    ad = f32[16,16] async-done(as)
+    ROOT res = (s32[], f32[16,16]) tuple(next_iter, ad)
+  }
+
+  ENTRY main {
+    p = f32[16,16] parameter(0)
+    z = s32[] constant(0)
+    init = (s32[], f32[16,16]) tuple(z, p)
+    ROOT loop = (s32[], f32[16,16]) while(init), condition=while_cond, body=while_body
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  GpuHloCostAnalysis post_order_analysis(options_);
+  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    ASSERT_IS_OK(computation->Accept(&post_order_analysis));
+  }
+  GpuHloCostAnalysis entry_analysis(options_);
+  ASSERT_IS_OK(module->entry_computation()->Accept(&entry_analysis));
+
+  HloInstruction* while_inst = module->entry_computation()->root_instruction();
+  EXPECT_EQ(post_order_analysis.flop_count(*while_inst), 774);
+  EXPECT_EQ(entry_analysis.flop_count(*while_inst), 774);
+
+  ASSERT_IS_OK(entry_analysis.RevisitInstruction(while_inst));
+  EXPECT_EQ(entry_analysis.flop_count(*while_inst), 774);
+}
+
 }  // namespace gpu
 }  // namespace xla

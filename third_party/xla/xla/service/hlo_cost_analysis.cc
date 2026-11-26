@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -56,6 +58,28 @@ HloCostAnalysis::HloCostAnalysis(ShapeSizeFunction shape_size,
           Options{shape_size, per_second_rates, min_latencies_seconds}) {}
 
 absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
+  const HloComputation* parent = hlo->parent();
+  if (parent != nullptr) {
+    if (parent->parent() != current_module_) {
+      current_module_ = parent->parent();
+      subcomputation_properties_.clear();
+      active_computation_tracker_ = ComputationVisitTracker{};
+    }
+    if (active_computation_tracker_.computation == nullptr) {
+      if (subcomputation_properties_.contains(parent)) {
+        // A direct Accept on an already cached computation signals caller
+        // mutation or an explicit re-evaluation, so drop cached totals.
+        subcomputation_properties_.clear();
+      }
+      active_computation_tracker_.computation = parent;
+      active_computation_tracker_.visited_instruction_count = 0;
+      active_computation_tracker_.properties_sum = Properties();
+      active_computation_tracker_.valid = true;
+    } else if (active_computation_tracker_.computation != parent) {
+      active_computation_tracker_.valid = false;
+    }
+  }
+
   // Set current instruction cost values to reasonable default values. Each
   // handler can overwrite these values. In Postprocess, these values are
   // accumulated and written to the per-instruction maps.
@@ -107,8 +131,19 @@ absl::Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
     current_properties_[kOptimalSecondsKey] = optimal_seconds;
   }
 
-  current_properties_.ForEach(
-      [&](absl::string_view key, float val) { properties_sum_[key] += val; });
+  const bool track_active =
+      active_computation_tracker_.valid &&
+      active_computation_tracker_.computation != nullptr &&
+      hlo->parent() == active_computation_tracker_.computation;
+  current_properties_.ForEach([&](absl::string_view key, float val) {
+    properties_sum_[key] += val;
+    if (track_active) {
+      active_computation_tracker_.properties_sum[key] += val;
+    }
+  });
+  if (track_active) {
+    ++active_computation_tracker_.visited_instruction_count;
+  }
 
   // Move current_properties_ into hlo_properties_ and reset
   // current_properties_.
@@ -131,12 +166,22 @@ absl::Status HloCostAnalysis::RemoveInstruction(
         [&](absl::string_view key, float val) { properties_sum_[key] -= val; });
     hlo_properties_.erase(instruction);
   }
+  instruction_shape_size_cache_.erase(instruction);
+  subcomputation_properties_.clear();
   return absl::OkStatus();
 }
 
 absl::Status HloCostAnalysis::RevisitInstruction(
     const HloInstruction* instruction) {
   ABSL_RETURN_IF_ERROR(RemoveInstruction(instruction));
+  // Isolate single instruction revisits from active_computation_tracker_ so
+  // they do not leave an incomplete computation tracker behind.
+  ComputationVisitTracker saved_tracker =
+      std::move(active_computation_tracker_);
+  active_computation_tracker_ = ComputationVisitTracker{};
+  absl::Cleanup restore_tracker = [this, &saved_tracker] {
+    active_computation_tracker_ = std::move(saved_tracker);
+  };
   // Now do Preprocess() -> Visit() -> Postprocess() for the instruction same
   // way it is done during the complete analysis.
   ABSL_RETURN_IF_ERROR(Preprocess(instruction));
@@ -1511,7 +1556,18 @@ absl::Status HloCostAnalysis::HandleSetDimensionSize(
   return absl::OkStatus();
 }
 
-absl::Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
+absl::Status HloCostAnalysis::FinishVisit(const HloInstruction* root) {
+  const bool completed_full_computation_dfs =
+      active_computation_tracker_.valid && root != nullptr &&
+      active_computation_tracker_.computation != nullptr &&
+      root->parent() == active_computation_tracker_.computation &&
+      active_computation_tracker_.visited_instruction_count ==
+          active_computation_tracker_.computation->instruction_count();
+  if (completed_full_computation_dfs) {
+    subcomputation_properties_[active_computation_tracker_.computation] =
+        std::move(active_computation_tracker_.properties_sum);
+  }
+  active_computation_tracker_ = ComputationVisitTracker{};
   return absl::OkStatus();
 }
 
@@ -1633,15 +1689,82 @@ int64_t HloCostAnalysis::GetBytesWritten(
   return bytes_written;
 }
 
+class HloCostAnalysis::ScopedTraversalState {
+ public:
+  explicit ScopedTraversalState(HloCostAnalysis* analysis)
+      : analysis_(analysis),
+        saved_properties_sum_(std::move(analysis->properties_sum_)),
+        saved_current_properties_(std::move(analysis->current_properties_)),
+        saved_should_compute_bottleneck_time_(
+            analysis->current_should_compute_bottleneck_time_),
+        saved_tracker_(std::move(analysis->active_computation_tracker_)) {
+    analysis_->properties_sum_ = Properties();
+    analysis_->current_properties_ = Properties();
+    analysis_->active_computation_tracker_ = ComputationVisitTracker{};
+  }
+
+  ScopedTraversalState(const ScopedTraversalState&) = delete;
+  ScopedTraversalState& operator=(const ScopedTraversalState&) = delete;
+
+  // Restores the enclosing computation's traversal accumulators after an
+  // in place subcomputation Accept() returns (or fails), leaving
+  // hlo_properties_ and subcomputation_properties_ populated.
+  ~ScopedTraversalState() {
+    analysis_->properties_sum_ = std::move(saved_properties_sum_);
+    analysis_->current_properties_ = std::move(saved_current_properties_);
+    analysis_->current_should_compute_bottleneck_time_ =
+        saved_should_compute_bottleneck_time_;
+    analysis_->active_computation_tracker_ = std::move(saved_tracker_);
+  }
+
+ private:
+  HloCostAnalysis* analysis_;
+  Properties saved_properties_sum_;
+  Properties saved_current_properties_;
+  bool saved_should_compute_bottleneck_time_;
+  ComputationVisitTracker saved_tracker_;
+};
+
 absl::StatusOr<HloCostAnalysis::Properties>
 HloCostAnalysis::ProcessSubcomputation(HloComputation* computation) {
-  auto visitor = CreateNestedCostAnalysis();
-  visitor->ReserveVisitStates(computation->instruction_count());
-  ABSL_RETURN_IF_ERROR(computation->Accept(visitor.get()));
-  for (auto& entry : visitor->hlo_properties_) {
-    hlo_properties_[entry.first] = std::move(entry.second);
+  if (computation->parent() == nullptr || computation->unique_id() < 0 ||
+      computation->parent() != current_module_) {
+    std::unique_ptr<HloCostAnalysis> visitor = CreateNestedCostAnalysis();
+    visitor->ReserveVisitStates(computation->instruction_count());
+    ABSL_RETURN_IF_ERROR(computation->Accept(visitor.get()));
+    // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+    for (auto& [inst, props] : visitor->hlo_properties_) {
+      hlo_properties_[inst] = std::move(props);
+    }
+    return visitor->properties();
   }
-  return visitor->properties();
+  if (auto it = subcomputation_properties_.find(computation);
+      it != subcomputation_properties_.end()) {
+    return it->second;
+  }
+
+  for (const HloInstruction* instruction : computation->instructions()) {
+    if (GetVisitState(instruction->unique_id()) != VisitState::kNotVisited) {
+      SetVisitState(instruction->unique_id(), VisitState::kNotVisited);
+    }
+    hlo_properties_.erase(instruction);
+    instruction_shape_size_cache_.erase(instruction);
+  }
+
+  ScopedTraversalState scoped_state(this);
+
+  // Reserve flat_hash_map buckets for existing plus new entries (visit_state_
+  // is keyed by unique_id(), not indexed by ID).
+  const size_t target_size =
+      hlo_properties_.size() + computation->instruction_count();
+  ReserveVisitStates(static_cast<int>(
+      std::min<size_t>(target_size, std::numeric_limits<int>::max())));
+  hlo_properties_.reserve(target_size);
+
+  ABSL_RETURN_IF_ERROR(computation->Accept(this));
+  Properties result = properties_sum_;
+  subcomputation_properties_.try_emplace(computation, result);
+  return result;
 }
 
 std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis() {

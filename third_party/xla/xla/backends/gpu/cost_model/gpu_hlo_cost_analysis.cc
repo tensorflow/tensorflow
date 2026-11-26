@@ -656,7 +656,8 @@ absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
 
 absl::Status GpuHloCostAnalysis::HandleAsyncStart(const HloInstruction* hlo) {
   auto* async_start = DynCast<HloAsyncStartInstruction>(hlo);
-  ABSL_RETURN_IF_ERROR(hlo->async_wrapped_instruction()->Accept(this));
+  ABSL_ASSIGN_OR_RETURN(current_properties_,
+                   ProcessSubcomputation(hlo->async_wrapped_computation()));
   if (async_start->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
     return HandleReduceScatter(async_start->async_wrapped_instruction());
   }

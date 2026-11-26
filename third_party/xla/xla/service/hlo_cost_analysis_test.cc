@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "benchmark/benchmark.h"
 #include "xla/array4d.h"
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
@@ -1954,5 +1956,529 @@ TEST(HloCostAnalysisProperties, SetValues) {
   p["bar"] += 101;
   EXPECT_EQ(101, p["bar"]);
 }
+
+class CountingCostAnalysis : public HloCostAnalysis {
+ public:
+  using HloCostAnalysis::HloCostAnalysis;
+
+  absl::Status Preprocess(const HloInstruction* hlo) override {
+    ++preprocess_count_;
+    return HloCostAnalysis::Preprocess(hlo);
+  }
+
+  int64_t preprocess_count() const { return preprocess_count_; }
+
+ private:
+  int64_t preprocess_count_ = 0;
+};
+
+using SubcomputationCachingCostAnalysisTest = HloHardwareIndependentTestBase;
+
+TEST_F(SubcomputationCachingCostAnalysisTest,
+       PostOrderAcceptCachesSubcomputationsWithoutRetraversal) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule post_order_cache
+
+%add_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %sum = f32[] add(%lhs, %rhs)
+}
+
+%fused_op (x: f32[16,16]) -> f32[16,16] {
+  %x = f32[16,16]{1,0} parameter(0)
+  %sq = f32[16,16]{1,0} multiply(%x, %x)
+  %ex = f32[16,16]{1,0} exponential(%sq)
+  %pair = (f32[16,16]{1,0}, f32[16,16]{1,0}) tuple(%sq, %ex)
+  ROOT %gte = f32[16,16]{1,0} get-tuple-element(%pair), index=1
+}
+
+%branch_true (x: f32[16,16]) -> f32[16,16] {
+  %x = f32[16,16]{1,0} parameter(0)
+  ROOT %fus = f32[16,16]{1,0} fusion(%x), kind=kLoop, calls=%fused_op
+}
+
+%branch_false (x: f32[16,16]) -> f32[16,16] {
+  %x = f32[16,16]{1,0} parameter(0)
+  %zero = f32[] constant(0)
+  %red = f32[16]{0} reduce(%x, %zero), dimensions={1}, to_apply=%add_f32
+  %bcast = f32[16,16]{1,0} broadcast(%red), dimensions={0}
+  ROOT %out = f32[16,16]{1,0} add(%x, %bcast)
+}
+
+%while_cond (st: (s32[], f32[16,16])) -> pred[] {
+  %st = (s32[], f32[16,16]{1,0}) parameter(0)
+  %iter = s32[] get-tuple-element(%st), index=0
+  %limit = s32[] constant(5)
+  ROOT %cmp = pred[] compare(%iter, %limit), direction=LT
+}
+
+%while_body (st: (s32[], f32[16,16])) -> (s32[], f32[16,16]) {
+  %st = (s32[], f32[16,16]{1,0}) parameter(0)
+  %iter = s32[] get-tuple-element(%st), index=0
+  %val = f32[16,16]{1,0} get-tuple-element(%st), index=1
+  %one = s32[] constant(1)
+  %next_iter = s32[] add(%iter, %one)
+  %flag = pred[] compare(%iter, %one), direction=LT
+  %next_val = f32[16,16]{1,0} conditional(%flag, %val, %val),
+      true_computation=%branch_true, false_computation=%branch_false
+  ROOT %res = (s32[], f32[16,16]{1,0}) tuple(%next_iter, %next_val)
+}
+
+ENTRY %main (p: f32[16,16]) -> f32[16,16] {
+  %p = f32[16,16]{1,0} parameter(0)
+  %zero_i = s32[] constant(0)
+  %init = (s32[], f32[16,16]{1,0}) tuple(%zero_i, %p)
+  %loop = (s32[], f32[16,16]{1,0}) while(%init), condition=%while_cond,
+      body=%while_body
+  ROOT %out = f32[16,16]{1,0} get-tuple-element(%loop), index=1
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  HloCostAnalysis::Properties rates;
+  rates[kFlopsKey] = 1000.0f;
+  rates[kTranscendentalsKey] = 100.0f;
+  rates[kBytesAccessedKey] = 1000.0f;
+  HloCostAnalysis::Options options{HloCostAnalysis::DefaultShapeSize, rates,
+                                   /*min_latencies_seconds=*/{}};
+
+  CountingCostAnalysis post_order_analysis(options);
+  int64_t total_instructions = 0;
+  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    total_instructions += computation->instruction_count();
+    ASSERT_OK(computation->Accept(&post_order_analysis));
+  }
+  EXPECT_EQ(post_order_analysis.preprocess_count(), total_instructions);
+
+  CountingCostAnalysis entry_analysis(options);
+  ASSERT_OK(module->entry_computation()->Accept(&entry_analysis));
+  EXPECT_EQ(entry_analysis.preprocess_count(), total_instructions);
+
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* inst : computation->instructions()) {
+      SCOPED_TRACE(inst->name());
+      EXPECT_EQ(post_order_analysis.flop_count(*inst),
+                entry_analysis.flop_count(*inst));
+      EXPECT_EQ(post_order_analysis.transcendental_count(*inst),
+                entry_analysis.transcendental_count(*inst));
+      EXPECT_EQ(post_order_analysis.bytes_accessed(*inst),
+                entry_analysis.bytes_accessed(*inst));
+      EXPECT_FLOAT_EQ(post_order_analysis.optimal_seconds(*inst),
+                      entry_analysis.optimal_seconds(*inst));
+    }
+  }
+}
+
+TEST_F(SubcomputationCachingCostAnalysisTest,
+       SharedSubcomputationDagVisitedOnceFromEntry) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule shared_dag_test
+
+%fused_leaf (x: f32[32]) -> f32[32] {
+  %x = f32[32]{0} parameter(0)
+  %m = f32[32]{0} multiply(%x, %x)
+  ROOT %a = f32[32]{0} add(%m, %x)
+}
+
+%shared_leaf (x: f32[32]) -> f32[32] {
+  %x = f32[32]{0} parameter(0)
+  ROOT %f = f32[32]{0} fusion(%x), kind=kLoop, calls=%fused_leaf
+}
+
+%shared_mid (x: f32[32]) -> f32[32] {
+  %x = f32[32]{0} parameter(0)
+  %c0 = f32[32]{0} call(%x), to_apply=%shared_leaf
+  %c1 = f32[32]{0} call(%c0), to_apply=%shared_leaf
+  ROOT %sum = f32[32]{0} add(%c0, %c1)
+}
+
+ENTRY %main (flag: pred[], x: f32[32]) -> f32[32] {
+  %flag = pred[] parameter(0)
+  %x = f32[32]{0} parameter(1)
+  ROOT %cond = f32[32]{0} conditional(%flag, %x, %x),
+      true_computation=%shared_mid, false_computation=%shared_mid
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  int64_t total_instructions = 0;
+  for (const HloComputation* computation : module->computations()) {
+    total_instructions += computation->instruction_count();
+  }
+
+  CountingCostAnalysis analysis;
+  ASSERT_OK(module->entry_computation()->Accept(&analysis));
+  EXPECT_EQ(analysis.preprocess_count(), total_instructions);
+  // Each shared_leaf fusion has 64 flops, shared_mid calls it twice plus a
+  // 32 element add for 160 flops, and conditional takes the max branch.
+  EXPECT_EQ(analysis.flop_count(), 160);
+}
+
+TEST_F(SubcomputationCachingCostAnalysisTest,
+       RevisitInstructionInvalidatesNestedSubcomputationCache) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule revisit_nested
+
+%reducer (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %sum = f32[] add(%lhs, %rhs)
+}
+
+%fused_reduce (x: f32[8,4]) -> f32[8] {
+  %x = f32[8,4]{1,0} parameter(0)
+  %zero = f32[] constant(0)
+  ROOT %red = f32[8]{0} reduce(%x, %zero), dimensions={1}, to_apply=%reducer
+}
+
+ENTRY %main (x: f32[8,4]) -> f32[8] {
+  %x = f32[8,4]{1,0} parameter(0)
+  ROOT %fusion = f32[8]{0} fusion(%x), kind=kInput, calls=%fused_reduce
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  HloCostAnalysis incremental_analysis;
+  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    ASSERT_OK(computation->Accept(&incremental_analysis));
+  }
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  EXPECT_EQ(incremental_analysis.transcendental_count(*fusion), 0);
+
+  HloComputation* reducer =
+      fusion->fused_instructions_computation()->root_instruction()->to_apply();
+  HloInstruction* old_root = reducer->root_instruction();
+  HloInstruction* prod = reducer->AddInstruction(HloInstruction::CreateBinary(
+      old_root->shape(), HloOpcode::kMultiply, old_root->mutable_operand(0),
+      old_root->mutable_operand(1)));
+  HloInstruction* exp = reducer->AddInstruction(
+      HloInstruction::CreateUnary(old_root->shape(), HloOpcode::kExp, prod));
+  ASSERT_OK(reducer->ReplaceInstruction(old_root, exp));
+
+  ASSERT_OK(incremental_analysis.RevisitInstruction(fusion));
+
+  HloCostAnalysis fresh_analysis;
+  ASSERT_OK(module->entry_computation()->Accept(&fresh_analysis));
+  EXPECT_EQ(incremental_analysis.flop_count(*fusion),
+            fresh_analysis.flop_count(*fusion));
+  EXPECT_EQ(incremental_analysis.transcendental_count(*fusion),
+            fresh_analysis.transcendental_count(*fusion));
+  EXPECT_GT(incremental_analysis.transcendental_count(*fusion), 0);
+}
+
+TEST_F(SubcomputationCachingCostAnalysisTest,
+       PartialSubgraphAcceptDoesNotPoisonFullSubcomputationCache) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule partial_accept
+
+%callee (x: f32[16]) -> f32[16] {
+  %x = f32[16]{0} parameter(0)
+  %branch_a = f32[16]{0} multiply(%x, %x)
+  %branch_b = f32[16]{0} exponential(%x)
+  ROOT %join = f32[16]{0} add(%branch_a, %branch_b)
+}
+
+ENTRY %main (x: f32[16]) -> f32[16] {
+  %x = f32[16]{0} parameter(0)
+  ROOT %call = f32[16]{0} call(%x), to_apply=%callee
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  HloComputation* callee =
+      module->entry_computation()->root_instruction()->to_apply();
+  HloInstruction* branch_a = callee->GetInstructionWithName("branch_a");
+  ASSERT_NE(branch_a, nullptr);
+
+  HloCostAnalysis analysis;
+  // Visit only the branch_a subgraph of callee first.
+  ASSERT_OK(branch_a->Accept(&analysis));
+
+  // Subsequent ProcessSubcomputation(callee) from main must still account for
+  // branch_b and join.
+  ASSERT_OK(module->entry_computation()->Accept(&analysis));
+  HloInstruction* call_inst = module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.flop_count(*call_inst), 32);
+  EXPECT_EQ(analysis.transcendental_count(*call_inst), 16);
+}
+
+TEST_F(SubcomputationCachingCostAnalysisTest,
+       ReuseAcrossModulesDoesNotCollideVisitStates) {
+  constexpr absl::string_view kModuleA = R"hlo(
+HloModule mod_a
+
+%callee_a (x: f32[8]) -> f32[8] {
+  %x = f32[8]{0} parameter(0)
+  ROOT %sq = f32[8]{0} multiply(%x, %x)
+}
+
+ENTRY %main_a (x: f32[8]) -> f32[8] {
+  %x = f32[8]{0} parameter(0)
+  ROOT %call = f32[8]{0} call(%x), to_apply=%callee_a
+}
+)hlo";
+  constexpr absl::string_view kModuleB = R"hlo(
+HloModule mod_b
+
+%callee_b (x: f32[16]) -> f32[16] {
+  %x = f32[16]{0} parameter(0)
+  %sq = f32[16]{0} multiply(%x, %x)
+  ROOT %sum = f32[16]{0} add(%sq, %x)
+}
+
+ENTRY %main_b (x: f32[16]) -> f32[16] {
+  %x = f32[16]{0} parameter(0)
+  ROOT %call = f32[16]{0} call(%x), to_apply=%callee_b
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> mod_a,
+                       ParseAndReturnVerifiedModule(kModuleA));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> mod_b,
+                       ParseAndReturnVerifiedModule(kModuleB));
+
+  HloCostAnalysis shared_analysis;
+  ASSERT_OK(mod_a->entry_computation()->Accept(&shared_analysis));
+  shared_analysis.ResetVisitStates();
+  ASSERT_OK(mod_b->entry_computation()->Accept(&shared_analysis));
+
+  EXPECT_EQ(shared_analysis.flop_count(
+                *mod_a->entry_computation()->root_instruction()),
+            8);
+  EXPECT_EQ(shared_analysis.flop_count(
+                *mod_b->entry_computation()->root_instruction()),
+            32);
+}
+
+TEST_F(SubcomputationCachingCostAnalysisTest,
+       RevisitSingleInstructionCalleeKeepsCostAndAllowsSubsequentCaching) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule single_inst_callee
+
+%leaf () -> f32[1024] {
+  ROOT %i = f32[1024]{0} iota(), iota_dimension=0
+}
+
+%other (y: f32[1024]) -> f32[1024] {
+  %y = f32[1024]{0} parameter(0)
+  ROOT %sq = f32[1024]{0} multiply(%y, %y)
+}
+
+%caller (x: f32[1024]) -> f32[1024] {
+  %x = f32[1024]{0} parameter(0)
+  ROOT %c2 = f32[1024]{0} call(%x), to_apply=%other
+}
+
+ENTRY %main (x: f32[1024]) -> f32[1024] {
+  %x = f32[1024]{0} parameter(0)
+  %c = f32[1024]{0} call(), to_apply=%leaf
+  ROOT %sum = f32[1024]{0} add(%x, %c)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  CountingCostAnalysis analysis;
+  HloComputation* leaf = module->GetComputationWithName("leaf");
+  HloComputation* other = module->GetComputationWithName("other");
+  HloComputation* caller = module->GetComputationWithName("caller");
+  ASSERT_NE(leaf, nullptr);
+  ASSERT_NE(other, nullptr);
+  ASSERT_NE(caller, nullptr);
+
+  ASSERT_OK(leaf->Accept(&analysis));
+  ASSERT_OK(module->entry_computation()->Accept(&analysis));
+  HloInstruction* call =
+      module->entry_computation()->GetInstructionWithName("c");
+  ASSERT_NE(call, nullptr);
+  EXPECT_EQ(analysis.bytes_accessed(*call), 4096);
+
+  ASSERT_OK(analysis.RevisitInstruction(call));
+  EXPECT_EQ(analysis.bytes_accessed(*call), 4096);
+
+  // Confirm RevisitInstruction did not leave a stale tracker that prevents the
+  // next full computation Accept from caching.
+  const int64_t count_before_other = analysis.preprocess_count();
+  ASSERT_OK(other->Accept(&analysis));
+  const int64_t count_after_other = analysis.preprocess_count();
+  EXPECT_EQ(count_after_other - count_before_other, other->instruction_count());
+
+  ASSERT_OK(caller->Accept(&analysis));
+  EXPECT_EQ(analysis.preprocess_count() - count_after_other,
+            caller->instruction_count());
+}
+
+TEST_F(SubcomputationCachingCostAnalysisTest,
+       SingleInstructionSubgraphAcceptOnModuleSwitchDoesNotPoisonCache) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule partial_iota_accept
+
+%callee () -> f32[16] {
+  %iota = f32[16]{0} iota(), iota_dimension=0
+  ROOT %neg = f32[16]{0} negate(%iota)
+}
+
+ENTRY %main () -> f32[16] {
+  ROOT %call = f32[16]{0} call(), to_apply=%callee
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  HloComputation* callee =
+      module->entry_computation()->root_instruction()->to_apply();
+  HloInstruction* iota = callee->GetInstructionWithName("iota");
+  ASSERT_NE(iota, nullptr);
+
+  HloCostAnalysis analysis;
+  ASSERT_OK(iota->Accept(&analysis));
+  ASSERT_OK(module->entry_computation()->Accept(&analysis));
+
+  HloInstruction* call_inst = module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.bytes_accessed(*call_inst), 192);
+}
+
+std::string MakeNestedWhileConditionalHlo(int depth) {
+  std::string hlo = "HloModule nested_while_cond\n\n";
+  auto append_fusion = [&](absl::string_view name) {
+    absl::StrAppend(&hlo, "%", name, " (x: f32[256,256]) -> f32[256,256] {\n",
+                    "  %x = f32[256,256]{1,0} parameter(0)\n",
+                    "  %m = f32[256,256]{1,0} multiply(%x, %x)\n",
+                    "  %a = f32[256,256]{1,0} add(%m, %x)\n",
+                    "  %e = f32[256,256]{1,0} exponential(%a)\n",
+                    "  %t = f32[256,256]{1,0} tanh(%e)\n",
+                    "  %n = f32[256,256]{1,0} negate(%t)\n",
+                    "  %s = f32[256,256]{1,0} subtract(%n, %x)\n",
+                    "  ROOT %r = f32[256,256]{1,0} add(%s, %m)\n}\n\n");
+  };
+  for (int d = depth - 1; d >= 0; --d) {
+    for (int f = 0; f < 6; ++f) {
+      append_fusion(absl::StrCat("fused_", d, "_", f));
+    }
+    absl::StrAppend(
+        &hlo, "%cond_", d, " (st: (s32[], f32[256,256])) -> pred[] {\n",
+        "  %st = (s32[], f32[256,256]{1,0}) parameter(0)\n",
+        "  %i = s32[] get-tuple-element(%st), index=0\n",
+        "  %lim = s32[] constant(4)\n",
+        "  ROOT %cmp = pred[] compare(%i, %lim), direction=LT\n}\n\n");
+    absl::StrAppend(
+        &hlo, "%branch_false_", d, " (x: f32[256,256]) -> f32[256,256] {\n",
+        "  %x = f32[256,256]{1,0} parameter(0)\n",
+        "  %f0 = f32[256,256]{1,0} fusion(%x), kind=kLoop, calls=", "%fused_",
+        d, "_4\n",
+        "  ROOT %f1 = f32[256,256]{1,0} fusion(%f0), kind=kLoop, "
+        "calls=%fused_",
+        d, "_5\n}\n\n");
+    if (d + 1 < depth) {
+      absl::StrAppend(
+          &hlo, "%branch_true_", d, " (x: f32[256,256]) -> f32[256,256] {\n",
+          "  %x = f32[256,256]{1,0} parameter(0)\n",
+          "  %z = s32[] constant(0)\n",
+          "  %init = (s32[], f32[256,256]{1,0}) tuple(%z, %x)\n",
+          "  %w = (s32[], f32[256,256]{1,0}) while(%init), condition=%cond_",
+          d + 1, ", body=%body_", d + 1, "\n",
+          "  ROOT %out = f32[256,256]{1,0} get-tuple-element(%w), index=1\n"
+          "}\n\n");
+    } else {
+      append_fusion(absl::StrCat("leaf_fused_", d));
+      absl::StrAppend(&hlo, "%branch_true_", d,
+                      " (x: f32[256,256]) -> f32[256,256] {\n",
+                      "  %x = f32[256,256]{1,0} parameter(0)\n",
+                      "  ROOT %f = f32[256,256]{1,0} fusion(%x), kind=kLoop, "
+                      "calls=%leaf_fused_",
+                      d, "\n}\n\n");
+    }
+    absl::StrAppend(
+        &hlo, "%body_", d,
+        " (st: (s32[], f32[256,256])) -> (s32[], f32[256,256]) {\n",
+        "  %st = (s32[], f32[256,256]{1,0}) parameter(0)\n",
+        "  %i = s32[] get-tuple-element(%st), index=0\n",
+        "  %v0 = f32[256,256]{1,0} get-tuple-element(%st), index=1\n",
+        "  %v1 = f32[256,256]{1,0} fusion(%v0), kind=kLoop, calls=%fused_", d,
+        "_0\n",
+        "  %v2 = f32[256,256]{1,0} fusion(%v1), kind=kLoop, calls=%fused_", d,
+        "_1\n",
+        "  %v3 = f32[256,256]{1,0} fusion(%v2), kind=kLoop, calls=%fused_", d,
+        "_2\n",
+        "  %v4 = f32[256,256]{1,0} fusion(%v3), kind=kLoop, calls=%fused_", d,
+        "_3\n", "  %one = s32[] constant(1)\n", "  %ni = s32[] add(%i, %one)\n",
+        "  %cond_pred = pred[] compare(%i, %one), direction=LT\n",
+        "  %cv = f32[256,256]{1,0} conditional(%cond_pred, %v4, %v4), "
+        "true_computation=%branch_true_",
+        d, ", false_computation=%branch_false_", d, "\n",
+        "  ROOT %res = (s32[], f32[256,256]{1,0}) tuple(%ni, %cv)\n}\n\n");
+  }
+  absl::StrAppend(
+      &hlo, "ENTRY %main (p: f32[256,256]) -> f32[256,256] {\n",
+      "  %p = f32[256,256]{1,0} parameter(0)\n", "  %z = s32[] constant(0)\n",
+      "  %init = (s32[], f32[256,256]{1,0}) tuple(%z, %p)\n",
+      "  %w = (s32[], f32[256,256]{1,0}) while(%init), condition=%cond_0, "
+      "body=%body_0\n",
+      "  ROOT %out = f32[256,256]{1,0} get-tuple-element(%w), index=1\n}\n");
+  return hlo;
+}
+
+// NOLINTBEGIN(misc-include-cleaner): benchmark/benchmark.h is the public
+// umbrella header across internal and OSS Google Benchmark versions.
+void BM_PostOrderNestedWhileConditional(benchmark::State& state) {
+  const int depth = state.range(0);
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(MakeNestedWhileConditionalHlo(depth));
+  CHECK_OK(module.status());
+  const std::vector<HloComputation*> post_order =
+      (*module)->MakeComputationPostOrder();
+  for (auto s : state) {
+    HloCostAnalysis analysis;
+    for (HloComputation* computation : post_order) {
+      CHECK_OK(computation->Accept(&analysis));
+    }
+    benchmark::DoNotOptimize(analysis.flop_count());
+  }
+}
+BENCHMARK(BM_PostOrderNestedWhileConditional)
+    ->Arg(4)
+    ->Arg(16)
+    ->Arg(32)
+    ->Arg(64);
+
+void BM_EntryAcceptSharedSubcomputations(benchmark::State& state) {
+  const int stages = state.range(0);
+  std::string hlo = "HloModule shared_dag\n\n";
+  absl::StrAppend(&hlo, "%leaf_fused (x: f32[256,256]) -> f32[256,256] {\n",
+                  "  %x = f32[256,256]{1,0} parameter(0)\n",
+                  "  %m = f32[256,256]{1,0} multiply(%x, %x)\n",
+                  "  ROOT %a = f32[256,256]{1,0} add(%m, %x)\n}\n\n", "%stage_",
+                  stages, " (x: f32[256,256]) -> f32[256,256] {\n",
+                  "  %x = f32[256,256]{1,0} parameter(0)\n",
+                  "  ROOT %f = f32[256,256]{1,0} fusion(%x), kind=kLoop, "
+                  "calls=%leaf_fused\n}\n\n");
+  for (int i = stages - 1; i >= 0; --i) {
+    absl::StrAppend(
+        &hlo, "%stage_", i, " (x: f32[256,256]) -> f32[256,256] {\n",
+        "  %x = f32[256,256]{1,0} parameter(0)\n",
+        "  %c0 = f32[256,256]{1,0} call(%x), to_apply=%stage_", i + 1, "\n",
+        "  %c1 = f32[256,256]{1,0} call(%c0), to_apply=%stage_", i + 1, "\n",
+        "  ROOT %sum = f32[256,256]{1,0} add(%c0, %c1)\n}\n\n");
+  }
+  absl::StrAppend(&hlo, "ENTRY %main (p: f32[256,256]) -> f32[256,256] {\n",
+                  "  %p = f32[256,256]{1,0} parameter(0)\n",
+                  "  ROOT %r = f32[256,256]{1,0} call(%p), to_apply=%stage_0\n"
+                  "}\n");
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(hlo);
+  CHECK_OK(module.status());
+  for (auto s : state) {
+    HloCostAnalysis analysis;
+    CHECK_OK((*module)->entry_computation()->Accept(&analysis));
+    benchmark::DoNotOptimize(analysis.flop_count());
+  }
+}
+BENCHMARK(BM_EntryAcceptSharedSubcomputations)->Arg(4)->Arg(8)->Arg(12);
+// NOLINTEND(misc-include-cleaner)
+
 }  // namespace
 }  // namespace xla

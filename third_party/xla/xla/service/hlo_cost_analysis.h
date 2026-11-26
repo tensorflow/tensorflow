@@ -563,7 +563,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Enable efficient updates if a known small set of instructions within an
   // HLO graph was modified.
   // Updates the cost analysis by removing one instruction.
-  absl::Status RemoveInstruction(const HloInstruction* instruction);
+  virtual absl::Status RemoveInstruction(const HloInstruction* instruction);
   // Updates the cost analysis by re-doing the analysis of one instruction.
   absl::Status RevisitInstruction(const HloInstruction* instruction);
 
@@ -686,13 +686,18 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // memory access.
   virtual size_t immediate_constant_max_elements() const { return 1; }
 
-  // Creates a nested instance of HloCostAnalysis using the same Options.
+  // Creates a nested instance of HloCostAnalysis using the same Options for
+  // subcomputations that cannot be evaluated in place on this instance (such as
+  // detached computations or computations belonging to another HloModule).
   virtual std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis();
 
-  // Returns the properties computed from visiting the computation rooted at the
-  // given hlo. The cost of visited sub HLO instructions is saved to
-  // hlo_properties_, which will be used by functions such as
-  // flop_count(hlo_instruction) to return cost of a particular HLO instruction.
+  // Returns the properties computed from visiting `computation`. Results for
+  // completed computations in `current_module_` are memoized in
+  // `subcomputation_properties_`; uncached module subcomputations are evaluated
+  // in place on this instance (so subclass overrides may be entered
+  // reentrantly), while detached or foreign computations fall back to
+  // CreateNestedCostAnalysis(). The cost of visited sub HLO instructions is
+  // saved to `hlo_properties_` for per instruction queries.
   virtual absl::StatusOr<Properties> ProcessSubcomputation(
       HloComputation* computation);
 
@@ -738,6 +743,27 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   HloCostAnalysis(const HloCostAnalysis&) = delete;
   HloCostAnalysis& operator=(const HloCostAnalysis&) = delete;
+
+ private:
+  // Saves and restores outer computation traversal state so
+  // ProcessSubcomputation can reuse this HloCostAnalysis instance in place.
+  class ScopedTraversalState;
+
+  // Tracks instruction coverage and per computation totals during a single
+  // Accept traversal so FinishVisit caches only full computation visits.
+  struct ComputationVisitTracker {
+    const HloComputation* computation = nullptr;
+    int64_t visited_instruction_count = 0;
+    Properties properties_sum;
+    bool valid = true;
+  };
+
+  // Maps completed HloComputations in current_module_ to their total aggregated
+  // properties, including transitive nested subcomputations.
+  absl::flat_hash_map<const HloComputation*, Properties>
+      subcomputation_properties_;
+  const HloModule* current_module_ = nullptr;
+  ComputationVisitTracker active_computation_tracker_;
 };
 
 }  // namespace xla
