@@ -149,7 +149,8 @@ class AnyBuffer {
 
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
     if (ABSL_PREDICT_TRUE(primitive_util::IsArrayType(element_type()))) {
-      return primitive_util::ByteWidth(element_type()) * element_count();
+      return CeilOfRatio<size_t>(
+          primitive_util::StorageBitWidth(element_type()) * element_count(), 8);
     }
     return 0;
   }
@@ -208,7 +209,8 @@ class Buffer {
 
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
     if constexpr (primitive_util::IsArrayType(dtype)) {
-      return primitive_util::ByteWidth(dtype) * element_count();
+      return CeilOfRatio<size_t>(
+          primitive_util::StorageBitWidth(dtype) * element_count(), 8);
     }
     return 0;
   }

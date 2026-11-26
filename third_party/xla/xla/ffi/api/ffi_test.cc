@@ -259,6 +259,71 @@ TEST(FfiTest, DataTypeByteWidth) {
             ByteWidth(DataType::F8E8M0FNU));
 }
 
+TEST(FfiTest, DataTypeStorageBitWidth) {
+  EXPECT_EQ(0, StorageBitWidth(DataType::TOKEN));
+  EXPECT_EQ(0, StorageBitWidth(DataType::INVALID));
+
+  std::pair<PrimitiveType, DataType> types[] = {
+      {PrimitiveType::PRED, DataType::PRED},
+      {PrimitiveType::S1, DataType::S1},
+      {PrimitiveType::S2, DataType::S2},
+      {PrimitiveType::S4, DataType::S4},
+      {PrimitiveType::S8, DataType::S8},
+      {PrimitiveType::S16, DataType::S16},
+      {PrimitiveType::S32, DataType::S32},
+      {PrimitiveType::S64, DataType::S64},
+      {PrimitiveType::U1, DataType::U1},
+      {PrimitiveType::U2, DataType::U2},
+      {PrimitiveType::U4, DataType::U4},
+      {PrimitiveType::U8, DataType::U8},
+      {PrimitiveType::U16, DataType::U16},
+      {PrimitiveType::U32, DataType::U32},
+      {PrimitiveType::U64, DataType::U64},
+      {PrimitiveType::F16, DataType::F16},
+      {PrimitiveType::F32, DataType::F32},
+      {PrimitiveType::F64, DataType::F64},
+      {PrimitiveType::BF16, DataType::BF16},
+      {PrimitiveType::C64, DataType::C64},
+      {PrimitiveType::C128, DataType::C128},
+      {PrimitiveType::F4E2M1FN, DataType::F4E2M1FN},
+      {PrimitiveType::F8E5M2, DataType::F8E5M2},
+      {PrimitiveType::F8E4M3, DataType::F8E4M3},
+      {PrimitiveType::F8E4M3FN, DataType::F8E4M3FN},
+      {PrimitiveType::F8E4M3B11FNUZ, DataType::F8E4M3B11FNUZ},
+      {PrimitiveType::F8E5M2FNUZ, DataType::F8E5M2FNUZ},
+      {PrimitiveType::F8E4M3FNUZ, DataType::F8E4M3FNUZ},
+      {PrimitiveType::F8E3M4, DataType::F8E3M4},
+      {PrimitiveType::F8E8M0FNU, DataType::F8E8M0FNU},
+  };
+  for (auto [primitive_type, data_type] : types) {
+    EXPECT_EQ(primitive_util::StorageBitWidth(primitive_type),
+              StorageBitWidth(data_type))
+        << primitive_util::LowercasePrimitiveTypeName(primitive_type);
+  }
+}
+
+TEST(FfiTest, BufferSizeBytes) {
+  std::vector<uint8_t> storage(16);
+  std::vector<int64_t> dims = {3};
+  auto size_bytes = [&](DataType dtype) {
+    XLA_FFI_Buffer buffer =
+        MakeBuffer(dtype, absl::MakeSpan(storage), absl::MakeSpan(dims));
+    return AnyBuffer(&buffer).size_bytes();
+  };
+
+  EXPECT_EQ(size_bytes(DataType::F32), 12);
+  EXPECT_EQ(size_bytes(DataType::PRED), 3);
+  EXPECT_EQ(size_bytes(DataType::S4), 2);
+  EXPECT_EQ(size_bytes(DataType::U2), 1);
+  EXPECT_EQ(size_bytes(DataType::TOKEN), 0);
+
+  // The header-only API has no native types for sub-byte dtypes, so typed
+  // buffers can only be checked for byte-sized dtypes.
+  XLA_FFI_Buffer pred =
+      MakeBuffer(DataType::PRED, absl::MakeSpan(storage), absl::MakeSpan(dims));
+  EXPECT_EQ(Buffer<DataType::PRED>(&pred).size_bytes(), 3);
+}
+
 TEST(FfiTest, ErrorEnumValue) {
   // Verify that absl::StatusCode and xla::ffi::ErrorCode use the same
   // integer value for encoding error (status) codes.

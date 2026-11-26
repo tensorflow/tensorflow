@@ -769,6 +769,31 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
   }
 }
 
+TEST(FfiTest, BufferSizeBytes) {
+  std::vector<uint8_t> storage(16);
+  se::DeviceAddressBase memory(storage.data(), storage.size());
+
+  CallFrameBuilder builder(/*num_args=*/4, /*num_rets=*/0);
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{3});
+  builder.AddBufferArg(memory, PrimitiveType::PRED, /*dims=*/{3});
+  builder.AddBufferArg(memory, PrimitiveType::S4, /*dims=*/{3});
+  builder.AddBufferArg(memory, PrimitiveType::U2, /*dims=*/{5});
+  auto call_frame = builder.Build();
+
+  auto fn = [](AnyBuffer f32, AnyBuffer pred, AnyBuffer s4,
+               Buffer<PrimitiveType::U2> u2) {
+    EXPECT_EQ(f32.size_bytes(), 12);
+    EXPECT_EQ(pred.size_bytes(), 3);
+    EXPECT_EQ(s4.size_bytes(), 2);
+    EXPECT_EQ(s4.device_memory().size(), 2);
+    EXPECT_EQ(u2.size_bytes(), 2);
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::BindTo(fn);
+  TF_ASSERT_OK(Invoke(Api(), *handler, call_frame));
+}
+
 TEST(FfiTest, BufferMatchingComposesPatterns) {
   namespace m = ::xla::ffi::match;
 

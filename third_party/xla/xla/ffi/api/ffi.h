@@ -187,6 +187,31 @@ constexpr size_t ByteWidth(DataType dtype) {
   }
 }
 
+// Returns the number of bits used to store one element of `dtype` in a buffer.
+// Sub-byte types are bit-packed, and PRED is stored as one byte.
+constexpr size_t StorageBitWidth(DataType dtype) {
+  switch (dtype) {
+    case DataType::S1:
+    case DataType::U1:
+      return 1;
+    case DataType::S2:
+    case DataType::U2:
+      return 2;
+    case DataType::S4:
+    case DataType::U4:
+    case DataType::F4E2M1FN:
+      return 4;
+    default:
+      return 8 * ByteWidth(dtype);
+  }
+}
+
+// Returns the number of bytes needed to store `element_count` elements of
+// `dtype`. Sub-byte types are bit-packed.
+constexpr size_t StorageByteSize(DataType dtype, size_t element_count) {
+  return (StorageBitWidth(dtype) * element_count + 7) / 8;
+}
+
 //===----------------------------------------------------------------------===//
 // Span is non-owning view into contiguous values of type `T`.
 //===----------------------------------------------------------------------===//
@@ -622,8 +647,9 @@ class AnyBuffer {
 
   Dimensions dimensions() const { return Dimensions(buf_->dims, buf_->rank); }
 
+  // Returns the buffer size in bytes. Sub-byte types (e.g. S4) are bit-packed.
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
-    return ByteWidth(element_type()) * element_count();
+    return StorageByteSize(element_type(), element_count());
   }
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t element_count() const {
@@ -768,8 +794,9 @@ class Buffer {
     return Dimensions(buf_->dims, rank == kDynamicRank ? buf_->rank : rank);
   }
 
+  // Returns the buffer size in bytes. Sub-byte types (e.g. S4) are bit-packed.
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
-    return ByteWidth(dtype) * element_count();
+    return StorageByteSize(dtype, element_count());
   }
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t element_count() const {
