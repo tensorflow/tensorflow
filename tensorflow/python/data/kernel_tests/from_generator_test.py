@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.data.Dataset.from_generator()."""
+import os
+import subprocess
+import sys
 import threading
 
 from absl.testing import parameterized
@@ -21,6 +24,7 @@ import numpy as np
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import from_generator_op
+from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -524,6 +528,83 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         output_shapes=[1],
         name="from_generator")
 
+  def testFinalizeSkippedDuringInterpreterShutdown(self):
+    marker_file = os.path.join(self.get_temp_dir(), "finalize_called")
+    env = os.environ.copy()
+    env["_TF_TEST_GENERATOR_FINALIZE_ON_EXIT"] = marker_file
+    # The test asserts on a LOG(WARNING) line, so do not filter warnings.
+    env.pop("TF_CPP_MIN_LOG_LEVEL", None)
+    if sys.executable:
+      py_path = os.pathsep.join(p for p in sys.path if p)
+      old_py_path = env.get("PYTHONPATH")
+      env["PYTHONPATH"] = (
+          f"{py_path}{os.pathsep}{old_py_path}" if old_py_path else py_path
+      )
+      cmd = [sys.executable, sys.argv[0]]
+    else:
+      cmd = [sys.argv[0]]
+    try:
+      proc = subprocess.run(
+          cmd,
+          env=env,
+          capture_output=True,
+          text=True,
+          check=False,
+          timeout=120,
+      )
+    except subprocess.TimeoutExpired as e:
+      stderr = (
+          e.stderr.decode(errors="replace")
+          if isinstance(e.stderr, bytes)
+          else e.stderr
+      )
+      self.fail(f"Child timed out after {e.timeout}s.\nstderr:\n{stderr}")
+    self.assertEqual(
+        proc.returncode,
+        0,
+        f"Child exited with {proc.returncode}.\nstdout:\n{proc.stdout}\n"
+        f"stderr:\n{proc.stderr}",
+    )
+    self.assertFalse(
+        os.path.exists(marker_file),
+        "Generator finalize py_func should not run during interpreter "
+        f"finalization.\nstderr:\n{proc.stderr}",
+    )
+    self.assertIn(
+        "Python interpreter state is not initialized or is finalizing",
+        proc.stderr,
+    )
+
 
 if __name__ == "__main__":
-  test.main()
+  _marker_file = os.environ.get("_TF_TEST_GENERATOR_FINALIZE_ON_EXIT")
+  if _marker_file:
+
+    def _finalize_fn(_):
+      def _finalize_py_func(open_fn=open, path=_marker_file, int64_fn=np.int64):
+        with open_fn(path, "w") as f:
+          f.write("called")
+        return int64_fn(0)
+
+      return script_ops.py_func(
+          _finalize_py_func, [], [dtypes.int64], stateful=True
+      )
+
+    with context.eager_mode():
+      # pylint: disable=protected-access
+      _ds = from_generator_op._GeneratorDataset(
+          constant_op.constant(37),
+          lambda x: x,
+          lambda x: x,
+          _finalize_fn,
+          tensor_spec.TensorSpec((), dtypes.int32),
+      )
+      # pylint: enable=protected-access
+      # Keep the iterator as a __main__ global. finalize_modules() drops it
+      # during Py_FinalizeEx(), after Py_IsInitialized() is false and
+      # Py_IsFinalizing() is true. The PyFunc kernel must refuse to take
+      # the GIL, so the finalize py_func never runs and the child exits 0.
+      _leaked_iterator = iter(_ds)
+      next(_leaked_iterator)
+  else:
+    test.main()
