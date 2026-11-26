@@ -182,6 +182,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
      *
      * <p>WARNING: This is an experimental interface that is subject to change.
      */
+    @Override
     public boolean getCompressQuantizationZeroPoints() {
       return compressQuantizationZeroPoints != null && compressQuantizationZeroPoints;
     }
