@@ -344,6 +344,7 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max,
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::vector::createLowerVectorMultiReductionPass(
           mlir::vector::VectorMultiReductionLowering::InnerParallel));
+  pm.addPass(cpu::createNormalizeVectorContractPass());
   pm.addPass(cpu::createLowerVectorContractPass());
 
   pm.addPass(mlir::createCanonicalizerPass());

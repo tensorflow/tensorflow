@@ -69,6 +69,7 @@ cc_library(
         "lower_memref_bitcast.cc",
         "lower_vector_contract.cc",
         "lower_xtile_entry.cc",
+        "normalize_vector_contract.cc",
         "unpack_sub_byte_vector_write_pass.cc",
         "unroll_vectors_pass.cc",
         "vector_to_scalar_pass.cc",
