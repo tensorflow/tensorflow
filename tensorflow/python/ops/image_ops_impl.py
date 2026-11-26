@@ -5616,7 +5616,7 @@ def non_max_suppression_padded(boxes,
         boxes, scores, max_output_size, iou_threshold,
         score_threshold, pad_to_max_output_size=True)
     selected_indices = tf.slice(
-        selected_indices_padded, tf.constant([0]), [num_valid])
+        selected_indices_padded, [0], [num_valid])
     selected_boxes = tf.gather(boxes, selected_indices)
     ```
 
@@ -5946,7 +5946,7 @@ def non_max_suppression_padded_v1(boxes,
         boxes, scores, max_output_size, iou_threshold,
         score_threshold, pad_to_max_output_size=True)
     selected_indices = tf.slice(
-        selected_indices_padded, tf.constant([0]), [num_valid])
+        selected_indices_padded, [0], [num_valid])
     selected_boxes = tf.gather(boxes, selected_indices)
     ```
 
