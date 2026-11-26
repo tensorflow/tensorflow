@@ -251,6 +251,8 @@ constexpr absl::string_view SelectKTypeName() {
     return "bfloat16";
   } else if constexpr (std::is_same_v<T, std::uint64_t>) {
     return "uint64_t";
+  } else if constexpr (std::is_same_v<T, std::uint32_t>) {
+    return "uint32_t";
   } else {
     return "unknown";
   }

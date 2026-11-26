@@ -101,6 +101,11 @@ absl::Status SelectKExecuteFfiHandler(
           device_ordinal, allocator, stream, d_in.device_memory(),
           d_out->device_memory(), indices_out->device_memory(), batch_size,
           num_elements, k, scratch_buffer->device_memory());
+    case PrimitiveType::U32:
+      return select_k_exec<std::uint32_t>(
+          device_ordinal, allocator, stream, d_in.device_memory(),
+          d_out->device_memory(), indices_out->device_memory(), batch_size,
+          num_elements, k, scratch_buffer->device_memory());
     default:
       return absl::UnimplementedError(
           absl::StrCat("SelectK: Unsupported dtype: ",

@@ -87,6 +87,11 @@ RaftSelectKAlgo choose_select_k_algorithm_bfloat16(uint32_t rows, uint32_t cols,
 RaftSelectKAlgo choose_select_k_algorithm_uint64(uint32_t rows, uint32_t cols,
                                                  uint32_t k);
 
+// Heuristic-based selection of the RAFT select_k algorithm for uint32_t inputs
+// of shape [rows, cols] selecting top-k elements per row.
+RaftSelectKAlgo choose_select_k_algorithm_uint32(uint32_t rows, uint32_t cols,
+                                                 uint32_t k);
+
 // Calculates a 256-byte-aligned upper bound (in bytes) on the temporary
 // workspace required by RAFT select_k (`__gpu$TopK`) for float32 inputs of
 // shape [batch, n] selecting top-k sorted elements per row.
@@ -127,6 +132,18 @@ absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesBFloat16(
 // preconditions, SM occupancy upper bounds, and safety margin as
 // `EstimateRaftSelectKScratchBytesFloat`.
 absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesUInt64(
+    uint32_t batch, uint32_t n, uint32_t k,
+    int sm_count = kDefaultRaftSelectKMaxSmCount,
+    RaftScratchPhaseMode phase_mode = RaftScratchPhaseMode::kMaxAcrossPhases);
+
+// Calculates a 256-byte-aligned upper bound (in bytes) on the temporary
+// workspace required by RAFT select_k (`__gpu$TopK`) for uint32_t inputs of
+// shape [batch, n] selecting top-k sorted elements per row.
+//
+// Uses `choose_select_k_algorithm_uint32(batch, n, k)` with the same dimension
+// preconditions, SM occupancy upper bounds, and safety margin as
+// `EstimateRaftSelectKScratchBytesFloat`.
+absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesUInt32(
     uint32_t batch, uint32_t n, uint32_t k,
     int sm_count = kDefaultRaftSelectKMaxSmCount,
     RaftScratchPhaseMode phase_mode = RaftScratchPhaseMode::kMaxAcrossPhases);

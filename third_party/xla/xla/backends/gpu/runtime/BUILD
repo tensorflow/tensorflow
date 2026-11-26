@@ -1748,6 +1748,25 @@ cuda_library(
     ],
 )
 
+cuda_library(
+    name = "select_k_exec_raft_uint32",
+    srcs = ["select_k_exec_raft_uint32.cc"],
+    hdrs = ["select_k_exec.h"],
+    copts = [
+        "-fexceptions",
+        "-DLIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE",
+    ],
+    tags = ["cuda-only"],
+    deps = [
+        ":raft_select_k_utils",
+        ":select_k_exec_raft_impl",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 cc_library(
     name = "select_k_exec_raft",
     hdrs = ["select_k_exec.h"],
@@ -1758,6 +1777,7 @@ cc_library(
     deps = [
         ":select_k_exec_raft_bfloat16",
         ":select_k_exec_raft_float",
+        ":select_k_exec_raft_uint32",
         ":select_k_exec_raft_uint64",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",

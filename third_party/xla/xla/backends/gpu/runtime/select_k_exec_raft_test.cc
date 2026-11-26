@@ -103,6 +103,13 @@ struct MaskFor<uint64_t> {
   static constexpr type kStartBits = 0x7FFFFFFFFFFFFC00ULL;
 };
 
+template <>
+struct MaskFor<uint32_t> {
+  using type = uint32_t;
+  // Crosses 2^31 for n >= 2048 to verify unsigned ordering across the sign bit.
+  static constexpr type kStartBits = 0x7FFFFC00u;
+};
+
 // Fills vector with unique values using bit patterns starting from kStartBits
 template <typename T>
 void append_unique_numbers(size_t count, std::vector<T>& arr) {
@@ -136,6 +143,9 @@ absl::StatusOr<int64_t> EstimateScratchBytes(uint32_t batch, uint32_t n,
         batch, n, k, sm_count, RaftScratchPhaseMode::kMaxAcrossPhases);
   } else if constexpr (std::is_same_v<T, uint64_t>) {
     return EstimateRaftSelectKScratchBytesUInt64(
+        batch, n, k, sm_count, RaftScratchPhaseMode::kMaxAcrossPhases);
+  } else if constexpr (std::is_same_v<T, uint32_t>) {
+    return EstimateRaftSelectKScratchBytesUInt32(
         batch, n, k, sm_count, RaftScratchPhaseMode::kMaxAcrossPhases);
   } else {
     static_assert(!std::is_same_v<T, T>,
@@ -304,16 +314,20 @@ TEST_P(RaftSelectKShapeTest, SelectKUint64) {
   RunSelectKTest<uint64_t>(GetParam());
 }
 
+TEST_P(RaftSelectKShapeTest, SelectKUint32) {
+  RunSelectKTest<uint32_t>(GetParam());
+}
+
 // Covers WarpSort (kWarpImmediate including k == n so minimum non-zero
 // unsigned keys land in top-k, kWarpFiltered, kWarpDistributedShm) and both
 // one-block (n <= 16384) and multi-block (n > 16384) Radix paths: kRadix8bits,
-// kRadix11bits (float/uint64_t), kRadix11bitsExtraPass (bfloat16).
+// kRadix11bits (float/uint64_t/uint32_t), kRadix11bitsExtraPass (bfloat16).
 INSTANTIATE_TEST_SUITE_P(
     Shapes, RaftSelectKShapeTest,
     testing::Values(SelectKShape{4, 32, 32}, SelectKShape{4, 4096, 32},
                     SelectKShape{64, 2048, 200}, SelectKShape{1024, 2048, 32},
                     SelectKShape{4, 4096, 512}, SelectKShape{300, 4096, 512},
-                    SelectKShape{8, 28672, 500}),
+                    SelectKShape{4, 28672, 500}, SelectKShape{8, 28672, 500}),
     [](const testing::TestParamInfo<SelectKShape>& info) {
       return absl::StrCat("B", info.param.batch, "_N", info.param.n, "_K",
                           info.param.k);
@@ -414,6 +428,10 @@ TEST(RaftSelectKExecTest, CommandBufferBFloat16) {
 
 TEST(RaftSelectKExecTest, CommandBufferUint64) {
   RunCommandBufferTest<uint64_t>();
+}
+
+TEST(RaftSelectKExecTest, CommandBufferUint32) {
+  RunCommandBufferTest<uint32_t>();
 }
 
 using ::absl_testing::IsOk;

@@ -56,4 +56,9 @@ template absl::Status select_k_exec<std::uint64_t>(
     se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
     std::uint32_t, se::DeviceAddressBase);
 
+template absl::Status select_k_exec<std::uint32_t>(
+    int, se::DeviceAddressAllocator*, se::Stream*, se::DeviceAddressBase,
+    se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
+    std::uint32_t, se::DeviceAddressBase);
+
 }  // namespace xla::gpu

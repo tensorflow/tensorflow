@@ -39,6 +39,14 @@ namespace xla::gpu {
 //   k: Number of top elements to select per row.
 //   scratch_buffer: Pre-allocated device memory for RAFT workspace.
 //
+// Preconditions:
+//   - `__gpu$TopK` is an XLA-internal target. For unsigned integer key types
+//     (`uint32_t`, `uint64_t`) with `k <= 256`, RAFT WarpSort reserves `0` as
+//     its internal dummy sentinel when selecting maxima (`select_min = false`,
+//     upstream rapidsai/raft#1822), so callers must ensure all input keys are
+//     non-zero (for example, packed `[key, ~idx]` keys with strict `n < 65536`
+//     for `uint32_t` or `n < 2^32` for `uint64_t`).
+//
 // Returns:
 //   absl::Status indicating success or failure of the operation.
 template <typename T>

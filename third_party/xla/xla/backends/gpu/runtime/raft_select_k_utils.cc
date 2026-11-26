@@ -657,6 +657,110 @@ RaftSelectKAlgo choose_select_k_algorithm_uint64(uint32_t rows, uint32_t cols,
   }
 }
 
+// ============================================================================
+// choose_select_k_algorithm_uint32
+//
+// Notes:
+//   - Generated from the RAFT select_k benchmark/heuristic workflow in
+//     choose_select_k_algorithm_float for uint32_t inputs.
+//   - Benchmarked over rows in [1, 16384], cols in [64, 65536], and
+//     k in [1, 1024] with k / cols < 0.85, scoped to XLA's packed bfloat16
+//     TopK domain (cols < 65536). Within this domain, WarpSort beats Radix
+//     for k <= 256 and kRadix11bitsExtraPass is not selected.
+// ============================================================================
+
+RaftSelectKAlgo choose_select_k_algorithm_uint32(uint32_t rows, uint32_t cols,
+                                                 uint32_t k) {
+  if (k > 129) {
+    if (k > 256) {
+      if (rows > 266) {
+        return RaftSelectKAlgo::kRadix8bits;
+      }
+      if (cols <= 16780) {
+        return RaftSelectKAlgo::kRadix11bits;
+      }
+      if (rows > 6) {
+        return RaftSelectKAlgo::kRadix11bits;
+      }
+      return RaftSelectKAlgo::kRadix8bits;
+    }
+    if (cols <= 3707) {
+      return RaftSelectKAlgo::kWarpFiltered;
+    }
+    if (rows > 870) {
+      return RaftSelectKAlgo::kWarpDistributedShm;
+    }
+    if (cols <= 4236) {
+      return RaftSelectKAlgo::kWarpImmediate;
+    }
+    if (cols > 31839) {
+      return RaftSelectKAlgo::kWarpImmediate;
+    }
+    return RaftSelectKAlgo::kWarpFiltered;
+  }
+  if (rows > 775) {
+    if (k <= 2) {
+      if (k <= 1) {
+        return RaftSelectKAlgo::kWarpImmediate;
+      }
+      if (cols > 15240) {
+        return RaftSelectKAlgo::kWarpDistributedShm;
+      }
+      return RaftSelectKAlgo::kWarpImmediate;
+    }
+    if (cols <= 131) {
+      return RaftSelectKAlgo::kWarpImmediate;
+    }
+    if (rows > 1477) {
+      return RaftSelectKAlgo::kWarpDistributedShm;
+    }
+    if (cols > 1958) {
+      return RaftSelectKAlgo::kWarpDistributedShm;
+    }
+    return RaftSelectKAlgo::kWarpImmediate;
+  }
+  if (cols > 25038) {
+    if (k > 8) {
+      if (k > 76) {
+        return RaftSelectKAlgo::kWarpFiltered;
+      }
+      return RaftSelectKAlgo::kWarpDistributedShm;
+    }
+    if (rows <= 113) {
+      return RaftSelectKAlgo::kWarpImmediate;
+    }
+    if (k > 1) {
+      return RaftSelectKAlgo::kWarpDistributedShm;
+    }
+    return RaftSelectKAlgo::kWarpImmediate;
+  }
+  if (k <= 34) {
+    if (rows <= 149) {
+      return RaftSelectKAlgo::kWarpImmediate;
+    }
+    if (cols <= 5312) {
+      return RaftSelectKAlgo::kWarpImmediate;
+    }
+    if (k > 3) {
+      return RaftSelectKAlgo::kWarpDistributedShm;
+    }
+    return RaftSelectKAlgo::kWarpImmediate;
+  }
+  if (cols <= 1743) {
+    return RaftSelectKAlgo::kWarpImmediate;
+  }
+  if (rows > 83) {
+    if (k > 75) {
+      return RaftSelectKAlgo::kWarpFiltered;
+    }
+    return RaftSelectKAlgo::kWarpDistributedShm;
+  }
+  if (k > 66) {
+    return RaftSelectKAlgo::kWarpFiltered;
+  }
+  return RaftSelectKAlgo::kWarpImmediate;
+}
+
 absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesFloat(
     uint32_t batch, uint32_t n, uint32_t k, int sm_count,
     RaftScratchPhaseMode phase_mode) {
@@ -679,6 +783,14 @@ absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesUInt64(
   return EstimateRaftSelectKScratchBytesImpl(sizeof(uint64_t), batch, n, k,
                                              sm_count, phase_mode,
                                              choose_select_k_algorithm_uint64);
+}
+
+absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesUInt32(
+    uint32_t batch, uint32_t n, uint32_t k, int sm_count,
+    RaftScratchPhaseMode phase_mode) {
+  return EstimateRaftSelectKScratchBytesImpl(sizeof(uint32_t), batch, n, k,
+                                             sm_count, phase_mode,
+                                             choose_select_k_algorithm_uint32);
 }
 
 }  // namespace xla::gpu
