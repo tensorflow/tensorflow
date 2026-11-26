@@ -70,8 +70,13 @@ CollectiveBackendConfig::CollectiveKernelStrategy ToProtoStrategy(
                 return CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT;
             }
           },
-          [](const AllGatherInfo&) {
-            return CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT;
+          [](const AllGatherInfo& all_gather_info) {
+            switch (all_gather_info.all_gather_strategy) {
+              case AllGatherStrategy::kOneShot:
+                return CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT;
+              case AllGatherStrategy::kTwoShot:
+                return CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
+            }
           },
           [](const AllToAllInfo& all_to_all_info) {
             switch (all_to_all_info.all_to_all_strategy) {

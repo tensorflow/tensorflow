@@ -255,11 +255,39 @@ TEST_F(BuildAllGatherInfoTest, FailsForLargeOutputs) {
 
 TEST_F(BuildAllGatherInfoTest, SucceedsFor32MBOutput) {
   // 4 * 1024 * 1024 F32 elements * 2 devices = 32 MB == 32 MB limit -> ok.
-  EXPECT_THAT(BuildInfo(F32, /*num_elements=*/4 * 1024 * 1024,
-                        /*replica_groups=*/{0, 1}),
-              IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
-                                 Field(&AllGatherInfo::max_output_elements,
-                                       8 * 1024 * 1024))));
+  EXPECT_THAT(
+      BuildInfo(F32, /*num_elements=*/4 * 1024 * 1024,
+                /*replica_groups=*/{0, 1}),
+      IsOkAndHolds(AllOf(
+          Field(&AllGatherInfo::num_devices, 2),
+          Field(&AllGatherInfo::max_output_elements, 8 * 1024 * 1024),
+          Field(&AllGatherInfo::num_warps, 16),
+          Field(&AllGatherInfo::output_tiles, ElementsAre(ElementsAre(65536))),
+          Field(&AllGatherInfo::all_gather_strategy,
+                AllGatherStrategy::kOneShot))));
+}
+
+TEST_F(BuildAllGatherInfoTest, FailsWhenPaddedTileExceedsMaxTritonElements) {
+  // 8-GPU u8[1,17,5,5,8193] -> u8[8,17,5,5,8193] (26.57 MiB <= 32 MiB):
+  // blocks_per_rank = 16, GreedyPowerOfTwoTiles produces [1, 2, 8, 8, 16384]
+  // = 2,097,152 > kMaxTensorNumElements (1,048,576).
+  EXPECT_THAT(BuildInfo(U8, /*input_dims=*/{1, 17, 5, 5, 8193},
+                        /*replica_groups=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("exceeds Triton's 1048576-element limit")));
+  // Power-of-two dims u8[1,16,4,4,8192] -> u8[8,16,4,4,8192] (16 MiB) tile to
+  // [1, 1, 4, 4, 8192] = 131,072 <= 1,048,576 -> ok.
+  EXPECT_THAT(BuildInfo(U8, /*input_dims=*/{1, 16, 4, 4, 8192},
+                        /*replica_groups=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+              IsOkAndHolds(Field(&AllGatherInfo::all_gather_strategy,
+                                 AllGatherStrategy::kOneShot)));
+}
+
+TEST_F(BuildAllGatherInfoTest, FailsForZeroElementOperand) {
+  // Zero-element non-gather dimension must be rejected cleanly.
+  EXPECT_THAT(BuildInfo(F32, /*input_dims=*/{2, 0}, /*replica_groups=*/{0, 1}),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("Zero-element operands")));
 }
 
 TEST_F(BuildAllGatherInfoTest, VariadicChecksSizePerOperandAndUsesMaxElements) {
@@ -298,7 +326,10 @@ TEST_F(BuildAllGatherInfoTest, VariadicChecksSizePerOperandAndUsesMaxElements) {
                          /*device_assignment=*/nullptr),
       IsOkAndHolds(
           AllOf(Field(&AllGatherInfo::num_devices, 2),
-                Field(&AllGatherInfo::max_output_elements, 4 * 1024 * 1024))));
+                Field(&AllGatherInfo::max_output_elements, 4 * 1024 * 1024),
+                Field(&AllGatherInfo::num_warps, 16),
+                Field(&AllGatherInfo::output_tiles,
+                      ElementsAre(ElementsAre(32768), ElementsAre(16384))))));
 }
 
 TEST_F(BuildAllGatherInfoTest, FailsForMoreThanMaxOperands) {

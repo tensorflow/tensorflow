@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -25,8 +26,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/cost_model/triton_emitter_constraints.h"
 #include "xla/backends/gpu/hlo/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/gpu_constants.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -128,6 +132,10 @@ absl::Status IsAllGatherKernelSupported(
         primitive_util::LowercasePrimitiveTypeName(element_type)));
   }
 
+  if (num_output_elements == 0) {
+    return absl::UnimplementedError(
+        "Zero-element operands are not supported by the all-gather kernel.");
+  }
   const int64_t output_byte_size =
       num_output_elements * primitive_util::ByteWidth(element_type);
   if (output_byte_size > kMaxAllGatherSizeBytes) {
@@ -137,6 +145,41 @@ absl::Status IsAllGatherKernelSupported(
 
   return absl::OkStatus();
 }
+
+namespace {
+
+// Maximum gathered output size in bytes for one-shot Triton all-gather.
+constexpr int64_t kMaxOneShotAllGatherSizeBytes = 32 * 1024 * 1024;  // 32 MB
+
+AllGatherStrategy GetAllGatherStrategy(int64_t output_size_bytes) {
+  return output_size_bytes <= kMaxOneShotAllGatherSizeBytes
+             ? AllGatherStrategy::kOneShot
+             : AllGatherStrategy::kTwoShot;
+}
+
+struct AllGatherGridConfig {
+  int64_t num_warps;
+  int64_t num_blocks;
+};
+
+AllGatherGridConfig GetAllGatherGridConfig(
+    const se::DeviceDescription& device_info, int64_t max_output_elements) {
+  const int64_t warp_size =
+      std::max<int64_t>(1, device_info.threads_per_warp());
+  const int64_t elements_per_warp = warp_size * se::gpu::kNumElementsPerThread;
+  // Blocks are partitioned across the full output element count (all peers'
+  // slices).
+  const int64_t total_warps =
+      CeilOfRatio(max_output_elements, elements_per_warp);
+  const int64_t num_warps =
+      std::min<int64_t>(kMaxCollectiveWarpsPerBlock,
+                        llvm::bit_ceil(static_cast<uint64_t>(total_warps)));
+  const int64_t num_blocks =
+      std::min(kAllGatherMaxBlocksPerGrid, CeilOfRatio(total_warps, num_warps));
+  return AllGatherGridConfig{num_warps, num_blocks};
+}
+
+}  // namespace
 
 absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
     const GpuTopology& gpu_topology, const HloAllGatherInstruction* all_gather,
@@ -168,9 +211,12 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
       AreAllReplicasOnSameSlice(gpu_topology, *all_gather, device_assignment));
 
   int64_t max_output_elements = 0;
+  int64_t max_output_byte_size = 0;
   for (const HloInstruction* operand : all_gather->operands()) {
     const int64_t output_elements =
         ShapeUtil::ElementsIn(operand->shape()) * num_devices;
+    const int64_t output_byte_size =
+        ShapeUtil::ByteSizeOf(operand->shape()) * num_devices;
     const int64_t per_rank_gather_dim_size =
         operand->shape().dimensions(all_gather->all_gather_dimension());
     ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
@@ -178,10 +224,43 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
         operand->shape().element_type(), is_local,
         all_gather->replica_groups()));
     max_output_elements = std::max(max_output_elements, output_elements);
+    max_output_byte_size = std::max(max_output_byte_size, output_byte_size);
+  }
+
+  const AllGatherGridConfig grid =
+      GetAllGatherGridConfig(device_info, max_output_elements);
+  ABSL_ASSIGN_OR_RETURN(std::vector<llvm::SmallVector<int64_t>> output_tiles,
+                   GetCollectiveOutputTiles(
+                       *all_gather, all_gather->all_gather_dimension(),
+                       num_devices, static_cast<int32_t>(grid.num_blocks)));
+  for (const llvm::SmallVector<int64_t>& tile_sizes : output_tiles) {
+    int64_t padded_tile_elements = 1;
+    for (int64_t dim_tile : tile_sizes) {
+      const int64_t padded_dim =
+          static_cast<int64_t>(llvm::bit_ceil(static_cast<uint64_t>(dim_tile)));
+      if (padded_dim > kMaxTensorNumElements / padded_tile_elements) {
+        return absl::UnimplementedError(absl::StrFormat(
+            "All-gather padded tile exceeds Triton's %d-element limit.",
+            kMaxTensorNumElements));
+      }
+      padded_tile_elements *= padded_dim;
+    }
+  }
+
+  const AllGatherStrategy strategy =
+      IsLsaPossible(gpu_topology) ? GetAllGatherStrategy(max_output_byte_size)
+                                  : AllGatherStrategy::kOneShot;
+  if (strategy == AllGatherStrategy::kOneShot &&
+      max_output_byte_size > kMaxOneShotAllGatherSizeBytes) {
+    return absl::UnimplementedError(
+        "One-shot all-gather strategy is only supported up to 32 MB.");
   }
   return AllGatherInfo{
       /*.num_devices =*/num_devices,
       /*.max_output_elements =*/max_output_elements,
+      /*.num_warps =*/grid.num_warps,
+      /*.output_tiles =*/std::move(output_tiles),
+      /*.all_gather_strategy =*/strategy,
   };
 }
 

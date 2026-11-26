@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -43,10 +44,14 @@ std::vector<PrimitiveType> SupportedAllGatherTypes(
 // The number is somewhat arbitrary and should be revisited.
 inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 128;
 
-// Optimal threshold for one-shot all-gather in bytes for the collective kernel,
-// applied to the gathered output buffer size.
-// Base on the experimental results.
+// Maximum gathered output size in bytes for Triton all-gather.
 inline constexpr int64_t kMaxAllGatherSizeBytes = 32 * 1024 * 1024;  // 32 MB
+
+// Synchronization strategy for the Triton all-gather kernel.
+enum class AllGatherStrategy {
+  kOneShot,
+  kTwoShot,
+};
 
 // Maximum number of operands supported by the variadic Triton all-gather
 // kernel.
@@ -57,6 +62,9 @@ inline constexpr int64_t kAllGatherMaxNumOperands = 16;
 struct AllGatherInfo {
   int64_t num_devices;
   int64_t max_output_elements;
+  int64_t num_warps;
+  std::vector<llvm::SmallVector<int64_t>> output_tiles;
+  AllGatherStrategy all_gather_strategy;
 };
 
 // Constructs an AllGatherInfo object for the given all-gather instruction.

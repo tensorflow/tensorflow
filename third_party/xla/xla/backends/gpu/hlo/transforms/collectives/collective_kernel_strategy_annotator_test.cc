@@ -177,38 +177,44 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
 
 // ---- AllGather annotator tests -------------------------------------------
 
-// HLO template for AllGather: input is f32[num_elements], output is
-// f32[num_elements * num_replicas] gathered along dimension 0.
 constexpr absl::string_view kAllGatherHloTemplate = R"(
   HloModule all_gather_test
 
   ENTRY e {
-    p0 = f32[%1$d] parameter(0)
-    ROOT all-gather = f32[%2$d] all-gather(p0),
+    p0 = %1$s parameter(0)
+    ROOT all-gather = %2$s all-gather(p0),
         dimensions={0},
         replica_groups={{%3$s}}
   }
 )";
 
-// 4096 F32 elements per replica (16 KB) with 8 replicas → output 32768
-// elements. 4096 * 4 = 16384 bytes, aligned to 128 bits (16 bytes) → eligible →
-// KERNEL_STRATEGY_TRITON_ONE_SHOT.
-TEST_F(CollectiveKernelStrategyAnnotatorTest,
-       EligibleAllGatherIsAnnotatedOneShot) {
-  constexpr int kNumReplicas = 8;
-  constexpr int64_t kInputElements = 4096;
-  constexpr int64_t kOutputElements = kInputElements * kNumReplicas;
-  std::string replica_groups_str = "0,1,2,3,4,5,6,7";
-  std::string hlo = absl::StrFormat(kAllGatherHloTemplate, kInputElements,
-                                    kOutputElements, replica_groups_str);
+struct AllGatherStrategyCase {
+  std::string name;
+  std::string input_shape;
+  std::string output_shape;
+  std::string replica_groups;
+  int num_replicas;
+  CollectiveBackendConfig::CollectiveKernelStrategy expected_strategy;
+};
+
+class AllGatherStrategyAnnotationTest
+    : public CollectiveKernelStrategyAnnotatorTest,
+      public ::testing::WithParamInterface<AllGatherStrategyCase> {};
+
+TEST_P(AllGatherStrategyAnnotationTest, AnnotatesExpectedStrategy) {
+  const AllGatherStrategyCase& tc = GetParam();
+  std::string hlo = absl::StrFormat(kAllGatherHloTemplate, tc.input_shape,
+                                    tc.output_shape, tc.replica_groups);
 
   ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(hlo, kNumReplicas));
+                       ParseAndReturnVerifiedModule(hlo, tc.num_replicas));
+  // Flag is set so that any ineligibility comes from shape (not from the flag).
   module->mutable_config()
       .mutable_debug_options()
       .add_xla_gpu_experimental_use_collective_kernels(
           DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
-  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto local_topology,
+                       MakeLocalGpuTopology(tc.num_replicas));
 
   CollectiveKernelStrategyAnnotator annotator(*local_topology,
                                               /*is_multimem_enabled=*/false);
@@ -216,66 +222,37 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
 
   ASSERT_OK_AND_ASSIGN(auto strategy,
                        GetKernelStrategy(module.get(), HloOpcode::kAllGather));
-  EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+  EXPECT_EQ(strategy, tc.expected_strategy);
 }
 
-// 3 F32 elements per replica: 3 * 32 bits = 96 bits, not aligned to 128 bits
-// → ineligible → KERNEL_STRATEGY_DEFAULT (falls back to NCCL).
-TEST_F(CollectiveKernelStrategyAnnotatorTest,
-       IneligibleAllGatherKeepsDefaultStrategy) {
-  constexpr int kNumReplicas = 8;
-  // 3 F32 elements → 3 * 4 = 12 bytes, not aligned to 16 bytes → ineligible.
-  constexpr int64_t kInputElements = 3;
-  constexpr int64_t kOutputElements = kInputElements * kNumReplicas;
-  std::string replica_groups_str = "0,1,2,3,4,5,6,7";
-  std::string hlo = absl::StrFormat(kAllGatherHloTemplate, kInputElements,
-                                    kOutputElements, replica_groups_str);
-
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(hlo, kNumReplicas));
-  // Flag is set so that the ineligibility comes from shape (not from the flag).
-  module->mutable_config()
-      .mutable_debug_options()
-      .add_xla_gpu_experimental_use_collective_kernels(
-          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
-  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
-
-  CollectiveKernelStrategyAnnotator annotator(*local_topology,
-                                              /*is_multimem_enabled=*/false);
-  ASSERT_OK(annotator.Run(module.get()).status());
-
-  ASSERT_OK_AND_ASSIGN(auto strategy,
-                       GetKernelStrategy(module.get(), HloOpcode::kAllGather));
-  EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
-}
-
-// 2 * 1024 * 1024 F32 elements per replica = 8 MB > 4 MB limit
-// → ineligible → KERNEL_STRATEGY_DEFAULT (falls back to NCCL).
-TEST_F(CollectiveKernelStrategyAnnotatorTest,
-       LargeAllGatherKeepsDefaultStrategy) {
-  constexpr int kNumReplicas = 8;
-  constexpr int64_t kInputElements = 2 * 1024 * 1024;
-  constexpr int64_t kOutputElements = kInputElements * kNumReplicas;
-  std::string replica_groups_str = "0,1,2,3,4,5,6,7";
-  std::string hlo = absl::StrFormat(kAllGatherHloTemplate, kInputElements,
-                                    kOutputElements, replica_groups_str);
-
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(hlo, kNumReplicas));
-  module->mutable_config()
-      .mutable_debug_options()
-      .add_xla_gpu_experimental_use_collective_kernels(
-          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
-  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
-
-  CollectiveKernelStrategyAnnotator annotator(*local_topology,
-                                              /*is_multimem_enabled=*/false);
-  ASSERT_OK(annotator.Run(module.get()).status());
-
-  ASSERT_OK_AND_ASSIGN(auto strategy,
-                       GetKernelStrategy(module.get(), HloOpcode::kAllGather));
-  EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
-}
+INSTANTIATE_TEST_SUITE_P(
+    AllGatherStrategyAnnotation, AllGatherStrategyAnnotationTest,
+    ::testing::ValuesIn<AllGatherStrategyCase>({
+        // 4096 F32 elements per replica (16 KB) with 8 replicas → output 32768
+        // elements (128 KB ≤ 32 MB) → eligible →
+        // KERNEL_STRATEGY_TRITON_ONE_SHOT.
+        {"EligibleAllGatherIsAnnotatedOneShot", "f32[4096]", "f32[32768]",
+         "0,1,2,3,4,5,6,7", 8,
+         CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT},
+        // 3 F32 elements per replica: per-rank gather dim size 3 is not a power
+        // of 2 → ineligible → KERNEL_STRATEGY_DEFAULT (falls back to NCCL).
+        {"IneligibleAllGatherKeepsDefaultStrategy", "f32[3]", "f32[24]",
+         "0,1,2,3,4,5,6,7", 8,
+         CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT},
+        // 2 * 1024 * 1024 F32 elements per replica * 8 replicas = 64 MB > 32 MB
+        // limit → ineligible → KERNEL_STRATEGY_DEFAULT (falls back to NCCL).
+        {"LargeAllGatherKeepsDefaultStrategy", "f32[2097152]", "f32[16777216]",
+         "0,1,2,3,4,5,6,7", 8,
+         CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT},
+        // u8[1,17,5,5,8193] * 8 replicas = 26.57 MB ≤ 32 MB, but padded tile
+        // [1,2,8,8,16384] = 2,097,152 > 1,048,576 → KERNEL_STRATEGY_DEFAULT.
+        {"OversizedPaddedTileKeepsDefaultStrategy", "u8[1,17,5,5,8193]",
+         "u8[8,17,5,5,8193]", "0,1,2,3,4,5,6,7", 8,
+         CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT},
+    }),
+    [](const ::testing::TestParamInfo<AllGatherStrategyCase>& info) {
+      return info.param.name;
+    });
 
 // Module with both AllReduce and AllGather: both should be annotated in a
 // single pass.

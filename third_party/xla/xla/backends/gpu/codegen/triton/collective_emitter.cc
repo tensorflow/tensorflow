@@ -1303,25 +1303,8 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllGather(
     const DeviceAssignment* device_assignment) {
   ABSL_ASSIGN_OR_RETURN(const AllGatherInfo all_gather_info,
                    BuildAllGatherInfo(gpu_topology, instr, device_assignment));
-
-  const int64_t elements_per_warp =
-      WarpSize(gpu_topology.gpu_target_config().device_description) *
-      se::gpu::kNumElementsPerThread;
-  // Blocks are partitioned across the full output element count (all peers'
-  // slices).
-  const int64_t total_warps =
-      CeilOfRatio(all_gather_info.max_output_elements, elements_per_warp);
-  const int64_t num_warps =
-      std::min<int64_t>(kMaxCollectiveWarpsPerBlock,
-                        llvm::bit_ceil(static_cast<uint64_t>(total_warps)));
-  const int64_t num_blocks =
-      std::min(kAllGatherMaxBlocksPerGrid, CeilOfRatio(total_warps, num_warps));
-
-  ABSL_ASSIGN_OR_RETURN(
-      std::vector<llvm::SmallVector<int64_t>> output_tiles,
-      GetCollectiveOutputTiles(*instr, instr->all_gather_dimension(),
-                               all_gather_info.num_devices, num_blocks));
-  return CreateBlockLevelFusionConfig(num_warps, output_tiles);
+  return CreateBlockLevelFusionConfig(all_gather_info.num_warps,
+                                      all_gather_info.output_tiles);
 }
 
 absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForReduceScatter(
