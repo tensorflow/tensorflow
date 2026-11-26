@@ -656,14 +656,6 @@ ENTRY triton_computation {
          data_type == PrimitiveType::F8E4M3FN)) {
       fail_mode = ExpectedFailMode::kCrash;
     }
-  } else {
-    if (((opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum) &&
-         (data_type == PrimitiveType::F8E5M2 ||
-          data_type == PrimitiveType::F8E4M3FN ||
-          data_type == PrimitiveType::F8E5M2FNUZ ||
-          data_type == PrimitiveType::F8E4M3FNUZ))) {
-      fail_mode = ExpectedFailMode::kCrash;
-    }
   }
 
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc, fail_mode);
@@ -697,14 +689,6 @@ ENTRY triton_computation {
         (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
          data_type == PrimitiveType::F8E5M2 ||
          data_type == PrimitiveType::F8E4M3FN)) {
-      fail_mode = ExpectedFailMode::kCrash;
-    }
-  } else {
-    if (((opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum) &&
-         (data_type == PrimitiveType::F8E5M2 ||
-          data_type == PrimitiveType::F8E4M3FN ||
-          data_type == PrimitiveType::F8E5M2FNUZ ||
-          data_type == PrimitiveType::F8E4M3FNUZ))) {
       fail_mode = ExpectedFailMode::kCrash;
     }
   }
@@ -760,19 +744,7 @@ ENTRY triton_computation {
   ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                  hlo_text, data_type, opcode));
 
-  bool skip_failure_branch_to_avoid_crash = false;
-  if (cc.IsRocm()) {
-    skip_failure_branch_to_avoid_crash =
-        (opcode == HloOpcode::kClamp || opcode == HloOpcode::kSelect) &&
-        (data_type == PrimitiveType::F8E5M2 ||
-         data_type == PrimitiveType::F8E4M3FN ||
-         data_type == PrimitiveType::F8E5M2FNUZ ||
-         data_type == PrimitiveType::F8E4M3FNUZ);
-  }
-
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
-                 skip_failure_branch_to_avoid_crash ? ExpectedFailMode::kCrash
-                                                    : ExpectedFailMode::kFail);
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
 }
 
 constexpr std::array kTestedOpsTernaryElementwise = {

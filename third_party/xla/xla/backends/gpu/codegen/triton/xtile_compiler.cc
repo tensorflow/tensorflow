@@ -119,6 +119,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/logging.h"
@@ -217,6 +218,31 @@ absl::Status ValidateComplexUseInTritonFusion(
       return absl::InvalidArgumentError(absl::StrCat(
           "Complex types are unsupported in Triton codegen: ",
           instruction->ToString(HloPrintOptions::ShortParsable())));
+    }
+  }
+  return absl::OkStatus();
+}
+
+// ROCm targets without native bf16 FMA instructions
+// (all except gfx1250) lower a bf16 fma by rounding twice. If this check is
+// removed, the backend produces a working kernel that double-rounds, which does
+// not match the expected numerics of a single-rounded bf16 fma.
+absl::Status ValidateFmaUseInTritonFusion(
+    const HloComputation& computation, const se::GpuComputeCapability& gpu_cc) {
+  const se::RocmComputeCapability* rocm_cc = gpu_cc.rocm_compute_capability();
+  if (rocm_cc == nullptr || rocm_cc->gfx1250()) {
+    return absl::OkStatus();
+  }
+  for (const HloInstruction* instruction : computation.instructions()) {
+    if (instruction->opcode() == HloOpcode::kFma &&
+        instruction->shape().element_type() == BF16) {
+      return absl::UnimplementedError(absl::StrCat(
+          "bf16 fma is only supported in Triton codegen on ROCm gfx1250, "
+          "because other ROCm targets would round twice: ",
+          instruction->ToString(HloPrintOptions::ShortParsable())));
+    }
+    for (const HloComputation* called : instruction->called_computations()) {
+      ABSL_RETURN_IF_ERROR(ValidateFmaUseInTritonFusion(*called, gpu_cc));
     }
   }
   return absl::OkStatus();
@@ -379,6 +405,8 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
 
   ABSL_RETURN_IF_ERROR(ValidateComplexUseInTritonFusion(*hlo_computation));
   ABSL_RETURN_IF_ERROR(ValidateF4UseInTritonFusion(*hlo_computation));
+  ABSL_RETURN_IF_ERROR(ValidateFmaUseInTritonFusion(
+      *hlo_computation, device_info.gpu_compute_capability()));
   ABSL_ASSIGN_OR_RETURN(
       auto triton_module,
       TileAndEmitXTileModule(
