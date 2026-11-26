@@ -1013,11 +1013,11 @@ cc_library(
         "//xla/runtime:device_id",
         "//xla/runtime:process_id",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla:xla_proto_cc",
-        "@tsl//tsl/platform:numbers",
         "@tsl//tsl/profiler/lib:traceme",
     ],
     alwayslink = True,  # registers collectives implementation

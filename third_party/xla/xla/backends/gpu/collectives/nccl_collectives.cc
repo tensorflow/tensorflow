@@ -63,13 +63,13 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/numbers.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
@@ -327,6 +327,9 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
   } else if (stream_executor->GetDeviceDescription()
                  .cuda_compute_capability()
                  .IsBlackwell() &&
+             !stream_executor->GetDeviceDescription()
+                  .cuda_compute_capability()
+                  .IsRubin() &&
              nccl_version >= NCCL_VERSION(2, 28, 0)) {
     // Future NCCL versions will reduce the default max number of channels on
     // Blackwell to 16. We need to manually set it to 32 here to avoid surprise

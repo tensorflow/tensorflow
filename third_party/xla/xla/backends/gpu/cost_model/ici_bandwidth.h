@@ -28,11 +28,13 @@ namespace xla::gpu {
 // Unidirectional per-lane NVLink bandwidth in GB/s, per CUDA compute
 // capability. Shared source of truth for the NCCL/XLA performance model and
 // for runtime cost calculations.
+// https://github.com/NVIDIA/nccl/blob/72a2f960a04e6a3e3ef1849a2563a2383f7baf46/src/graph/topo.h#L21-L27
 inline constexpr double kSm60NvlinkBandwidthGbps = 18.0;
 inline constexpr double kSm70NvlinkBandwidthGbps = 20.0;
 inline constexpr double kSm80NvlinkBandwidthGbps = 20.0;
 inline constexpr double kSm90NvlinkBandwidthGbps = 20.0;
 inline constexpr double kSm100NvlinkBandwidthGbps = 40.0;
+inline constexpr double kSm107NvlinkBandwidthGbps = 31.2;
 
 // Unidirectional per-lane Infinity Fabric bandwidth in GB/s, per ROCm
 // Instinct accelerator family.
@@ -47,7 +49,10 @@ inline float GetIciBandwidthPerLaneGbps(
     const stream_executor::CudaComputeCapability& cc) {
   switch (cc.major) {
     case stream_executor::CudaComputeCapability::kBlackwell:
-      return kSm100NvlinkBandwidthGbps;
+    case stream_executor::CudaComputeCapability::kBlackwell_11:
+    case stream_executor::CudaComputeCapability::kBlackwell_12:
+      return cc.IsRubin() ? kSm107NvlinkBandwidthGbps
+                          : kSm100NvlinkBandwidthGbps;
     case stream_executor::CudaComputeCapability::kHopper:
       return kSm90NvlinkBandwidthGbps;
     case stream_executor::CudaComputeCapability::kAmpere:
@@ -58,8 +63,8 @@ inline float GetIciBandwidthPerLaneGbps(
       return kSm60NvlinkBandwidthGbps;
     default:
       LOG(WARNING) << "NVLink bandwidth for " << cc.ToString()
-                   << " unknown. Assumes Blackwell.";
-      return kSm100NvlinkBandwidthGbps;
+                   << " unknown. Assuming the last known bandwidth.";
+      return kSm107NvlinkBandwidthGbps;
   }
 }
 

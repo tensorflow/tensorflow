@@ -152,6 +152,7 @@ xla_cc_test(
         ":sol_gpu_cost_model",
         "//xla/hlo/parser:hlo_parser",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
@@ -528,6 +529,29 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_collective_performance_model_test",
+    srcs = ["gpu_collective_performance_model_test.cc"],
+    deps = [
+        ":gpu_collective_performance_model",
+        ":gpu_hlo_cost_analysis",
+        ":hlo_op_profiles",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
