@@ -182,6 +182,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
         HloOpcode::kExp,
         HloOpcode::kExpm1,
         HloOpcode::kFloor,
+        HloOpcode::kIsFinite,
         HloOpcode::kLog,
         HloOpcode::kLog1p,
         HloOpcode::kRoundNearestEven,

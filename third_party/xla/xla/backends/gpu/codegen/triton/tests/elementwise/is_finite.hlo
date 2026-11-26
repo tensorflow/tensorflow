@@ -1,0 +1,52 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+fusion {
+  p_f16 = f16[16]{0} parameter(0)
+  p_bf16 = bf16[16]{0} parameter(1)
+  p_f32 = f32[16]{0} parameter(2)
+  p_f64 = f64[16]{0} parameter(3)
+  finite_f16 = pred[16]{0} is-finite(p_f16)
+  finite_bf16 = pred[16]{0} is-finite(p_bf16)
+  finite_f32 = pred[16]{0} is-finite(p_f32)
+  finite_f64 = pred[16]{0} is-finite(p_f64)
+  ROOT finite = pred[64]{0} concatenate(
+    finite_f16, finite_bf16, finite_f32, finite_f64), dimensions={0}
+}
+// CHECK-DAG: math.isfinite %{{.*}} : tensor<16xf16>
+// CHECK-DAG: math.isfinite %{{.*}} : tensor<16xbf16>
+// CHECK-DAG: math.isfinite %{{.*}} : tensor<16xf32>
+// CHECK-DAG: math.isfinite %{{.*}} : tensor<16xf64>
+
+ENTRY main {
+  // Special values: -inf, -max, -1, -min, -denorm_min, -0, 0, denorm_min,
+  // min, 1, max, +inf, nan, -nan, 42, -42.
+  input_f16 = f16[16]{0} constant({
+    -inf, -65504.0, -1.0, -6.103515625e-5, -5.9604644775390625e-8, -0.0,
+    0.0, 5.9604644775390625e-8, 6.103515625e-5, 1.0, 65504.0, inf,
+    nan, -nan, 42.0, -42.0})
+  input_bf16 = bf16[16]{0} constant({
+    -inf, -3.38953139e+38, -1.0, -1.17549435e-38, -9.18354962e-41, -0.0,
+    0.0, 9.18354962e-41, 1.17549435e-38, 1.0, 3.38953139e+38, inf,
+    nan, -nan, 42.0, -42.0})
+  input_f32 = f32[16]{0} constant({
+    -inf, -3.40282347e+38, -1.0, -1.17549435e-38, -1.40129846e-45, -0.0,
+    0.0, 1.40129846e-45, 1.17549435e-38, 1.0, 3.40282347e+38, inf,
+    nan, -nan, 42.0, -42.0})
+  input_f64 = f64[16]{0} constant({
+    -inf, -1.7976931348623157e+308, -1.0, -2.2250738585072014e-308,
+    -4.9406564584124654e-324, -0.0, 0.0, 4.9406564584124654e-324,
+    2.2250738585072014e-308, 1.0, 1.7976931348623157e+308, inf,
+    nan, -nan, 42.0, -42.0})
+  ROOT fusion = pred[64]{0} fusion(input_f16, input_bf16, input_f32, input_f64),
+    kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1",
+          "is_tma_allowed":false}}}
+}

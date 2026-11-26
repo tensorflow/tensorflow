@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/APFloat.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -61,13 +62,40 @@ class RewriteNegFToSubtract : public OpRewritePattern<mlir::arith::NegFOp> {
   }
 };
 
+class RewriteIsFinite : public OpRewritePattern<mlir::math::IsFiniteOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::math::IsFiniteOp op,
+                                PatternRewriter& rewriter) const override {
+    mlir::Value operand = op.getOperand();
+    mlir::Type operand_type = operand.getType();
+    mlir::Type element_type = getElementTypeOrSelf(operand_type);
+    auto float_type = mlir::dyn_cast<mlir::FloatType>(element_type);
+    if (!float_type || !(float_type.isF16() || float_type.isBF16() ||
+                         float_type.isF32() || float_type.isF64())) {
+      return rewriter.notifyMatchFailure(
+          op, "expected f16, bf16, f32, or f64 type");
+    }
+
+    const llvm::fltSemantics& semantics = float_type.getFloatSemantics();
+    mlir::Value pos_inf = mlir::createScalarOrSplatConstant(
+        rewriter, op->getLoc(), operand_type, mlir::APFloat::getInf(semantics));
+    mlir::Value abs_operand =
+        mlir::math::AbsFOp::create(rewriter, op->getLoc(), operand);
+    rewriter.replaceOpWithNewOp<mlir::arith::CmpFOp>(
+        op, mlir::arith::CmpFPredicate::ONE, abs_operand, pos_inf);
+    return success();
+  }
+};
+
 struct UnsupportedElementwiseToTritonPass
     : public impl::UnsupportedElementwiseToTritonPassBase<
           UnsupportedElementwiseToTritonPass> {
   void runOnOperation() override {
     auto module = getOperation();
-    mlir::RewritePatternSet patterns(
-        &getContext(), std::make_unique<RewriteNegFToSubtract>(&getContext()));
+    mlir::RewritePatternSet patterns(&getContext());
+    patterns.add<RewriteNegFToSubtract, RewriteIsFinite>(&getContext());
     if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
     }

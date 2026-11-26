@@ -262,6 +262,7 @@ def UnsupportedElementwiseToTritonPass
     "Converts unsupported elementwise operations to their Triton equivalent.";
   let dependentDialects = [
     "::mlir::arith::ArithDialect",
+    "::mlir::math::MathDialect",
   ];
 }
 

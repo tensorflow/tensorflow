@@ -451,9 +451,9 @@ HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
   arg_1 = f32[] parameter(1)
-  if_0 = pred[] is-finite(arg_0)
-  c = f32[] convert(if_0)
-  ROOT maximum = f32[] maximum(c, arg_1)
+  c = c64[] complex(arg_0, arg_1)
+  r = f32[] real(c)
+  ROOT maximum = f32[] maximum(r, arg_1)
 }
 
 ENTRY main {
