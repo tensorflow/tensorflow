@@ -322,6 +322,19 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
 #endif
 }
 
+// Releases a communicator that Create has not published yet. ncclCommAbort
+// stays blocking and completes before it returns. `poll_status` is the
+// caller's poll error, logged if abort fails.
+void AbortUnownedCommunicator(ncclComm_t comm,
+                              const absl::Status& poll_status) {
+  ncclResult_t abort = ncclCommAbort(comm);
+  if (abort != ncclSuccess) {
+    LOG(ERROR) << "Failed to abort NCCL communicator " << comm
+               << " after initialization poll failed: "
+               << ncclGetErrorString(abort) << "; poll status: " << poll_status;
+  }
+}
+
 }  // namespace
 
 absl::Status NcclCapabilities::GetOneSidedCommUnsupportedError(
@@ -483,11 +496,12 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
     ABSL_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
     // For a split, make_comm waits for parent completion to publish the child
     // handle. The child can still be initializing, so wait for its readiness.
-    if (cancel) {
-      ABSL_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
-    } else {
-      CancellationToken never_cancelled;
-      ABSL_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
+    // No NcclCommunicator owns this comm yet, so a failed poll must abort it
+    // here. ncclCommDestroy can hang while the comm is still ncclInProgress.
+    absl::Status ready = ::xla::gpu::PollUntilDone(comm, *cancel);
+    if (!ready.ok()) {
+      AbortUnownedCommunicator(comm, ready);
+      return ready;
     }
     return comm;
   };

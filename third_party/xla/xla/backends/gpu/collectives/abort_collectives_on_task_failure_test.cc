@@ -205,9 +205,8 @@ TEST(AbortCollectivesOnTaskFailureTest, AbortsAcquiredGpuCliqueOnTaskFailure) {
   }
   EXPECT_OK(CheckCliqueIsNotStale(key));
 
-  // Drop locks before abort so AbortCliquesWithIncarnations can take exclusive
-  // access and tear the clique down (same as healthy ranks releasing after
-  // cancel notification in production).
+  // Drop the acquired locks before abort. Abort does not take the clique lock;
+  // dropping them here matches a caller that has finished the run.
   locks.clear();
   futures.clear();
   acquired_cliques.clear();

@@ -73,6 +73,19 @@ se::Stream* ToStream(const Communicator::Executor& executor) {
   return absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
 }
 
+// Releases a communicator that Create has not published yet. ncclCommAbort
+// stays blocking and completes before it returns. `poll_status` is the
+// caller's poll error, logged if abort fails.
+void AbortUnownedCommunicator(ncclComm_t comm,
+                              const absl::Status& poll_status) {
+  ncclResult_t abort = ncclCommAbort(comm);
+  if (abort != ncclSuccess) {
+    LOG(ERROR) << "Failed to abort RCCL communicator " << comm
+               << " after initialization poll failed: "
+               << ncclGetErrorString(abort) << "; poll status: " << poll_status;
+  }
+}
+
 }  // namespace
 
 //==-----------------------------------------------------------------------===//
@@ -82,13 +95,17 @@ se::Stream* ToStream(const Communicator::Executor& executor) {
 absl::StatusOr<std::unique_ptr<RcclCommunicator>> RcclCommunicator::Create(
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
     std::shared_ptr<CancellationToken> cancel, bool is_async, tsl::Env& env) {
+  if (cancel == nullptr) {
+    cancel = std::make_shared<CancellationToken>();
+  }
   auto f = [cancel, &make_comm]() -> absl::StatusOr<ncclComm_t> {
     ABSL_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
-    if (cancel) {
-      ABSL_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
-    } else {
-      CancellationToken never_cancelled;
-      ABSL_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
+    // No RcclCommunicator owns this comm yet, so a failed poll must abort it
+    // here. ncclCommDestroy can hang while the comm is still ncclInProgress.
+    absl::Status ready = ::xla::gpu::PollUntilDone(comm, *cancel);
+    if (!ready.ok()) {
+      AbortUnownedCommunicator(comm, ready);
+      return ready;
     }
     return comm;
   };

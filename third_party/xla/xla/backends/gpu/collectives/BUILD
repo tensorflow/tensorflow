@@ -274,6 +274,44 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "cancels_pending_clique_init_test",
+    srcs = ["cancels_pending_clique_init_test.cc"],
+    deps = [
+        ":cancellation_token",
+        ":gpu_clique",
+        ":gpu_clique_key",
+        ":gpu_cliques",
+        ":gpu_collectives",
+        ":mock_gpu_collectives",
+        ":mock_gpu_communicator",
+        "//xla:executable_run_options",
+        "//xla:future",
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
+        "//xla/runtime:device_id",
+        "//xla/stream_executor:mock_stream_executor",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_test(
     name = "abort_collectives_on_task_failure_test",
     srcs = ["abort_collectives_on_task_failure_test.cc"],
@@ -307,7 +345,9 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-    ] + if_cuda_or_rocm_is_configured(["nccl_or_rccl_collectives"]),
+    ] + if_cuda_or_rocm_is_configured([
+        ":nccl_or_rccl_collectives",  # buildcleaner: keep
+    ]),
 )
 
 xla_test(
