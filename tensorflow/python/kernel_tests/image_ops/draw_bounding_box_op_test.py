@@ -150,9 +150,18 @@ class DrawBoundingBoxOpTest(test.TestCase):
           ([1, 2, 3, 4], [2, 5], [2, 3, 4]),
           ([2, 3, 2, 4], [2, 5], [2, 3, 4]),
           ([2, 2, 3, 4], [2, 5], [3, 2, 4]),
+          ([2, 2, 3, 5], [2, 5], [2, 3, 4]),
+          ([2, 2, 3, 4], [2, 5], [2, 3, 5]),
       ):
         with self.subTest(shapes=shapes), self.assertRaises(ValueError):
           proposals(*shapes)
+
+  def testProposalEmptyAnchors(self):
+    with ops.Graph().as_default(), self.assertRaisesRegex(
+        ValueError, "at least one anchor"):
+      image_ops.generate_bounding_box_proposals(
+          array_ops.zeros([1, 2, 3, 0]), array_ops.zeros([1, 2, 3, 0]),
+          array_ops.ones([1, 5]), array_ops.zeros([2, 3, 0]))
 
   @test_util.run_gpu_only
   @test_util.run_v2_only
@@ -167,6 +176,19 @@ class DrawBoundingBoxOpTest(test.TestCase):
         image_ops.generate_bounding_box_proposals(
             array_ops.ones([1, 2, 3, 1]), array_ops.zeros([1, 3, 2, 4]),
             array_ops.ones([1, 5]), array_ops.zeros([2, 3, 4]))
+
+      for scores, deltas, info, anchors, message in (
+          ([1, 2, 3, 0], [1, 2, 3, 0], [1, 5], [2, 3, 0],
+           "at least one anchor"),
+          ([1, 2, 3, 1], [1, 2, 3, 4], [1, 4], [2, 3, 4], "5 columns"),
+          ([1, 2, 3, 1], [1, 2, 3, 4], [1, 5], [2, 3, 5], "anchors depth"),
+          ([1, 2, 3, 1], [1, 2, 3, 5], [1, 5], [2, 3, 4], "bbox_deltas depth"),
+      ):
+        with self.subTest(message=message), self.assertRaisesRegex(
+            errors.InvalidArgumentError, message):
+          image_ops.generate_bounding_box_proposals(
+              array_ops.zeros(scores), array_ops.zeros(deltas),
+              array_ops.ones(info), array_ops.zeros(anchors))
 
   # generate_bound_box_proposals is only available on GPU.
   @test_util.run_gpu_only

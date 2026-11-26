@@ -352,9 +352,23 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
                 absl::InvalidArgumentError(
                     "scores, bbox_deltas and anchors must have the same "
                     "height and width"));
-    const auto box_dim = anchors.dim_size(2) / num_anchors;
-    OP_REQUIRES(context, box_dim == 4,
-                absl::OutOfRangeError("Box dimensions need to be 4"));
+    OP_REQUIRES(context, num_anchors > 0,
+                absl::InvalidArgumentError(
+                    "scores must have at least one anchor"));
+    OP_REQUIRES(context, image_info.dim_size(1) == 5,
+                absl::InvalidArgumentError("image_info must have 5 columns"));
+    // Check the quotient and remainder to avoid overflowing 4 * num_anchors.
+    OP_REQUIRES(context,
+                anchors.dim_size(2) % 4 == 0 &&
+                    anchors.dim_size(2) / 4 == num_anchors,
+                absl::InvalidArgumentError(
+                    "anchors depth must equal 4 * the number of anchors"));
+    OP_REQUIRES(context,
+                bbox_deltas.dim_size(3) % 4 == 0 &&
+                    bbox_deltas.dim_size(3) / 4 == num_anchors,
+                absl::InvalidArgumentError(
+                    "bbox_deltas depth must equal 4 * the number of anchors"));
+    const int box_dim = 4;
     // TODO(skama): make sure that inputs are ok.
     const int image_stride = height * width;
     const int conv_layer_nboxes =

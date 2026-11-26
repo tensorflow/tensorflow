@@ -1209,6 +1209,16 @@ REGISTER_OP("GenerateBoundingBoxProposals")
         TF_RETURN_IF_ERROR(c->Merge(spatial, c->Dim(anchors, axis - 1),
                                     &spatial));
       }
+      DimensionHandle num_anchors = c->Dim(scores, 3);
+      if (c->ValueKnown(num_anchors) && c->Value(num_anchors) == 0) {
+        return errors::InvalidArgument("scores must have at least one anchor");
+      }
+      DimensionHandle anchor_depth;
+      TF_RETURN_IF_ERROR(c->Multiply(num_anchors, 4, &anchor_depth));
+      TF_RETURN_IF_ERROR(
+          c->Merge(anchor_depth, c->Dim(anchors, 2), &anchor_depth));
+      TF_RETURN_IF_ERROR(
+          c->Merge(anchor_depth, c->Dim(bounding_boxes, 3), &anchor_depth));
       int post_nms_top_n;
       TF_RETURN_IF_ERROR(c->GetAttr("post_nms_topn", &post_nms_top_n));
       auto roi_shape = c->MakeShape({batch, post_nms_top_n, 4});
