@@ -121,21 +121,3 @@ jobs:
         env:
           BAZEL_CONFIG: ${{ matrix.config }}
         run: bash ./build_tools/dependencies/check_dependency_violations.sh rocm-only
-
-  # Temporary pass-through stubs while Copybara's HEAD config still waits on the
-  # legacy CPU check names; removed in the follow-up CL once copy.bara.sky drops
-  # them. All 3 CPU checks are already enforced by `no-gpu-targets-in-cpu-build`.
-  legacy-cpu-check-stubs:
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
-    permissions: {}
-    strategy:
-      matrix:
-        name:
-          - no-cuda-only-targets-in-cpu-build
-          - no-rocm-only-targets-in-cpu-build
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: "Consolidated into no-gpu-targets-in-cpu-build"
-        run: echo "Consolidated into no-gpu-targets-in-cpu-build"
