@@ -23,9 +23,9 @@ limitations under the License.
 // Compiler attributes
 #define TF_ATTRIBUTE_ALWAYS_INLINE ABSL_ATTRIBUTE_ALWAYS_INLINE
 #define TF_ATTRIBUTE_NOINLINE ABSL_ATTRIBUTE_NOINLINE
-#define TF_ATTRIBUTE_UNUSED ABSL_ATTRIBUTE_UNUSED
+#define TF_ATTRIBUTE_UNUSED [[maybe_unused]]
 #define TF_PACKED ABSL_ATTRIBUTE_PACKED
-#define TF_MUST_USE_RESULT ABSL_MUST_USE_RESULT
+#define TF_MUST_USE_RESULT [[nodiscard]]
 
 // Control visibility outside .so
 #if defined(_WIN32)
@@ -82,6 +82,6 @@ limitations under the License.
 #define LANG_CXX11 1
 #endif
 
-#define TF_FALLTHROUGH_INTENDED ABSL_FALLTHROUGH_INTENDED
+#define TF_FALLTHROUGH_INTENDED [[fallthrough]]
 
 #endif  // XLA_TSL_PLATFORM_MACROS_H_
