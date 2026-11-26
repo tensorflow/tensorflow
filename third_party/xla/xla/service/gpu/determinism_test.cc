@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/core/autotuner/backends.pb.h"
 #include "xla/backends/gpu/autotuner/autotuner_cache.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"

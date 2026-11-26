@@ -18,7 +18,7 @@ syntax = "proto3";
 package xla;
 
 import "google/protobuf/any.proto";
-import "xla/backends/autotuner/backends.proto";
+import "xla/backends/core/autotuner/backends.proto";
 import "xla/service/hlo.proto";
 import "xla/xla_data.proto";
 

@@ -16,42 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_IN_MEMORY_STORE_H_
 #define XLA_BACKENDS_AUTOTUNER_IN_MEMORY_STORE_H_
 
-#include <vector>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/autotune_cache.pb.h"
-#include "xla/backends/autotuner/autotune_cache_store.h"
-
-namespace xla {
-
-// InMemoryStore is a process-wide, in-memory AutotuneCacheStore. It replaces
-// the former LocalCache/LocalCacheStorage pair as the hot in-memory tier.
-// Entries are held in a global static flat_hash_map keyed by TargetKey, which
-// is shared across all instances of InMemoryStore.
-class InMemoryStore : public AutotuneCacheStore {
- public:
-  InMemoryStore() = default;
-  ~InMemoryStore() override = default;
-
-  absl::StatusOr<std::vector<autotuner::AutotuneEntry>> Read(
-      const autotuner::AutotuneTargetKey& target_key) override;
-  absl::Status Write(const autotuner::AutotuneEntry& entry) override;
-  absl::StatusOr<std::vector<autotuner::AutotuneEntry>> ReadAll() override;
-
-  CacheMode GetMode() const override { return CacheMode::kReadWrite; }
-
-  // Clears the process-wide in-memory cache. Used to isolate unit tests.
-  static void Clear();
-
-  // Loads entries from a file into the process-wide in-memory cache.
-  static absl::Status LoadFromFile(absl::string_view file_path);
-
-  // Dumps all process-wide in-memory cache entries to a file.
-  static absl::Status DumpToFile(absl::string_view file_path);
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/core/autotuner/in_memory_store.h"
+#include "xla/backends/core/autotuner/in_memory_store.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_AUTOTUNER_IN_MEMORY_STORE_H_

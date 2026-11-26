@@ -16,46 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_AUTOTUNER_FACTORY_H_
 #define XLA_BACKENDS_GPU_AUTOTUNER_FACTORY_H_
 
-#include <functional>
-#include <memory>
-#include <vector>
-
-#include "absl/types/span.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/backends.pb.h"
-#include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/gpu/cost_model/gpu_indexing_performance_model.h"
-#include "xla/hlo/analysis/alias_info.h"
-#include "xla/service/compiler.h"
-#include "xla/service/hlo_cost_analysis.h"
-#include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
-
-namespace tsl::thread {
-class ThreadPool;
-}  // namespace tsl::thread
-
-namespace xla {
-
-namespace gpu {
-
-// A factory function for getting the codegen backends for a given platform.
-// The backend allowlist is a list of backend names (from BackendName enum)
-// that are allowed to be returned. If the list is empty, all backends are
-// returned.
-struct GetCodegenBackends {
-  using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
-      stream_executor::StreamExecutor*,
-      stream_executor::DeviceAddressAllocator*, const DebugOptions*, Compiler*,
-      const Compiler::GpuTargetConfig*, const AliasInfo* alias_info,
-      mlir::MLIRContext* mlir_context,
-      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      absl::Span<const autotuner::Backend> backend_allowlist,
-      tsl::thread::ThreadPool* thread_pool,
-      MlirContextPool* mlir_context_pool)>;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/core/autotuner/factory.h"
+#include "xla/backends/gpu/core/autotuner/factory.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_AUTOTUNER_FACTORY_H_

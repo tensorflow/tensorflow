@@ -16,74 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_AUTOTUNER_CUBLASLT_H_
 #define XLA_BACKENDS_GPU_AUTOTUNER_CUBLASLT_H_
 
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/time/time.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/backends.pb.h"
-#include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/compiler.h"
-#include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/shape.h"
-#include "xla/stream_executor/semantic_version.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/xla.pb.h"
-
-namespace xla {
-namespace gpu {
-
-// A codegen backend for cuBLASLt.
-// This backend is used to autotune cuBLASLt algorithms.
-//
-// The CublasLt backend requires a fusion instruction with a cuBLASLt custom
-// call.
-// CuBLASLt custom calls are represented as:
-// ```
-//   %custom-call.1 = .. custom-call(...),
-//   custom_call_target="__cublas$lt&matmul"
-// ```
-class CublasLtBackend : public GpuCodegenBackend {
- public:
-  explicit CublasLtBackend(stream_executor::StreamExecutor* stream_executor,
-                           const DebugOptions* debug_options,
-                           Compiler* compiler,
-                           const Compiler::GpuTargetConfig* target_config,
-                           mlir::MLIRContext* mlir_context = nullptr)
-      : GpuCodegenBackend(autotuner::Backend::CUBLASLT, debug_options, compiler,
-                          target_config, stream_executor,
-                          /*uses_last_output_for_scratch=*/true),
-        mlir_context_(mlir_context) {}
-
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetSupportedConfigs(const HloInstruction& instr) override;
-
-  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
-      const HloInstruction& instr) override;
-
-  absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
-      const HloInstruction& instr) override;
-
-  absl::Status ApplyConfig(HloInstruction& instr,
-                           const BackendConfig& config) override;
-
-  std::string version() const override {
-    return target_config().device_description.runtime_version().ToString();
-  }
-
- private:
-  bool IsSupported(const HloInstruction& instr) override;
-
-  mlir::MLIRContext* mlir_context_ = nullptr;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/core/autotuner/cublaslt.h"
+#include "xla/backends/gpu/core/autotuner/cublaslt.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_AUTOTUNER_CUBLASLT_H_

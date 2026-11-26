@@ -16,47 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_DIRECTORY_STORE_H_
 #define XLA_BACKENDS_AUTOTUNER_DIRECTORY_STORE_H_
 
-#include <string>
-#include <vector>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "xla/autotune_cache.pb.h"
-#include "xla/backends/autotuner/autotune_cache_store.h"
-#include "xla/backends/autotuner/autotuner_cache_interface.h"
-
-namespace xla {
-
-// The reads/writes are best-effort and only log warnings if they fail. This
-// ensures that the autotuner cache does not fail the compilation due to
-// permission issues or disks quotas.
-//
-// DirectoryStore implements AutotuneCacheStore by writing each autotune entry
-// into its own protobuf file inside a structured directory layout:
-//   <directory_path>/<device>/[<explicit_version>]/<hlo_fingerprint>.pb
-//
-// Renames are used during writes to ensure updates are atomic and thread-safe.
-class DirectoryStore : public AutotuneCacheStore {
- public:
-  DirectoryStore(std::string directory_path, CacheMode mode);
-  ~DirectoryStore() override = default;
-
-  absl::StatusOr<std::vector<autotuner::AutotuneEntry>> Read(
-      const autotuner::AutotuneTargetKey& target_key) override;
-
-  absl::Status Write(const autotuner::AutotuneEntry& entry) override;
-
-  absl::StatusOr<std::vector<autotuner::AutotuneEntry>> ReadAll() override;
-
-  CacheMode GetMode() const override { return mode_; }
-
- private:
-  std::string GetFilePath(const autotuner::AutotuneTargetKey& target_key) const;
-
-  std::string directory_path_;
-  CacheMode mode_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/core/autotuner/directory_store.h"
+#include "xla/backends/core/autotuner/directory_store.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_AUTOTUNER_DIRECTORY_STORE_H_

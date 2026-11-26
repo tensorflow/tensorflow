@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/core/autotuner/backends.pb.h"
 #include "xla/backends/gpu/hlo/transforms/cudnn_fusion_compiler.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/comparison_util.h"

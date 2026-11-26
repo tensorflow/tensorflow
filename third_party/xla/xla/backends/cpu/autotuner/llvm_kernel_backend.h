@@ -16,51 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_AUTOTUNER_LLVM_KERNEL_BACKEND_H_
 #define XLA_BACKENDS_CPU_AUTOTUNER_LLVM_KERNEL_BACKEND_H_
 
-#include <memory>
-#include <vector>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/backends/autotuner/backends.pb.h"
-#include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/cpu/autotuner/cpu_codegen_backend.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/compiler.h"
-#include "xla/service/cpu/backend_config.pb.h"
-
-namespace xla::cpu {
-
-inline constexpr absl::string_view kLlvmKernelBackendName =
-    "llvm_kernel_backend";
-
-class LlvmKernelBackend : public CpuCodegenBackend {
- public:
-  static absl::StatusOr<std::unique_ptr<CodegenBackend>> Create(
-      Compiler* compiler);
-
-  using Config = LlvmKernelOptions;
-
-  absl::StatusOr<std::vector<std::unique_ptr<xla::BackendConfig>>>
-  GetSupportedConfigs(const HloInstruction& instr) final;
-
-  absl::StatusOr<std::unique_ptr<xla::BackendConfig>> GetDefaultConfig(
-      const HloInstruction& instr) final;
-
-  absl::Status ApplyConfig(HloInstruction& instr,
-                           const xla::BackendConfig& config) final;
-
-  autotuner::Backend backend() const final {
-    return autotuner::Backend::LLVM_KERNEL_EMITTER;
-  }
-
- protected:
-  bool IsSupported(const HloInstruction& instr);
-
-  explicit LlvmKernelBackend(Compiler* compiler)
-      : CpuCodegenBackend(compiler, kLlvmKernelBackendName) {}
-};
-
-}  // namespace xla::cpu
+// IWYU pragma: private, include "xla/backends/cpu/core/autotuner/llvm_kernel_backend.h"
+#include "xla/backends/cpu/core/autotuner/llvm_kernel_backend.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_CPU_AUTOTUNER_LLVM_KERNEL_BACKEND_H_

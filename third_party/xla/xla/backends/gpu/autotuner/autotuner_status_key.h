@@ -16,17 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_AUTOTUNER_AUTOTUNER_STATUS_KEY_H_
 #define XLA_BACKENDS_GPU_AUTOTUNER_AUTOTUNER_STATUS_KEY_H_
 
-#include "absl/strings/string_view.h"
-
-namespace xla::gpu {
-
-// Status payload key to put errors at when autotune cache hits are required.
-// See absl::Status docs for full details, but methods like
-// {Get,Set,Clear}Payload allow manipulating it. The value of the payload is not
-// specified and individual sources of this error may provide different values.
-inline constexpr absl::string_view kAutotuneCacheRequiredErrorPayloadKey =
-    "https://openxla.org/gpu/autotune_cache_hit_required/";
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/core/autotuner/autotuner_status_key.h"
+#include "xla/backends/gpu/core/autotuner/autotuner_status_key.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_AUTOTUNER_AUTOTUNER_STATUS_KEY_H_

@@ -16,72 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_AUTOTUNER_MIOPEN_H_
 #define XLA_BACKENDS_GPU_AUTOTUNER_MIOPEN_H_
 
-#include <memory>
-#include <string>
-#include <vector>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "xla/backends/autotuner/backends.pb.h"
-#include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/compiler.h"
-#include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/xla.pb.h"
-
-namespace xla {
-namespace gpu {
-
-// A codegen backend for MIOpen.
-class MIOpenBackend : public GpuCodegenBackend {
- public:
-  explicit MIOpenBackend(stream_executor::StreamExecutor* stream_executor,
-                         const DebugOptions* debug_options, Compiler* compiler,
-                         const Compiler::GpuTargetConfig* target_config,
-                         stream_executor::DeviceAddressAllocator* allocator)
-      : GpuCodegenBackend(autotuner::Backend::MIOPEN, debug_options, compiler,
-                          target_config, stream_executor),
-        do_not_autotune_(debug_options->xla_gpu_autotune_level() == 0),
-        allocator_(allocator) {}
-
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetSupportedConfigs(const HloInstruction& instr) override;
-
-  absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
-      const HloInstruction& instr) override;
-
-  absl::Status ApplyConfig(HloInstruction& instr,
-                           const BackendConfig& config) override;
-
-  std::string version() const override {
-    return target_config().device_description.dnn_version().ToString();
-  }
-
- private:
-  bool IsSupported(const HloInstruction& instr) override;
-
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetConvolutionCustomCallConfigs(
-      const HloCustomCallInstruction* instr, const HloModule* module,
-      stream_executor::StreamExecutor* stream_executor,
-      stream_executor::DeviceAddressAllocator* allocator,
-      stream_executor::Stream* stream);
-
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetFusedConvolutionCustomCallConfigs(
-      const HloCustomCallInstruction* instr, const HloModule* module,
-      stream_executor::StreamExecutor* stream_executor,
-      stream_executor::DeviceAddressAllocator* allocator);
-
-  bool do_not_autotune_;
-  stream_executor::DeviceAddressAllocator* allocator_;
-};
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/core/autotuner/miopen.h"
+#include "xla/backends/gpu/core/autotuner/miopen.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_AUTOTUNER_MIOPEN_H_

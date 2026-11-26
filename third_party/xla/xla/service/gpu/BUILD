@@ -2057,7 +2057,7 @@ xla_test(
     deps = [
         "//xla:literal",
         "//xla:xla_proto_cc",
-        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/backends/core/autotuner:backends_proto_cc",
         "//xla/backends/gpu/autotuner:autotuner_cache",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",

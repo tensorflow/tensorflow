@@ -1,4 +1,3 @@
-#include "tsl/platform/fingerprint.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,19 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_AUTOTUNE_FINGERPRINT_H_
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNE_FINGERPRINT_H_
 
-#include <string>
-
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/xla.pb.h"
-
-namespace xla {
-
-tsl::Fprint128 GetHloFingerprint(const HloInstruction& instr);
-
-std::string GetCodegenOptionsFingerprint(const DebugOptions& options);
-
-std::string AutotuneFingerprintToString(tsl::Fprint128 fingerprint);
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/core/autotuner/autotune_fingerprint.h"
+#include "xla/backends/core/autotuner/autotune_fingerprint.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_AUTOTUNER_AUTOTUNE_FINGERPRINT_H_

@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_cache.pb.h"
-#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/core/autotuner/backends.pb.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/xla.pb.h"

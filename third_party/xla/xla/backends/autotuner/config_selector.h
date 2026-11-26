@@ -16,22 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_CONFIG_SELECTOR_H_
 #define XLA_BACKENDS_AUTOTUNER_CONFIG_SELECTOR_H_
 
-#include <vector>
-
-#include "absl/status/statusor.h"
-#include "absl/types/span.h"
-#include "xla/backends/autotuner/backends.pb.h"
-#include "xla/backends/autotuner/config_runner.h"
-
-namespace xla {
-
-absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
-    std::vector<ConfigRunner::ConfigProfile>& results,
-    int scratch_bytes_window_size_us,
-    absl::Span<const autotuner::Backend> excluded_backends = {},
-    autotuner::Backend preferred_backend =
-        autotuner::Backend::UNSPECIFIED_BACKEND);
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/core/autotuner/config_selector.h"
+#include "xla/backends/core/autotuner/config_selector.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_AUTOTUNER_CONFIG_SELECTOR_H_

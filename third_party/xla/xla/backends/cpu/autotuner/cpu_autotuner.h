@@ -16,34 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_AUTOTUNER_CPU_AUTOTUNER_H_
 #define XLA_BACKENDS_CPU_AUTOTUNER_CPU_AUTOTUNER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/cpu/backend_config.pb.h"
-#include "xla/util.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla::cpu {
-
-inline constexpr absl::string_view kCpuAutotunerName = "cpu_autotuner";
-
-// CPU autotuning pass.
-class CpuAutotuner : public HloModulePass {
- public:
-  CpuAutotuner() = default;
-
-  absl::string_view name() const override { return kCpuAutotunerName; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla::cpu
+// IWYU pragma: private, include "xla/backends/cpu/core/autotuner/cpu_autotuner.h"
+#include "xla/backends/cpu/core/autotuner/cpu_autotuner.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_CPU_AUTOTUNER_CPU_AUTOTUNER_H_

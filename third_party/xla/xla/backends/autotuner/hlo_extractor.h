@@ -16,23 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_HLO_EXTRACTOR_H_
 #define XLA_BACKENDS_AUTOTUNER_HLO_EXTRACTOR_H_
 
-#include <functional>
-#include <vector>
-
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-
-namespace xla {
-
-using EquivalentInstructions = std::vector<HloInstruction*>;
-// TODO(b/519057668): Use absl::FunctionRef for filter_fn.
-using InstructionFilterFn = std::function<bool(const xla::HloInstruction&)>;
-
-// Returns a list of equivalent instructions. Each inner vector is a set of
-// instructions that are equivalent as they have the same HLO fingerprint.
-std::vector<EquivalentInstructions> ExtractEquivalentInstructions(
-    const HloModule& module, const InstructionFilterFn& filter_fn);
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/core/autotuner/hlo_extractor.h"
+#include "xla/backends/core/autotuner/hlo_extractor.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_AUTOTUNER_HLO_EXTRACTOR_H_

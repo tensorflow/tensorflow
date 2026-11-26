@@ -16,59 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_AUTOTUNER_CPU_PROFILER_H_
 #define XLA_BACKENDS_CPU_AUTOTUNER_CPU_PROFILER_H_
 
-#include <memory>
-#include <vector>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/types/span.h"
-#include "xla/backends/autotuner/profiler.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/literal.h"
-#include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_address.h"
-#include "xla/service/shaped_buffer.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla::cpu {
-
-struct LiteralBackedCpuBuffers : public InputBuffers {
-  std::vector<Literal> backing_literals;
-  std::vector<MaybeOwningDeviceAddress> buffers;
-};
-
-class CpuProfiler : public Profiler {
- public:
-  static std::unique_ptr<Profiler> Create(ProfileOptions options);
-
-  absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
-      const Executable* executable,
-      const HloInstruction* instr = nullptr) override;
-
-  absl::StatusOr<ProfileResult> Profile(Executable* executable,
-                                        const InputBuffers& buffers) override;
-
-  absl::Status CheckInputBuffers(InputBuffers& buffers) override {
-    return absl::UnimplementedError("InputBuffers check for CPU.");
-  }
-
-  absl::Status CheckOutputBuffer(ScopedShapedBuffer& output,
-                                 ScopedShapedBuffer& reference,
-                                 float rtol) override {
-    return absl::UnimplementedError("Output buffer check for CPU.");
-  }
-
- protected:
-  explicit CpuProfiler(ProfileOptions options) : options_(options) {}
-
-  absl::Status Execute(Executable* executable,
-                       absl::Span<const MaybeOwningDeviceAddress> buffers,
-                       ExecutionProfile* profile);
-
- private:
-  ProfileOptions options_;
-};
-
-}  // namespace xla::cpu
+// IWYU pragma: private, include "xla/backends/cpu/core/autotuner/cpu_profiler.h"
+#include "xla/backends/cpu/core/autotuner/cpu_profiler.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_CPU_AUTOTUNER_CPU_PROFILER_H_

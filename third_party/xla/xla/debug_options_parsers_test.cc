@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/repeated_field.h"
-#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/core/autotuner/backends.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/dump.h"

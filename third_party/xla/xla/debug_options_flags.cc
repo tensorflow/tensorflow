@@ -49,7 +49,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/text_format.h"
-#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/core/autotuner/backends.pb.h"
 #include "xla/debug_options_parsers.h"
 #include "xla/hlo/pass/hlo_pass_filter.h"
 #include "xla/parse_flags_from_env.h"

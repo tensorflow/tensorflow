@@ -16,36 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_AUTOTUNE_CACHE_STORE_H_
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNE_CACHE_STORE_H_
 
-#include <vector>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "xla/autotune_cache.pb.h"
-#include "xla/backends/autotuner/autotuner_cache_interface.h"
-
-namespace xla {
-
-// AutotuneCacheStore is a minimal interface for reading and writing autotune
-// entries. It abstracts away where the entries are stored (e.g. process memory,
-// a local directory, CNS) and how keys are matched, leaving that matching/keys
-// logic to TieredCache.
-class AutotuneCacheStore {
- public:
-  virtual ~AutotuneCacheStore() = default;
-
-  // Reads all entries matching the given target key.
-  virtual absl::StatusOr<std::vector<autotuner::AutotuneEntry>> Read(
-      const autotuner::AutotuneTargetKey& target_key) = 0;
-
-  // Writes an entry to the store.
-  virtual absl::Status Write(const autotuner::AutotuneEntry& entry) = 0;
-
-  // Reads all entries in the store. Mainly used for serialization.
-  virtual absl::StatusOr<std::vector<autotuner::AutotuneEntry>> ReadAll() = 0;
-
-  virtual CacheMode GetMode() const = 0;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/core/autotuner/autotune_cache_store.h"
+#include "xla/backends/core/autotuner/autotune_cache_store.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_AUTOTUNER_AUTOTUNE_CACHE_STORE_H_

@@ -35,7 +35,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/core/autotuner/backends.pb.h"
 #include "xla/backends/gpu/hlo/transforms/block_scaling_rewriter.h"
 #include "xla/backends/gpu/hlo/transforms/composite_rewriter.h"
 #include "xla/backends/gpu/hlo/transforms/cudnn_custom_call_compiler.h"

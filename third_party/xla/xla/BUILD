@@ -78,7 +78,7 @@ tf_proto_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_data_proto",
-        "//xla/backends/autotuner:backends_proto",
+        "//xla/backends/core/autotuner:backends_proto",
         "//xla/service:hlo_proto",
         "@com_google_protobuf//:any_proto",
     ],
@@ -1371,7 +1371,7 @@ cc_library(
             ":parse_flags_from_env",
             ":xla_data_proto_cc",
             ":xla_proto_cc",
-            "//xla/backends/autotuner:backends_proto_cc",
+            "//xla/backends/core/autotuner:backends_proto_cc",
             "//xla/hlo/pass:hlo_pass_filter",
             "//xla/service:collective_utils",
             "//xla/stream_executor/cuda:ptx_compiler_support",
@@ -1449,7 +1449,7 @@ xla_cc_test(
             ":debug_options_flags",
             ":parse_flags_from_env",
             ":xla_proto_cc",
-            "//xla/backends/autotuner:backends_proto_cc",
+            "//xla/backends/core/autotuner:backends_proto_cc",
             "//xla/service:dump",
             "//xla/tsl/platform:env",
             "//xla/tsl/platform:test",
@@ -1557,8 +1557,8 @@ tf_proto_library(
     srcs = ["autotune_cache.proto"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/backends/autotuner:backend_config_proto",
-        "//xla/backends/autotuner:backends_proto",
+        "//xla/backends/core/autotuner:backend_config_proto",
+        "//xla/backends/core/autotuner:backends_proto",
     ],
 )
 

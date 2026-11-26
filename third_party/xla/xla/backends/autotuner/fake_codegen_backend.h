@@ -16,54 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_FAKE_CODEGEN_BACKEND_H_
 #define XLA_BACKENDS_AUTOTUNER_FAKE_CODEGEN_BACKEND_H_
 
-#include <memory>
-#include <string>
-#include <vector>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/backends/autotuner/backend_config.pb.h"
-#include "xla/backends/autotuner/backends.pb.h"
-#include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/executable.h"
-
-namespace xla {
-
-class FakeCodegenBackend : public CodegenBackend {
- public:
-  FakeCodegenBackend(autotuner::Backend backend, std::string version)
-      : backend_(backend), version_(version) {}
-
-  absl::string_view name() const override { return "fake"; }
-  autotuner::Backend backend() const override { return backend_; }
-  std::string version() const override { return version_; }
-
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetSupportedConfigs(const HloInstruction& instr) override {
-    return std::vector<std::unique_ptr<BackendConfig>>();
-  }
-  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
-      const HloInstruction& instr) override {
-    return std::vector<EstimatedConfig>();
-  }
-  absl::StatusOr<std::unique_ptr<Executable>> Compile(
-      const HloInstruction& instr, const BackendConfig& config) override {
-    return absl::UnimplementedError("");
-  }
-  absl::Status ApplyConfig(HloInstruction& instr,
-                           const BackendConfig& config) override {
-    return absl::OkStatus();
-  }
-
-  bool CanProduceWrongResults() const override { return false; }
-
- private:
-  autotuner::Backend backend_;
-  std::string version_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/core/autotuner/fake_codegen_backend.h"
+#include "xla/backends/core/autotuner/fake_codegen_backend.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_AUTOTUNER_FAKE_CODEGEN_BACKEND_H_

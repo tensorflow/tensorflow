@@ -16,33 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_AUTOTUNER_TRITON_TRITON_CONFIGS_H_
 #define XLA_BACKENDS_GPU_AUTOTUNER_TRITON_TRITON_CONFIGS_H_
 
-#include <vector>
-
-#include "xla/service/gpu/matmul_utils.h"
-#include "xla/stream_executor/device_description.h"
-
-namespace xla::gpu {
-
-enum class TritonConfigsPlatform {
-  kAmpere,
-  kBlackwell,
-  kBlackwellConsumer,  // SM 12.0 (RTX 5090, etc.)
-  kDefaultCuda,
-  kDefaultRocm,
-  kHopper,
-  kMI300,
-  kMI350,
-  kRubin,
-};
-
-const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(
-    TritonConfigsPlatform);
-
-// Returns the default set of Triton GEMM configurations for the given GPU
-// compute capability.
-const std::vector<TritonGemmConfig>& GetDefaultTritonConfigs(
-    const stream_executor::GpuComputeCapability& compute_capability);
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/core/autotuner/triton/triton_configs.h"
+#include "xla/backends/gpu/core/autotuner/triton/triton_configs.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_AUTOTUNER_TRITON_TRITON_CONFIGS_H_

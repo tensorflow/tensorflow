@@ -16,19 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_AUTOTUNER_GPU_DEFAULT_BACKEND_POLICY_H_
 #define XLA_BACKENDS_GPU_AUTOTUNER_GPU_DEFAULT_BACKEND_POLICY_H_
 
-#include <optional>
-
-#include "xla/backends/autotuner/backends.pb.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-
-namespace xla::gpu {
-
-// Returns the backend to try first when `instr` isn't autotuned online, or
-// nullopt if there is no preference. The backend may not support `instr`, so
-// callers must fall back to other backends.
-std::optional<autotuner::Backend> GetDefaultBackend(
-    const HloInstruction& instr);
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/core/autotuner/gpu_default_backend_policy.h"
+#include "xla/backends/gpu/core/autotuner/gpu_default_backend_policy.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_BACKENDS_GPU_AUTOTUNER_GPU_DEFAULT_BACKEND_POLICY_H_
