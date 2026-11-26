@@ -23,6 +23,7 @@ from absl.testing import parameterized
 
 from xla.python import _hlo
 from xla.python import xla_client
+from xla.service import hlo_pb2
 
 ops = xla_client.ops
 
@@ -686,6 +687,57 @@ ENTRY %main {
       updated_seq = updated_schedule.sequence(main_comp)
       self.assertEqual(updated_seq, new_seq)
       logging.info("EXIT module: %s", module.to_string())
+
+    def testAsSerializedHloModuleProtoDeduplicateBackendConfig(self):
+      large_cfg = "x" * 256
+      small_cfg = "small"
+      hlo_string = f"""
+HloModule dedup_module
+
+ENTRY %main {{
+  %p0 = f32[4]{{0}} parameter(0)
+  %cc1 = f32[4]{{0}} custom-call(%p0), custom_call_target="t", backend_config="{large_cfg}"
+  %cc2 = f32[4]{{0}} custom-call(%cc1), custom_call_target="t", backend_config="{large_cfg}"
+  ROOT %cc3 = f32[4]{{0}} custom-call(%cc2), custom_call_target="t", backend_config="{small_cfg}"
+}}
+"""
+      module = _hlo.hlo_module_from_text(hlo_string)
+
+      default_bytes = module.as_serialized_hlo_module_proto()
+      default_proto = hlo_pb2.HloModuleProto.FromString(default_bytes)
+      self.assertEmpty(default_proto.payloads)
+
+      dedup_bytes = module.as_serialized_hlo_module_proto(
+          deduplicate_backend_config=True,
+          min_backend_config_size=128,
+      )
+      dedup_proto = hlo_pb2.HloModuleProto.FromString(dedup_bytes)
+      self.assertEqual(list(dedup_proto.payloads), [large_cfg.encode()])
+      self.assertLess(len(dedup_bytes), len(default_bytes))
+
+      insts = {
+          inst.name: inst
+          for inst in dedup_proto.computations[0].instructions
+      }
+      for name in ("cc1", "cc2"):
+        self.assertEmpty(insts[name].backend_config)
+        self.assertEqual(insts[name].backend_config_payload.id, 0)
+      self.assertEqual(insts["cc3"].backend_config, small_cfg.encode())
+      self.assertFalse(insts["cc3"].HasField("backend_config_payload"))
+
+      roundtrip = xla_client.XlaComputation(dedup_bytes).get_hlo_module()
+      self.assertEqual(module.to_string(), roundtrip.to_string())
+
+    def testAsSerializedHloModuleProtoNegativeMinSize(self):
+      module = self.ExampleComputation()
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError,
+          "min_backend_config_size must be non-negative",
+      ):
+        module.as_serialized_hlo_module_proto(
+            deduplicate_backend_config=True,
+            min_backend_config_size=-1,
+        )
 
   tests.append(TestHloModule)
   return tests

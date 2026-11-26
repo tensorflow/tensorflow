@@ -843,5 +843,7 @@ py_test(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-    ] + xla_py_test_deps(),
+    ] + if_google([
+        "//xla/service:hlo_pb2",
+    ]) + xla_py_test_deps(),
 )

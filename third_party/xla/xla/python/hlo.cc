@@ -105,11 +105,19 @@ absl::StatusOr<nb::bytes> GetComputationSerializedProto(
 }
 
 // Converts a hlo module to a serialized HloModuleProto.
-absl::StatusOr<nb::bytes> GetHloModuleSerializedProto(const HloModule& module) {
+absl::StatusOr<nb::bytes> GetHloModuleSerializedProto(
+    const HloModule& module, bool deduplicate_backend_config = false,
+    int64_t min_backend_config_size = 0) {
+  if (min_backend_config_size < 0) {
+    return InvalidArgument("min_backend_config_size must be non-negative.");
+  }
   std::string result;
   tsl::protobuf::Arena arena;
   HloModuleProto* proto = tsl::protobuf::Arena::Create<HloModuleProto>(&arena);
-  module.ToProto(proto);
+  HloProtoOptions options;
+  options.deduplicate_backend_config = deduplicate_backend_config;
+  options.min_backend_config_size = min_backend_config_size;
+  module.ToProto(proto, options);
   if (!tsl::SerializeToStringDeterministic(*proto, &result)) {
     return Unknown("Failed to serialize the HloModuleProto.");
   }
@@ -1003,7 +1011,9 @@ NB_MODULE(_hlo, m) {
              return ScheduleWrapper(xla::HloSchedule(m.get()), m);
            })
       .def("as_serialized_hlo_module_proto",
-           xla::ValueOrThrowWrapper(GetHloModuleSerializedProto))
+           xla::ValueOrThrowWrapper(GetHloModuleSerializedProto),
+           nb::arg("deduplicate_backend_config") = false,
+           nb::arg("min_backend_config_size") = 0)
       .def("from_serialized_hlo_module_proto",
            xla::ValueOrThrowWrapper(HloModuleFromSerializedProto))
       .def("computations",
