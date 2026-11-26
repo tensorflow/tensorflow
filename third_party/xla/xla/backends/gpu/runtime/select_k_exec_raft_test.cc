@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -29,20 +30,23 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
-#include "absl/random/random.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/buffer_allocations.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/raft_select_k_utils.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_test_utils.h"
+#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/platform_util.h"
@@ -87,13 +91,16 @@ struct MaskFor<float> {
 template <>
 struct MaskFor<::xla::bfloat16> {
   using type = uint16_t;
-  static constexpr type kStartBits = 0x3C00;  // bfloat16: 1/128
+  // Starts at the smallest positive normal so up to 32,512 unique finite
+  // values can be generated without reaching +Inf (0x7F80).
+  static constexpr type kStartBits = 0x0080;
 };
 
 template <>
 struct MaskFor<uint64_t> {
   using type = uint64_t;
-  static constexpr type kStartBits = 1000;  // uint64_t: arbitrary point
+  // Crosses 2^63 for n >= 2048 to verify unsigned ordering across the sign bit.
+  static constexpr type kStartBits = 0x7FFFFFFFFFFFFC00ULL;
 };
 
 // Fills vector with unique values using bit patterns starting from kStartBits
@@ -103,120 +110,236 @@ void append_unique_numbers(size_t count, std::vector<T>& arr) {
   using MaskT = typename Traits::type;
   MaskT bits = Traits::kStartBits;
 
-  for (size_t i = 0; i < count; ++i, ++bits) {
+  for (size_t i = 0; i < count; ++i) {
+    if constexpr (std::is_unsigned_v<T>) {
+      if (i == 0) {
+        // Include the minimum valid non-zero key (0 is reserved as RAFT
+        // WarpSort's dummy sentinel for select_min=false).
+        arr.push_back(T{1});
+        continue;
+      }
+    }
     T val = absl::bit_cast<T>(bits);
     arr.push_back(val);
+    ++bits;
   }
 }
 
-}  // namespace
-
-// Template test function for raft select_k
 template <typename T>
-void RunSelectKTest() {
-  se::StreamExecutor* stream_executor = GpuExecutor();
-  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
-  int device_ordinal = stream_executor->device_ordinal();
-  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
+absl::StatusOr<int64_t> EstimateScratchBytes(uint32_t batch, uint32_t n,
+                                             uint32_t k, int sm_count) {
+  if constexpr (std::is_same_v<T, float>) {
+    return EstimateRaftSelectKScratchBytesFloat(
+        batch, n, k, sm_count, RaftScratchPhaseMode::kMaxAcrossPhases);
+  } else if constexpr (std::is_same_v<T, ::xla::bfloat16>) {
+    return EstimateRaftSelectKScratchBytesBFloat16(
+        batch, n, k, sm_count, RaftScratchPhaseMode::kMaxAcrossPhases);
+  } else if constexpr (std::is_same_v<T, uint64_t>) {
+    return EstimateRaftSelectKScratchBytesUInt64(
+        batch, n, k, sm_count, RaftScratchPhaseMode::kMaxAcrossPhases);
+  } else {
+    static_assert(!std::is_same_v<T, T>,
+                  "Unsupported type for EstimateScratchBytes");
+  }
+}
 
-  std::uint32_t batch = 4;
-  std::uint32_t n = 4096;
-  std::uint32_t k = 32;
-  absl::BitGen gen;
+struct SelectKShape {
+  uint32_t batch;
+  uint32_t n;
+  uint32_t k;
 
-  // Prepare unique values for Top-K testing
-  std::vector<T> topk;
-  topk.reserve(n);
-  append_unique_numbers<T>(n, topk);
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const SelectKShape& shape) {
+    sink.Append(absl::StrCat("{batch=", shape.batch, ", n=", shape.n,
+                             ", k=", shape.k, "}"));
+  }
+};
 
-  // Populate input matrix (batch x n) with shuffled topk values
-  std::vector<T> h_data_in(batch * n);
-  for (int j = 0; j < batch; ++j) {
-    std::shuffle(topk.begin(), topk.end(), gen);
-    absl::c_copy(topk, h_data_in.begin() + j * n);
+template <typename T>
+struct SelectKTestCase {
+  SelectKShape shape;
+  se::StreamExecutor* stream_executor = nullptr;
+  int device_ordinal = 0;
+  std::unique_ptr<se::Stream> stream;
+  std::unique_ptr<se::StreamExecutorAddressAllocator> allocator;
+  int64_t scratch_bytes = 0;
+  std::vector<T> h_data_in;
+  std::vector<T> golden_topk;
+  se::ScopedDeviceAddress<uint8_t> d_data_in_raw;
+  se::ScopedDeviceAddress<uint8_t> d_data_out_raw;
+  se::ScopedDeviceAddress<uint8_t> d_indices_out_raw;
+  se::ScopedDeviceAddress<uint8_t> d_scratch;
+
+  se::DeviceAddress<T> d_data_in() const {
+    return se::DeviceAddress<T>(d_data_in_raw.cref());
+  }
+  se::DeviceAddress<T> d_data_out() const {
+    return se::DeviceAddress<T>(d_data_out_raw.cref());
+  }
+  se::DeviceAddress<uint32_t> d_indices_out() const {
+    return se::DeviceAddress<uint32_t>(d_indices_out_raw.cref());
+  }
+};
+
+template <typename T>
+absl::StatusOr<SelectKTestCase<T>> CreateSelectKTestCase(
+    const SelectKShape& shape) {
+  SelectKTestCase<T> test_case;
+  test_case.shape = shape;
+  test_case.stream_executor = GpuExecutor();
+  test_case.device_ordinal = test_case.stream_executor->device_ordinal();
+  ABSL_ASSIGN_OR_RETURN(test_case.stream, test_case.stream_executor->CreateStream());
+  test_case.allocator = std::make_unique<se::StreamExecutorAddressAllocator>(
+      test_case.stream_executor);
+
+  const se::DeviceDescription& device_desc =
+      test_case.stream_executor->GetDeviceDescription();
+  const int sm_count =
+      device_desc.gpu_compute_capability().cuda_compute_capability() != nullptr
+          ? GetRaftSelectKMaxSmCount(
+                *device_desc.gpu_compute_capability().cuda_compute_capability(),
+                device_desc.core_count())
+          : kDefaultRaftSelectKMaxSmCount;
+
+  ABSL_ASSIGN_OR_RETURN(
+      test_case.scratch_bytes,
+      EstimateScratchBytes<T>(shape.batch, shape.n, shape.k, sm_count));
+
+  // Prepare unique values for Top-K testing.
+  test_case.golden_topk.reserve(shape.n);
+  append_unique_numbers<T>(shape.n, test_case.golden_topk);
+
+  // Populate input matrix (batch x n) with shuffled unique values.
+  std::mt19937 gen(42);
+  test_case.h_data_in.resize(static_cast<size_t>(shape.batch) * shape.n);
+  for (uint32_t j = 0; j < shape.batch; ++j) {
+    absl::c_shuffle(test_case.golden_topk, gen);
+    absl::c_copy(test_case.golden_topk, test_case.h_data_in.begin() +
+                                            static_cast<size_t>(j) * shape.n);
   }
 
-  // Compute golden Top-K values for verification
-  std::sort(topk.begin(), topk.end(), std::greater<T>());
-  topk.resize(k);
+  // Compute golden Top-K values for verification.
+  absl::c_sort(test_case.golden_topk, std::greater<T>());
+  test_case.golden_topk.resize(shape.k);
 
-  // Allocate device memory for input and outputs
-  se::DeviceAddress<T> d_data_in =
-      stream_executor->AllocateArray<T>(batch * n, 0);
-  se::DeviceAddress<T> d_data_out =
-      stream_executor->AllocateArray<T>(batch * k, 0);
-  se::DeviceAddress<uint32_t> d_indices_out =
-      stream_executor->AllocateArray<uint32_t>(batch * k, 0);
-  se::DeviceAddress<uint8_t> d_scratch =
-      stream_executor->AllocateArray<uint8_t>(32 * 1024 * 1024, 0);
+  // Allocate device memory for input, outputs, and estimated scratch buffer.
+  ABSL_ASSIGN_OR_RETURN(
+      test_case.d_data_in_raw,
+      test_case.allocator->Allocate(test_case.device_ordinal,
+                                    test_case.h_data_in.size() * sizeof(T)));
+  ABSL_ASSIGN_OR_RETURN(test_case.d_data_out_raw,
+                   test_case.allocator->Allocate(
+                       test_case.device_ordinal,
+                       static_cast<size_t>(shape.batch) * shape.k * sizeof(T)));
+  ABSL_ASSIGN_OR_RETURN(
+      test_case.d_indices_out_raw,
+      test_case.allocator->Allocate(
+          test_case.device_ordinal,
+          static_cast<size_t>(shape.batch) * shape.k * sizeof(uint32_t)));
+  ABSL_ASSIGN_OR_RETURN(test_case.d_scratch,
+                   test_case.allocator->Allocate(test_case.device_ordinal,
+                                                 test_case.scratch_bytes));
 
-  // Copy host to device
-  ASSERT_OK(stream->MemcpyH2D(absl::Span<const T>(h_data_in), &d_data_in));
+  se::DeviceAddress<T> d_data_in = test_case.d_data_in();
+  ABSL_RETURN_IF_ERROR(test_case.stream->MemcpyH2D(
+      absl::Span<const T>(test_case.h_data_in), &d_data_in));
+  ABSL_RETURN_IF_ERROR(test_case.stream->BlockHostUntilDone());
+  return test_case;
+}
 
-  // Run raft select_k
-  ASSERT_OK(select_k_exec<T>(device_ordinal, &allocator, stream.get(),
-                             d_data_in, d_data_out, d_indices_out, batch, n, k,
-                             d_scratch));
+template <typename T>
+void VerifySelectKResults(const SelectKTestCase<T>& test_case) {
+  const uint32_t batch = test_case.shape.batch;
+  const uint32_t n = test_case.shape.n;
+  const uint32_t k = test_case.shape.k;
 
-  // Copy results back to host
-  std::vector<T> h_data_out(batch * k);
-  std::vector<uint32_t> h_indices_out(batch * k);
-  ASSERT_OK(stream->MemcpyD2H(d_data_out, absl::Span<T>(h_data_out)));
-  ASSERT_OK(
-      stream->MemcpyD2H(d_indices_out, absl::Span<uint32_t>(h_indices_out)));
-  ASSERT_OK(stream->BlockHostUntilDone());
+  std::vector<T> h_data_out(static_cast<size_t>(batch) * k);
+  std::vector<uint32_t> h_indices_out(static_cast<size_t>(batch) * k);
+  ASSERT_OK(test_case.stream->MemcpyD2H(test_case.d_data_out(),
+                                        absl::Span<T>(h_data_out)));
+  ASSERT_OK(test_case.stream->MemcpyD2H(test_case.d_indices_out(),
+                                        absl::Span<uint32_t>(h_indices_out)));
+  ASSERT_OK(test_case.stream->BlockHostUntilDone());
 
-  // Verify Top-K values and corresponding indices
-  for (int j = 0; j < batch; ++j) {
-    for (int i = 0; i < k; ++i) {
-      EXPECT_EQ(h_data_out[j * k + i], topk[i]) << "batch=" << j << " i=" << i;
-      auto idx = h_indices_out[j * k + i];
-      EXPECT_EQ(h_data_in[j * n + idx], topk[i]) << "batch=" << j << " i=" << i;
+  for (uint32_t j = 0; j < batch; ++j) {
+    for (uint32_t i = 0; i < k; ++i) {
+      size_t out_offset = static_cast<size_t>(j) * k + i;
+      EXPECT_EQ(h_data_out[out_offset], test_case.golden_topk[i])
+          << "batch=" << j << " i=" << i;
+      uint32_t idx = h_indices_out[out_offset];
+      ASSERT_LT(idx, n) << "batch=" << j << " i=" << i;
+      EXPECT_EQ(test_case.h_data_in[static_cast<size_t>(j) * n + idx],
+                test_case.golden_topk[i])
+          << "batch=" << j << " i=" << i;
     }
   }
 }
 
-TEST(RaftSelectKExecTest, SelectKFloat) { RunSelectKTest<float>(); }
+// Template test function for raft select_k
+template <typename T>
+void RunSelectKTest(const SelectKShape& shape) {
+  ASSERT_OK_AND_ASSIGN(SelectKTestCase<T> test_case,
+                       CreateSelectKTestCase<T>(shape));
 
-TEST(RaftSelectKExecTest, SelectKBFloat16) {
-  RunSelectKTest<::xla::bfloat16>();
+  ASSERT_OK(select_k_exec<T>(test_case.device_ordinal,
+                             test_case.allocator.get(), test_case.stream.get(),
+                             test_case.d_data_in(), test_case.d_data_out(),
+                             test_case.d_indices_out(), shape.batch, shape.n,
+                             shape.k, test_case.d_scratch.cref()));
+
+  ASSERT_NO_FATAL_FAILURE(VerifySelectKResults(test_case));
 }
 
-TEST(RaftSelectKExecTest, SelectKUint64) { RunSelectKTest<uint64_t>(); }
+class RaftSelectKShapeTest : public testing::TestWithParam<SelectKShape> {};
 
-TEST(RaftSelectKExecTest, CommandBuffer) {
-  se::StreamExecutor* stream_executor = GpuExecutor();
-  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
-  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
+TEST_P(RaftSelectKShapeTest, SelectKFloat) {
+  RunSelectKTest<float>(GetParam());
+}
 
-  std::uint32_t batch = 4;
-  std::uint32_t n = 4096;
-  std::uint32_t k = 32;
-  absl::BitGen gen;
+TEST_P(RaftSelectKShapeTest, SelectKBFloat16) {
+  RunSelectKTest<::xla::bfloat16>(GetParam());
+}
 
-  std::vector<float> topk;
-  topk.reserve(n);
-  append_unique_numbers<float>(n, topk);
+TEST_P(RaftSelectKShapeTest, SelectKUint64) {
+  RunSelectKTest<uint64_t>(GetParam());
+}
 
-  std::vector<float> h_data_in(batch * n);
-  for (int j = 0; j < batch; ++j) {
-    std::shuffle(topk.begin(), topk.end(), gen);
-    absl::c_copy(topk, h_data_in.begin() + j * n);
+// Covers WarpSort (kWarpImmediate including k == n so minimum non-zero
+// unsigned keys land in top-k, kWarpFiltered, kWarpDistributedShm) and both
+// one-block (n <= 16384) and multi-block (n > 16384) Radix paths: kRadix8bits,
+// kRadix11bits (float/uint64_t), kRadix11bitsExtraPass (bfloat16).
+INSTANTIATE_TEST_SUITE_P(
+    Shapes, RaftSelectKShapeTest,
+    testing::Values(SelectKShape{4, 32, 32}, SelectKShape{4, 4096, 32},
+                    SelectKShape{64, 2048, 200}, SelectKShape{1024, 2048, 32},
+                    SelectKShape{4, 4096, 512}, SelectKShape{300, 4096, 512},
+                    SelectKShape{8, 28672, 500}),
+    [](const testing::TestParamInfo<SelectKShape>& info) {
+      return absl::StrCat("B", info.param.batch, "_N", info.param.n, "_K",
+                          info.param.k);
+    });
+
+template <typename T>
+void RunCommandBufferTest() {
+  const se::DeviceDescription& device_desc =
+      GpuExecutor()->GetDeviceDescription();
+  if (device_desc.gpu_compute_capability().cuda_compute_capability() ==
+          nullptr ||
+      std::min(device_desc.driver_version(),
+               device_desc.compile_time_toolkit_version()) <
+          se::SemanticVersion(12, 3, 0)) {
+    GTEST_SKIP() << "CUDA graph tracing requires CUDA 12.3 or newer";
   }
 
-  std::sort(topk.begin(), topk.end(), std::greater<float>());
-  topk.resize(k);
+  constexpr SelectKShape kShape = {/*batch=*/4, /*n=*/4096, /*k=*/32};
+  constexpr PrimitiveType kDtype = primitive_util::NativeToPrimitiveType<T>();
 
-  se::DeviceAddress<float> d_data_in =
-      stream_executor->AllocateArray<float>(batch * n, 0);
-  se::DeviceAddress<float> d_data_out =
-      stream_executor->AllocateArray<float>(batch * k, 0);
-  se::DeviceAddress<uint32_t> d_indices_out =
-      stream_executor->AllocateArray<uint32_t>(batch * k, 0);
-  se::DeviceAddress<uint8_t> d_scratch =
-      stream_executor->AllocateArray<uint8_t>(32 * 1024 * 1024, 0);
-
-  ASSERT_OK(stream->MemcpyH2D(absl::Span<const float>(h_data_in), &d_data_in));
+  ASSERT_OK_AND_ASSIGN(SelectKTestCase<T> test_case,
+                       CreateSelectKTestCase<T>(kShape));
+  se::DeviceAddress<T> d_data_in = test_case.d_data_in();
+  se::DeviceAddress<T> d_data_out = test_case.d_data_out();
+  se::DeviceAddress<uint32_t> d_indices_out = test_case.d_indices_out();
+  se::DeviceAddressBase d_scratch = test_case.d_scratch.cref();
 
   BufferAllocation alloc_in(/*index=*/0, d_data_in.size(), /*color=*/0);
   BufferAllocation alloc_out_val(/*index=*/1, d_data_out.size(), /*color=*/0);
@@ -231,14 +354,16 @@ TEST(RaftSelectKExecTest, CommandBuffer) {
   BufferAllocation::Slice slice_scratch(&alloc_scratch, 0, d_scratch.size());
 
   std::vector<NullableShapedSlice> operands = {
-      ShapedSlice{slice_in, ShapeUtil::MakeShape(F32, {batch, n})},
+      ShapedSlice{slice_in,
+                  ShapeUtil::MakeShape(kDtype, {kShape.batch, kShape.n})},
   };
   std::vector<NullableShapedSlice> results = {
-      ShapedSlice{slice_out_val, ShapeUtil::MakeShape(F32, {batch, k})},
-      ShapedSlice{slice_out_idx, ShapeUtil::MakeShape(S32, {batch, k})},
-      ShapedSlice{
-          slice_scratch,
-          ShapeUtil::MakeShape(U8, {static_cast<int64_t>(d_scratch.size())})},
+      ShapedSlice{slice_out_val,
+                  ShapeUtil::MakeShape(kDtype, {kShape.batch, kShape.k})},
+      ShapedSlice{slice_out_idx,
+                  ShapeUtil::MakeShape(S32, {kShape.batch, kShape.k})},
+      ShapedSlice{slice_scratch,
+                  ShapeUtil::MakeShape(U8, {test_case.scratch_bytes})},
   };
 
   ASSERT_OK_AND_ASSIGN(
@@ -247,8 +372,9 @@ TEST(RaftSelectKExecTest, CommandBuffer) {
           Thunk::ThunkInfo(), std::string(kTopKCustomCallTarget),
           std::move(operands), std::move(results), /*attributes=*/{},
           /*called_computation=*/nullptr,
-          stream_executor->GetPlatform()->Name(),
-          stream_executor->GetDeviceDescription().gpu_compute_capability()));
+          test_case.stream_executor->GetPlatform()->Name(),
+          test_case.stream_executor->GetDeviceDescription()
+              .gpu_compute_capability()));
 
   CommandSequence commands;
   commands.Append(std::move(custom_call_thunk));
@@ -260,44 +386,35 @@ TEST(RaftSelectKExecTest, CommandBuffer) {
                                       /*devices_in_process=*/1);
 
   BufferAllocations allocations(
-      {d_data_in, d_data_out, d_indices_out, d_scratch}, 0, &allocator);
-  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
-  thunk_params.WithCommandBufferTraceStream(stream.get());
+      {d_data_in, d_data_out, d_indices_out, d_scratch}, 0,
+      test_case.allocator.get());
+  TestThunkParams thunk_params(test_case.stream_executor, &allocations,
+                               test_case.stream.get());
+  thunk_params.WithCommandBufferTraceStream(test_case.stream.get());
   ASSERT_OK(cmd_buffer_thunk.Initialize(thunk_params.InitializeParams()));
   thunk_params.WithPersistentAllocIndices({});
   Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
-  auto verify_results = [&]() {
-    std::vector<float> h_data_out(batch * k);
-    std::vector<uint32_t> h_indices_out(batch * k);
-    ASSERT_OK(stream->MemcpyD2H(d_data_out, absl::Span<float>(h_data_out)));
-    ASSERT_OK(
-        stream->MemcpyD2H(d_indices_out, absl::Span<uint32_t>(h_indices_out)));
-    ASSERT_OK(stream->BlockHostUntilDone());
-
-    for (int j = 0; j < batch; ++j) {
-      for (int i = 0; i < k; ++i) {
-        EXPECT_EQ(h_data_out[j * k + i], topk[i])
-            << "batch=" << j << " i=" << i;
-        auto idx = h_indices_out[j * k + i];
-        EXPECT_EQ(h_data_in[j * n + idx], topk[i])
-            << "batch=" << j << " i=" << i;
-      }
-    }
-  };
-
   // First execution: records the command buffer and executes it.
   ASSERT_OK(cmd_buffer_thunk.ExecuteOnStream(params));
-  verify_results();
+  ASSERT_NO_FATAL_FAILURE(VerifySelectKResults(test_case));
 
   // Zero output buffers and run a second time to verify command buffer replay.
-  ASSERT_OK(stream->MemZero(&d_data_out, d_data_out.size()));
-  ASSERT_OK(stream->MemZero(&d_indices_out, d_indices_out.size()));
+  ASSERT_OK(test_case.stream->MemZero(&d_data_out, d_data_out.size()));
+  ASSERT_OK(test_case.stream->MemZero(&d_indices_out, d_indices_out.size()));
   ASSERT_OK(cmd_buffer_thunk.ExecuteOnStream(params));
-  verify_results();
+  ASSERT_NO_FATAL_FAILURE(VerifySelectKResults(test_case));
 }
 
-namespace {
+TEST(RaftSelectKExecTest, CommandBufferFloat) { RunCommandBufferTest<float>(); }
+
+TEST(RaftSelectKExecTest, CommandBufferBFloat16) {
+  RunCommandBufferTest<::xla::bfloat16>();
+}
+
+TEST(RaftSelectKExecTest, CommandBufferUint64) {
+  RunCommandBufferTest<uint64_t>();
+}
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
