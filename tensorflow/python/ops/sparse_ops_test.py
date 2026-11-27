@@ -209,6 +209,114 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         array_ops.transpose(dense_of_sparse))
     self.assertAllEqual(expected, result)
 
+  @parameterized.parameters(
+      (False, False, dtypes.complex64),
+      (False, True, dtypes.complex64),
+      (True, False, dtypes.complex64),
+      (True, True, dtypes.complex64),
+      (False, False, dtypes.complex128),
+      (False, True, dtypes.complex128),
+      (True, False, dtypes.complex128),
+      (True, True, dtypes.complex128),
+  )
+  def testDenseSparseTensorMatMulComplex(self, adj_a, adj_b, dtype):
+    np.random.seed(7)
+    a_np = (np.random.rand(3, 3) + 1j * np.random.rand(3, 3)).astype(
+        dtype.as_numpy_dtype)
+    b_np = (np.random.rand(3, 3) + 1j * np.random.rand(3, 3)).astype(
+        dtype.as_numpy_dtype)
+    a_tf = constant_op.constant(a_np)
+    b_sp = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2], [2, 1]],
+        values=constant_op.constant(
+            [b_np[0, 0], b_np[1, 2], b_np[2, 1]], dtype=dtype),
+        dense_shape=[3, 3])
+    b_dense = sparse_ops.sparse_to_dense(b_sp.indices, b_sp.shape, b_sp.values)
+    result = sparse_ops.sparse_tensor_dense_matmul(
+        a_tf, b_sp, adjoint_a=adj_a, adjoint_b=adj_b)
+    expected = math_ops.matmul(a_tf, b_dense, adjoint_a=adj_a, adjoint_b=adj_b)
+    self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
+
+  @parameterized.parameters(
+      (False, False, dtypes.complex64),
+      (False, True, dtypes.complex64),
+      (True, False, dtypes.complex64),
+      (True, True, dtypes.complex64),
+  )
+  def testDenseSparseTensorMatMulComplexSparseTensorValue(
+      self, adj_a, adj_b, dtype):
+    np.random.seed(13)
+    a_np = (np.random.rand(3, 3) + 1j * np.random.rand(3, 3)).astype(
+        dtype.as_numpy_dtype)
+    b_vals = np.array([2 - 1j, 1 + 3j], dtype=dtype.as_numpy_dtype)
+    a_tf = constant_op.constant(a_np)
+    b_stv = sparse_tensor.SparseTensorValue(
+        indices=np.array([[0, 0], [1, 2]]),
+        values=b_vals,
+        dense_shape=(3, 3))
+    b_dense = sparse_ops.sparse_to_dense(b_stv.indices, b_stv.dense_shape,
+                                         b_stv.values)
+    result = sparse_ops.sparse_tensor_dense_matmul(
+        a_tf, b_stv, adjoint_a=adj_a, adjoint_b=adj_b)
+    expected = math_ops.matmul(a_tf, b_dense, adjoint_a=adj_a, adjoint_b=adj_b)
+    self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
+
+  def testDenseSparseTensorMatMulEmptySparse(self):
+    np.random.seed(99)
+    a_np = (np.random.rand(3, 3) + 1j * np.random.rand(3, 3)).astype(
+        np.complex64)
+    a_tf = constant_op.constant(a_np)
+    b_sp = sparse_tensor.SparseTensor(
+        indices=np.zeros([0, 2], dtype=np.int64),
+        values=constant_op.constant([], dtype=dtypes.complex64),
+        dense_shape=[3, 3])
+    result = sparse_ops.sparse_tensor_dense_matmul(a_tf, b_sp)
+    expected = math_ops.matmul(
+        a_tf,
+        array_ops.zeros([3, 3], dtype=dtypes.complex64))
+    self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
+
+  def testBothSparseRaisesTypeError(self):
+    sp_a = sparse_tensor.SparseTensor(
+        indices=[[0, 0]], values=[1.0 + 0j], dense_shape=[2, 2])
+    sp_b = sparse_tensor.SparseTensor(
+        indices=[[0, 1]], values=[2.0 + 0j], dense_shape=[2, 2])
+    with self.assertRaisesRegex(TypeError, "Cannot multiply two SparseTensors"):
+      sparse_ops.sparse_tensor_dense_matmul(sp_a, sp_b)
+    sp_b_val = sparse_tensor.SparseTensorValue(
+        indices=np.array([[0, 1]]), values=np.array([2.0 + 0j]),
+        dense_shape=(2, 2))
+    with self.assertRaisesRegex(TypeError, "Cannot multiply two SparseTensors"):
+      sparse_ops.sparse_tensor_dense_matmul(sp_a, sp_b_val)
+
+  @parameterized.parameters(
+      (False, False, dtypes.complex64),
+      (False, True, dtypes.complex64),
+      (True, False, dtypes.complex64),
+      (True, True, dtypes.complex64),
+      (False, False, dtypes.complex128),
+      (True, True, dtypes.complex128),
+  )
+  def testDenseSparseTensorMatMulComplexGradient(self, adj_a, adj_b, dtype):
+    np.random.seed(17)
+    a_np = (0.1 * np.random.rand(2, 2) + 1j * 0.1 * np.random.rand(2, 2)
+            ).astype(dtype.as_numpy_dtype)
+    b_vals_np = np.array([0.3 + 0.1j, 0.2 - 0.4j], dtype=dtype.as_numpy_dtype)
+    b_indices = np.array([[0, 0], [1, 1]], dtype=np.int64)
+
+    def f(a_in, b_vals_in):
+      b_sp = sparse_tensor.SparseTensor(
+          indices=b_indices, values=b_vals_in, dense_shape=[2, 2])
+      return sparse_ops.sparse_tensor_dense_matmul(
+          a_in, b_sp, adjoint_a=adj_a, adjoint_b=adj_b)
+
+    a_tf = constant_op.constant(a_np)
+    b_vals_tf = constant_op.constant(b_vals_np)
+    theoretical, numerical = gradient_checker.compute_gradient(
+        f, [a_tf, b_vals_tf])
+    for t, n in zip(theoretical, numerical):
+      self.assertAllClose(t, n, rtol=1e-2, atol=1e-2)
+
   def testSparseTensorDenseMatMulNegativeShapeValueError(self):
     sp = sparse_tensor.SparseTensor(
         indices=[[0, 0]], values=[1.0], dense_shape=[-1, 4]

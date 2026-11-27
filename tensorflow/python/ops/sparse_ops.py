@@ -2672,18 +2672,28 @@ def sparse_tensor_dense_matmul(sp_a,
   """
   # pylint: enable=line-too-long
 
-  if isinstance(b, sparse_tensor.SparseTensor) \
-          or isinstance(b, sparse_tensor.SparseTensorValue):
-    # We can do C * D where C is sparse but if we want to do A * B when
-    # B is sparse we have to transpose. But AB = (B'A')' so we have to feed in
-    # the transpose of the arguments as well.
+  if isinstance(b, (sparse_tensor.SparseTensor,
+                    sparse_tensor.SparseTensorValue)):
+    if isinstance(sp_a, (sparse_tensor.SparseTensor,
+                         sparse_tensor.SparseTensorValue)):
+      raise TypeError(
+          "Cannot multiply two SparseTensors; one of `sp_a` or `b` must be "
+          "a dense matrix.")
+    # We can do C * D where C is sparse, so when B is sparse we use the
+    # adjoint identity AB = (B^H A^H)^H (and similarly for A^H B, A B^H,
+    # A^H B^H). conjugate=True ensures the outer transpose is a conjugate
+    # transpose, matching the semantics of adjoint_* for complex dtypes.
     if adjoint_a != adjoint_b:
       return array_ops.transpose(
-          sparse_tensor_dense_matmul(b, sp_a, adjoint_a, adjoint_b))
+          sparse_tensor_dense_matmul(b, sp_a, adjoint_a, adjoint_b),
+          conjugate=True,
+          name=name)
     else:
       return array_ops.transpose(
           sparse_tensor_dense_matmul(
-              b, sp_a, adjoint_a=not adjoint_a, adjoint_b=not adjoint_b))
+              b, sp_a, adjoint_a=not adjoint_a, adjoint_b=not adjoint_b),
+          conjugate=True,
+          name=name)
 
   else:
     sp_a = _convert_to_sparse_tensor(sp_a)
