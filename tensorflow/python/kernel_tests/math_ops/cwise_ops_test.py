@@ -1411,6 +1411,31 @@ class PolyvalTest(test.TestCase):
                 self.assertTrue(np.all(np.isinf(result)))
 
   @test_util.run_in_graph_and_eager_modes
+  def testNumbersTakeXDtype(self):
+    # Python numbers and NumPy scalars must take the dtype of `x`, exactly as
+    # in the equivalent expression `(1 * x + 2) * x + 3`. Before this behavior
+    # was added, an integer coefficient and a floating point `x` raised
+    # InvalidArgumentError from the Mul/AddV2 kernels.
+    for x_dtype in (np.int32, np.float16, np.float32, np.float64):
+      x = np.array([0.5, 1.5, 2.5], dtype=x_dtype)
+      expected = np.polyval([1, 2, 3], x)
+      for coeffs in ([1, 2, 3], [1.0, 2, 3], [np.int64(1), 2, 3],
+                     [np.float32(1.0), np.int32(2), 3]):
+        with self.subTest(x_dtype=x_dtype, coeffs=coeffs):
+          tf_val = math_ops.polyval(coeffs, x)
+          self.assertEqual(tf_val.dtype, dtypes_lib.as_dtype(x_dtype))
+          self.assertAllClose(expected, self.evaluate(tf_val),
+                              rtol=1e-3, atol=1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloatCoeffForIntegerXRaises(self):
+    # A fractional Python number cannot be represented in an integer `x`; it
+    # must fail rather than be silently truncated, matching `1.5 * x`.
+    x = np.array([2, 3], dtype=np.int32)
+    with self.assertRaises(TypeError):
+      math_ops.polyval([1.5, 2], x)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
     coeffs = {}
