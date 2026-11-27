@@ -274,7 +274,7 @@ def resolve(node, source, context_filepath, context_lineno, context_col_offset):
 def resolve_entity(node, source, entity):
   """Like resolve, but extracts the context information from an entity."""
   lines, lineno = tf_inspect.getsourcelines(entity)
-  filepath = tf_inspect.getsourcefile(entity)
+  filepath = tf_inspect.getsourcefile(entity) or tf_inspect.getfile(entity)
 
   # Poor man's attempt at guessing the column offset: count the leading
   # whitespace. This might not work well with tabs.

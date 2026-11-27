@@ -95,6 +95,7 @@ tf_py_strict_test(
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/pyct:errors",
         "//tensorflow/python/autograph/pyct:inspect_utils",
+        "//tensorflow/python/autograph/pyct:origin_info",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/utils:ag_logging",
         "//tensorflow/python/data/ops:dataset_ops",
