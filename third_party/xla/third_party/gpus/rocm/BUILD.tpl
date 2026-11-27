@@ -381,6 +381,7 @@ rocm_lib_import(
     name = "miopen",
     data = glob([
         rocm_path("lib/libMIOpen.so*"),
+        rocm_path("lib/libMIOpen_private.so*"),
     ]) + glob([
         rocm_path("share/miopen/db/{}*".format(arch))
         for arch in rocm_gpu_architectures()
