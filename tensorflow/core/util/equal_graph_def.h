@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_EQUAL_GRAPH_DEF_H_
 #define TENSORFLOW_CORE_UTIL_EQUAL_GRAPH_DEF_H_
 
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
