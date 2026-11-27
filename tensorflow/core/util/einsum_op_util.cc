@@ -15,17 +15,44 @@ limitations under the License.
 
 #include "tensorflow/core/util/einsum_op_util.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace tensorflow {
+
+namespace {
+
+// Validates that `subscript` contains at most one ellipsis ("...") and that
+// periods (.) occur only within that ellipsis.
+absl::Status ValidateEinsumSubscriptEllipsis(absl::string_view subscript) {
+  const int64_t num_periods = absl::c_count(subscript, '.');
+  if (num_periods != 0 && num_periods != 3) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected at most one ellipsis (...), but found ", num_periods,
+        " periods (.) in the einsum subscript: ", subscript));
+  }
+  if (num_periods == 3 && !absl::StrContains(subscript, "...")) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Periods found outside of ellipsis in einsum subscript: ", subscript));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 absl::Status ValidateEinsumEquation(
     const std::string& equation,
@@ -45,6 +72,14 @@ absl::Status ValidateEinsumEquation(
         absl::StrCat("Expecting 1 or 2 input subscripts in equation '",
                      equation, "' but got: ", input_subscripts->size()));
   }
+  for (const std::string& input_subscript : *input_subscripts) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        ValidateEinsumSubscriptEllipsis(input_subscript),
+        " in einsum equation: ", equation);
+  }
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      ValidateEinsumSubscriptEllipsis(*output_subscript),
+      " in einsum equation: ", equation);
   return absl::OkStatus();
 }
 
