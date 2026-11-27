@@ -127,7 +127,16 @@ constexpr int kNumWeights = 3;
 // output channel and expert.
 bool IsWeightTensorSupported(const TfLiteTensor& w, int scale_tensor_index) {
   if (w.quantization.type != kTfLiteMultiAxisQuantization) {
-    return IsTensorSupported(w, /*allow_per_channel=*/true);
+    if (!IsTensorSupported(w, /*allow_per_channel=*/true)) return false;
+    if (w.quantization.type == kTfLiteAffineQuantization) {
+      const auto* q =
+          static_cast<const TfLiteAffineQuantization*>(w.quantization.params);
+      // Cannot factor out scales that vary along the contracting D_in axis (3).
+      if (q && q->scale && q->scale->size > 1 && q->quantized_dimension == 3) {
+        return false;
+      }
+    }
+    return true;
   }
   const auto* params =
       static_cast<const TfLiteMultiAxisQuantization*>(w.quantization.params);
@@ -145,12 +154,7 @@ bool IsWeightTensorSupported(const TfLiteTensor& w, int scale_tensor_index) {
       axes->data[1] != 1) {
     return false;
   }
-  // A shallow copy with the quantization cleared, so that IsTensorSupported
-  // only checks the type and dims.
-  TfLiteTensor unquantized = w;
-  unquantized.quantization = {kTfLiteNoQuantization, nullptr};
-  unquantized.params = {};
-  return IsTensorSupported(unquantized);
+  return IsTensorTypeSupported(w);
 }
 
 }  // namespace
@@ -324,9 +328,22 @@ TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
         TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
             subgraph, 3, perm_weights, weight_scale_val, &w.scale_id, 0));
       } else {
+        const TfLiteTensor& w_tensor = context->tensors[w.tensor_index];
         TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
-            context, subgraph, context->tensors[w.tensor_index], &w.scale_id,
-            &w.zero_point_id));
+            context, subgraph, w_tensor, &w.scale_id, &w.zero_point_id));
+        if (w_tensor.quantization.type == kTfLiteAffineQuantization) {
+          const auto* q = static_cast<const TfLiteAffineQuantization*>(
+              w_tensor.quantization.params);
+          if (q && q->scale && q->scale->size > 1) {
+            for (uint32_t* id : {&w.scale_id, &w.zero_point_id}) {
+              if (*id == YNN_INVALID_VALUE_ID) continue;
+              uint32_t transposed_id = YNN_INVALID_VALUE_ID;
+              TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+                  subgraph, 3, perm_weights, *id, &transposed_id, 0));
+              *id = transposed_id;
+            }
+          }
+        }
       }
     }
   }

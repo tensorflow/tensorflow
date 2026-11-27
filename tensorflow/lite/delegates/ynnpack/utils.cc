@@ -266,34 +266,28 @@ bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare) {
   }
 }
 
-bool IsSupportedQuantization(const TfLiteTensor& tensor, bool allow_per_channel,
-                             bool allow_blockwise) {
+bool IsSupportedQuantization(const TfLiteTensor& tensor,
+                             bool allow_per_channel) {
   if (!IsQuantized(tensor)) return true;
-  if (tensor.quantization.type == kTfLiteBlockwiseQuantization) {
-    if (!allow_blockwise) return false;
-    const auto* params = static_cast<const TfLiteBlockwiseQuantization*>(
-        tensor.quantization.params);
-    if (!params) return false;
-    if (params->scale < 0) return false;
-    if (params->blocksize <= 0) return false;
-    return true;
-  }
-  if (tensor.quantization.type == kTfLiteMultiAxisQuantization) {
-    const auto* params = static_cast<const TfLiteMultiAxisQuantization*>(
-        tensor.quantization.params);
-    if (!params) return false;
-    if (params->scales < 0) return false;
-    if (params->blocksize < 0) return false;
-    if (params->blocksize > 0 && !allow_blockwise) return false;
-    if (params->blocksize == 0 && !allow_per_channel) return false;
-    return true;
-  }
   if (tensor.quantization.type != kTfLiteAffineQuantization) return false;
   const auto* params =
       static_cast<const TfLiteAffineQuantization*>(tensor.quantization.params);
   if (!params) return false;
   if (!params->scale) return false;
-  if (params->scale->size != 1 && !allow_per_channel) return false;
+  if (params->scale->size != 1) {
+    if (!allow_per_channel) return false;
+    const int axis = params->quantized_dimension;
+    if (!tensor.dims || axis < 0 || axis >= tensor.dims->size ||
+        tensor.dims->size > YNN_MAX_TENSOR_RANK ||
+        tensor.dims->data[axis] != params->scale->size) {
+      return false;
+    }
+    if (!params->zero_point ||
+        (params->zero_point->size != params->scale->size &&
+         params->zero_point->size != 1)) {
+      return false;
+    }
+  }
   if (tensor.type == kTfLiteUInt8) {
     if (!params->zero_point) return false;
     if (params->zero_point->size != params->scale->size &&
@@ -317,8 +311,7 @@ size_t YnnTypeElementCount(ynn_type type) {
   }
 }
 
-bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel,
-                       bool allow_blockwise) {
+bool IsTensorTypeSupported(const TfLiteTensor& tensor) {
   if (tensor.type == kTfLiteBool) return false;
   ynn_type type = GetYnnType(tensor.type);
   if (type == ynn_type_invalid) return false;
@@ -329,7 +322,12 @@ bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel,
         tensor.dims->size == 0 ? 1 : tensor.dims->data[tensor.dims->size - 1];
     if (dense_dim % element_count != 0) return false;
   }
-  return IsSupportedQuantization(tensor, allow_per_channel, allow_blockwise);
+  return true;
+}
+
+bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel) {
+  return IsTensorTypeSupported(tensor) &&
+         IsSupportedQuantization(tensor, allow_per_channel);
 }
 
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
@@ -410,26 +408,6 @@ TfLiteStatus DefineScalarConstant(TfLiteContext* context,
   }
 }
 
-namespace {
-
-TfLiteStatus DefineTensor(TfLiteContext* context, ynn_subgraph_t subgraph,
-                          const TfLiteTensor& tensor, uint32_t* value_id) {
-  TF_LITE_ENSURE(context, tensor.data.raw != nullptr);
-  TF_LITE_ENSURE(context, tensor.dims != nullptr);
-  TF_LITE_ENSURE(context, tensor.dims->size <= YNN_MAX_TENSOR_RANK);
-  size_t dims[YNN_MAX_TENSOR_RANK];
-  std::copy_n(tensor.dims->data, tensor.dims->size, dims);
-  TF_LITE_ENSURE_EQ(
-      context,
-      ynn_define_tensor(subgraph, GetYnnType(tensor.type), tensor.dims->size,
-                        tensor.dims->size == 0 ? nullptr : dims,
-                        tensor.data.raw, YNN_VALUE_FLAG_COPY_DATA, value_id),
-      ynn_status_success);
-  return kTfLiteOk;
-}
-
-}  // namespace
-
 TfLiteStatus DefineQuantizationParams(TfLiteContext* context,
                                       ynn_subgraph_t subgraph,
                                       const TfLiteTensor& tensor,
@@ -439,39 +417,28 @@ TfLiteStatus DefineQuantizationParams(TfLiteContext* context,
     *zp_id = YNN_INVALID_VALUE_ID;
     return kTfLiteOk;
   }
-  if (tensor.quantization.type == kTfLiteMultiAxisQuantization) {
-    const auto* params = static_cast<const TfLiteMultiAxisQuantization*>(
-        tensor.quantization.params);
-    TF_LITE_ENSURE(context, params != nullptr);
-    TF_LITE_ENSURE(context, params->blocksize == 0);
-    TF_LITE_ENSURE(
-        context, params->scales >= 0 && params->scales < context->tensors_size);
-    TF_LITE_ENSURE_STATUS(DefineTensor(
-        context, subgraph, context->tensors[params->scales], scale_id));
-    if (params->zero_points >= 0 &&
-        params->zero_points < context->tensors_size) {
-      TF_LITE_ENSURE_STATUS(DefineTensor(
-          context, subgraph, context->tensors[params->zero_points], zp_id));
-    } else {
-      *zp_id = YNN_INVALID_VALUE_ID;
-    }
-    return kTfLiteOk;
-  }
   const auto* params =
       static_cast<const TfLiteAffineQuantization*>(tensor.quantization.params);
   if (params && params->scale && params->scale->size > 1) {
+    TF_LITE_ENSURE(context, tensor.dims != nullptr);
+    const int rank = tensor.dims->size;
+    const int axis = params->quantized_dimension;
+    TF_LITE_ENSURE(context,
+                   rank <= YNN_MAX_TENSOR_RANK && axis >= 0 && axis < rank);
     TF_LITE_ENSURE(context, params->zero_point != nullptr);
     TF_LITE_ENSURE(context, params->zero_point->size == params->scale->size ||
                                 params->zero_point->size == 1);
 
     size_t size = params->scale->size;
-    size_t dims[] = {size};
+    size_t dims[YNN_MAX_TENSOR_RANK];
+    std::fill_n(dims, rank, 1);
+    dims[axis] = size;
 
-    TF_LITE_ENSURE_EQ(
-        context,
-        ynn_define_tensor(subgraph, ynn_type_fp32, 1, dims, params->scale->data,
-                          YNN_VALUE_FLAG_COPY_DATA, scale_id),
-        ynn_status_success);
+    TF_LITE_ENSURE_EQ(context,
+                      ynn_define_tensor(subgraph, ynn_type_fp32, rank, dims,
+                                        params->scale->data,
+                                        YNN_VALUE_FLAG_COPY_DATA, scale_id),
+                      ynn_status_success);
 
     const int32_t* zp_data = nullptr;
     std::vector<int32_t> broadcast_zp;
@@ -495,7 +462,7 @@ TfLiteStatus DefineQuantizationParams(TfLiteContext* context,
     if (zp_data != nullptr) {
       TF_LITE_ENSURE_EQ(
           context,
-          ynn_define_tensor(subgraph, ynn_type_int32, 1, dims, zp_data,
+          ynn_define_tensor(subgraph, ynn_type_int32, rank, dims, zp_data,
                             YNN_VALUE_FLAG_COPY_DATA, zp_id),
           ynn_status_success);
     }

@@ -83,11 +83,10 @@ bool IsQuantized(const TfLiteTensor& tensor);
 // is constant between `Prepare` calls.
 bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare = false);
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
-                             bool allow_per_channel = false,
-                             bool allow_blockwise = false);
+                             bool allow_per_channel = false);
+bool IsTensorTypeSupported(const TfLiteTensor& tensor);
 bool IsTensorSupported(const TfLiteTensor& tensor,
-                       bool allow_per_channel = false,
-                       bool allow_blockwise = false);
+                       bool allow_per_channel = false);
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
                              const TfLiteTensor& tensor2);
 bool IsActivationSupported(TfLiteFusedActivation activation,
@@ -127,10 +126,9 @@ TfLiteStatus DefineScalarConstant(TfLiteContext* context,
                                   double value, uint32_t* id_out);
 
 // Defines quantization parameters (scale and zero point) for a tensor in the
-// YNNPACK subgraph. Supports per-tensor and per-channel quantization, including
-// kTfLiteMultiAxisQuantization with blocksize == 0. Does not handle blockwise
-// quantization (blocksize > 0), which is handled by op-specific builders like
-// DefineBlockwiseQuantizedMatMul.
+// YNNPACK subgraph. Supports per-tensor (rank 0) and per-channel affine
+// quantization (rank matching `tensor`, broadcasting along non-quantized axes).
+// Blockwise and multi-axis quantization are handled by op-specific builders.
 // If the tensor is not quantized, returns `kTfLiteOk` and leaves `scale_id` and
 // `zp_id` set to `YNN_INVALID_VALUE_ID`.
 TfLiteStatus DefineQuantizationParams(TfLiteContext* context,
