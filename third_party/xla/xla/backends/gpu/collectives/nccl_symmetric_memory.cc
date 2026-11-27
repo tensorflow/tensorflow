@@ -170,7 +170,6 @@ stream_executor::DeviceAddressBase NcclSymmetricMemory::addr() const {
 
 absl::StatusOr<stream_executor::DeviceAddressBase>
 NcclSymmetricMemory::multimem_addr() const {
-#if NCCL_VERSION_CODE >= 22900
   if (win_ == nullptr) {
     return absl::FailedPreconditionError(
         "Cannot get multimem address from null NCCL window.");
@@ -180,14 +179,12 @@ NcclSymmetricMemory::multimem_addr() const {
   if (multimem != nullptr) {
     return stream_executor::DeviceAddressBase(multimem, addr_.size());
   }
-#endif
   return absl::UnimplementedError(
       "Multimem not supported on this NCCL version or device");
 }
 
 absl::StatusOr<stream_executor::DeviceAddressBase>
 NcclSymmetricMemory::peer_addr(RankId peer) const {
-#if NCCL_VERSION_CODE >= 22902
   if (win_ == nullptr) {
     return absl::FailedPreconditionError(
         "Cannot get peer address from null NCCL window.");
@@ -201,10 +198,6 @@ NcclSymmetricMemory::peer_addr(RankId peer) const {
   return absl::FailedPreconditionError(absl::StrFormat(
       "Peer rank %d is not load/store accessible from this rank",
       peer.value()));
-#else
-  return absl::UnimplementedError(
-      "Peer address requires ncclGetPeerDevicePointer (NCCL >= 2.29.2)");
-#endif
 }
 
 std::string NcclSymmetricMemory::ToString() const {

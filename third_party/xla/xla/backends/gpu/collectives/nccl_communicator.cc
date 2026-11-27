@@ -189,7 +189,6 @@ ncclResult_t LaunchNcclAllGather(const void* sendbuff, void* recvbuff,
   return ncclAllGather(sendbuff, recvbuff, sendcount, datatype, comm, stream);
 }
 
-#if NCCL_VERSION_CODE >= 22800
 ncclResult_t LaunchNcclAllToAll(const void* sendbuff, void* recvbuff,
                                 size_t count, ncclDataType_t datatype,
                                 ncclComm_t comm, CUstream stream,
@@ -204,21 +203,8 @@ ncclResult_t LaunchNcclAllToAll(const void* sendbuff, void* recvbuff,
 #endif
   return ncclAlltoAll(sendbuff, recvbuff, count, datatype, comm, stream);
 }
-#endif  // NCCL_VERSION_CODE >= 22800
-
-void SetDevCommGinConnection(ncclDevCommRequirements& reqs, bool use_gin,
-                             bool gin_connection_full) {
-#if NCCL_VERSION_CODE >= 22907
-  reqs.ginConnectionType = (use_gin && gin_connection_full)
-                               ? NCCL_GIN_CONNECTION_FULL
-                               : NCCL_GIN_CONNECTION_NONE;
-#elif NCCL_VERSION_CODE >= 22900
-  reqs.ginForceEnable = use_gin && gin_connection_full;
-#endif
-}
 
 NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
-#if NCCL_VERSION_CODE >= 22907
   bool support_device_comm = false;
   bool support_one_sided_comm = false;
   bool support_gin = false;
@@ -286,40 +272,6 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
       /*lsa_size=*/lsa_size,
       /*one_sided_comm_unsupported_reason=*/one_sided_comm_unsupported_reason,
   };
-#elif NCCL_VERSION_CODE >= 22900
-  return {
-      /*supports_device_comm=*/true,
-      /*supports_one_sided_comm=*/false,
-      /*supports_gin=*/false,
-      /*supports_cft=*/false,
-      /*lsa_size=*/std::nullopt,
-      /*one_sided_comm_unsupported_reason=*/
-      absl::StrFormat("NCCL >= 2.29.7 is required (current: %d)",
-                      NCCL_VERSION_CODE),
-  };
-#elif NCCL_VERSION_CODE >= 22800
-  return {
-      /*supports_device_comm=*/true,
-      /*supports_one_sided_comm=*/false,
-      /*supports_gin=*/false,
-      /*supports_cft=*/false,
-      /*lsa_size=*/std::nullopt,
-      /*one_sided_comm_unsupported_reason=*/
-      absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
-                      NCCL_VERSION_CODE),
-  };
-#else
-  return {
-      /*supports_device_comm=*/false,
-      /*supports_one_sided_comm=*/false,
-      /*supports_gin=*/false,
-      /*supports_cft=*/false,
-      /*lsa_size=*/std::nullopt,
-      /*one_sided_comm_unsupported_reason=*/
-      absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
-                      NCCL_VERSION_CODE),
-  };
-#endif
 }
 
 // Releases a communicator that Create has not published yet. ncclCommAbort
@@ -1110,7 +1062,6 @@ absl::Status NcclCommunicator::LaunchAllToAll(
           dtype, false,
           stream->parent()->GetDeviceDescription().cuda_compute_capability()));
 
-#if NCCL_VERSION_CODE >= 22800
   // If send and receive buffers are contiguous we can use all-to-all API from
   // NCCL directly without launching individual send/recv operations.
   if (send_contiguous && recv_contiguous) {
@@ -1127,7 +1078,6 @@ absl::Status NcclCommunicator::LaunchAllToAll(
     }
     return absl::OkStatus();
   }
-#endif
 
   auto group = [&] {
     for (size_t i = 0; i < send_buffers.size(); ++i) {
@@ -1297,7 +1247,6 @@ absl::Status NcclCommunicator::LaunchPut(se::DeviceAddressBase send_buffer,
     return FailedPrecondition("NcclCommunicator aborted");
   }
 
-#if NCCL_VERSION_CODE >= 22900
   se::Stream* stream = ToStream(executor);
 
   auto& peer_win = absl::down_cast<NcclSymmetricMemory&>(*recv_buffer);
@@ -1313,9 +1262,6 @@ absl::Status NcclCommunicator::LaunchPut(se::DeviceAddressBase send_buffer,
         send_buffer.opaque(), count, ncclInt8, peer.value(), peer_win.win(),
         offset, 0, 0, 0, comm_->comm, AsCudaStream(stream)));
   }
-#else
-  return Unimplemented("Put requires NCCL >= 2.29.0");
-#endif
   if (!IsInsideNcclGroupLaunch()) {
     ABSL_RETURN_IF_ERROR(PollUntilDone());
   }
@@ -1332,7 +1278,6 @@ absl::Status NcclCommunicator::LaunchSignal(RankId peer,
     return FailedPrecondition("NcclCommunicator aborted");
   }
 
-#if NCCL_VERSION_CODE >= 22900
   se::Stream* stream = ToStream(executor);
 
   const auto& nccl_desc = absl::down_cast<const GpuSignalDesc&>(signal_desc);
@@ -1348,9 +1293,6 @@ absl::Status NcclCommunicator::LaunchSignal(RankId peer,
                                         nccl_desc.ctx(), 0, comm_->comm,
                                         AsCudaStream(stream)));
   }
-#else
-  return Unimplemented("Signal requires NCCL >= 2.29.0");
-#endif
   if (!IsInsideNcclGroupLaunch()) {
     ABSL_RETURN_IF_ERROR(PollUntilDone());
   }
@@ -1377,7 +1319,6 @@ absl::Status NcclCommunicator::LaunchWaitSignals(
     return absl::OkStatus();
   }
 
-#if NCCL_VERSION_CODE >= 22900
   se::Stream* stream = ToStream(executor);
 
   std::vector<ncclWaitSignalDesc_t> nccl_descs(peer_wait_descs.size());
@@ -1410,9 +1351,6 @@ absl::Status NcclCommunicator::LaunchWaitSignals(
                                             nccl_descs.data(), comm_->comm,
                                             AsCudaStream(stream)));
   }
-#else
-  return Unimplemented("WaitSignals requires NCCL >= 2.29.0");
-#endif
 
   if (!IsInsideNcclGroupLaunch()) {
     ABSL_RETURN_IF_ERROR(PollUntilDone());
@@ -1578,8 +1516,6 @@ Future<T> NcclCommunicator::Execute(
 // NCCL device communicator
 //===----------------------------------------------------------------------===//
 
-#if NCCL_VERSION_CODE >= 22800
-
 NcclDeviceCommunicator::NcclDeviceCommunicator(
     std::shared_ptr<NcclCommState> parent_comm,
     se::StreamExecutor* stream_executor,
@@ -1644,19 +1580,21 @@ NcclDeviceCommunicator::CreateFrom(const NcclCommunicator& comm,
 
   ncclDevCommRequirements reqs{};
   memset(&reqs, 0, sizeof(reqs));
-#if NCCL_VERSION_CODE >= 22900
   if (use_gin) {
     reqs = NCCL_DEV_COMM_REQUIREMENTS_INITIALIZER;
     reqs.barrierCount = requirements.barrier_count;
     reqs.railGinBarrierCount = requirements.rail_gin_barrier_count;
     reqs.ginSignalCount = requirements.gin_signal_count;
-    SetDevCommGinConnection(reqs, use_gin, requirements.gin_connection_full);
+    // NOLINTBEGIN(misc-include-cleaner): comes from <nccl_device.h>.
+    reqs.ginConnectionType = requirements.gin_connection_full
+                                 ? NCCL_GIN_CONNECTION_FULL
+                                 : NCCL_GIN_CONNECTION_NONE;
+    // NOLINTEND(misc-include-cleaner)
   } else {
     reqs.size = sizeof(reqs);
     reqs.magic = NCCL_API_MAGIC;
     reqs.version = NCCL_VERSION_CODE;
   }
-#endif
   reqs.lsaBarrierCount = requirements.lsa_barrier_count;
   int32_t granted_cft_caps = 0;
 #if NCCL_VERSION_CODE >= 23200
@@ -1701,7 +1639,5 @@ se::PackedKernelArg NcclDeviceCommunicator::PackKernelArg() const {
     std::memcpy(packed.data(), &dev_comm_, sizeof(ncclDevComm));
   });
 }
-
-#endif  // NCCL_VERSION_CODE >= 22800
 
 }  // namespace xla::gpu

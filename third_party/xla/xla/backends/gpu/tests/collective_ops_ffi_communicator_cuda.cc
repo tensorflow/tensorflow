@@ -47,7 +47,6 @@ absl::Status CommunicatorAllReduceU32(stream_executor::Stream* stream,
 absl::StatusOr<void*> GetWindowPeerDevicePointer(XLA_FFI_Window* window,
                                                  size_t window_offset,
                                                  int peer) {
-#if NCCL_VERSION_CODE >= 22902
   ncclWindow_t nccl_win = reinterpret_cast<ncclWindow_t>(window);
   void* ptr = nullptr;
   // NOLINTBEGIN(misc-include-cleaner): comes from <nccl_device.h>.
@@ -57,10 +56,6 @@ absl::StatusOr<void*> GetWindowPeerDevicePointer(XLA_FFI_Window* window,
   TF_RET_CHECK(r == ncclSuccess) << "ncclGetPeerDevicePointer(peer=" << peer
                                  << ") failed: " << ncclGetErrorString(r);
   return ptr;
-#else
-  return absl::UnimplementedError(
-      "GetWindowPeerDevicePointer requires NCCL >= 2.29.2");
-#endif
 }
 
 }  // namespace xla::gpu

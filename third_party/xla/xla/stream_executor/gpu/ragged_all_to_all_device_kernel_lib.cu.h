@@ -18,11 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "xla/stream_executor/gpu/ragged_all_to_all_device_kernel.h"
-
-#if NCCL_VERSION_CODE >= 22900
 #include "third_party/nccl/nccl_device.h"
-#endif  // NCCL_VERSION_CODE >= 22900
+#include "xla/stream_executor/gpu/ragged_all_to_all_device_kernel.h"
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000 &&    \
     defined(CUDART_VERSION) && CUDART_VERSION >= 13030 && \
@@ -130,8 +127,6 @@ __device__ __forceinline__ void fence_proxy_fabric_release() {
 
 }  // namespace ragged_all_to_all_tma
 #endif  // __CUDA_ARCH__ >= 900
-
-#if NCCL_VERSION_CODE >= 22900
 
 template <int64_t kVectorSize>
 struct RaggedAllToAllUpdateMetadata {
@@ -582,19 +577,6 @@ __global__ void __launch_bounds__(512) RaggedAllToAllDeviceKernelImpl(
   }
 #endif  // __CUDA_ARCH__ >= 600
 }
-
-#else  // NCCL_VERSION_CODE < 22900
-
-template <int64_t kVectorSize>
-__global__ void RaggedAllToAllDeviceKernelImpl(
-    void* dev_comm, void* send_win, void* recv_win,
-    const int64_t* input_offsets_ptr, const int64_t* send_sizes_ptr,
-    const int64_t* output_offsets_ptr, int64_t num_updates_per_replica,
-    int64_t num_row_elements, int64_t input_buffer_offset_bytes,
-    int64_t output_buffer_offset_bytes, int32_t local_write_cost,
-    int32_t remote_write_cost, bool cft_granted) {}
-
-#endif  // NCCL_VERSION_CODE >= 22900
 
 }  // namespace stream_executor::gpu
 
