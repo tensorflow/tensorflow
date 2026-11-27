@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/lite/tools/tool_params.h"
 
 #if defined(TFLITE_ENABLE_HEXAGON_YNN)
+#include <cstdint>
+
 #include "tensorflow/lite/delegates/hexagon_ynn/hexagon_ynn_delegate.h"
 #endif
 
@@ -34,6 +36,10 @@ class HexagonYnnDelegateProvider : public DelegateProvider {
     default_params_.AddParam("use_hexagon_ynn", ToolParam::Create<bool>(false));
     default_params_.AddParam("hexagon_ynn_lib_path",
                              ToolParam::Create<std::string>("/data/local/tmp"));
+    default_params_.AddParam("hexagon_ynn_backend",
+                             ToolParam::Create<std::string>(""));
+    default_params_.AddParam("hexagon_ynn_num_threads",
+                             ToolParam::Create<int32_t>(0));
 #endif
   }
 
@@ -54,12 +60,20 @@ std::vector<Flag> HexagonYnnDelegateProvider::CreateFlags(
 #if defined(TFLITE_ENABLE_HEXAGON_YNN)
   std::vector<Flag> flags = {
       CreateFlag<bool>("use_hexagon_ynn", params,
-                       "Use the YNNPACK Hexagon DSP delegate"),
+                       "Use the Hexagon DSP delegate"),
       CreateFlag<std::string>(
           "hexagon_ynn_lib_path", params,
-          "Path to the directory containing libdsp_graph.so (ARM stub) "
-          "and the dsp/ subdirectory with libdsp_graph_skel.so + "
-          "libdspynnpack.so.")};
+          "Path to the directory containing libdsp_graph.so (host stub) "
+          "and the dsp/ subdirectory with libdsp_graph_skel.so."),
+      CreateFlag<std::string>(
+          "hexagon_ynn_backend", params,
+          "Backend to run on the Hexagon DSP: 'ynnpack' (default) or "
+          "'xnnpack'. When empty, respects --use_ynnpack / XNNPACK_USE_YNNPACK "
+          "and defaults to 'ynnpack'."),
+      CreateFlag<int32_t>(
+          "hexagon_ynn_num_threads", params,
+          "Number of Hexagon DSP worker threads (0 inherits --num_threads when "
+          "set, or defaults to 4).")};
   return flags;
 #else
   return {};
@@ -72,6 +86,10 @@ void HexagonYnnDelegateProvider::LogParams(const ToolParams& params,
   LOG_TOOL_PARAM(params, bool, "use_hexagon_ynn", "Use HexagonYnn", verbose);
   LOG_TOOL_PARAM(params, std::string, "hexagon_ynn_lib_path",
                  "HexagonYnn lib path", verbose);
+  LOG_TOOL_PARAM(params, std::string, "hexagon_ynn_backend",
+                 "HexagonYnn DSP backend", verbose);
+  LOG_TOOL_PARAM(params, int32_t, "hexagon_ynn_num_threads",
+                 "HexagonYnn DSP threads", verbose);
 #endif
 }
 
@@ -86,6 +104,30 @@ TfLiteDelegatePtr HexagonYnnDelegateProvider::CreateTfLiteDelegate(
         params.Get<int>("max_delegated_partitions");
     options.min_nodes_per_partition =
         params.Get<int>("min_nodes_per_partition");
+
+    const std::string backend = params.Get<std::string>("hexagon_ynn_backend");
+    if (backend == "xnnpack" || backend == "XNNPACK") {
+      options.backend = kTfLiteHexagonYnnBackendXnnpack;
+    } else if (backend == "ynnpack" || backend == "YNNPACK") {
+      options.backend = kTfLiteHexagonYnnBackendYnnpack;
+    } else if (params.HasParam("use_ynnpack") &&
+               params.HasValueSet<bool>("use_ynnpack")) {
+      options.backend = params.Get<bool>("use_ynnpack")
+                            ? kTfLiteHexagonYnnBackendYnnpack
+                            : kTfLiteHexagonYnnBackendXnnpack;
+    }
+
+    int32_t dsp_threads = params.Get<int32_t>("hexagon_ynn_num_threads");
+    if (dsp_threads <= 0 && params.HasParam("num_threads")) {
+      const int32_t host_threads = params.Get<int32_t>("num_threads");
+      if (host_threads > 0) {
+        dsp_threads = host_threads;
+      }
+    }
+    if (dsp_threads > 0) {
+      options.num_threads = dsp_threads;
+    }
+
     TfLiteHexagonYnnInit(
         params.Get<std::string>("hexagon_ynn_lib_path").c_str());
     delegate = TfLiteDelegatePtr(TfLiteHexagonYnnDelegateCreate(&options),
