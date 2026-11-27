@@ -179,7 +179,7 @@ Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
     return (bits & 0b0111'1111) == 0b0111'1111;
   } else if (llvm::isa<mlir::Float8E3M4Type>(ty)) {
     return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'0000);
-  } else if (llvm::isa<mlir::Float8E8M0FNUType>(ty)) {
+  } else if (llvm::isa<mlir::Float8E8M0FNUType, mlir::Float8E5M3FNUType>(ty)) {
     return bits == 0xFF;
   }
   return bits == 0x80;
@@ -293,9 +293,16 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
     return {ma::ConstantIntOp::create(b, ty, n), &b};
   };
 
+  bool from_signed =
+      llvm::APFloat::semanticsHasSignedRepr(from_ty.getFloatSemantics());
+  bool to_signed =
+      llvm::APFloat::semanticsHasSignedRepr(to_ty.getFloatSemantics());
+  bool from_has_zero =
+      llvm::APFloat::semanticsHasZero(from_ty.getFloatSemantics());
+
   // Shift bits to destination type, without sign bit.
   Val from_sign_bit;
-  if (!llvm::isa<mlir::Float8E8M0FNUType>(from_ty)) {
+  if (from_signed) {
     from_sign_bit = from_bits.shrui(from_width - 1) != 0;
     from_bits = from_bits & ((1ULL << (from_width - 1)) - 1);
   }
@@ -450,9 +457,8 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
     } else {
       // Subnormals and zero.
       // Round and shift mantissa down.
-      Val from_has_leading_one = !llvm::isa<mlir::Float8E8M0FNUType>(from_ty)
-                                     ? biased_from_exp != 0
-                                     : cst(i32_ty, 1);
+      Val from_has_leading_one =
+          from_has_zero ? biased_from_exp != 0 : cst(i32_ty, 1);
       Val from_has_leading_one_i32 = convert_int(i32_ty, from_has_leading_one);
       from_has_leading_one = convert_int(from_int_ty, from_has_leading_one);
       Val exponent_shift_i32 =
@@ -493,29 +499,33 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
   Value result_is_inf = IsInf(value, b);
   Value input_is_nan = IsNaN(value, b);
 
-  if (llvm::isa<mlir::Float8E8M0FNUType>(to_ty)) {
-    // Converting a negative number to E8M0 results in NaN.
-    input_is_nan = from_sign_bit | input_is_nan;
-  } else if (IsFNUZ(to_ty)) {
-    // Clear the sign bit if the result is zero (the output has no negative
-    // zero). Handle the edge case when the input is zero and the result is not.
-    Val result_is_non_zero =
-        (digit_shift > 0 ? from_bits : Val{result, &b}) != 0;
-    from_sign_bit = from_sign_bit & result_is_non_zero;
-  } else if (IsFNUZ(from_ty)) {
-    // Clear the sign bit if the input is NaN (it's positive but encoded as
-    // negative 0).
-    from_sign_bit = from_sign_bit ^ input_is_nan;
+  if (from_signed) {
+    if (!to_signed) {
+      // Converting a negative non-zero number to an unsigned type results in
+      // NaN. Negative zero becomes zero.
+      input_is_nan = (from_sign_bit & (from_bits != 0)) | input_is_nan;
+    } else if (IsFNUZ(to_ty)) {
+      // Clear the sign bit if the result is zero (the output has no negative
+      // zero). Handle the edge case when the input is zero and the result is
+      // not.
+      Val result_is_non_zero =
+          (digit_shift > 0 ? from_bits : Val{result, &b}) != 0;
+      from_sign_bit = from_sign_bit & result_is_non_zero;
+    } else if (IsFNUZ(from_ty)) {
+      // Clear the sign bit if the input is NaN (it's positive but encoded as
+      // negative 0).
+      from_sign_bit = from_sign_bit ^ input_is_nan;
+    }
   }
 
-  if (!llvm::isa<mlir::Float8E8M0FNUType>(from_ty)) {
+  if (from_has_zero) {
     result = SelectOp::create(b, from_bits == 0, to_zero, result);
   }
   result = SelectOp::create(b, result_is_inf, to_inf, result);
   result = SelectOp::create(b, input_is_nan, to_nan, result);
 
   // Insert sign bit.
-  if (!llvm::isa<mlir::Float8E8M0FNUType>(from_ty)) {
+  if (from_signed && to_signed) {
     Value neg_result = Val{result, &b} | (1ll << (to_int_ty.getWidth() - 1));
     result = SelectOp::create(b, from_sign_bit, neg_result, result);
   }
@@ -596,7 +606,9 @@ struct RewriteF8Cst : public mlir::OpRewritePattern<ma::CmpFOp> {
       Val int_value{ma::BitcastOp::create(b, int_ty, lhs), &b};
       int64_t constant = rhs_cst.bitcastToAPInt().getZExtValue();
       // If we're comparing to +-0, compare the absolute values.
-      if (rhs_cst.isZero() && !IsFNUZ(lhs.getType())) {
+      if (rhs_cst.isZero() && !IsFNUZ(lhs.getType()) &&
+          llvm::APFloat::semanticsHasSignedRepr(
+              lhs.getType().getFloatSemantics())) {
         int64_t mask = (1 << (lhs.getType().getWidth() - 1)) - 1;
         int_value = int_value & mask;
         constant &= mask;
