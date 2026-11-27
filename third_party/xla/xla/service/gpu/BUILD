@@ -434,7 +434,6 @@ cc_library(
         ":gpu_conv_runner",
         ":gpu_hlo_ordering",
         ":gpu_memory_space_assignment",
-        ":gpu_norm_runner",
         ":hlo_fusion_analysis",
         ":ir_emission_utils",
         ":ir_emitter_context",
@@ -963,53 +962,6 @@ xla_cc_test(
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "gpu_norm_runner",
-    srcs = ["gpu_norm_runner.cc"],
-    hdrs = ["gpu_norm_runner.h"],
-    deps = [
-        ":backend_configs_cc",
-        ":cublas_cudnn",
-        ":gpu_norm_runner_proto_cc",
-        ":stream_executor_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/stream_executor:device_address",
-        "//xla/stream_executor:dnn",
-        "//xla/stream_executor:lazy_op_runner",
-        "//xla/stream_executor:stream",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/protobuf:dnn_proto_cc",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "gpu_norm_runner_test",
-    srcs = ["gpu_norm_runner_test.cc"],
-    deps = [
-        ":gpu_norm_runner",
-        ":gpu_norm_runner_proto_cc",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "//xla/tsl/util/proto:parse_text_proto",
-        "//xla/tsl/util/proto:proto_matchers",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-tf_proto_library(
-    name = "gpu_norm_runner_proto",
-    srcs = ["gpu_norm_runner.proto"],
-    deps = [
-        ":backend_configs",
-        "//xla:xla_data_proto",
     ],
 )
 

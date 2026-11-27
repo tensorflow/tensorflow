@@ -177,7 +177,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_hlo_ordering.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
-#include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"

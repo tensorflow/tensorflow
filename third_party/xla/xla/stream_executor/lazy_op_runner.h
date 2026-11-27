@@ -234,37 +234,6 @@ struct FusedConvOp {
   }
 };
 
-// Implementation of the concept required by LazyOpRunner, for NormRunner.
-struct NormOp {
-  using Signature = NormSignature;
-
-  struct Config {
-    NormKind kind;
-    double epsilon;
-    const TensorDescriptor& x_descriptor;
-    const TensorDescriptor& scale_descriptor;
-    const TensorDescriptor& y_or_dx_descriptor;
-    std::optional<TensorDescriptor> bias_descriptor;
-    std::optional<TensorDescriptor> dy_descriptor;
-    std::optional<TensorDescriptor> expectation_descriptor;
-    std::optional<TensorDescriptor> norm_factor_descriptor;
-    std::optional<TensorDescriptor> dscale_descriptor;
-    std::optional<TensorDescriptor> dbias_descriptor;
-  };
-
-  static absl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
-  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
-                          Stream* stream) {
-    ABSL_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
-    return dnn->NormRunnerFromDesc(
-        stream, desc, config.kind, config.epsilon, config.x_descriptor,
-        config.scale_descriptor, config.y_or_dx_descriptor,
-        config.bias_descriptor, config.dy_descriptor,
-        config.expectation_descriptor, config.norm_factor_descriptor,
-        config.dscale_descriptor, config.dbias_descriptor);
-  }
-};
-
 // Implementation of the concept required by LazyOpRunner, for FusedMatmul.
 struct FusedMatmulOp {
   using Signature = FusedMatmulSignature;

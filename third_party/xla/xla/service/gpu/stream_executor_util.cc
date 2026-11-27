@@ -577,20 +577,6 @@ absl::StatusOr<CudnnConvKind> CudnnConvKindFromProto(
   return Internal("Unexpected convolution kind");
 }
 
-absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
-    CudnnNormKind kind) {
-  switch (kind) {
-    case CudnnNormKind::kLayerForwardInfer:
-      return se::dnn::LAYER_FWD_INFER;
-    case CudnnNormKind::kLayerForwardTrain:
-      return se::dnn::LAYER_FWD_TRAIN;
-    case CudnnNormKind::kLayerBackward:
-      return se::dnn::LAYER_BWD;
-    default:
-      return Internal("Unexpected norm kind");
-  }
-}
-
 absl::StatusOr<se::dnn::FMHAMaskKind> GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(
     CudnnfMHAMaskKind kind) {
   switch (kind) {

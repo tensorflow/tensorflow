@@ -125,9 +125,6 @@ se::dnn::ConvolutionKind CudnnConvKindToProto(CudnnConvKind kind);
 absl::StatusOr<CudnnConvKind> CudnnConvKindFromProto(
     se::dnn::ConvolutionKind kind);
 
-absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
-    CudnnNormKind kind);
-
 absl::StatusOr<se::dnn::FMHAMaskKind> GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(
     CudnnfMHAMaskKind kind);
 

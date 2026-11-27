@@ -30,7 +30,6 @@ import "xla/ffi/execution_state.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/backend_configs.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
-import "xla/service/gpu/gpu_norm_runner.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/service/hlo.proto";
 import "xla/service/shaped_slice.proto";
@@ -328,6 +327,20 @@ message CublasLtMatmulThunkProto {
   int64 autotune_workspace_size = 17;
   optional stream_executor.gpu.BlasLtMatmulAlgorithmProto algorithm_proto = 20;
   bool require_exact_algorithm = 21;
+}
+
+message GpuNormDescriptorProto {
+  xla.gpu.CudnnNormBackendConfig backend_config = 1;
+  xla.ShapeProto x_shape = 2;
+  xla.ShapeProto scale_shape = 3;
+  optional xla.ShapeProto bias_shape = 4;
+  xla.ShapeProto y_or_dx_shape = 5;
+  optional xla.ShapeProto expectation_shape = 6;
+  optional xla.ShapeProto norm_factor_shape = 7;
+  optional xla.ShapeProto dy_shape = 8;
+  optional xla.ShapeProto dscale_shape = 9;
+  optional xla.ShapeProto dbias_shape = 10;
+  optional xla.ShapeProto scratch_shape = 11;
 }
 
 message NormThunkProto {

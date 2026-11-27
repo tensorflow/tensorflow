@@ -27,12 +27,33 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/gpu_norm_runner.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/xla_data.pb.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
+
+// Intermediate structure used as input to construct NormThunk.
+struct GpuNormDescriptor {
+  CudnnNormBackendConfig backend_config;
+  Shape x_shape;
+  Shape scale_shape;
+  std::optional<Shape> bias_shape;
+  Shape y_or_dx_shape;
+  std::optional<Shape> expectation_shape;
+  std::optional<Shape> norm_factor_shape;
+  std::optional<Shape> dy_shape;
+  std::optional<Shape> dscale_shape;
+  std::optional<Shape> dbias_shape;
+  Shape scratch_shape;
+
+  static absl::StatusOr<GpuNormDescriptor> FromProto(
+      const GpuNormDescriptorProto& proto);
+
+  GpuNormDescriptorProto ToProto() const;
+};
 
 class NormThunk : public Thunk {
  public:
@@ -64,9 +85,26 @@ class NormThunk : public Thunk {
   absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
-  NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
-            GpuNormDescriptor descriptor, BufferAllocation::Slice x,
-            BufferAllocation::Slice scale, BufferAllocation::Slice y_or_dx,
+  struct Config {
+    static absl::StatusOr<Config> For(const GpuNormDescriptor& desc);
+
+    double epsilon;
+    se::dnn::NormKind kind;
+    se::dnn::AlgorithmDesc algorithm;
+    se::dnn::TensorDescriptor x_descriptor;
+    se::dnn::TensorDescriptor scale_descriptor;
+    std::optional<se::dnn::TensorDescriptor> bias_descriptor;
+    se::dnn::TensorDescriptor y_or_dx_descriptor;
+    std::optional<se::dnn::TensorDescriptor> expectation_descriptor;
+    std::optional<se::dnn::TensorDescriptor> norm_factor_descriptor;
+    std::optional<se::dnn::TensorDescriptor> dy_descriptor;
+    std::optional<se::dnn::TensorDescriptor> dscale_descriptor;
+    std::optional<se::dnn::TensorDescriptor> dbias_descriptor;
+  };
+
+  NormThunk(ThunkInfo thunk_info, Config config, GpuNormDescriptor descriptor,
+            BufferAllocation::Slice x, BufferAllocation::Slice scale,
+            BufferAllocation::Slice y_or_dx,
             std::optional<BufferAllocation::Slice> bias,
             std::optional<BufferAllocation::Slice> expectation,
             std::optional<BufferAllocation::Slice> norm_factor,
@@ -74,6 +112,9 @@ class NormThunk : public Thunk {
             std::optional<BufferAllocation::Slice> dscale,
             std::optional<BufferAllocation::Slice> dbias,
             BufferAllocation::Slice scratch, int devices_per_host);
+
+  absl::StatusOr<const se::dnn::NormRunner*> GetOrCreateRunner(
+      se::Stream* absl_nonnull stream);
 
   BufferAllocation::Slice x_buffer_;
   BufferAllocation::Slice scale_buffer_;
@@ -85,18 +126,15 @@ class NormThunk : public Thunk {
   std::optional<BufferAllocation::Slice> dscale_buffer_;
   std::optional<BufferAllocation::Slice> dbias_buffer_;
   BufferAllocation::Slice scratch_buffer_;
-  absl::StatusOr<NormRunner*> GetOrCreateRunner(
-      const stream_executor::Stream* absl_nonnull stream);
 
   // Technically this is only needed during initialization to create the
-  // GpuNormConfig, but the actual GpuNormConfig is hard to serialize. So we
-  // keep the descriptor around for serialization purposes.
+  // Config, but the actual Config is hard to serialize. So we keep the
+  // descriptor around for serialization purposes.
   GpuNormDescriptor descriptor_;
-  GpuNormConfig config_;
-  PerDeviceState<std::optional<NormRunner>> runner_states_;
+  Config config_;
+  PerDeviceState<std::unique_ptr<const se::dnn::NormRunner>> runner_states_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_NORM_THUNK_H_
