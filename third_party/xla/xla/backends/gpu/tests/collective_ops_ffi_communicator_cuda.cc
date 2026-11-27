@@ -47,7 +47,7 @@ absl::Status CommunicatorAllReduceU32(stream_executor::Stream* stream,
 absl::StatusOr<void*> GetWindowPeerDevicePointer(XLA_FFI_Window* window,
                                                  size_t window_offset,
                                                  int peer) {
-#if (NCCL_VERSION_CODE >= 22902) || defined(USE_NCCL_HOST_API)
+#if NCCL_VERSION_CODE >= 22902
   ncclWindow_t nccl_win = reinterpret_cast<ncclWindow_t>(window);
   void* ptr = nullptr;
   // NOLINTBEGIN(misc-include-cleaner): comes from <nccl_device.h>.

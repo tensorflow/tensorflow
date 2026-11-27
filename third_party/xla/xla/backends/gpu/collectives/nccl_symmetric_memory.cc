@@ -170,7 +170,7 @@ stream_executor::DeviceAddressBase NcclSymmetricMemory::addr() const {
 
 absl::StatusOr<stream_executor::DeviceAddressBase>
 NcclSymmetricMemory::multimem_addr() const {
-#if (NCCL_VERSION_CODE >= 22900) || defined(USE_NCCL_HOST_API)
+#if NCCL_VERSION_CODE >= 22900
   if (win_ == nullptr) {
     return absl::FailedPreconditionError(
         "Cannot get multimem address from null NCCL window.");
@@ -187,7 +187,7 @@ NcclSymmetricMemory::multimem_addr() const {
 
 absl::StatusOr<stream_executor::DeviceAddressBase>
 NcclSymmetricMemory::peer_addr(RankId peer) const {
-#if (NCCL_VERSION_CODE >= 22902) || defined(USE_NCCL_HOST_API)
+#if NCCL_VERSION_CODE >= 22902
   if (win_ == nullptr) {
     return absl::FailedPreconditionError(
         "Cannot get peer address from null NCCL window.");

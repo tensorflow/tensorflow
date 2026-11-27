@@ -888,7 +888,6 @@ cc_library(
     name = "nccl_symmetric_memory",
     srcs = ["nccl_symmetric_memory.cc"],
     hdrs = ["nccl_symmetric_memory.h"],
-    local_defines = if_google(["USE_NCCL_HOST_API"]),
     tags = [
         "cuda-only",
         "gpu",
