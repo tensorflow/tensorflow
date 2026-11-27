@@ -1241,6 +1241,32 @@ ENTRY main {
           m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
 }
 
+TEST_F(SoftmaxRewriterTritonTest, CanFuseDiamondWithScalarConstantOperand) {
+  const std::string hlo_string = R"(
+HloModule softmax
+add_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[125]{0} parameter(0)
+  constant_0 = f32[] constant(0)
+  reduce = f32[] reduce(param_0, constant_0), dimensions={0}, to_apply=add_computation
+  epsilon = f32[] constant(1e-06)
+  maximum = f32[] maximum(reduce, epsilon)
+  broadcast = f32[125]{0} broadcast(maximum), dimensions={}
+  ROOT divide = f32[125]{0} divide(param_0, broadcast)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(fusion_rewriter_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
+}
+
 }  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla

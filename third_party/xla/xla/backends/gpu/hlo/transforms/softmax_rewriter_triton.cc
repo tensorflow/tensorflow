@@ -87,6 +87,13 @@ inline bool HasOneUse(const HloInstruction* instr) {
   return instr->user_count() == 1;
 }
 
+// A scalar constant is a splat without a broadcast. It appears where the other
+// operand is a scalar too.
+bool IsSplat(const HloInstruction& instr) {
+  return hlo_query::IsScalarConstant(&instr) ||
+         IsBroadcastOfScalarConstant(instr) || IsBroadcastOfParameter(instr);
+}
+
 // Chooses which operand to use for fusion processing. Taking in a unary or
 // binary instruction, returns the first non-splat operand. If none is
 // present, returns any operand.
@@ -94,9 +101,7 @@ HloInstruction* ChooseOperandForFusionProcessing(HloInstruction* instr) {
   CHECK_GT(instr->operand_count(), 0);
   CHECK_LE(instr->operand_count(), 2);
 
-  if (instr->operand_count() > 1 &&
-      (IsBroadcastOfScalarConstant(*instr->operand(0)) ||
-       IsBroadcastOfParameter(*instr->operand(0)))) {
+  if (instr->operand_count() > 1 && IsSplat(*instr->operand(0))) {
     return instr->mutable_operand(1);
   }
   return instr->mutable_operand(0);
@@ -138,10 +143,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
 
     // For simplicity we only fuse elementwise binary ops with splat operands
     // if they contain one non-splat operand.
-    if ((IsBroadcastOfScalarConstant(*operand_0) ||
-         IsBroadcastOfParameter(*operand_0)) ^
-        (IsBroadcastOfScalarConstant(*operand_1) ||
-         IsBroadcastOfParameter(*operand_1))) {
+    if (IsSplat(*operand_0) ^ IsSplat(*operand_1)) {
       return static_cast<bool>(
           IsTritonSupportedInstruction(*instr, gpu_version));
     }
