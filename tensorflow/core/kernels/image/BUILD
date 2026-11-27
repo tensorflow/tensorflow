@@ -94,7 +94,11 @@ cc_library(
     srcs = ["sampling_kernels.cc"],
     hdrs = ["sampling_kernels.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 tf_cc_test(
@@ -299,6 +303,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + IMAGE_DEPS,
 )
 
