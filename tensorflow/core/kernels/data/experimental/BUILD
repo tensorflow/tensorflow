@@ -765,6 +765,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -782,6 +783,7 @@ tf_cc_test(
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels/data:concatenate_dataset_op",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

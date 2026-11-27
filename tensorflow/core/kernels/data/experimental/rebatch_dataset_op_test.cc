@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/data/dataset_test_base.h"
@@ -134,6 +136,23 @@ RebatchDatasetV2Params RebatchDatasetV2Params1() {
       /*node_name=*/kNodeName);
 }
 
+// Same input as `RebatchDatasetV2Params1()`, but with custom `batch_sizes`,
+// `output_shapes` and `output_dtypes`.
+RebatchDatasetV2Params RebatchDatasetV2ParamsWithBatchSizes(
+    std::vector<int64_t> batch_sizes,
+    std::vector<PartialTensorShape> output_shapes = {PartialTensorShape({-1})},
+    DataTypeVector output_dtypes = {DT_INT64}) {
+  return RebatchDatasetV2Params(
+      TensorSliceDatasetParams(
+          /*components=*/{CreateTensor<int64_t>(TensorShape{2, 4},
+                                                {0, 1, 2, 3, 4, 5, 6, 7})},
+          /*node_name=*/"tensor_slice_dataset"),
+      std::move(batch_sizes),
+      /*drop_remainder=*/false, std::move(output_dtypes),
+      std::move(output_shapes),
+      /*node_name=*/kNodeName);
+}
+
 std::vector<GetNextTestCase<RebatchDatasetV2Params>> GetNextTestCases() {
   return {{/*dataset_params=*/RebatchDatasetV2Params1(),
            /*expected_outputs=*/
@@ -215,6 +234,165 @@ TEST_F(RebatchDatasetV2OpTest, RestoreRejectsScalarComponent) {
                   &iterator),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      ::testing::HasSubstr("non-scalar")));
+}
+
+TEST_F(RebatchDatasetV2OpTest, RejectsEmptyBatchSizes) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes({});
+  EXPECT_THAT(
+      Initialize(dataset_params),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("must not be empty")));
+}
+
+TEST_F(RebatchDatasetV2OpTest, RejectsNegativeBatchSizes) {
+  for (const auto& batch_sizes :
+       std::vector<std::vector<int64_t>>{{-1}, {2, -3}}) {
+    SCOPED_TRACE(
+        absl::StrCat("batch_sizes={", absl::StrJoin(batch_sizes, ","), "}"));
+    auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes(batch_sizes);
+    EXPECT_THAT(Initialize(dataset_params),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                       ::testing::HasSubstr("non-negative")));
+  }
+}
+
+TEST_F(RebatchDatasetV2OpTest, AllowsZeroBatchSize) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes({0, 4});
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(out_tensors,
+                           {CreateTensor<int64_t>(TensorShape{0}, {})},
+                           /*compare_order=*/true));
+  out_tensors.clear();
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(
+      out_tensors, {CreateTensor<int64_t>(TensorShape{4}, {0, 1, 2, 3})},
+      /*compare_order=*/true));
+}
+
+TEST_F(RebatchDatasetV2OpTest, AllowsZeroBatchSizeWithUnknownRank) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes(
+      {0, 4}, /*output_shapes=*/{PartialTensorShape()});
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(out_tensors,
+                           {CreateTensor<int64_t>(TensorShape{0}, {})},
+                           /*compare_order=*/true));
+  out_tensors.clear();
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(
+      out_tensors, {CreateTensor<int64_t>(TensorShape{4}, {0, 1, 2, 3})},
+      /*compare_order=*/true));
+}
+
+// Rebatched elements always have a batch dimension, so a scalar output shape
+// is invalid (and would otherwise be indexed out of bounds for empty batches).
+TEST_F(RebatchDatasetV2OpTest, RejectsScalarOutputShapes) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes(
+      {0}, /*output_shapes=*/{PartialTensorShape({})});
+  EXPECT_THAT(Initialize(dataset_params),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("rank >= 1")));
+}
+
+TEST_F(RebatchDatasetV2OpTest, RejectsMismatchedOutputTypesAndShapes) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes(
+      {0},
+      /*output_shapes=*/{PartialTensorShape({-1}), PartialTensorShape({-1})});
+  EXPECT_THAT(Initialize(dataset_params),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("same length")));
+}
+
+// The input dataset has a single DT_INT64 component.
+TEST_F(RebatchDatasetV2OpTest, RejectsOutputTypesNotMatchingInput) {
+  auto too_many_components = RebatchDatasetV2ParamsWithBatchSizes(
+      {2},
+      /*output_shapes=*/{PartialTensorShape({-1}), PartialTensorShape({-1})},
+      /*output_dtypes=*/{DT_INT64, DT_INT64});
+  EXPECT_THAT(
+      Initialize(too_many_components),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("input dataset's types")));
+
+  auto wrong_dtype = RebatchDatasetV2ParamsWithBatchSizes(
+      {2}, /*output_shapes=*/{PartialTensorShape({-1})},
+      /*output_dtypes=*/{DT_INT32});
+  EXPECT_THAT(
+      Initialize(wrong_dtype),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("input dataset's types")));
+}
+
+// Concatenating two empty input batches of shape [2^30, 2^32, 0] into one
+// batch of 2^31 elements would make the batch shape overflow int64 before the
+// trailing zero dimension is reached.
+TEST_F(RebatchDatasetV2OpTest, RejectsOverflowingBatchShape) {
+  constexpr int64_t kBatchSize = int64_t{1} << 30;
+  constexpr int64_t kInnerSize = int64_t{1} << 32;
+  const TensorShape input_shape({1, kBatchSize, kInnerSize, 0});
+  auto dataset_params = RebatchDatasetV2Params(
+      ConcatenateDatasetParams(
+          TensorSliceDatasetParams(
+              /*components=*/{CreateTensor<int64_t>(input_shape, {})},
+              /*node_name=*/"tensor_slice_0"),
+          TensorSliceDatasetParams(
+              /*components=*/{CreateTensor<int64_t>(input_shape, {})},
+              /*node_name=*/"tensor_slice_1"),
+          /*output_dtypes=*/{DT_INT64},
+          /*output_shapes=*/{PartialTensorShape({kBatchSize, kInnerSize, 0})},
+          /*node_name=*/"concatenate_dataset"),
+      /*batch_sizes=*/{std::numeric_limits<int64_t>::max()},
+      /*drop_remainder=*/false,
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({-1, kInnerSize, 0})},
+      /*node_name=*/kNodeName);
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  EXPECT_THAT(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("overflow")));
+}
+
+// A very large batch size must not overflow when computing the slice end.
+TEST_F(RebatchDatasetV2OpTest, HandlesHugeBatchSize) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes(
+      {1, std::numeric_limits<int64_t>::max()});
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(out_tensors,
+                           {CreateTensor<int64_t>(TensorShape{1}, {0})},
+                           /*compare_order=*/true));
+  out_tensors.clear();
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(
+      out_tensors,
+      {CreateTensor<int64_t>(TensorShape{7}, {1, 2, 3, 4, 5, 6, 7})},
+      /*compare_order=*/true));
+  out_tensors.clear();
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
 }
 
 }  // namespace

@@ -13,8 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -292,26 +299,59 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
       : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES(
+        ctx, output_types_.size() == output_shapes_.size(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "`output_types` and `output_shapes` must have the same "
+            "length, but got ",
+            output_types_.size(), " and ", output_shapes_.size(), ".")));
+    for (size_t i = 0; i < output_shapes_.size(); ++i) {
+      OP_REQUIRES(
+          ctx,
+          output_shapes_[i].unknown_rank() || output_shapes_[i].dims() >= 1,
+          absl::InvalidArgumentError(absl::StrCat(
+              "`output_shapes` must have rank >= 1 (or unknown rank), "
+              "but got shape ",
+              output_shapes_[i].DebugString(), " at index ", i, ".")));
+    }
   }
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
+    // The iterator indexes the components of each input element using
+    // `output_types_`, so they must match the input dataset's types.
+    OP_REQUIRES(ctx, input->output_dtypes() == output_types_,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "`output_types` must match the input dataset's types, "
+                    "but got ",
+                    DataTypeVectorString(output_types_), " and ",
+                    DataTypeVectorString(input->output_dtypes()), ".")));
+
     const Tensor* batch_sizes_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("batch_sizes", &batch_sizes_tensor));
     OP_REQUIRES(ctx, batch_sizes_tensor->dims() <= 1,
                 absl::InvalidArgumentError(
                     "`batch_sizes` must be a scalar or a vector."));
-
-    std::vector<int64_t> batch_sizes;
-    batch_sizes.reserve(batch_sizes_tensor->NumElements());
-    for (int i = 0; i < batch_sizes_tensor->NumElements(); ++i) {
-      batch_sizes.push_back(batch_sizes_tensor->flat<int64_t>()(i));
-    }
+    OP_REQUIRES(ctx, batch_sizes_tensor->NumElements() > 0,
+                absl::InvalidArgumentError("`batch_sizes` must not be empty."));
 
     bool drop_remainder;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<bool>(ctx, "drop_remainder", &drop_remainder));
+
+    const auto batch_sizes_flat = batch_sizes_tensor->flat<int64_t>();
+    std::vector<int64_t> batch_sizes;
+    batch_sizes.reserve(batch_sizes_flat.size());
+    for (int64_t i = 0; i < batch_sizes_flat.size(); ++i) {
+      const int64_t batch_size = batch_sizes_flat(i);
+      OP_REQUIRES(ctx, batch_size >= 0,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "`batch_sizes` must contain only non-negative values, "
+                      "but got ",
+                      batch_size, " at index ", i, ".")));
+      batch_sizes.push_back(batch_size);
+    }
 
     *output = new Dataset(ctx, input, std::move(batch_sizes), drop_remainder,
                           output_types_, output_shapes_);
@@ -427,9 +467,11 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
             offset_ = 0;
           }
 
+          // Compute the slice length before adding `offset_` to avoid int64
+          // overflow when `desired_batch_size` is near INT64_MAX.
           int64_t slice_end =
-              std::min(offset_ + desired_batch_size - batch_size,
-                       tensors_[0].dim_size(0));
+              offset_ + std::min(desired_batch_size - batch_size,
+                                 tensors_[0].dim_size(0) - offset_);
 
           std::vector<TensorSlice> slices;
           slices.reserve(tensors_.size());
@@ -517,7 +559,8 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
           TensorShape remaining_shape =
               slices_to_concatenate[0][i].Slice().shape();
           remaining_shape.RemoveDim(0);
-          component_shape.AppendShape(remaining_shape);
+          TF_RETURN_IF_ERROR(
+              component_shape.AppendShapeWithStatus(remaining_shape));
           out_tensors->emplace_back(ctx->allocator({}),
                                     dataset()->output_dtypes()[i],
                                     component_shape);
