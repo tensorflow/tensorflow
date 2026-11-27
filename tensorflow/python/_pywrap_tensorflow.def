@@ -33,13 +33,13 @@ EXPORTS
  ??$GrowSooTableToNextCapacityAndPrepareInsert@$07$00@container_internal@lts_20260526@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@V?$FunctionRef@$$A6A_K_K@Z@12@_N@Z
  ??$GrowSooTableToNextCapacityAndPrepareInsert@$0A@$0A@@container_internal@lts_20260526@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@V?$FunctionRef@$$A6A_K_K@Z@12@_N@Z
  ??$GrowSooTableToNextCapacityAndPrepareInsert@$0BA@$00@container_internal@lts_20260526@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@V?$FunctionRef@$$A6A_K_K@Z@12@_N@Z
- ??$MakeErrorImpl@$02@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z
- ??$MakeErrorImpl@$04@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z
- ??$MakeErrorImpl@$05@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z
- ??$MakeErrorImpl@$06@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z
- ??$MakeErrorImpl@$08@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z
- ??$MakeErrorImpl@$0M@@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z
- ??$MakeErrorImpl@$0N@@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z
+ ??$MakeErrorImpl@$02@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@Usource_location@5@@Z
+ ??$MakeErrorImpl@$04@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@Usource_location@5@@Z
+ ??$MakeErrorImpl@$05@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@Usource_location@5@@Z
+ ??$MakeErrorImpl@$06@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@Usource_location@5@@Z
+ ??$MakeErrorImpl@$08@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@Usource_location@5@@Z
+ ??$MakeErrorImpl@$0M@@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@Usource_location@5@@Z
+ ??$MakeErrorImpl@$0N@@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@Usource_location@5@@Z
  ??$Visit@PEAVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20260526@absl@@PEAV?$DfsHloVisitorBase@PEAVHloInstruction@xla@@@1@@Z
  ??$Visit@PEBVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20260526@absl@@PEAV?$DfsHloVisitorBase@PEBVHloInstruction@xla@@@1@@Z
  ??$eigen_device@UThreadPoolDevice@Eigen@@@OpKernelContext@tensorflow@@QEBAAEBUThreadPoolDevice@Eigen@@XZ
@@ -210,7 +210,7 @@ EXPORTS
  ?AddDevices@DeviceFactory@tensorflow@@SA?AVStatus@lts_20260526@absl@@AEBUSessionOptions@2@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@V?$unique_ptr@VDevice@tensorflow@@U?$default_delete@VDevice@tensorflow@@@std@@@std@@V?$allocator@V?$unique_ptr@VDevice@tensorflow@@U?$default_delete@VDevice@tensorflow@@@std@@@std@@@2@@8@@Z
  ?AddMesh@dtensor@tensorflow@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAX_NPEAUTSL_Status@@@Z
  ?AddRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
- ?AddSourceLocationImpl@Status@lts_20260526@absl@@CA_K_KVSourceLocation@23@@Z
+ ?AddSourceLocationImpl@Status@lts_20260526@absl@@CA_K_KUsource_location@std@@@Z
  ?AddStep@tfprof@tensorflow@@YAN_JPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@11@Z
  ?AddTable@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@_J1011@Z
  ?AddV2@ops@tensorflow@@YA?AVStatus@lts_20260526@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
@@ -282,7 +282,7 @@ EXPORTS
  ?CreateMesh@Mesh@dtensor@tensorflow@@SA?AV123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@5@AEBV?$vector@_JV?$allocator@_J@std@@@5@2121_N@Z
  ?CreateRecordReaderOptions@RecordReaderOptions@io@tsl@@SA?AU123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
  ?CreateRecordWriterOptions@RecordWriterOptions@io@tsl@@SA?AU123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
- ?CreateStatusAndConditionallyLog@StatusBuilder@lts_20260526@absl@@CA?AVStatus@23@VSourceLocation@23@V?$unique_ptr@URep@StatusBuilder@lts_20260526@absl@@U?$default_delete@URep@StatusBuilder@lts_20260526@absl@@@std@@@std@@@Z
+ ?CreateStatusAndConditionallyLog@StatusBuilder@lts_20260526@absl@@CA?AVStatus@23@Usource_location@std@@V?$unique_ptr@URep@StatusBuilder@lts_20260526@absl@@U?$default_delete@URep@StatusBuilder@lts_20260526@absl@@@std@@@6@@Z
  ?CtxFailure@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20260526@absl@@@Z
  ?CtxFailure@OpKernelContext@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20260526@absl@@@Z
  ?CtxFailureWithWarning@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20260526@absl@@@Z
@@ -528,7 +528,7 @@ EXPORTS
  ?MakeEagerContextThreadLocalData@tensorflow@@YAXPEAU_object@@00@Z
  ?MakeFingerprintJson@metrics@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VFingerprintDef@2@@Z
  ?MakeRefCountingHandle@ResourceHandle@tensorflow@@SA?AV12@PEAVResourceBase@2@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVTypeIndex@2@AEBV?$vector@UDtypeAndPartialTensorShape@tensorflow@@V?$allocator@UDtypeAndPartialTensorShape@tensorflow@@@std@@@5@AEBV?$optional@VManagedStackTrace@tensorflow@@@5@@Z
- ?MakeRep@Status@lts_20260526@absl@@CA_K_KV?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@23@@Z
+ ?MakeRep@Status@lts_20260526@absl@@CA_K_KV?$basic_string_view@DU?$char_traits@D@std@@@std@@Usource_location@5@@Z
  ?MakeSavedModelPathAndSingleprint@metrics@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20260526@absl@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
  ?MakeShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@AEBV?$vector@VDimensionHandle@shape_inference@tensorflow@@V?$allocator@VDimensionHandle@shape_inference@tensorflow@@@std@@@std@@@Z
  ?MakeShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@V?$initializer_list@UDimensionOrConstant@shape_inference@tensorflow@@@std@@@Z
