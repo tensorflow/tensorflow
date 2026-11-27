@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -31,6 +32,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
+
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+#include <sanitizer/msan_interface.h>
+#endif
 
 namespace xla::cpu {
 namespace {
@@ -94,6 +99,36 @@ TEST(XlaAotFunctionTest, TestManualModelLoading) {
   for (int i = 0; i < 15; ++i) {
     EXPECT_EQ(static_cast<float*>(aot_function->result_data(0))[i], 4.0f);
   }
+}
+
+TEST(XlaAotFunctionTest, MsanTracksPoisonThroughAotKernel) {
+#ifndef ABSL_HAVE_MEMORY_SANITIZER
+  GTEST_SKIP() << "This test requires an MSan build";
+#else
+  if constexpr (tsl::kIsOpenSource) {
+    GTEST_SKIP() << "xla_aot_compile_cpu doesn't instrument the AOT kernels "
+                    "in open source";
+  }
+  ASSERT_OK_AND_ASSIGN(auto aot_function, xla::cpu::GetAddAotFunction());
+
+  alignas(xla::cpu::Align()) float a = 1.0f;
+  alignas(xla::cpu::Align()) float b = 10.0f;
+  aot_function->set_arg_data(0, &a);
+  aot_function->set_arg_data(1, &b);
+  auto* result = static_cast<float*>(aot_function->result_data(0));
+
+  ASSERT_OK(aot_function->Execute());
+  EXPECT_EQ(__msan_test_shadow(result, sizeof(float)), -1);
+  EXPECT_EQ(*result, 11.0f);
+
+  // Unlike __msan_poison, __msan_allocated_memory also sets the origin.
+  __msan_allocated_memory(&a, sizeof(a));
+  ASSERT_OK(aot_function->Execute());
+  EXPECT_EQ(__msan_test_shadow(result, sizeof(float)), 0);
+  if (__msan_get_track_origins() > 0) {
+    EXPECT_NE(__msan_get_origin(result), 0u);
+  }
+#endif
 }
 
 TEST(XlaAotFunctionTest, TestErrorPropagation) {

@@ -1239,9 +1239,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
     ABSL_ASSIGN_OR_RETURN(
         jit_target_machine,
-        IrCompiler::InferTargetMachine(CompilerTargetOptions(config),
-                                       IrCompiler::GetCodeGenOptLevel(config),
-                                       target_machine_options));
+        IrCompiler::InferTargetMachine(
+            CompilerTargetOptions(config),
+            IrCompiler::GetCodeGenOptLevel(config), target_machine_options,
+            /*msan_enabled=*/IrCompiler::HostMsanEnabled()));
   }
 
   ABSL_RETURN_IF_ERROR(RunHloPasses(module.get(), options.is_aot_compile,
@@ -1711,6 +1712,8 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       options::DisableLoopUnrolling(module->config()),
       /*disable_platform_dependent_math=*/
       options::DisablePlatformDependentMath(module->config()) || fast_compile,
+      /*msan_enabled=*/IrCompiler::HostMsanEnabled(),
+      /*msan_track_origins=*/IrCompiler::HostMsanTrackOrigins(),
   };
 
   ThunkEmitter::Options thunk_emitter_options = {
@@ -1745,6 +1748,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   }
   const CpuAotCompilationOptions& options =
       static_cast<const CpuAotCompilationOptions&>(aot_options);
+  // Like the JIT path, let callers cross-compile without initializing the LLVM
+  // targets themselves.
+  IrCompiler::InitializeTargets();
   llvm::Triple triple(llvm::Triple::normalize(options.triple()));
   std::string error;
   const llvm::Target* target =
@@ -1787,10 +1793,20 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
       IrCompiler::GetCodeGenOptLevel(hlo_module->config());
   llvm::TargetOptions target_options =
       CompilerTargetOptions(hlo_module->config());
+  std::string features = options.features();
+  if (options.sanitize_memory()) {
+    IrCompiler::AdjustTargetOptionsForMsan(target_options);
+    std::vector<std::string> overrides = IrCompiler::MsanTargetFeatureOverrides(
+        triple, options.cpu_name(), features);
+    if (!overrides.empty()) {
+      absl::StrAppend(&features, features.empty() ? "" : ",",
+                      absl::StrJoin(overrides, ","));
+    }
+  }
   auto target_machine_builder = [&]() {
     return absl::WrapUnique(target->createTargetMachine(
-        triple, options.cpu_name(), options.features(), target_options,
-        reloc_model, std::nullopt, opt_level));
+        triple, options.cpu_name(), features, target_options, reloc_model,
+        std::nullopt, opt_level));
   };
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
@@ -1862,6 +1878,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
       options::DisableLoopUnrolling(module->config()),
       /*disable_platform_dependent_math=*/
       options::DisablePlatformDependentMath(module->config()) || fast_compile,
+      /*msan_enabled=*/aot_options.sanitize_memory(),
+      /*msan_track_origins=*/aot_options.sanitize_memory_track_origins(),
       /*dfsan_enabled=*/aot_options.sanitize_dataflow(),
       /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow()};
 
@@ -1895,7 +1913,9 @@ CpuCompiler::CompileAheadOfTimeThunks(
       cpu_executable->get_compiled_symbols_proto(), thunk_sequence,
       std::move(*cpu_executable).consume_function_library(),
       cpu_executable->target_machine_options().ToProto(),
-      target_machine->createDataLayout().getStringRepresentation());
+      target_machine->createDataLayout().getStringRepresentation(),
+      aot_options.sanitize_memory(),
+      aot_options.sanitize_memory_track_origins());
 }
 
 se::Platform::Id CpuCompiler::PlatformId() const {
@@ -1941,7 +1961,10 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> CpuCompiler::Export(
       std::move(compiled_symbols_proto), *thunk_sequence,
       std::move(function_library),
       cpu_executable->target_machine_options().ToProto(),
-      cpu_executable->data_layout());
+      cpu_executable->data_layout(),
+      // The executable runs in this process, so it has the same msan
+      // instrumentation.
+      IrCompiler::HostMsanEnabled(), IrCompiler::HostMsanTrackOrigins());
 }
 
 absl::StatusOr<std::unique_ptr<CompiledModule>>

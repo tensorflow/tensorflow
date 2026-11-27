@@ -82,6 +82,7 @@ xla_cc_test(
         "//xla/backends/cpu/runtime/thunk_serdes:dot_thunk_serdes",  # buildcleaner: keep
         "//xla/service/cpu:executable_proto_cc",
         "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

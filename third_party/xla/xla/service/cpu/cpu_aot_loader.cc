@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -41,7 +42,23 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/util.h"
 
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+#include <sanitizer/msan_interface.h>
+#endif
+
 namespace xla::cpu {
+namespace {
+
+// The msan instrumentation of this process, which AOT results must match.
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+constexpr bool kMsanEnabled = true;
+int MsanTrackOrigins() { return __msan_get_track_origins(); }
+#else
+constexpr bool kMsanEnabled = false;
+int MsanTrackOrigins() { return 0; }
+#endif
+
+}  // namespace
 
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
@@ -88,6 +105,15 @@ absl::StatusOr<std::unique_ptr<CompiledModule>>
 CpuAotLoader::LoadAotCompilationResult(
     const xla::cpu::CompilationResultProto& aot_result_proto,
     FunctionLibraryLoader function_library_loader) {
+  if (aot_result_proto.msan_enabled() != kMsanEnabled ||
+      aot_result_proto.msan_track_origins() != MsanTrackOrigins()) {
+    return FailedPrecondition(
+        "The AOT result has msan_enabled=%d and msan_track_origins=%d, but "
+        "this process has msan_enabled=%d and msan_track_origins=%d",
+        aot_result_proto.msan_enabled(), aot_result_proto.msan_track_origins(),
+        kMsanEnabled, MsanTrackOrigins());
+  }
+
   VLOG(3) << "AOT result target machine options: "
           << aot_result_proto.target_machine_options().DebugString();
 

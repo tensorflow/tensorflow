@@ -17,17 +17,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringMap.h"  // IWYU pragma: keep
+#include "llvm/ADT/StringRef.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -52,7 +57,26 @@ namespace xla {
 namespace cpu {
 namespace {
 
+using ::testing::Contains;
+using ::testing::Not;
+
 using CpuAotCompilerTest = HloTestBaseLegacy;
+
+// Whether this build can compile for `triple`. OSS builds only link the LLVM
+// backend for the host's architecture, unless they cross-compile.
+bool IsLlvmTargetAvailable(absl::string_view triple) {
+  IrCompiler::InitializeTargets();
+  std::string error;
+  return llvm::TargetRegistry::lookupTarget(
+             llvm::Triple(llvm::StringRef(triple)), error) != nullptr;
+}
+
+// Gives the compiled code this process's msan instrumentation, so that it
+// loads.
+void SetProcessMsan(CpuAotCompilationOptions& options) {
+  options.set_sanitize_memory(IrCompiler::HostMsanEnabled());
+  options.set_sanitize_memory_track_origins(IrCompiler::HostMsanTrackOrigins());
+}
 
 // Separate from cpu_compiler_test.cc because we have to use HloTestBaseLegacy
 // to get the HloRunnerLegacy since HloRunnerAgnosticTestBase doesn't support
@@ -97,6 +121,7 @@ ENTRY e {
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::BigPic);
   aot_options->set_executor(stream_exec);
+  SetProcessMsan(*aot_options);
 
   auto test = [this, &compiler, aot_options = std::move(aot_options)](
                   absl::string_view test_name, absl::string_view hlo, int input,
@@ -110,6 +135,9 @@ ENTRY e {
 
     ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                          aot_results[0]->SerializeAsString());
+    if (IrCompiler::HostMsanEnabled()) {
+      EXPECT_TRUE(absl::StrContains(serialized_aot_result, "__msan_"));
+    }
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<CompiledModule> aot_result,
         compiler->LoadAotCompilationResult(serialized_aot_result));
@@ -261,6 +289,100 @@ ENTRY main {
   EXPECT_EQ(aot_result_features[1], "-bar-feature");
 }
 
+// Compiles with msan for targets that need LLVM workarounds, if the build can
+// compile for them. Does not run the generated code, so it runs in all builds.
+TEST_F(CpuAotCompilerTest, AheadOfTimeCompilationWithMsan) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[64] parameter(0)
+  p1 = f32[64] parameter(1)
+  ROOT add = f32[64] add(p0, p1)
+})";
+
+  struct TestCase {
+    absl::string_view triple;
+    absl::string_view cpu;
+    absl::string_view expected_override;  // Empty if none.
+  };
+  constexpr TestCase kTestCases[] = {
+      {"x86_64-unknown-linux-gnu", "haswell", "-avx2"},
+      {"x86_64-unknown-linux-gnu", "sapphirerapids", ""},
+      {"aarch64-unknown-linux-gnu", "neoverse-v2", "-sve"},
+  };
+
+  Compiler* compiler = backend().compiler();
+  ASSERT_NE(compiler, nullptr);
+
+  for (const TestCase& test_case : kTestCases) {
+    if (!IsLlvmTargetAvailable(test_case.triple)) {
+      continue;
+    }
+    SCOPED_TRACE(absl::StrCat(test_case.triple, " ", test_case.cpu));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(kHlo));
+    CpuAotCompilationOptions aot_options(
+        std::string(test_case.triple), std::string(test_case.cpu),
+        /*features=*/"", /*entry_point_name=*/"entry",
+        CpuAotCompilationOptions::RelocationModel::BigPic);
+    aot_options.set_sanitize_memory(true);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<std::unique_ptr<CompiledModule>> aot_results,
+        compiler->CompileAheadOfTime(std::move(module), aot_options));
+    ASSERT_EQ(aot_results.size(), 1);
+
+    ASSERT_OK_AND_ASSIGN(std::string serialized,
+                         aot_results[0]->SerializeAsString());
+    // Only instrumented functions call __msan_warning*.
+    EXPECT_TRUE(absl::StrContains(serialized, "__msan_warning"));
+    EXPECT_TRUE(
+        absl::StrContains(serialized, "__xla_cpu_runtime_emutls_get_address"));
+
+    auto* cpu_aot_result =
+        absl::down_cast<CpuAotCompilationResult*>(aot_results[0].get());
+    EXPECT_TRUE(cpu_aot_result->proto().msan_enabled());
+    std::vector<absl::string_view> features = absl::StrSplit(
+        cpu_aot_result->proto().target_machine_options().features(), ',');
+    if (test_case.expected_override.empty()) {
+      EXPECT_THAT(features, Not(Contains("-avx2")));
+      EXPECT_THAT(features, Not(Contains("-sve")));
+    } else {
+      EXPECT_THAT(features, Contains(test_case.expected_override));
+    }
+  }
+}
+
+TEST(CpuAotCompilationOptionsTest, SanitizeMemoryOptionsAreIndependent) {
+  CpuAotCompilationOptions options(
+      kTargetTripleForHost, kTargetCpuForHost, /*features=*/"",
+      /*entry_point_name=*/"entry",
+      CpuAotCompilationOptions::RelocationModel::BigPic);
+  EXPECT_FALSE(options.sanitize_memory());
+  EXPECT_EQ(options.sanitize_memory_track_origins(), 0);
+
+  options.set_sanitize_memory(true);
+  EXPECT_TRUE(options.sanitize_memory());
+  EXPECT_EQ(options.sanitize_memory_track_origins(), 0);
+
+  // Origin tracking implies msan, regardless of the order of the setters.
+  options.set_sanitize_memory(false);
+  options.set_sanitize_memory_track_origins(2);
+  EXPECT_TRUE(options.sanitize_memory());
+  EXPECT_EQ(options.sanitize_memory_track_origins(), 2);
+
+  options.set_sanitize_memory_track_origins(0);
+  options.set_sanitize_memory_track_origins(1);
+  options.set_sanitize_memory(false);
+  EXPECT_TRUE(options.sanitize_memory());
+  EXPECT_EQ(options.sanitize_memory_track_origins(), 1);
+
+  options.set_sanitize_memory_track_origins(0);
+  EXPECT_FALSE(options.sanitize_memory());
+  EXPECT_EQ(options.sanitize_memory_track_origins(), 0);
+}
+
 TEST_F(CpuAotCompilerTest, ExportedExecutableDataLayoutIsNotEmpty) {
   absl::string_view module_string = R"(
 HloModule module
@@ -298,6 +420,11 @@ ENTRY main {
   ASSERT_NE(cpu_aot_result, nullptr);
 
   EXPECT_FALSE(cpu_aot_result->proto().data_layout().empty());
+  // The exported code was compiled to run in this process.
+  EXPECT_EQ(cpu_aot_result->proto().msan_enabled(),
+            IrCompiler::HostMsanEnabled());
+  EXPECT_EQ(cpu_aot_result->proto().msan_track_origins(),
+            IrCompiler::HostMsanTrackOrigins());
 }
 
 class CpuAotLoadExecutableTest : public HloTestBaseLegacy {
@@ -329,6 +456,7 @@ ENTRY main {
         /*entry_point_name=*/"entry",
         /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::BigPic);
     aot_options.set_executor(stream_exec);
+    SetProcessMsan(aot_options);
 
     ABSL_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<CompiledModule>> aot_results,
@@ -417,6 +545,7 @@ TEST_F(CpuAotLoadExecutableTest, EmbedsHloProtoWhenModuleCompiledWithEmbedIr) {
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::BigPic);
   aot_options.set_executor(stream_exec);
+  SetProcessMsan(aot_options);
 
   ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
@@ -450,6 +579,7 @@ TEST_F(CpuAotLoadExecutableTest, EmbedsFullHloProtoWhenDumpingSnapshots) {
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::BigPic);
   aot_options.set_executor(stream_exec);
+  SetProcessMsan(aot_options);
 
   ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
@@ -476,6 +606,33 @@ TEST_F(CpuAotLoadExecutableTest, EmbedsFullHloProtoWhenDumpingSnapshots) {
     }
   }
   EXPECT_TRUE(found_payload);
+}
+
+// CompileAheadOfTime initializes the LLVM targets itself, so callers can
+// cross-compile without initializing them first.
+TEST_F(CpuAotCompilerTest, CrossCompiles) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[64] parameter(0)
+  ROOT add = f32[64] add(p0, p0)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const std::string triple = llvm::Triple(kTargetTripleForHost).isX86()
+                                 ? "aarch64-unknown-linux-gnu"
+                                 : "x86_64-unknown-linux-gnu";
+  CpuAotCompilationOptions aot_options(
+      triple, /*cpu_name=*/"", /*features=*/"", /*entry_point_name=*/"entry",
+      CpuAotCompilationOptions::RelocationModel::BigPic);
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>> aot_results =
+      backend().compiler()->CompileAheadOfTime(std::move(module), aot_options);
+  // Check only after compiling, since checking initializes the targets.
+  if (!aot_results.ok() && !IsLlvmTargetAvailable(triple)) {
+    GTEST_SKIP() << "This build can't compile for " << triple;
+  }
+  EXPECT_OK(aot_results);
 }
 
 }  // namespace

@@ -103,6 +103,8 @@ void StripPayloadFromLiteralProto(HloProto& proto);
 // This class represents the result of a CPU AOT compilation.
 class CpuAotCompilationResult : public CompiledModule {
  public:
+  // `msan_enabled` and `msan_track_origins` describe the msan instrumentation
+  // of `obj_files`.
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> Create(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
       absl::string_view function_name, std::vector<ObjFileProto> obj_files,
@@ -110,7 +112,8 @@ class CpuAotCompilationResult : public CompiledModule {
       std::unique_ptr<FunctionLibrary> function_library,
       TargetMachineOptionsProto target_machine_options =
           TargetMachineOptionsProto(),
-      std::string data_layout = "");
+      std::string data_layout = "", bool msan_enabled = false,
+      int msan_track_origins = 0);
 
   ~CpuAotCompilationResult() override = default;
 

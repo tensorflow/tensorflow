@@ -4094,6 +4094,7 @@ xla_cc_test(
         "//xla:executable_run_options",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/client:client_library",
         "//xla/client:executable_build_options",
         "//xla/client:local_client",
