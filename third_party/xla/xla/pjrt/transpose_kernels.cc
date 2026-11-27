@@ -422,18 +422,6 @@ HWY_INLINE hn::VFromD<D> ConcatEvenOddBlocks(D d, hn::VFromD<D> hi,
   }
 }
 
-template <class D>
-HWY_INLINE hn::VFromD<D> ConcatEvenBlocks(D d, hn::VFromD<D> hi,
-                                          hn::VFromD<D> lo) {
-  return ConcatEvenOddBlocks</*kOdd=*/false>(d, hi, lo);
-}
-
-template <class D>
-HWY_INLINE hn::VFromD<D> ConcatOddBlocks(D d, hn::VFromD<D> hi,
-                                         hn::VFromD<D> lo) {
-  return ConcatEvenOddBlocks</*kOdd=*/true>(d, hi, lo);
-}
-
 // Transposes a bs x bs block with `kVecBytes` byte rows (32 or 64) as vertical
 // column strips of width `kStripBytes` (16 or 32), each emitting full
 // `kVecBytes` stores in ascending row order. Covers 256 bit square `(32, 32)`,
@@ -472,8 +460,8 @@ HWY_FLATTEN void TransposeColStrips(const char* HWY_RESTRICT a, int64_t lda,
           d, a_s, lda, [&](auto... p0) HWY_ATTR {
             WithGatheredParts<kGroup, kStripBytes>(
                 d, a_s + kPairRows * lda, lda, [&](auto... p1) HWY_ATTR {
-                  finish(ConcatEvenBlocks(d, p1, p0)...,
-                         ConcatOddBlocks(d, p1, p0)...);
+                  finish(ConcatEvenOddBlocks</*kOdd=*/false>(d, p1, p0)...,
+                         ConcatEvenOddBlocks</*kOdd=*/true>(d, p1, p0)...);
                 });
           });
     }
@@ -642,10 +630,10 @@ HWY_FLATTEN void TransposeMicroKernel512Rect256(const char* HWY_RESTRICT a,
   WithGatheredParts<bs / 2, row_bytes>(d, a, lda, [&](auto... vecs) HWY_ATTR {
     if constexpr (bs == 2) {
       const hn::Half<D> d_half;
-      const auto row0 =
-          hn::LowerHalf(d_half, ConcatEvenBlocks(d, vecs..., vecs...));
-      const auto row1 =
-          hn::LowerHalf(d_half, ConcatOddBlocks(d, vecs..., vecs...));
+      const auto row0 = hn::LowerHalf(
+          d_half, ConcatEvenOddBlocks</*kOdd=*/false>(d, vecs..., vecs...));
+      const auto row1 = hn::LowerHalf(
+          d_half, ConcatEvenOddBlocks</*kOdd=*/true>(d, vecs..., vecs...));
       StoreRows(d_half, b, ldb, row0, row1);
     } else {
       using D64 = hn::Repartition<uint64_t, D>;
@@ -705,9 +693,11 @@ HWY_FLATTEN void TransposeMicroKernel512Square(const char* HWY_RESTRICT a,
             };
             WithIndices<kGroup>([&](auto... k) HWY_ATTR {
               StoreRows(d, b + row_base * ldb, ldb,
-                        ConcatEvenBlocks(d, pair23(k), pair01(k))...);
+                        ConcatEvenOddBlocks</*kOdd=*/false>(d, pair23(k),
+                                                            pair01(k))...);
               StoreRows(d, b + (row_base + kGroupRows) * ldb, ldb,
-                        ConcatOddBlocks(d, pair23(k), pair01(k))...);
+                        ConcatEvenOddBlocks</*kOdd=*/true>(d, pair23(k),
+                                                           pair01(k))...);
             });
           };
           auto concat_lo = [](auto tag, auto hi, auto lo) HWY_ATTR {
