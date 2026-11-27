@@ -18,6 +18,12 @@
 // RUN: -xla-gpu-lower-tensors="gpu_compute_capability='rocm_compute_capability {gcn_arch_name: \"gfx942:sramecc+:xnack\"}' l2_cache_size=4194304" \
 // RUN: | FileCheck %s --check-prefixes=CHECK-NT,CHECK-NT-LOADS,CHECK-NT-ONE-OUTPUT
 
+// gfx950: loads and stores from 32x L2 (128 MiB here), without the gfx942
+// restrictions. The 64 MiB cases stay temporal.
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: -xla-gpu-lower-tensors="gpu_compute_capability='rocm_compute_capability {gcn_arch_name: \"gfx950:sramecc+:xnack-\"}' l2_cache_size=4194304" \
+// RUN: | FileCheck %s --check-prefix=CHECK-950
+
 // Other targets get no hints. gfx90a: excluded (not measured).
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="gpu_compute_capability='rocm_compute_capability {gcn_arch_name: \"gfx90a:sramecc+:xnack\"}' l2_cache_size=4194304" \
@@ -47,9 +53,11 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-LOADS:            llvm.load {{.*}}nontemporal
 // CHECK-NT:                  llvm.store {{.*}}nontemporal
 
-// Other targets get no non-temporal hints.
+// Other targets get no non-temporal hints. 64 MiB is below gfx950's 32x L2.
 // CHECK-NT-OFF-LABEL: @nt_copy
 // CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_copy
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -72,6 +80,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-NOT:      nontemporal
 // CHECK-NT-OFF-LABEL: @nt_streamed_below
 // CHECK-NT-OFF-NOT:    nontemporal
+// CHECK-950-LABEL: @nt_streamed_below
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -95,6 +105,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-NOT:              llvm.store {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_small_output
 // CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_small_output
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -118,6 +130,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-NOT:              llvm.store {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_streamed_not_contiguous
 // CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_streamed_not_contiguous
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -142,6 +156,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-NOT:      nontemporal
 // CHECK-NT-OFF-LABEL: @nt_contiguous_not_streamed
 // CHECK-NT-OFF-NOT:    nontemporal
+// CHECK-950-LABEL: @nt_contiguous_not_streamed
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -162,6 +178,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-NOT:      nontemporal
 // CHECK-NT-OFF-LABEL: @nt_no_facts
 // CHECK-NT-OFF-NOT:    nontemporal
+// CHECK-950-LABEL: @nt_no_facts
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -183,6 +201,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-LOADS:            llvm.load {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_not_broadcast
 // CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_not_broadcast
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -204,6 +224,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-NOT:      nontemporal
 // CHECK-NT-OFF-LABEL: @nt_not_broadcast_below
 // CHECK-NT-OFF-NOT:    nontemporal
+// CHECK-950-LABEL: @nt_not_broadcast_below
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -227,6 +249,9 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT:                  llvm.store {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_read_elsewhere
 // CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_read_elsewhere
+// CHECK-950:         llvm.load {{.*}}nontemporal
+// CHECK-950:         llvm.store {{.*}}nontemporal
 
 // -----
 
@@ -250,6 +275,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT:          llvm.store {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_read_elsewhere_below
 // CHECK-NT-OFF-NOT:    nontemporal
+// CHECK-950-LABEL: @nt_read_elsewhere_below
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -273,6 +300,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT:          llvm.store {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_piecewise_reads
 // CHECK-NT-OFF-NOT:    nontemporal
+// CHECK-950-LABEL: @nt_piecewise_reads
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -298,6 +327,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-NOT:              llvm.store {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_output_read_back
 // CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_output_read_back
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -325,6 +356,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT:          llvm.store {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_in_place_output
 // CHECK-NT-OFF-NOT:    nontemporal
+// CHECK-950-LABEL: @nt_in_place_output
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -352,6 +385,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-ONE-OUTPUT-NOT:       llvm.store {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_two_outputs
 // CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_two_outputs
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -380,6 +415,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-NOT:              llvm.store {{.*}}nontemporal
 // CHECK-NT-OFF-LABEL: @nt_one_large_output
 // CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_one_large_output
+// CHECK-950-NOT:     nontemporal
 
 // -----
 
@@ -420,3 +457,96 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NT-OFF-NOT:     xla.streamed_once
 // CHECK-NT-OFF-NOT:     xla.contiguous_output
 // CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_helper
+// CHECK-950-NOT:     xla.streamed_once
+// CHECK-950-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_entry_with_helper
+// CHECK-950-NOT:     xla.streamed_once
+// CHECK-950-NOT:     xla.contiguous_output
+// CHECK-950-NOT:     nontemporal
+
+// -----
+
+// 32x L2 (128 MiB): gfx950 hints the load and store of nt_copy too.
+module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
+  func.func @nt_mi350_copy(
+      %arg0: tensor<33554432xf32> {llvm.dereferenceable = 134217728 : index,
+                                   xla.invariant, xla.streamed_once,
+                                   xla.slice_index = 0},
+      %arg1: tensor<33554432xf32> {llvm.dereferenceable = 134217728 : index,
+                                   xla.slice_index = 1}, %i: index)
+      -> tensor<33554432xf32> attributes {xla.contiguous_output, xla.entry} {
+    %v = tensor.extract %arg0[%i] : tensor<33554432xf32>
+    %out = tensor.insert %v into %arg1[%i] : tensor<33554432xf32>
+    func.return %out : tensor<33554432xf32>
+  }
+}
+
+// CHECK-NT-LABEL:          @nt_mi350_copy
+// CHECK-NT-LOADS:            llvm.load {{.*}}nontemporal
+// CHECK-NT:                  llvm.store {{.*}}nontemporal
+// CHECK-NT-OFF-LABEL: @nt_mi350_copy
+// CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_mi350_copy
+// CHECK-950:         llvm.load {{.*}}nontemporal
+// CHECK-950:         llvm.store {{.*}}nontemporal
+
+// -----
+
+// Two outputs of 32x L2: gfx942 hints the load only, gfx950 also both stores.
+module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
+  func.func @nt_mi350_two_outputs(
+      %arg0: tensor<33554432xf32> {llvm.dereferenceable = 134217728 : index,
+                                   xla.invariant, xla.streamed_once,
+                                   xla.slice_index = 0},
+      %arg1: tensor<33554432xf32> {llvm.dereferenceable = 134217728 : index,
+                                   xla.slice_index = 1},
+      %arg2: tensor<33554432xf32> {llvm.dereferenceable = 134217728 : index,
+                                   xla.slice_index = 2}, %i: index)
+      -> (tensor<33554432xf32>, tensor<33554432xf32>)
+      attributes {xla.contiguous_output, xla.entry} {
+    %v = tensor.extract %arg0[%i] : tensor<33554432xf32>
+    %out0 = tensor.insert %v into %arg1[%i] : tensor<33554432xf32>
+    %out1 = tensor.insert %v into %arg2[%i] : tensor<33554432xf32>
+    func.return %out0, %out1 : tensor<33554432xf32>, tensor<33554432xf32>
+  }
+}
+
+// CHECK-NT-LABEL:              @nt_mi350_two_outputs
+// CHECK-NT-LOADS:                llvm.load {{.*}}nontemporal
+// CHECK-NT-ONE-OUTPUT-NOT:       llvm.store {{.*}}nontemporal
+// CHECK-NT-OFF-LABEL: @nt_mi350_two_outputs
+// CHECK-NT-OFF-NOT:     nontemporal
+// CHECK-950-LABEL: @nt_mi350_two_outputs
+// CHECK-950:         llvm.load {{.*}}nontemporal
+// CHECK-950-COUNT-2: llvm.store {{.*}}nontemporal
+
+// -----
+
+// In-place output of 32x L2: gfx942 hints the store only, gfx950 also the load.
+module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
+  func.func @nt_mi350_in_place(
+      %arg0: tensor<33554432xf32> {llvm.dereferenceable = 134217728 : index,
+                                   xla.invariant, xla.streamed_once,
+                                   xla.slice_index = 0},
+      %arg1: tensor<33554432xf32> {llvm.dereferenceable = 134217728 : index,
+                                   xla.aliased, xla.slice_index = 1},
+      %arg2: tensor<33554432xf32> {llvm.dereferenceable = 134217728 : index,
+                                   xla.aliased, xla.slice_index = 1}, %i: index)
+      -> tensor<33554432xf32> attributes {xla.contiguous_output, xla.entry} {
+    %g = tensor.extract %arg0[%i] : tensor<33554432xf32>
+    %w = tensor.extract %arg1[%i] : tensor<33554432xf32>
+    %s = arith.addf %g, %w : f32
+    %out = tensor.insert %s into %arg2[%i] : tensor<33554432xf32>
+    func.return %out : tensor<33554432xf32>
+  }
+}
+
+// CHECK-NT-LABEL:  @nt_mi350_in_place
+// CHECK-NT-NOT:      llvm.load {{.*}}nontemporal
+// CHECK-NT:          llvm.store {{.*}}nontemporal
+// CHECK-NT-OFF-LABEL: @nt_mi350_in_place
+// CHECK-NT-OFF-NOT:    nontemporal
+// CHECK-950-LABEL: @nt_mi350_in_place
+// CHECK-950:         llvm.load {{.*}}nontemporal
+// CHECK-950:         llvm.store {{.*}}nontemporal

@@ -452,11 +452,10 @@ TEST_F(MlirKernelFusionTest, NoNontemporalHintsWhenFlagDisabled) {
               absl_testing::IsOkAndHolds(true));
 }
 
-// Emits the root fusion of `module` with an `Emitter` on MI300.
+// Emits the root fusion of `module` with an `Emitter`.
 template <typename Emitter>
-absl::StatusOr<std::string> EmitFusionOnMI300(HloModule& module) {
-  const se::DeviceDescription device_info =
-      TestGpuDeviceInfo::AMDMI300DeviceInfo();
+absl::StatusOr<std::string> EmitFusion(
+    HloModule& module, const se::DeviceDescription& device_info) {
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(
       *Cast<HloFusionInstruction>(
           module.entry_computation()->root_instruction()),
@@ -481,8 +480,9 @@ TEST_F(MlirKernelFusionTest, NontemporalLoadsOfWholeLinesOnMI300) {
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_nontemporal_hints(true);
-  ASSERT_OK_AND_ASSIGN(std::string llvm_ir,
-                       EmitFusionOnMI300<LoopFusion>(*module));
+  ASSERT_OK_AND_ASSIGN(
+      std::string llvm_ir,
+      EmitFusion<LoopFusion>(*module, TestGpuDeviceInfo::AMDMI300DeviceInfo()));
   EXPECT_THAT(RunFileCheck(llvm_ir, R"(
     // CHECK: load {{.*}}!nontemporal
     // CHECK: store {{.*}}!nontemporal
@@ -508,8 +508,9 @@ TEST_F(MlirKernelFusionTest, NoNontemporalLoadsOfLinesReadInPiecesOnMI300) {
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_nontemporal_hints(true);
-  ASSERT_OK_AND_ASSIGN(std::string llvm_ir,
-                       EmitFusionOnMI300<LoopFusion>(*module));
+  ASSERT_OK_AND_ASSIGN(
+      std::string llvm_ir,
+      EmitFusion<LoopFusion>(*module, TestGpuDeviceInfo::AMDMI300DeviceInfo()));
   EXPECT_THAT(RunFileCheck(llvm_ir, R"(
     // CHECK-NOT: load {{.*}}!nontemporal
   )"),
@@ -538,8 +539,9 @@ TEST_F(MlirKernelFusionTest, NoNontemporalLoadsAfterLeadingPadOnMI300) {
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_nontemporal_hints(true);
-  ASSERT_OK_AND_ASSIGN(std::string llvm_ir,
-                       EmitFusionOnMI300<LoopFusion>(*module));
+  ASSERT_OK_AND_ASSIGN(
+      std::string llvm_ir,
+      EmitFusion<LoopFusion>(*module, TestGpuDeviceInfo::AMDMI300DeviceInfo()));
   EXPECT_THAT(RunFileCheck(llvm_ir, R"(
     // CHECK-NOT: load {{.*}}!nontemporal
   )"),
@@ -566,8 +568,9 @@ TEST_F(MlirKernelFusionTest, NoNontemporalLoadsOfSubByteElementsOnMI300) {
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_nontemporal_hints(true);
-  ASSERT_OK_AND_ASSIGN(std::string llvm_ir,
-                       EmitFusionOnMI300<LoopFusion>(*module));
+  ASSERT_OK_AND_ASSIGN(
+      std::string llvm_ir,
+      EmitFusion<LoopFusion>(*module, TestGpuDeviceInfo::AMDMI300DeviceInfo()));
   EXPECT_THAT(RunFileCheck(llvm_ir, R"(
     // CHECK-NOT: load {{.*}}!nontemporal
   )"),
@@ -600,13 +603,57 @@ TEST_F(MlirKernelFusionTest,
       .mutable_debug_options()
       .set_xla_gpu_enable_nontemporal_hints(true);
   ASSERT_OK_AND_ASSIGN(std::string llvm_ir,
-                       EmitFusionOnMI300<ConcatenateFusion>(*module));
+                       EmitFusion<ConcatenateFusion>(
+                           *module, TestGpuDeviceInfo::AMDMI300DeviceInfo()));
   EXPECT_THAT(RunFileCheck(llvm_ir, R"(
     // CHECK: define void @fusion(ptr {{.*}}%[[P0:[0-9]+]], ptr {{.*}}%[[P1:[0-9]+]], ptr
     // CHECK: %[[P0_PTR:[0-9]+]] = getelementptr {{.*}}, ptr %[[P0]],
     // CHECK-NEXT: load {{.*}}, ptr %[[P0_PTR]], {{.*}}!nontemporal
     // CHECK: %[[P1_PTR:[0-9]+]] = getelementptr {{.*}}, ptr %[[P1]],
     // CHECK-NEXT: load {{.*}}, ptr %[[P1_PTR]], {{.*}}!nontemporal
+  )"),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(MlirKernelFusionTest, NoNontemporalHintsBelow32xL2OnMI350) {
+  // About 76 MiB: above 16x L2 but below 32x L2.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kLargeCopyModule));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_nontemporal_hints(true);
+  ASSERT_OK_AND_ASSIGN(std::string llvm_ir,
+                       EmitLlvmIrWithBufferAssignment(
+                           *module, TestGpuDeviceInfo::AMDMI350DeviceInfo()));
+  EXPECT_THAT(RunFileCheck(llvm_ir, R"(
+    // CHECK-NOT: !nontemporal
+  )"),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(MlirKernelFusionTest, NontemporalHintsOnMI350) {
+  // About 147 MiB, above 32x L2.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    fused_computation {
+      %p0 = f32[32,96,112,112] parameter(0)
+      ROOT %neg = f32[32,96,112,112] negate(%p0)
+    }
+
+    ENTRY main {
+      %p0 = f32[32,96,112,112] parameter(0)
+      ROOT fusion = f32[32,96,112,112] fusion(%p0), kind=kLoop,
+        calls=fused_computation
+    })"));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_nontemporal_hints(true);
+  ASSERT_OK_AND_ASSIGN(
+      std::string llvm_ir,
+      EmitFusion<LoopFusion>(*module, TestGpuDeviceInfo::AMDMI350DeviceInfo()));
+  EXPECT_THAT(RunFileCheck(llvm_ir, R"(
+    // CHECK: load {{.*}}!nontemporal
+    // CHECK: store {{.*}}!nontemporal
   )"),
               absl_testing::IsOkAndHolds(true));
 }

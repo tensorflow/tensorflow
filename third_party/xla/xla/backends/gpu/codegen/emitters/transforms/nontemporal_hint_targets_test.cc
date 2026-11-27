@@ -41,6 +41,15 @@ TEST(NontemporalHintTargets, PerTargetSelection) {
   EXPECT_TRUE(gfx942.out_of_place_loads);
   EXPECT_EQ(gfx942.stream_l2_multiple, 16);
 
+  // gfx950: loads and stores from 32x L2, without the gfx942 restrictions.
+  auto gfx950 =
+      GetNontemporalHintTargets(RocmCapability("gfx950:sramecc+:xnack-"));
+  EXPECT_TRUE(gfx950.loads);
+  EXPECT_TRUE(gfx950.stores);
+  EXPECT_FALSE(gfx950.single_output_stores);
+  EXPECT_FALSE(gfx950.out_of_place_loads);
+  EXPECT_EQ(gfx950.stream_l2_multiple, 32);
+
   // Other targets get no hints.
   auto other =
       GetNontemporalHintTargets(RocmCapability("gfx90a:sramecc+:xnack"));

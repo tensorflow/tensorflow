@@ -970,7 +970,7 @@ void EmitNontemporalStoreHints(mlir::ModuleOp module,
   });
 }
 
-// ROCm only: gfx942 loads and stores.
+// ROCm only: gfx942 and gfx950 loads and stores.
 void EmitNontemporalHints(mlir::ModuleOp module,
                           const se::GpuComputeCapability& gpu_cc,
                           int64_t l2_bytes) {
@@ -978,9 +978,9 @@ void EmitNontemporalHints(mlir::ModuleOp module,
   if (!nt_targets.loads && !nt_targets.stores) {
     return;
   }
-  // Stream buffers of 16x L2 or more; L2 = 0 disables the hints. Inputs
-  // another instruction also reads stay temporal below 64x L2 (MI300X
-  // Infinity Cache).
+  // Stream buffers of the target's multiple of L2 or more; L2 = 0 disables the
+  // hints. Inputs another instruction also reads stay temporal below 64x L2
+  // (MI300X Infinity Cache).
   static constexpr int64_t kNontemporalReadElsewhereL2Multiple = 64;
   if (l2_bytes <= 0) {
     return;

@@ -4415,7 +4415,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         "xla_gpu_enable_nontemporal_hints",
         bool_setter_for(&DebugOptions::set_xla_gpu_enable_nontemporal_hints),
         debug_options->xla_gpu_enable_nontemporal_hints(),
-        "Non-temporal cache hints for MLIR kernels on gfx942 (MI300)."));
+        "Non-temporal cache hints for MLIR kernels on gfx942 (MI300) and "
+        "gfx950 (MI350)."));
   }();
 }  // NOLINT(readability/fn_size)
 

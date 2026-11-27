@@ -2108,7 +2108,8 @@ message DebugOptions {
 
   optional string xla_gpu_compileiq_db_path = 588;
 
-  // Non-temporal cache hints for MLIR kernels on gfx942 (MI300). Default false.
+  // Non-temporal cache hints for MLIR kernels on gfx942 (MI300) and gfx950
+  // (MI350). Default false.
   optional bool xla_gpu_enable_nontemporal_hints = 591;
 
   // Next id: 592

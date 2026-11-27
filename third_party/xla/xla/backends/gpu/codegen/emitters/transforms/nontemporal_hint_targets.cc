@@ -30,6 +30,12 @@ NontemporalHintTargets GetNontemporalHintTargets(
     return {/*loads=*/true, /*stores=*/true, /*single_output_stores=*/true,
             /*out_of_place_loads=*/true};
   }
+  if (rcc != nullptr && rcc->gfx9_mi350()) {
+    // Hints on 64 MiB (16x L2) streams slowed MI350X down. Multi-output stores
+    // and loads in kernels that overwrite an input sped it up.
+    return {/*loads=*/true, /*stores=*/true, /*single_output_stores=*/false,
+            /*out_of_place_loads=*/false, /*stream_l2_multiple=*/32};
+  }
   return {};
 }
 

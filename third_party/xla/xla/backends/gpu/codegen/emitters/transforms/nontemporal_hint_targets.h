@@ -20,7 +20,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// gfx942 gets load and store hints from 16x L2. Other targets get none.
+// gfx942 gets load and store hints from 16x L2. gfx950 gets them from 32x L2,
+// without the two gfx942 restrictions. Other targets get none.
 struct NontemporalHintTargets {
   bool loads = false;
   bool stores = false;
