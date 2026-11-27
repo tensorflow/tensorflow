@@ -319,6 +319,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
+        "@xla//xla/tsl/concurrency:executor",
     ],
 )
 
@@ -464,6 +465,7 @@ tf_cuda_library(
         ":framework_internal",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:any_invocable",
+        "@xla//xla/tsl/concurrency:executor",
     ],
 )
 
@@ -1363,6 +1365,7 @@ cc_library(
         "@ml_dtypes_py//ml_dtypes:float8",
         "@ml_dtypes_py//ml_dtypes:intn",
         "@ml_dtypes_py//ml_dtypes:mxfloat",
+        "@xla//xla/tsl/concurrency:executor",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1392,6 +1395,7 @@ cc_library(
         "@ml_dtypes_py//ml_dtypes:float8",
         "@ml_dtypes_py//ml_dtypes:intn",
         "@ml_dtypes_py//ml_dtypes:mxfloat",
+        "@xla//xla/tsl/concurrency:executor",
     ],
 )
 
