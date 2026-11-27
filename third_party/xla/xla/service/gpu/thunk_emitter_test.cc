@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/compile_module_to_llvm_ir.h"
+#include "xla/service/gpu/thunk_emitter.h"
 
 #include <atomic>
 #include <cstdint>
@@ -99,7 +99,7 @@ TEST_F(CompileModuleToLlvmIrTest,
       return absl::InternalError("Failed to compile constants module");
     }
     constants_compile_started.WaitForNotification();
-    fusion_compile_finished.store(true);
+    fusion_compile_finished.store(true, std::memory_order_seq_cst);
     return std::vector<uint8_t>{1};
   };
 
@@ -119,7 +119,7 @@ TEST_F(CompileModuleToLlvmIrTest,
   llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock({});
   MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
 
-  EXPECT_THAT(CompileModuleToLlvmIr(
+  EXPECT_THAT(CompileModuleToThunks(
                   module.get(), &llvm_context, nvptx::TargetTriple(),
                   nvptx::DataLayout(), se::cuda::kCudaPlatformId, gpu_topology,
                   &alias_info, std::move(buffer_size_bytes_function),
@@ -127,7 +127,7 @@ TEST_F(CompileModuleToLlvmIrTest,
                   xla::cpu::TargetMachineOptions{}, &mlir_context_pool),
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Failed to compile constants module")));
-  EXPECT_TRUE(fusion_compile_finished.load());
+  EXPECT_TRUE(fusion_compile_finished.load(std::memory_order_seq_cst));
 }
 
 TEST_F(CompileModuleToLlvmIrTest,
@@ -151,7 +151,7 @@ TEST_F(CompileModuleToLlvmIrTest,
           const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
     if (llvm_module.empty()) {
       fusion_compile_started.WaitForNotification();
-      constants_compile_finished.store(true);
+      constants_compile_finished.store(true, std::memory_order_seq_cst);
       return std::vector<uint8_t>{1};
     }
     fusion_compile_started.Notify();
@@ -174,7 +174,7 @@ TEST_F(CompileModuleToLlvmIrTest,
   llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock({});
   MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
 
-  EXPECT_THAT(CompileModuleToLlvmIr(
+  EXPECT_THAT(CompileModuleToThunks(
                   module.get(), &llvm_context, nvptx::TargetTriple(),
                   nvptx::DataLayout(), se::cuda::kCudaPlatformId, gpu_topology,
                   &alias_info, std::move(buffer_size_bytes_function),
@@ -182,7 +182,7 @@ TEST_F(CompileModuleToLlvmIrTest,
                   xla::cpu::TargetMachineOptions{}, &mlir_context_pool),
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Failed to compile fusion module")));
-  EXPECT_TRUE(constants_compile_finished.load());
+  EXPECT_TRUE(constants_compile_finished.load(std::memory_order_seq_cst));
 }
 
 }  // namespace

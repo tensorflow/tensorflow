@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_THUNK_EMITTER_H_
 #define XLA_SERVICE_GPU_THUNK_EMITTER_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,25 +29,39 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/codegen/kernel_compiler.h"
+#include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_registry.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/gpu_executable.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_hlo_ordering.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/kernel_reuse_cache.pb.h"
+#include "xla/service/gpu/mlir_context_pool.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
 
 namespace xla::gpu {
 
@@ -396,6 +411,32 @@ class ThunkEmitter {
   // operations that may hold references to them.
   std::vector<std::unique_ptr<HloFusionAnalysis>> analysis_garbage_collector_;
 };
+
+struct CompileModuleResults {
+  std::vector<uint8_t> constants_binary;
+  std::unique_ptr<BufferAssignment> buffer_assignment;
+  std::unique_ptr<ExecutionStreamAssignment> execution_stream_assignment;
+  std::unique_ptr<SequentialThunk> executable;
+  std::vector<GpuExecutable::ConstantInfo> constants;
+  absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
+  Shape output_shape;
+  std::string module_name;
+  CompilationCacheProto kernel_compilation_cache;
+};
+
+absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
+                       absl::string_view cache_file_path);
+
+absl::StatusOr<CompileModuleResults> CompileModuleToThunks(
+    const HloModule* hlo_module, llvm::LLVMContext* llvm_context,
+    const std::string& target_triple, const std::string& data_layout,
+    se::Platform::Id platform_id, const GpuTopology& gpu_topology,
+    const GpuAliasInfo* alias_info,
+    BufferValue::SizeFunction buffer_size_bytes_function,
+    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
+    KernelCompiler* compiler,
+    xla::cpu::TargetMachineOptions cpu_target_machine_options,
+    MlirContextPool* mlir_context_pool);
 
 }  // namespace xla::gpu
 

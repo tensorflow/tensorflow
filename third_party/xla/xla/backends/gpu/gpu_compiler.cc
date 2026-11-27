@@ -294,7 +294,6 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
@@ -311,6 +310,7 @@ limitations under the License.
 #include "xla/service/gpu/pre_scheduling_copy_insertion_pipeline.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/thunk_emitter.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
@@ -2741,7 +2741,7 @@ GpuCompiler::CompileToBackendResult(
 
     ABSL_ASSIGN_OR_RETURN(
         compile_module_results,
-        CompileModuleToLlvmIr(
+        CompileModuleToThunks(
             module, llvm_context, target_triple_, data_layout_, PlatformId(),
             gpu_topology, alias_info.get(),
             std::move(buffer_size_bytes_function), llvm_options_lock,
