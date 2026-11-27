@@ -1745,6 +1745,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   }
   const CpuAotCompilationOptions& options =
       static_cast<const CpuAotCompilationOptions&>(aot_options);
+  // Like the JIT path, let callers cross-compile without initializing the LLVM
+  // targets themselves.
+  IrCompiler::InitializeTargets();
   llvm::Triple triple(llvm::Triple::normalize(options.triple()));
   std::string error;
   const llvm::Target* target =

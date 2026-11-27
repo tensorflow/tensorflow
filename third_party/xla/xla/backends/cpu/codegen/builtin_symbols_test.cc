@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 
 #include <gtest/gtest.h>
+#include "xla/backends/cpu/runtime/msan_emulated_tls.h"
 
 namespace xla::cpu {
 namespace {
@@ -29,6 +30,8 @@ TEST(BuiltinSymbolsTest, FindBuiltinSymbol) {
             reinterpret_cast<void*>(static_cast<double (*)(double)>(exp)));
   EXPECT_NE(FindBuiltinSymbol("memcpy"), nullptr);
   EXPECT_NE(FindBuiltinSymbol("__truncsfbf2"), nullptr);
+  EXPECT_EQ(FindBuiltinSymbol(kMsanEmutlsGetAddressBridgeSymbolName),
+            reinterpret_cast<void*>(__xla_cpu_runtime_emutls_get_address));
   EXPECT_EQ(FindBuiltinSymbol("_expf"), nullptr);
   EXPECT_EQ(FindBuiltinSymbol("not_a_builtin"), nullptr);
 }

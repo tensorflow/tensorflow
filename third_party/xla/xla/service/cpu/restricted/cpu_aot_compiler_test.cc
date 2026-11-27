@@ -25,9 +25,12 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringMap.h"  // IWYU pragma: keep
+#include "llvm/ADT/StringRef.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -53,6 +56,15 @@ namespace cpu {
 namespace {
 
 using CpuAotCompilerTest = HloTestBaseLegacy;
+
+// Whether this build can compile for `triple`. OSS builds only link the LLVM
+// backend for the host's architecture, unless they cross-compile.
+bool IsLlvmTargetAvailable(absl::string_view triple) {
+  IrCompiler::InitializeTargets();
+  std::string error;
+  return llvm::TargetRegistry::lookupTarget(
+             llvm::Triple(llvm::StringRef(triple)), error) != nullptr;
+}
 
 // Separate from cpu_compiler_test.cc because we have to use HloTestBaseLegacy
 // to get the HloRunnerLegacy since HloRunnerAgnosticTestBase doesn't support
@@ -476,6 +488,33 @@ TEST_F(CpuAotLoadExecutableTest, EmbedsFullHloProtoWhenDumpingSnapshots) {
     }
   }
   EXPECT_TRUE(found_payload);
+}
+
+// CompileAheadOfTime initializes the LLVM targets itself, so callers can
+// cross-compile without initializing them first.
+TEST_F(CpuAotCompilerTest, CrossCompiles) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[64] parameter(0)
+  ROOT add = f32[64] add(p0, p0)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const std::string triple = llvm::Triple(kTargetTripleForHost).isX86()
+                                 ? "aarch64-unknown-linux-gnu"
+                                 : "x86_64-unknown-linux-gnu";
+  CpuAotCompilationOptions aot_options(
+      triple, /*cpu_name=*/"", /*features=*/"", /*entry_point_name=*/"entry",
+      CpuAotCompilationOptions::RelocationModel::BigPic);
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>> aot_results =
+      backend().compiler()->CompileAheadOfTime(std::move(module), aot_options);
+  // Check only after compiling, since checking initializes the targets.
+  if (!aot_results.ok() && !IsLlvmTargetAvailable(triple)) {
+    GTEST_SKIP() << "This build can't compile for " << triple;
+  }
+  EXPECT_OK(aot_results);
 }
 
 }  // namespace
