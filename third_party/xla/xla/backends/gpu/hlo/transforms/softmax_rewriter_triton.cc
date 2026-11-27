@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/cost_model/gpu_performance_model_base.h"
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/backends/gpu/hlo/transforms/fusion/fusion_pipeline.h"
+#include "xla/backends/gpu/hlo/transforms/fusion/fusion_wrapper.h"
 #include "xla/backends/gpu/hlo/transforms/reduction_dimension_grouper.h"
 #include "xla/backends/gpu/hlo/transforms/reduction_splitter.h"
 #include "xla/backends/gpu/hlo/transforms/tree_reduction_rewriter.h"
@@ -283,11 +284,13 @@ absl::Status RunFusionPipeline(
 
   ABSL_RETURN_IF_ERROR(reduction_pipeline.Run(module).status());
 
-  return FusionPipeline(module->config().debug_options(), shape_size,
-                        alias_info, /*thread_pool=*/nullptr, device_info,
-                        mlir_context)
-      .Run(module)
-      .status();
+  HloPassPipeline fusion_pipeline =
+      FusionPipeline(module->config().debug_options(), shape_size, alias_info,
+                     /*thread_pool=*/nullptr, device_info, mlir_context);
+  // The main pipeline wraps the ops that are left unfused before scheduling.
+  // Do the same here, so that every kernel is a fusion.
+  fusion_pipeline.AddPass<FusionWrapper>(device_info);
+  return fusion_pipeline.Run(module).status();
 }
 
 // Returns a run time estimate for instructions in the `fusion` if they were
@@ -331,6 +334,10 @@ EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
     total_run_time += gpu_performance_model.Get()
                           .EstimateRunTimeForInstruction(instr, &cost_analysis)
                           .exec_time;
+    // RunFusionPipeline has wrapped every op that becomes a kernel in a fusion.
+    if (HloPredicateIsOp<HloOpcode::kFusion>(instr)) {
+      total_run_time += GpuPerformanceModelBase::kKernelLaunchOverhead;
+    }
   }
 
   return total_run_time;
@@ -378,14 +385,17 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
                          normalization_fusion, device_info, shape_size,
                          alias_info, mlir_context));
 
+    const absl::Duration run_time_with_softmax_rewriter =
+        tiled_runtime_data.runtime_data.exec_time +
+        GpuPerformanceModelBase::kKernelLaunchOverhead;
+
     VLOG(2) << "run time estimate if normalization diamond fused together: "
-            << tiled_runtime_data.runtime_data.exec_time;
+            << run_time_with_softmax_rewriter;
     VLOG(2)
         << "run time estimate if normalization diamond is not fused together: "
         << run_time_without_softmax_rewriter;
 
-    if (run_time_without_softmax_rewriter <
-        tiled_runtime_data.runtime_data.exec_time) {
+    if (run_time_without_softmax_rewriter < run_time_with_softmax_rewriter) {
       return FusionDecision::Forbid(
           "Run time estimate for without applying the custom normalization "
           "rewrite is faster.");

@@ -3150,6 +3150,7 @@ cc_library(
         "//xla/backends/gpu/cost_model:gpu_performance_model_base",
         "//xla/backends/gpu/hlo/analysis:alias_info",
         "//xla/backends/gpu/hlo/transforms/fusion:fusion_pipeline",
+        "//xla/backends/gpu/hlo/transforms/fusion:fusion_wrapper",
         "//xla/codegen/tiling:tile",
         "//xla/codegen/tiling:tiled_hlo",
         "//xla/hlo/ir:hlo",

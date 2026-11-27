@@ -1143,6 +1143,41 @@ ENTRY main {
   }
 }
 
+TEST_F(SoftmaxRewriterTritonTest, CostModelCountsKernelLaunches) {
+  // The two kernels of the unfused diamond are estimated to run faster than
+  // the fused one, but not by the cost of the extra launch.
+  const std::string hlo_string = R"(
+HloModule rms_norm
+add_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = bf16[4,4608]{1,0} parameter(0)
+  square = bf16[4,4608]{1,0} multiply(param_0, param_0)
+  square_f32 = f32[4,4608]{1,0} convert(square)
+  constant_0 = f32[] constant(0)
+  reduce = f32[4]{0} reduce(square_f32, constant_0), dimensions={1}, to_apply=add_computation
+  constant_1 = f32[] constant(0.000217013891)
+  splat = f32[4]{0} broadcast(constant_1), dimensions={}
+  mean = f32[4]{0} multiply(reduce, splat)
+  mean_bf16 = bf16[4]{0} convert(mean)
+  epsilon = bf16[] constant(9.984e-07)
+  splat_epsilon = bf16[4]{0} broadcast(epsilon), dimensions={}
+  add = bf16[4]{0} add(mean_bf16, splat_epsilon)
+  rsqrt = bf16[4]{0} rsqrt(add)
+  broadcast = bf16[4,4608]{1,0} broadcast(rsqrt), dimensions={0}
+  ROOT multiply = bf16[4,4608]{1,0} multiply(param_0, broadcast)
+})";
+  SoftmaxRewriterTriton fusion_rewriter_with_cost_model{
+      device_info_, HloCostAnalysis::DefaultShapeSize, &alias_info_,
+      &mlir_context_, /*only_fuse_if_profitable=*/true};
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(fusion_rewriter_with_cost_model.Run(module.get()),
+              IsOkAndHolds(true));
+}
+
 TEST_F(SoftmaxRewriterTritonTest, DoesNotCrashOnScalarBroadcast) {
   const std::string hlo_string = R"(
 HloModule softmax
