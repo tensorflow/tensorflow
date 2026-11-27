@@ -75,6 +75,31 @@ class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
   test methods to work.
   """
 
+  _linop_shared_sessions = {}
+
+  @classmethod
+  def tearDownClass(cls):
+    while cls._linop_shared_sessions:
+      cls._linop_shared_sessions.popitem()[1][0].close()
+    super().tearDownClass()
+
+  def session(self, graph=None, config=None, use_gpu=True, force_gpu=False):
+    bypass = not use_gpu or config is not None or context.executing_eagerly()
+    bypass = bypass or not test.is_built_with_gpu_support()
+    if bypass or self._testMethodName.startswith("test_saved_model"):
+      return super().session(graph, config, use_gpu, force_gpu)
+    sess, n = self._linop_shared_sessions.get((use_gpu, force_gpu), (None, 0))
+    # Cap shared graph size across generated GPU test methods.
+    if sess is None or n >= 32 or len(sess.graph.get_operations()) >= 4096:
+      if sess is not None:
+        sess.close()
+      sess, n = self._create_session(ops.Graph(), None, force_gpu), 0
+    self._linop_shared_sessions[(use_gpu, force_gpu)] = (sess, n + 1)
+    # pylint: disable=protected-access
+    random_seed._graph_to_seed_dict.pop(sess.graph, None)
+    # pylint: enable=protected-access
+    return self._constrain_devices_and_set_default(sess, use_gpu, force_gpu)
+
   # Absolute/relative tolerance for tests.
   _atol = {
       dtypes.float16: 1e-3,
