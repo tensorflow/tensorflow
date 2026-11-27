@@ -41,7 +41,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/backends/autotuner/in_memory_store.h"
+#include "xla/backends/core/autotuner/in_memory_store.h"
 #include "xla/backends/gpu/autotuner/autotuner_cache.h"
 #include "xla/backends/gpu/tests/multi_process_gpu_test_base.h"
 #include "xla/client/executable_build_options.h"

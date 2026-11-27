@@ -87,17 +87,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "gpu_executable_run_options",
-    hdrs = ["gpu_executable_run_options.h"],
-    compatible_with = get_compatible_with_portable(),
-    tags = if_google(["avoid_dep"]),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/backends/gpu/runtime:gpu_executable_run_options",
-    ],
-)
-
-cc_library(
     name = "gpu_memory_space_assignment",
     srcs = ["gpu_memory_space_assignment.cc"],
     hdrs = ["gpu_memory_space_assignment.h"],
@@ -647,15 +636,6 @@ xla_cc_test(
 bool_flag(
     name = "enable_xlir",
     build_setting_default = if_google(True, False),
-)
-
-cc_library(
-    name = "gpu_executable",
-    hdrs = ["gpu_executable.h"],
-    tags = if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu/runtime:gpu_executable",
-    ],
 )
 
 tf_proto_library(
@@ -1364,15 +1344,6 @@ xla_cc_test(
     ],
 )
 
-cc_library(
-    name = "gpu_compiler",
-    hdrs = ["gpu_compiler.h"],
-    tags = ["gpu"] + if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu:gpu_compiler",
-    ],
-)
-
 xla_test(
     name = "gpu_offloading_test",
     srcs = ["gpu_offloading_test.cc"],
@@ -1529,7 +1500,7 @@ xla_test(
     deps = [
         ":gpu_executable_proto_cc",
         "//xla:xla_proto_cc",
-        "//xla/backends/autotuner:in_memory_store",
+        "//xla/backends/core/autotuner:in_memory_store",
         "//xla/backends/gpu/autotuner:autotuner_cache",
         "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
@@ -1548,29 +1519,6 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "amdgpu_compiler",
-    tags = [
-        "gpu",
-        "rocm-only",
-    ] + if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu:amdgpu_compiler",
-    ],
-)
-
-cc_library(
-    name = "amdgpu_compiler_impl",
-    hdrs = ["amdgpu_compiler.h"],
-    tags = [
-        "gpu",
-        "rocm-only",
-    ] + if_google(["avoid_dep"]),
-    deps = [
-        "//xla/backends/gpu:amdgpu_compiler_impl",
     ],
 )
 

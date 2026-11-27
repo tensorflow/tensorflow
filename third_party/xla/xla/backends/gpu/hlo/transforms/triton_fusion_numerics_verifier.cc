@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/profiler.h"
+#include "xla/backends/core/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/hlo/transforms/fusion/fusion_wrapper.h"

@@ -696,7 +696,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
-        "//xla/backends/autotuner:in_memory_store",
+        "//xla/backends/core/autotuner:in_memory_store",
         "//xla/backends/gpu/autotuner:autotuner_cache",
         "//xla/backends/gpu/tests:multi_process_gpu_test_base",
         "//xla/backends/gpu/tests:multi_process_gpu_test_main",
