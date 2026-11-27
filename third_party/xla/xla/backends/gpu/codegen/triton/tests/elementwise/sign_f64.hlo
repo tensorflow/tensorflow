@@ -1,0 +1,35 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+fusion {
+  p = f64[16]{0} parameter(0)
+  s = f64[16]{0} sign(p)
+  // Map -0.0 -> -inf and +0.0 -> +inf so float equality distinguishes the
+  // preserved sign bit of zero.
+  one = f64[] constant(1.0)
+  ones = f64[16]{0} broadcast(one), dimensions={}
+  inv = f64[16]{0} divide(ones, s)
+  ROOT result = f64[32]{0} concatenate(s, inv), dimensions={0}
+}
+// CHECK-DAG: arith.cmpf olt, %{{.*}}, %{{.*}} : tensor<16xf64>
+// CHECK-DAG: arith.cmpf ogt, %{{.*}}, %{{.*}} : tensor<16xf64>
+
+ENTRY main {
+  // Special values: -inf, -max, -1, -min, -denorm_min, -0, 0, denorm_min,
+  // min, 1, max, +inf, nan, -nan, 42, -42.
+  input = f64[16]{0} constant({
+    -inf, -1.7976931348623157e+308, -1.0, -2.2250738585072014e-308,
+    -4.9406564584124654e-324, -0.0, 0.0, 4.9406564584124654e-324,
+    2.2250738585072014e-308, 1.0, 1.7976931348623157e+308, inf,
+    nan, -nan, 42.0, -42.0})
+  ROOT fusion = f64[32]{0} fusion(input), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1",
+          "is_tma_allowed":false}}}
+}

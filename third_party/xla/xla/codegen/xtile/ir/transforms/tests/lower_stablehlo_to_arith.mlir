@@ -625,4 +625,134 @@ func.func @lower_fma(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>,
   return %0 : tensor<2x4xf32>
 }
 
+// -----
+
+func.func @lower_sign_f32(%arg0: tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK-LABEL: func.func @lower_sign_f32
+  // CHECK-SAME: (%[[ARG:.*]]: tensor<2x4xf32>)
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant dense<0.000000e+00> : tensor<2x4xf32>
+  // CHECK-DAG: %[[ONE:.*]] = arith.constant dense<1.000000e+00> : tensor<2x4xf32>
+  // CHECK-DAG: %[[NEG_ONE:.*]] = arith.constant dense<-1.000000e+00> : tensor<2x4xf32>
+  // CHECK: %[[LT:.*]] = arith.cmpf olt, %[[ARG]], %[[ZERO]] : tensor<2x4xf32>
+  // CHECK: %[[GT:.*]] = arith.cmpf ogt, %[[ARG]], %[[ZERO]] : tensor<2x4xf32>
+  // CHECK: %[[SEL0:.*]] = arith.select %[[LT]], %[[NEG_ONE]], %[[ARG]] : tensor<2x4xi1>, tensor<2x4xf32>
+  // CHECK: %[[RES:.*]] = arith.select %[[GT]], %[[ONE]], %[[SEL0]] : tensor<2x4xi1>, tensor<2x4xf32>
+  // CHECK: return %[[RES]] : tensor<2x4xf32>
+  %0 = stablehlo.sign %arg0 : tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+// -----
+
+func.func @lower_sign_f16(%arg0: tensor<2x4xf16>) -> tensor<2x4xf16> {
+  // CHECK-LABEL: func.func @lower_sign_f16
+  // CHECK-NOT: stablehlo.sign
+  %0 = stablehlo.sign %arg0 : tensor<2x4xf16>
+  return %0 : tensor<2x4xf16>
+}
+
+// -----
+
+func.func @lower_sign_bf16(%arg0: tensor<2x4xbf16>) -> tensor<2x4xbf16> {
+  // CHECK-LABEL: func.func @lower_sign_bf16
+  // CHECK-NOT: stablehlo.sign
+  %0 = stablehlo.sign %arg0 : tensor<2x4xbf16>
+  return %0 : tensor<2x4xbf16>
+}
+
+// -----
+
+func.func @lower_sign_f64(%arg0: tensor<2x4xf64>) -> tensor<2x4xf64> {
+  // CHECK-LABEL: func.func @lower_sign_f64
+  // CHECK-NOT: stablehlo.sign
+  %0 = stablehlo.sign %arg0 : tensor<2x4xf64>
+  return %0 : tensor<2x4xf64>
+}
+
+// -----
+
+func.func @lower_sign_i32(%arg0: tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK-LABEL: func.func @lower_sign_i32
+  // CHECK-SAME: (%[[ARG:.*]]: tensor<2x4xi32>)
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant dense<0> : tensor<2x4xi32>
+  // CHECK-DAG: %[[ONE:.*]] = arith.constant dense<1> : tensor<2x4xi32>
+  // CHECK-DAG: %[[NEG_ONE:.*]] = arith.constant dense<-1> : tensor<2x4xi32>
+  // CHECK: %[[LT:.*]] = arith.cmpi slt, %[[ARG]], %[[ZERO]] : tensor<2x4xi32>
+  // CHECK: %[[GT:.*]] = arith.cmpi sgt, %[[ARG]], %[[ZERO]] : tensor<2x4xi32>
+  // CHECK: %[[SEL0:.*]] = arith.select %[[LT]], %[[NEG_ONE]], %[[ZERO]] : tensor<2x4xi1>, tensor<2x4xi32>
+  // CHECK: %[[RES:.*]] = arith.select %[[GT]], %[[ONE]], %[[SEL0]] : tensor<2x4xi1>, tensor<2x4xi32>
+  // CHECK: return %[[RES]] : tensor<2x4xi32>
+  %0 = stablehlo.sign %arg0 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+// -----
+
+func.func @lower_sign_i8(%arg0: tensor<2x4xi8>) -> tensor<2x4xi8> {
+  // CHECK-LABEL: func.func @lower_sign_i8
+  // CHECK-NOT: stablehlo.sign
+  %0 = stablehlo.sign %arg0 : tensor<2x4xi8>
+  return %0 : tensor<2x4xi8>
+}
+
+// -----
+
+func.func @lower_sign_i16(%arg0: tensor<2x4xi16>) -> tensor<2x4xi16> {
+  // CHECK-LABEL: func.func @lower_sign_i16
+  // CHECK-NOT: stablehlo.sign
+  %0 = stablehlo.sign %arg0 : tensor<2x4xi16>
+  return %0 : tensor<2x4xi16>
+}
+
+// -----
+
+func.func @lower_sign_i64(%arg0: tensor<2x4xi64>) -> tensor<2x4xi64> {
+  // CHECK-LABEL: func.func @lower_sign_i64
+  // CHECK-NOT: stablehlo.sign
+  %0 = stablehlo.sign %arg0 : tensor<2x4xi64>
+  return %0 : tensor<2x4xi64>
+}
+
+// -----
+
+func.func @lower_sign_0d_i32(%arg0: tensor<i32>) -> tensor<i32> {
+  // CHECK-LABEL: func.func @lower_sign_0d_i32
+  // CHECK-NOT: stablehlo.sign
+  %0 = stablehlo.sign %arg0 : tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func.func @lower_sign_fp8_unchanged(%arg0: tensor<2x4xf8E4M3FN>) -> tensor<2x4xf8E4M3FN> {
+  // CHECK-LABEL: func.func @lower_sign_fp8_unchanged
+  // CHECK-SAME: (%[[ARG:.*]]: tensor<2x4xf8E4M3FN>)
+  // CHECK: %[[RES:.*]] = stablehlo.sign %[[ARG]] : tensor<2x4xf8E4M3FN>
+  // CHECK: return %[[RES]] : tensor<2x4xf8E4M3FN>
+  %0 = stablehlo.sign %arg0 : tensor<2x4xf8E4M3FN>
+  return %0 : tensor<2x4xf8E4M3FN>
+}
+
+// -----
+
+func.func @lower_sign_i4_unchanged(%arg0: tensor<2x4xi4>) -> tensor<2x4xi4> {
+  // CHECK-LABEL: func.func @lower_sign_i4_unchanged
+  // CHECK-SAME: (%[[ARG:.*]]: tensor<2x4xi4>)
+  // CHECK: %[[RES:.*]] = stablehlo.sign %[[ARG]] : tensor<2x4xi4>
+  // CHECK: return %[[RES]] : tensor<2x4xi4>
+  %0 = stablehlo.sign %arg0 : tensor<2x4xi4>
+  return %0 : tensor<2x4xi4>
+}
+
+// -----
+
+func.func @lower_sign_complex_unchanged(%arg0: tensor<2x4xcomplex<f32>>) -> tensor<2x4xcomplex<f32>> {
+  // CHECK-LABEL: func.func @lower_sign_complex_unchanged
+  // CHECK-SAME: (%[[ARG:.*]]: tensor<2x4xcomplex<f32>>)
+  // CHECK: %[[RES:.*]] = stablehlo.sign %[[ARG]] : tensor<2x4xcomplex<f32>>
+  // CHECK: return %[[RES]] : tensor<2x4xcomplex<f32>>
+  %0 = stablehlo.sign %arg0 : tensor<2x4xcomplex<f32>>
+  return %0 : tensor<2x4xcomplex<f32>>
+}
+
 

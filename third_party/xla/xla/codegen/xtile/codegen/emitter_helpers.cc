@@ -788,6 +788,8 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
                                             OnesLike(b, inputs[0].getType()));
     case HloOpcode::kNegate:
       return mlir::stablehlo::NegOp::create(b, inputs[0]);
+    case HloOpcode::kSign:
+      return mlir::stablehlo::SignOp::create(b, inputs[0]);
     case HloOpcode::kConvert: {
       // TODO(b/480995909): Remove this once JAX does not rely on convert from
       // PRED to U8 not clamping the value to the [0, 1] range.

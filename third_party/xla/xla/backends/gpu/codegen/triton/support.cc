@@ -162,6 +162,10 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     ret.insert(HloOpcode::kNot);
   }
 
+  if (primitive_util::IsSignedIntegralType(element_type)) {
+    ret.insert(HloOpcode::kSign);
+  }
+
   if (element_type == PrimitiveType::BF16 ||
       element_type == PrimitiveType::F16 ||
       element_type == PrimitiveType::F32 ||
@@ -187,6 +191,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
         HloOpcode::kLog1p,
         HloOpcode::kRoundNearestEven,
         HloOpcode::kRsqrt,
+        HloOpcode::kSign,
         HloOpcode::kSin,
         HloOpcode::kSinh,
         HloOpcode::kSqrt,
