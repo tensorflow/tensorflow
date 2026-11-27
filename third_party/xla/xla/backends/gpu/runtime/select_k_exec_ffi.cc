@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <limits>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -33,6 +34,37 @@ namespace xla::gpu {
 namespace {
 
 namespace se = ::stream_executor;
+
+// Validates TopK dimensions before narrowing to uint32_t: dimensions must be
+// positive, satisfy k <= n, fit in int32_t (matching S32 output indices and
+// RAFT 32-bit launch arithmetic), and satisfy batch * k <= UINT32_MAX to avoid
+// 32-bit wraparound in RAFT segmented_sort_by_key.
+absl::Status ValidateSelectKDims(int64_t batch, int64_t n, int64_t k) {
+  if (batch <= 0 || n <= 0 || k <= 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("SelectK expects positive dimensions, got batch=", batch,
+                     ", n=", n, ", k=", k));
+  }
+  if (k > n) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("SelectK expects k <= n, got k=", k, ", n=", n));
+  }
+  constexpr int64_t kMaxInt32 = std::numeric_limits<int32_t>::max();
+  if (batch > kMaxInt32) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("SelectK batch size exceeds int32_t max: batch=", batch));
+  }
+  if (n > kMaxInt32) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("SelectK num_elements exceeds int32_t max: n=", n));
+  }
+  if (static_cast<uint64_t>(batch) * static_cast<uint64_t>(k) >
+      static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "SelectK batch * k exceeds uint32_t max: batch=", batch, ", k=", k));
+  }
+  return absl::OkStatus();
+}
 
 absl::Status SelectKExecuteFfiHandler(
     int32_t device_ordinal, se::DeviceAddressAllocator* allocator,
@@ -73,12 +105,24 @@ absl::Status SelectKExecuteFfiHandler(
         "SelectK expects indices output dimensions to match values output "
         "dimensions");
   }
-  const std::uint32_t batch_size =
-      has_batch ? static_cast<std::uint32_t>(in_dims[0]) : 1;
+  const int64_t batch_dim = has_batch ? in_dims[0] : 1;
+  const int64_t num_elements_dim = in_dims[has_batch ? 1 : 0];
+  const int64_t k_dim = out_dims[has_batch ? 1 : 0];
+  if (absl::Status status =
+          ValidateSelectKDims(batch_dim, num_elements_dim, k_dim);
+      !status.ok()) {
+    return status;
+  }
+  if (const int64_t scratch_size = scratch_buffer->dimensions()[0];
+      scratch_size <= 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "SelectK expects positive scratch_buffer size, got ", scratch_size));
+  }
+
+  const std::uint32_t batch_size = static_cast<std::uint32_t>(batch_dim);
   const std::uint32_t num_elements =
-      static_cast<std::uint32_t>(in_dims[has_batch ? 1 : 0]);
-  const std::uint32_t k =
-      static_cast<std::uint32_t>(out_dims[has_batch ? 1 : 0]);
+      static_cast<std::uint32_t>(num_elements_dim);
+  const std::uint32_t k = static_cast<std::uint32_t>(k_dim);
   const xla::PrimitiveType dtype = d_in.element_type();
 
   VLOG(3) << "SelectKExecuteFfiHandler: batch_size=" << batch_size

@@ -1869,6 +1869,28 @@ cc_library(
     alwayslink = 1,
 )
 
+xla_cc_test(
+    name = "select_k_exec_ffi_test",
+    srcs = ["select_k_exec_ffi_test.cc"],
+    deps = [
+        ":select_k_exec_ffi",
+        "//xla:xla_data_proto_cc",
+        "//xla/ffi",
+        "//xla/ffi:call_frame",
+        "//xla/ffi:ffi_api",  # buildcleaner: keep
+        "//xla/ffi:ffi_registry",
+        "//xla/ffi:invoke",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/stream_executor:device_address",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "memset_thunk",
     srcs = ["memset_thunk.cc"],
