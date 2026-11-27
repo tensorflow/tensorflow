@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
-#include "xla/hlo/transforms/copy_insertion.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -1273,37 +1272,111 @@ ENTRY main {
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(2), {2}));
 }
 
-TEST_F(AliasInfoTest, BufferCannotBeSharedForPhasedBlockClusterFusion) {
+TEST_F(AliasInfoTest, PhasedBlockClusterFusionBufferSharing) {
   const char* const kModuleString = R"(
 HloModule phased_block_cluster_fusion
 
 phase_0 { ROOT neg = f32[256] negate(f32[256] parameter(0)) }
-phase_1 { ROOT add = f32[256] add(f32[256] parameter(0), f32[256] parameter(1)) }
+phase_1 {
+  p0 = f32[256] parameter(0)
+  p1 = f32[256] parameter(1)
+  p2 = f32[256] parameter(2)
+  sum = f32[256] add(p0, p1)
+  rev = f32[256] reverse(p2), dimensions={0}
+  ROOT t = (f32[256], f32[256]) tuple(sum, rev)
+}
 
 phased_comp {
   p0 = f32[256] parameter(0)
+  p1 = f32[256] parameter(1)
   f0 = f32[256] fusion(p0), kind=kLoop, calls=phase_0
-  f1 = f32[256] fusion(f0, p0), kind=kLoop, calls=phase_1
-  ROOT t = (f32[256], f32[256]) tuple(f0, f1)
+  f1 = (f32[256], f32[256]) fusion(f0, p0, p1), kind=kLoop, calls=phase_1
+  gte0 = f32[256] get-tuple-element(f1), index=0
+  gte1 = f32[256] get-tuple-element(f1), index=1
+  ROOT t = (f32[256], f32[256], f32[256]) tuple(f0, gte0, gte1)
 }
 
 ENTRY main {
   p0 = f32[256] parameter(0)
-  ROOT fused = (f32[256], f32[256]) fusion(p0), kind=kCustom, calls=phased_comp,
+  p1 = f32[256] parameter(1)
+  ROOT fused = (f32[256], f32[256], f32[256]) fusion(p0, p1), kind=kCustom,
+      calls=phased_comp,
       backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
 }
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
+  // `p0` cannot alias phase 0 output `{0}` because later phase `f1` still reads
+  // `p0`, but can alias `f1`'s elementwise output `{1}` once no later phase
+  // reads `p0`.
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
-  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
+  ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {2}));
+  // `p1` is accessed via `reverse` in `f1`, so it cannot share its buffer.
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {2}));
+
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
                        HloDataflowAnalysis::Run(*module));
   EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
       fusion->mutable_operand(0), {}, fusion, {0}, alias_info()));
-  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+  EXPECT_TRUE(dataflow->CanShareOperandBufferWithUser(
       fusion->mutable_operand(0), {}, fusion, {1}, alias_info()));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(1), {}, fusion, {2}, alias_info()));
+}
+
+TEST_F(AliasInfoTest, PhasedBlockClusterWhileLoopCarryCanShareBuffer) {
+  const char* const kModuleString = R"(
+HloModule while_carry
+
+phase_0 { ROOT neg = f32[8] negate(f32[8] parameter(0)) }
+phase_1 { ROOT add = f32[8] add(f32[8] parameter(0), f32[8] parameter(1)) }
+
+phased_comp {
+  p0 = f32[8] parameter(0)
+  f0 = f32[8] fusion(p0), kind=kLoop, calls=phase_0
+  f1 = f32[8] fusion(p0, f0), kind=kLoop, calls=phase_1
+  ROOT t = (f32[8], f32[8]) tuple(f0, f1)
+}
+
+cond_comp {
+  st = (pred[], f32[8]) parameter(0)
+  ROOT c = pred[] get-tuple-element(st), index=0
+}
+
+body_comp {
+  st = (pred[], f32[8]) parameter(0)
+  c = pred[] get-tuple-element(st), index=0
+  x = f32[8] get-tuple-element(st), index=1
+  pbc = (f32[8], f32[8]) fusion(x), kind=kCustom, calls=phased_comp,
+      backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+  next_x = f32[8] get-tuple-element(pbc), index=1
+  ROOT next_st = (pred[], f32[8]) tuple(c, next_x)
+}
+
+ENTRY main {
+  init = (pred[], f32[8]) parameter(0)
+  ROOT res = (pred[], f32[8]) while(init), condition=cond_comp, body=body_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloComputation* body = module->GetComputationWithName("body_comp");
+  ASSERT_NE(body, nullptr);
+  HloInstruction* pbc = body->GetInstructionWithName("pbc");
+  ASSERT_NE(pbc, nullptr);
+  ExpectOptionalFalse(MayAlias(pbc, pbc->operand(0), {0}));
+  ExpectOptionalTrue(MayAlias(pbc, pbc->operand(0), {1}));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      pbc->mutable_operand(0), {}, pbc, {0}, alias_info()));
+  EXPECT_TRUE(dataflow->CanShareOperandBufferWithUser(
+      pbc->mutable_operand(0), {}, pbc, {1}, alias_info()));
 }
 
 TEST_F(AliasInfoTest, PhasedBlockClusterFusionWithNestedDusHasNoInPlacePairs) {
