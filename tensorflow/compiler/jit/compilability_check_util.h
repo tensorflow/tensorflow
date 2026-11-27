@@ -139,9 +139,9 @@ class RecursiveCompilabilityChecker {
     // Whether to allow the compilation of WhereOp.
     bool allow_where_op = true;
 
-    // Whether to allow the compilation of UniqueOp. Compilation of the UniqueOp
-    // generates output with bounded dynamic shape that may cause failures with
-    // auto clustering.
+    // Whether to allow the compilation of Unique, UniqueV2, UniqueWithCounts
+    // and UniqueWithCountsV2. Their compilation generates output with bounded
+    // dynamic shape that may cause failures with auto clustering.
     // TODO(b/209813421): Enable tf.unique during
     // autoclustering once all failures are rfixed.
     bool allow_unique_op = true;
