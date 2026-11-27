@@ -689,10 +689,11 @@ ENTRY main {
               GmockMatch(m::Tuple(p0_nested, p1_nested, p2_nested)));
 }
 
-TEST_F(MultiPhaseFusionTest, FusesDiamondAndMultiBranchDag) {
-  // Tuple producer `f0` fans out to two branches `f1` and `f2`, which join at
-  // `f3` while `f1` is also returned externally. All 4 stages fuse into one
-  // `__phased_block_cluster` fusion in topological order.
+TEST_F(MultiPhaseFusionTest, SplitsDiamondDagIntoDependencyOrderedChains) {
+  // Tuple producer `f0` fans out to independent branches `f1` and `f2`, which
+  // join at `f3` while `f1` is also returned externally. Rather than
+  // serializing `f1` and `f2` into one fusion, the pass splits the diamond into
+  // two dependency-ordered chains: `{f0, f1}` and `{f2, f3}`.
   constexpr absl::string_view kHlo = R"hlo(
 mof_0 {
   p0 = f32[256]{0} parameter(0)
@@ -719,20 +720,27 @@ ENTRY main {
   MultiPhaseFusion pass(device_info_);
   EXPECT_THAT(RunHloPass(&pass, module.get()), IsOkAndHolds(true));
 
-  const HloInstruction* multi_phase_fusion = nullptr;
-  const HloInstruction* multi_phase_fusion_dup = nullptr;
+  const HloInstruction* first_fusion = nullptr;
+  const HloInstruction* second_fusion = nullptr;
   ASSERT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(
-          m::GetTupleElement(m::Fusion(&multi_phase_fusion, m::Parameter(0))
+          m::GetTupleElement(m::Fusion(&first_fusion, m::Parameter(0))
                                  .WithPredicate(IsPhasedBlockClusterFusion),
                              2),
-          m::GetTupleElement(m::Fusion(&multi_phase_fusion_dup), 4))));
-  EXPECT_EQ(multi_phase_fusion, multi_phase_fusion_dup);
-  EXPECT_EQ(multi_phase_fusion->fused_expression_root()->operand_count(), 5);
+          m::GetTupleElement(
+              m::Fusion(&second_fusion, m::GetTupleElement(m::Fusion(), 1),
+                        m::GetTupleElement(m::Fusion(), 2))
+                  .WithPredicate(IsPhasedBlockClusterFusion)
+                  .WithOneUse(),
+              1))));
+  EXPECT_EQ(first_fusion->fused_expression_root()->operand_count(), 3);
+  EXPECT_EQ(second_fusion->fused_expression_root()->operand_count(), 2);
+  EXPECT_EQ(second_fusion->operand(0)->operand(0), first_fusion);
+  EXPECT_EQ(second_fusion->operand(1)->operand(0), first_fusion);
 }
 
-TEST_F(MultiPhaseFusionTest, FusesMultiRootJoinDag) {
+TEST_F(MultiPhaseFusionTest, DoesNotSerializeIndependentProducersInJoinDag) {
   constexpr absl::string_view kJoinHlo = R"hlo(
 root_0 { ROOT neg = f32[256]{0} negate(f32[256]{0} parameter(0)) }
 root_1 { ROOT exp = f32[256]{0} exponential(f32[256]{0} parameter(0)) }
@@ -751,12 +759,52 @@ ENTRY main {
                        ParseAndReturnVerifiedModule(kJoinHlo));
   MultiPhaseFusion pass(device_info_);
   EXPECT_THAT(RunHloPass(&pass, module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  auto f1_unfused = m::Fusion(m::Parameter(1))
+                        .WithFusionKind(HloInstruction::FusionKind::kLoop);
+  const HloInstruction* multi_phase_fusion = nullptr;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::GetTupleElement(
-                  m::Fusion(m::Parameter(0), m::Parameter(1))
+                  m::Fusion(&multi_phase_fusion, m::Parameter(0), f1_unfused)
                       .WithPredicate(IsPhasedBlockClusterFusion)
                       .WithOneUse(),
-                  2)));
+                  1)));
+  EXPECT_EQ(multi_phase_fusion->fused_expression_root()->operand_count(), 2);
+}
+
+TEST_F(MultiPhaseFusionTest, DoesNotSerializeIndependentSiblingsInFanOut) {
+  constexpr absl::string_view kFanOutHlo = R"hlo(
+root_0 { ROOT neg = f32[256]{0} negate(f32[256]{0} parameter(0)) }
+branch_1 { ROOT exp = f32[256]{0} exponential(f32[256]{0} parameter(0)) }
+branch_2 { ROOT sn = f32[256]{0} sine(f32[256]{0} parameter(0)) }
+
+ENTRY main {
+  p0 = f32[256]{0} parameter(0)
+  f0 = f32[256]{0} fusion(p0), kind=kLoop, calls=root_0
+  f1 = f32[256]{0} fusion(f0), kind=kLoop, calls=branch_1
+  f2 = f32[256]{0} fusion(f0), kind=kLoop, calls=branch_2
+  ROOT out = (f32[256]{0}, f32[256]{0}) tuple(f1, f2)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kFanOutHlo));
+  MultiPhaseFusion pass(device_info_);
+  EXPECT_THAT(RunHloPass(&pass, module.get()), IsOkAndHolds(true));
+
+  const HloInstruction* multi_phase_fusion = nullptr;
+  const HloInstruction* multi_phase_fusion_dup = nullptr;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::GetTupleElement(m::Fusion(&multi_phase_fusion, m::Parameter(0))
+                                 .WithPredicate(IsPhasedBlockClusterFusion),
+                             1),
+          // Matches the unfused sibling branch (`f2`, `kLoop`), which now reads
+          // `f0`'s output from the newly formed multi-phase fusion.
+          m::Fusion(m::GetTupleElement(m::Fusion(&multi_phase_fusion_dup), 0))
+              .WithFusionKind(HloInstruction::FusionKind::kLoop))));
+  EXPECT_EQ(multi_phase_fusion, multi_phase_fusion_dup);
+  EXPECT_EQ(multi_phase_fusion->fused_expression_root()->operand_count(), 2);
 }
 
 TEST_F(MultiPhaseFusionTest, AvoidsProducerCycleInJoinDag) {

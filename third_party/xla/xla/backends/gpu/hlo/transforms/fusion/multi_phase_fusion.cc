@@ -149,14 +149,28 @@ bool IsEligibleStage(const HloInstruction* instr, FusionWrapper& fusion_wrapper,
 }
 
 // Adds `candidate` to `dag` if it is a new eligible stage that keeps the fused
-// kernel within `kMaxKernelArgs` and introduces no external dataflow cycles
-// once `dag` is collapsed into a single fusion.
+// kernel within `kMaxKernelArgs`, is a transitive producer or consumer of every
+// existing stage in `dag`, and introduces no external dataflow cycles once
+// `dag` is collapsed into a single fusion.
 bool TryAddStage(
     HloInstruction* candidate,
     const absl::flat_hash_map<int, HloInstruction*>& eligible_stages,
     const HloReachabilityMap& reachability, PhaseDag& dag) {
   if (!eligible_stages.contains(candidate->unique_id()) ||
       dag.stages.contains(candidate)) {
+    return false;
+  }
+
+  // Reject candidates that are independent of any existing stage (neither a
+  // transitive producer nor consumer), so independent ops are not serialized
+  // into sequential phases.
+  // TODO(480040242): Replace this strict-chain check with an ALAP
+  // (As-Late-As-Possible) list scheduler to spatially partition concurrent
+  // stages within a phase.
+  if (absl::c_any_of(dag.stages, [&](const HloInstruction* stage) {
+        return !reachability.IsReachable(stage, candidate) &&
+               !reachability.IsReachable(candidate, stage);
+      })) {
     return false;
   }
 

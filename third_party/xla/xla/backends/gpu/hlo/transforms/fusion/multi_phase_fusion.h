@@ -42,6 +42,8 @@ namespace xla::gpu {
 // Current limitations (to be lifted in follow-up CLs):
 //   * Only native MLIR emitter stages (`kLoop`, `kReduction`, `kTranspose`,
 //     `kConcatenate`) fitting within one thread-block cluster.
+//   * Only dependency-ordered chains (no concurrent stages within a phase)
+//     until spatial partitioning is supported.
 class MultiPhaseFusion : public HloModulePass {
  public:
   explicit MultiPhaseFusion(const se::DeviceDescription& device_info)
