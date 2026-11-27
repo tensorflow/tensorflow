@@ -88,10 +88,6 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
               " GPU-accelerated path when determinsim is enabled."));
     }
 
-    Tensor scratch;
-    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                                   labels.shape(), &scratch));
-
     Tensor* loss_out = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {1}, 0, labels.shape(), &loss_out));
@@ -104,9 +100,17 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
         OP_REQUIRES_OK(
             context, CheckInvalidLabelIndex<Index>(labels, logits.dim_size(1)));
       }
+      Tensor scratch;
+      OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                     labels.shape(), &scratch));
+      Tensor scratch_other;
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                          labels.shape(), &scratch_other));
       functor::SparseXentFunctor<Device, T, Index> functor;
       functor(context, logits.matrix<T>(), labels.vec<Index>(),
-              scratch.vec<T>(), loss_out->vec<T>(), back_out->matrix<T>());
+              scratch.vec<T>(), scratch_other.vec<T>(), loss_out->vec<T>(),
+              back_out->matrix<T>());
     }
   }
 };
@@ -118,10 +122,12 @@ template <typename T, typename Index>
 struct SparseXentFunctor<CPUDevice, T, Index> {
   void operator()(OpKernelContext* ctx, typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<Index>::ConstVec labels,
-                  typename TTypes<T>::Vec scratch, typename TTypes<T>::Vec loss,
+                  typename TTypes<T>::Vec scratch,
+                  typename TTypes<T>::Vec scratch_other,
+                  typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
-    SparseXentEigenImpl<CPUDevice, T, Index>::Compute(ctx, logits, labels,
-                                                      scratch, loss, backprop);
+    SparseXentEigenImpl<CPUDevice, T, Index>::Compute(
+        ctx, logits, labels, scratch, scratch_other, loss, backprop);
   }
 };
 }  // namespace functor
