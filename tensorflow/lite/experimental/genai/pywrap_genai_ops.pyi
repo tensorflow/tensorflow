@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def GenAIOpsRegisterer(arg0: int) -> None: ...
+import typing
+
+def GenAIOpsRegisterer(arg0: typing.SupportsInt | typing.SupportsIndex) -> None: ...

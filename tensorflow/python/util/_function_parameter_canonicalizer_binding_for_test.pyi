@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+import collections.abc
+
 class FunctionParameterCanonicalizer:
-    def __init__(self, arg0: list[str], arg1: tuple) -> None: ...
+    def __init__(self, arg0: collections.abc.Sequence[str], arg1: tuple) -> None: ...
     def canonicalize(self, *args, **kwargs) -> list: ...

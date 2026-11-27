@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def VariableOpsRegisterer(arg0: int) -> None: ...
+import typing
+
+def VariableOpsRegisterer(arg0: typing.SupportsInt | typing.SupportsIndex) -> None: ...

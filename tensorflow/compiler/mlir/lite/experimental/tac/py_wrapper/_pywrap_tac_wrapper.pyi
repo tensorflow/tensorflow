@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def run_tac(arg0: str, arg1: list[str], arg2: str) -> bool: ...
+import collections.abc
+
+def run_tac(arg0: str, arg1: collections.abc.Sequence[str], arg2: str) -> bool: ...

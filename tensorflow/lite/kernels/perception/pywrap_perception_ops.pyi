@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def PerceptionOpsRegisterer(arg0: int) -> None: ...
+import typing
+
+def PerceptionOpsRegisterer(arg0: typing.SupportsInt | typing.SupportsIndex) -> None: ...

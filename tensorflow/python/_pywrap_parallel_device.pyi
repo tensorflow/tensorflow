@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def GetParallelDeviceCapsules(arg0: str, arg1: list[str]) -> object: ...
+import collections.abc
+
+def GetParallelDeviceCapsules(arg0: str, arg1: collections.abc.Sequence[str]) -> object: ...

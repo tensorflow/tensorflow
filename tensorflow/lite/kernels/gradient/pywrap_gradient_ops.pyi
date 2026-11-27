@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def GradientOpsRegisterer(arg0: int) -> None: ...
+import typing
+
+def GradientOpsRegisterer(arg0: typing.SupportsInt | typing.SupportsIndex) -> None: ...
