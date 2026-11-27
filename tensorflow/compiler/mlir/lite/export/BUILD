@@ -153,6 +153,7 @@ tf_cc_test(
     srcs = ["export_test.cc"],
     deps = [
         ":export",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_import",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_to_vhlo_pass",
