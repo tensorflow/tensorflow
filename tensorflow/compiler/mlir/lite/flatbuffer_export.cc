@@ -388,9 +388,45 @@ static std::optional<SerializedBlockwiseParams> SerializeBlockwiseScales(
   return params;
 }
 
+// Replaces any axis along which every slice is identical with extent 1,
+// compacting `data` to match the broadcast shape while preserving rank.
+static void CollapseBroadcastDimensions(std::vector<int32_t>& shape,
+                                        std::string& data) {
+  if (data.empty()) return;
+  size_t outer = 1;
+  size_t inner = data.size();
+  for (int32_t& dim : shape) {
+    if (dim <= 0) return;
+    inner /= static_cast<size_t>(dim);
+    if (dim > 1) {
+      const size_t stride = static_cast<size_t>(dim) * inner;
+      bool uniform = true;
+      for (size_t o = 0; o < outer && uniform; ++o) {
+        const char* first = data.data() + o * stride;
+        for (int32_t k = 1; k < dim; ++k) {
+          if (std::memcmp(first, first + k * inner, inner) != 0) {
+            uniform = false;
+            break;
+          }
+        }
+      }
+      if (uniform) {
+        for (size_t o = 1; o < outer; ++o) {
+          std::memmove(data.data() + o * inner, data.data() + o * stride,
+                       inner);
+        }
+        data.resize(outer * inner);
+        dim = 1;
+      }
+    }
+    outer *= static_cast<size_t>(dim);
+  }
+}
+
 // Serializes the zero points of a blockwise quantized tensor: integer zero
 // points as int32 and floating point zero points (e.g. the -0.5 of a grid
-// centered between the integers) as f32.
+// centered between the integers) as f32. Axes along which the zero points do
+// not vary are collapsed to extent 1 to export them as broadcasts.
 static std::optional<SerializedBlockwiseParams> SerializeBlockwiseZeroPoints(
     ElementsAttr zero_points) {
   Type element_type = zero_points.getElementType();
@@ -412,6 +448,7 @@ static std::optional<SerializedBlockwiseParams> SerializeBlockwiseZeroPoints(
       const float f = zero_point.convertToFloat();
       params.data.append(reinterpret_cast<const char*>(&f), sizeof(f));
     }
+    CollapseBroadcastDimensions(params.shape, params.data);
     return params;
   }
   auto int_type = mlir::dyn_cast<mlir::IntegerType>(element_type);
@@ -428,6 +465,7 @@ static std::optional<SerializedBlockwiseParams> SerializeBlockwiseZeroPoints(
     params.data.append(reinterpret_cast<const char*>(&zero_point),
                        sizeof(zero_point));
   }
+  CollapseBroadcastDimensions(params.shape, params.data);
   return params;
 }
 

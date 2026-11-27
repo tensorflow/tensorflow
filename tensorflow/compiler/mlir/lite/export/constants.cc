@@ -295,6 +295,41 @@ BlockwiseParameter MakeParameter(ElementsAttr attr, tflite::TensorType type) {
   return parameter;
 }
 
+// Replaces any axis along which every slice is identical with extent 1,
+// compacting `data` to match the broadcast shape while preserving rank.
+void CollapseBroadcastDimensions(std::vector<int32_t>& shape,
+                                 std::string& data) {
+  if (data.empty()) return;
+  size_t outer = 1;
+  size_t inner = data.size();
+  for (int32_t& dim : shape) {
+    if (dim <= 0) return;
+    inner /= static_cast<size_t>(dim);
+    if (dim > 1) {
+      const size_t stride = static_cast<size_t>(dim) * inner;
+      bool uniform = true;
+      for (size_t o = 0; o < outer && uniform; ++o) {
+        const char* first = data.data() + o * stride;
+        for (int32_t k = 1; k < dim; ++k) {
+          if (std::memcmp(first, first + k * inner, inner) != 0) {
+            uniform = false;
+            break;
+          }
+        }
+      }
+      if (uniform) {
+        for (size_t o = 1; o < outer; ++o) {
+          std::memmove(data.data() + o * inner, data.data() + o * stride,
+                       inner);
+        }
+        data.resize(outer * inner);
+        dim = 1;
+      }
+    }
+    outer *= static_cast<size_t>(dim);
+  }
+}
+
 }  // namespace
 
 std::optional<Constant> GetConstant(Operation* op) {
@@ -468,6 +503,7 @@ absl::StatusOr<BlockwiseParameter> SerializeBlockwiseZeroPoints(
     for (const APInt& value : *bits) {
       Append(parameter.data, ToFloat(float_type.getFloatSemantics(), value));
     }
+    CollapseBroadcastDimensions(parameter.shape, parameter.data);
     return parameter;
   }
   auto int_type = dyn_cast<IntegerType>(element_type);
@@ -487,6 +523,7 @@ absl::StatusOr<BlockwiseParameter> SerializeBlockwiseZeroPoints(
     }
     Append(parameter.data, static_cast<int32_t>(wide));
   }
+  CollapseBroadcastDimensions(parameter.shape, parameter.data);
   return parameter;
 }
 
