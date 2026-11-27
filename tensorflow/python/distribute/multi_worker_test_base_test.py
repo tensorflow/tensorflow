@@ -27,6 +27,7 @@ class MultiProcessClusterTest(test.TestCase):
     super(MultiProcessClusterTest, self).setUp()
     self._cluster = multi_worker_test_base.create_multi_process_cluster(
         num_workers=2, num_ps=1, has_chief=True, rpc_layer="grpc")
+    self.addCleanup(self._cluster.stop)
     remote.connect_to_cluster(
         self._cluster.cluster_resolver.cluster_spec(), protocol="grpc")
     context.ensure_initialized()
@@ -65,6 +66,8 @@ class MultiProcessClusterTest(test.TestCase):
     self.assertFalse(context.check_alive("/job:worker/replica:0/task:1"))
     self.assertFalse(context.check_alive("/job:ps/replica:0/task:0"))
     self.assertFalse(context.check_alive("/job:chief/replica:0/task:0"))
+    # A second stop() must be a no-op.
+    self._cluster.stop()
 
   def testClusterResolverProperty(self):
     cluster_spec = self._cluster.cluster_resolver.cluster_spec().as_dict()
