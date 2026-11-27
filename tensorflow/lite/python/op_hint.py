@@ -89,8 +89,8 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 @_deprecation.deprecated(
     None,
     "Please follow instructions under "
-    "https://www.tensorflow.org/lite/convert/operation_fusion for operation"
-    "fusion in tflite."
+    "https://developers.google.com/edge/litert/conversion/tensorflow/"
+    "operation_fusion for operation fusion in tflite."
 )
 class OpHint:
   """A class that helps build tflite function invocations.
@@ -1293,8 +1293,8 @@ def is_ophint_converted(graph_def):
 @_deprecation.deprecated(
     None,
     "Please follow instructions under "
-    "https://www.tensorflow.org/lite/convert/operation_fusion for operation"
-    "fusion in tflite."
+    "https://developers.google.com/edge/litert/conversion/tensorflow/"
+    "operation_fusion for operation fusion in tflite."
 )
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
