@@ -1160,7 +1160,8 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
 
   static PyType_Spec EagerTensor_Type_spec = {
       fully_qualified_name.c_str(), sizeof(EagerTensor), 0,
-      Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE, EagerTensor_Type_slots};
+      Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE | Py_TPFLAGS_HAVE_GC,
+      EagerTensor_Type_slots};
 
   EagerTensorType = reinterpret_cast<PyTypeObject*>(
       PyType_FromSpecWithBases(&EagerTensor_Type_spec, bases));
@@ -1171,7 +1172,6 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
     PyErr_SetString(PyExc_RuntimeError, "Error while creating EagerTensorType");
     return nullptr;
   }
-  EagerTensorType->tp_flags |= Py_TPFLAGS_HAVE_GC;
 #if PY_VERSION_HEX < 0x030B0000  // < Python 3.11
   // After Python 3.11, Py_TPFLAGS_MANAGED_DICT is enabled by default from
   // subclasses of classes defined in Python.

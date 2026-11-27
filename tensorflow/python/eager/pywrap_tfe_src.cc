@@ -4313,6 +4313,19 @@ PyObject* GetPyEagerContext() {
     PyErr_SetString(PyExc_RuntimeError, "Python eager context is not set");
     return nullptr;
   }
+#if PY_VERSION_HEX >= 0x030D0000  // >= Python 3.13
+  PyObject* py_context = nullptr;
+  int res = PyWeakref_GetRef(global_py_eager_context, &py_context);
+  if (res < 0) {
+    return nullptr;
+  }
+  if (res == 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Python eager context has been destroyed");
+    return nullptr;
+  }
+  return py_context;
+#else
   PyObject* py_context = PyWeakref_GET_OBJECT(global_py_eager_context);
   if (py_context == Py_None) {
     PyErr_SetString(PyExc_RuntimeError,
@@ -4321,6 +4334,7 @@ PyObject* GetPyEagerContext() {
   }
   Py_INCREF(py_context);
   return py_context;
+#endif
 }
 
 namespace {
