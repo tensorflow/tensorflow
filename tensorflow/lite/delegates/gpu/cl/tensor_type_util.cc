@@ -41,7 +41,7 @@ DataLayout ToDataLayout(TensorStorageType type) {
     case TensorStorageType::IMAGE_BUFFER:
       return DataLayout::DHWC4;
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return DataLayout::BHWC;
+      return DataLayout::HWBC;
     case TensorStorageType::TEXTURE_2D:
       return DataLayout::HDWC4;
     case TensorStorageType::TEXTURE_ARRAY:
@@ -60,6 +60,9 @@ TensorStorageType ToTensorStorageType(ObjectType object_type,
       return TensorStorageType::BUFFER;
     case ObjectType::OPENCL_TEXTURE:
       switch (data_layout) {
+        case DataLayout::HWBC:
+        // BHWC is kept for compatibility with external callers; it matches
+        // SINGLE_TEXTURE_2D only for single-batch tensors.
         case DataLayout::BHWC:
           return TensorStorageType::SINGLE_TEXTURE_2D;
         case DataLayout::DHWC4:
