@@ -126,8 +126,10 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
