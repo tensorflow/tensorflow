@@ -1,0 +1,37 @@
+diff --git a/include/tfrt/support/crc32c.h b/include/tfrt/support/crc32c.h
+index 1a3d8b8d9e7..47ca0fcb0db 100644
+--- a/include/tfrt/support/crc32c.h
++++ b/include/tfrt/support/crc32c.h
+@@ -23,6 +23,8 @@
+ 
+ #include <stddef.h>
+ 
++#include <cstdint>
++
+ #include "tfrt/support/forward_decls.h"
+ 
+ namespace tfrt {
+diff --git a/include/tfrt/support/forward_decls.h b/include/tfrt/support/forward_decls.h
+index c3a42504d96..18c8ecacfe2 100644
+--- a/include/tfrt/support/forward_decls.h
++++ b/include/tfrt/support/forward_decls.h
+@@ -21,6 +21,7 @@
+ #define TFRT_SUPPORT_FORWARD_DECLS_H_
+ 
+ #include <cstddef>
++#include <cstdint>
+ #include <memory>
+ 
+ #include "llvm/Support/Casting.h"
+diff --git a/include/tfrt/support/raw_coding.h b/include/tfrt/support/raw_coding.h
+index ba7d6357de9..1ca6c74ce84 100644
+--- a/include/tfrt/support/raw_coding.h
++++ b/include/tfrt/support/raw_coding.h
+@@ -21,6 +21,7 @@
+ #ifndef TFRT_SUPPORT_RAW_CODING_H_
+ #define TFRT_SUPPORT_RAW_CODING_H_
+ 
++#include <cstdint>
+ #include <cstring>
+ 
+ #include "tfrt/support/forward_decls.h"
