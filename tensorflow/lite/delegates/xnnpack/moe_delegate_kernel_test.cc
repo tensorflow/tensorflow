@@ -14,16 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "xnnpack.h"  // from @XNNPACK
+#include "absl/algorithm/container.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -44,8 +48,10 @@ constexpr int kNumTokens = 2;
 constexpr int kGateFf1Rows = kHiddenDim * kNumExperts;
 constexpr int kLinearRows = kModelDim * kNumExperts;
 
-std::vector<uint8_t> MoeCustomData(const std::string& weight_type,
-                                   const std::string& activation) {
+std::vector<uint8_t> MoeCustomData(
+    const std::string& weight_type, const std::string& activation,
+    std::optional<float> swiglu_alpha = std::nullopt,
+    std::optional<float> swiglu_limit = std::nullopt) {
   flexbuffers::Builder fbb;
   fbb.Map([&]() {
     fbb.Int("num_experts", kNumExperts);
@@ -54,6 +60,8 @@ std::vector<uint8_t> MoeCustomData(const std::string& weight_type,
     fbb.Int("hidden_dim", kHiddenDim);
     fbb.String("weight_type", weight_type);
     fbb.String("activation", activation);
+    if (swiglu_alpha.has_value()) fbb.Float("swiglu_alpha", *swiglu_alpha);
+    if (swiglu_limit.has_value()) fbb.Float("swiglu_limit", *swiglu_limit);
     fbb.Bool("renormalized_top_weights", true);
   });
   fbb.Finish();
@@ -149,7 +157,9 @@ class MoeNodeBuilder {
 // blockwise with n blocks along the input axis.
 void BuildInt8Moe(MoeNodeBuilder& builder, int gate_scales, int ff1_scales,
                   int linear_scales,
-                  const std::string& activation = "gelu_tanh") {
+                  const std::string& activation = "gelu_tanh",
+                  std::optional<float> swiglu_alpha = std::nullopt,
+                  std::optional<float> swiglu_limit = std::nullopt) {
   builder.AddInput(kTfLiteFloat32, {1, 1, kNumTokens, kModelDim});
   builder.AddInput(kTfLiteFloat32, {1, 1, kNumTokens, kNumActiveExperts});
   builder.AddInput(kTfLiteInt32, {1, 1, kNumTokens, kNumActiveExperts});
@@ -170,7 +180,8 @@ void BuildInt8Moe(MoeNodeBuilder& builder, int gate_scales, int ff1_scales,
                         kNumExperts * sizeof(float));
 
   builder.AddOutput(kTfLiteFloat32, {1, 1, kNumTokens, kModelDim});
-  builder.SetCustomData(MoeCustomData("int8", activation));
+  builder.SetCustomData(
+      MoeCustomData("int8", activation, swiglu_alpha, swiglu_limit));
   builder.Finish();
 }
 
@@ -229,6 +240,37 @@ TEST(MoeDelegateKernelIsSupportedTest, AcceptsSiluActivation) {
   BuildInt8Moe(builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
                /*activation=*/"silu");
   EXPECT_EQ(builder.IsSupported(), kTfLiteOk);
+}
+
+// gpt-oss's clamped SwiGLU; alpha and limit default to gpt-oss's 1.702 / 7.
+TEST(MoeDelegateKernelIsSupportedTest, AcceptsSwigluOai) {
+  MoeNodeBuilder default_builder;
+  BuildInt8Moe(default_builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"swiglu_oai");
+  EXPECT_EQ(default_builder.IsSupported(), kTfLiteOk);
+
+  MoeNodeBuilder explicit_builder;
+  BuildInt8Moe(explicit_builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"swiglu_oai", /*swiglu_alpha=*/1.702f,
+               /*swiglu_limit=*/7.0f);
+  EXPECT_EQ(explicit_builder.IsSupported(), kTfLiteOk);
+}
+
+TEST(MoeDelegateKernelIsSupportedTest, RejectsNonPositiveSwigluLimit) {
+  MoeNodeBuilder builder;
+  BuildInt8Moe(builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"swiglu_oai", /*swiglu_alpha=*/1.702f,
+               /*swiglu_limit=*/0.0f);
+  EXPECT_EQ(builder.IsSupported(), kTfLiteError);
+}
+
+TEST(MoeDelegateKernelIsSupportedTest, RejectsNonFiniteSwigluAlpha) {
+  MoeNodeBuilder builder;
+  BuildInt8Moe(builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"swiglu_oai",
+               /*swiglu_alpha=*/std::numeric_limits<float>::quiet_NaN(),
+               /*swiglu_limit=*/7.0f);
+  EXPECT_EQ(builder.IsSupported(), kTfLiteError);
 }
 
 TEST(MoeDelegateKernelIsSupportedTest, RejectsUnknownActivation) {
@@ -314,6 +356,183 @@ TEST(MoeDelegateKernelInvokeTest, ExecutesSiluSingleAndMultiToken) {
   EXPECT_NEAR(out[1 * kModelDim + 0], silu(1.0f) * 2.0f * 1.5f * 0.5f, 1e-5f);
   EXPECT_NEAR(out[2 * kModelDim + 0], silu(-2.0f) * (-4.0f) * 1.5f * 2.0f,
               1e-5f);
+}
+
+// gpt-oss's clamped SwiGLU in double: (clamp(ff1, -limit, limit) + 1) * g *
+// sigmoid(alpha * g) with g = min(gate, limit).
+double SwigluOaiReference(double gate, double ff1, double alpha, double limit) {
+  const double g = std::min(gate, limit);
+  const double u = std::clamp(ff1, -limit, limit);
+  return (u + 1.0) * g / (1.0 + std::exp(-alpha * g));
+}
+
+// Multiples of 1/16 in [-1, 1] from a fixed LCG. A product of two of them is a
+// multiple of 1/256, so a projection over 32 of them, scaled by a power of two,
+// is exact in fp32 whatever the summation order.
+std::vector<float> GridValues(size_t count, uint32_t seed) {
+  std::vector<float> values(count);
+  uint32_t state = seed;
+  for (float& value : values) {
+    state = state * 1664525u + 1013904223u;
+    value =
+        static_cast<float>(static_cast<int>((state >> 16) % 33) - 16) / 16.0f;
+  }
+  return values;
+}
+
+// Runs an fp32 moe op with activation="swiglu_oai" through the kernel and
+// compares every output with the op computed in double from the same values.
+// Expert 0 gets one token, which takes the kernel's single-token path; experts
+// 1 and 2 get several tokens each, which take the batched path. Unset options
+// must act as gpt-oss's alpha 1.702 and limit 7.
+void ExpectSwigluOaiMatchesReference(std::optional<float> swiglu_alpha,
+                                     std::optional<float> swiglu_limit) {
+  ASSERT_EQ(xnn_initialize(nullptr), xnn_status_success);
+
+  constexpr int kExperts = 3;
+  constexpr int kActive = 2;
+  constexpr int kModel = 32;
+  constexpr int kHidden = 24;
+  constexpr int kTokens = 4;
+  constexpr int kRoutes[kTokens][kActive] = {{0, 1}, {1, 2}, {2, 1}, {1, 2}};
+  constexpr float kRouteWeights[kTokens][kActive] = {
+      {0.75f, 0.25f}, {0.5f, 0.5f}, {0.625f, 0.375f}, {0.875f, 0.125f}};
+  // Powers of two keep the inputs exact; 4 takes many projections past 7.
+  constexpr float kTokenScales[kTokens] = {4.0f, 1.0f, 2.0f, 4.0f};
+  const std::vector<float> per_expert_scale = {1.0f, 0.75f, 1.25f};
+  const double alpha = swiglu_alpha.value_or(1.702f);
+  const double limit = swiglu_limit.value_or(7.0f);
+
+  const std::vector<float> gate_w = GridValues(kHidden * kExperts * kModel, 1);
+  const std::vector<float> ff1_w = GridValues(kHidden * kExperts * kModel, 2);
+  const std::vector<float> linear_w =
+      GridValues(kModel * kExperts * kHidden, 3);
+  std::vector<float> src = GridValues(kTokens * kModel, 4);
+  for (int t = 0; t < kTokens; ++t) {
+    for (int k = 0; k < kModel; ++k) {
+      src[t * kModel + k] *= kTokenScales[t];
+    }
+  }
+
+  MoeNodeBuilder builder;
+  builder.AddInput(kTfLiteFloat32, {1, 1, kTokens, kModel});
+  builder.AddInput(kTfLiteFloat32, {1, 1, kTokens, kActive});
+  builder.AddInput(kTfLiteInt32, {1, 1, kTokens, kActive});
+  builder.AddConstFloatInput({kHidden, kExperts, 1, kModel}, gate_w);
+  builder.AddConstFloatInput({kHidden, kExperts, 1, kModel}, ff1_w);
+  builder.AddConstFloatInput({kModel, kExperts, 1, kHidden}, linear_w);
+  builder.AddConstFloatInput({kExperts}, per_expert_scale);
+  builder.AddOutput(kTfLiteFloat32, {1, 1, kTokens, kModel});
+  flexbuffers::Builder fbb;
+  fbb.Map([&]() {
+    fbb.Int("num_experts", kExperts);
+    fbb.Int("num_active_experts", kActive);
+    fbb.Int("model_dim", kModel);
+    fbb.Int("hidden_dim", kHidden);
+    fbb.String("weight_type", "fp32");
+    fbb.String("activation", "swiglu_oai");
+    if (swiglu_alpha.has_value()) fbb.Float("swiglu_alpha", *swiglu_alpha);
+    if (swiglu_limit.has_value()) fbb.Float("swiglu_limit", *swiglu_limit);
+  });
+  fbb.Finish();
+  builder.SetCustomData(fbb.GetBuffer());
+  builder.Finish();
+
+  Interpreter* interp = builder.interpreter();
+  ASSERT_EQ(interp->AllocateTensors(), kTfLiteOk);
+  absl::c_copy(src, interp->typed_input_tensor<float>(0));
+  float* top_weights = interp->typed_input_tensor<float>(1);
+  int32_t* top_indices = interp->typed_input_tensor<int32_t>(2);
+  for (int t = 0; t < kTokens; ++t) {
+    for (int r = 0; r < kActive; ++r) {
+      top_weights[t * kActive + r] = kRouteWeights[t][r];
+      top_indices[t * kActive + r] = kRoutes[t][r];
+    }
+  }
+
+  TfLiteIntArray* nodes = TfLiteIntArrayCreate(1);
+  nodes->data[0] = 0;
+  TfLiteDelegateParams params{};
+  params.nodes_to_replace = nodes;
+  TfLiteContext* ctx = interp->primary_subgraph().context();
+  ctx->GetNodeAndRegistration = [](struct TfLiteContext* context,
+                                   int node_index, TfLiteNode** node,
+                                   TfLiteRegistration** registration) {
+    auto* subgraph = static_cast<Subgraph*>(context->impl_);
+    const auto* pair = subgraph->node_and_registration(node_index);
+    *node = const_cast<TfLiteNode*>(&pair->first);
+    *registration = const_cast<TfLiteRegistration*>(&pair->second);
+    return kTfLiteOk;
+  };
+  auto kernel = MoeExpertsDelegateKernel::Create(ctx, &params, nullptr);
+  TfLiteIntArrayFree(nodes);
+  ASSERT_NE(kernel, nullptr);
+  ASSERT_EQ(kernel->Prepare(ctx), kTfLiteOk);
+  ASSERT_EQ(kernel->Invoke(ctx), kTfLiteOk);
+
+  // The reference, the sum of |terms| of each output, and per path (0: the
+  // single-token expert 0, 1: the batched experts) how many gate and ff1
+  // values lie above the limit, below -limit and within it.
+  std::vector<double> expected(kTokens * kModel, 0.0);
+  std::vector<double> magnitude(kTokens * kModel, 0.0);
+  int gate_sides[2][3] = {};
+  int ff1_sides[2][3] = {};
+  auto side = [&](double v) { return v > limit ? 0 : (v < -limit ? 1 : 2); };
+  for (int t = 0; t < kTokens; ++t) {
+    for (int r = 0; r < kActive; ++r) {
+      const int e = kRoutes[t][r];
+      const int path = e == 0 ? 0 : 1;
+      const double route_scale =
+          static_cast<double>(per_expert_scale[e]) * kRouteWeights[t][r];
+      std::vector<double> hidden(kHidden);
+      for (int j = 0; j < kHidden; ++j) {
+        const int row = (j * kExperts + e) * kModel;
+        double gate = 0.0;
+        double ff1 = 0.0;
+        for (int k = 0; k < kModel; ++k) {
+          gate += static_cast<double>(gate_w[row + k]) * src[t * kModel + k];
+          ff1 += static_cast<double>(ff1_w[row + k]) * src[t * kModel + k];
+        }
+        ++gate_sides[path][side(gate)];
+        ++ff1_sides[path][side(ff1)];
+        hidden[j] = SwigluOaiReference(gate, ff1, alpha, limit);
+      }
+      for (int o = 0; o < kModel; ++o) {
+        const int row = (o * kExperts + e) * kHidden;
+        for (int j = 0; j < kHidden; ++j) {
+          const double term = route_scale * linear_w[row + j] * hidden[j];
+          expected[t * kModel + o] += term;
+          magnitude[t * kModel + o] += std::abs(term);
+        }
+      }
+    }
+  }
+  for (int path = 0; path < 2; ++path) {
+    for (int s = 0; s < 3; ++s) {
+      EXPECT_GT(gate_sides[path][s], 0) << "path " << path << ", side " << s;
+      EXPECT_GT(ff1_sides[path][s], 0) << "path " << path << ", side " << s;
+    }
+  }
+
+  // The gate and ff1 projections are exact (see GridValues). In fp32
+  // (u = 2^-24) the activation is good to a few u and the 24-term down
+  // projection to 24 u of the sum of |terms|, so 1e-5 of that sum is a wide
+  // margin, while a wrong alpha, limit or formula moves outputs by far more.
+  const float* out = interp->typed_output_tensor<float>(0);
+  for (int i = 0; i < kTokens * kModel; ++i) {
+    EXPECT_NEAR(out[i], expected[i], 1e-5 * magnitude[i]) << "output " << i;
+  }
+}
+
+TEST(MoeDelegateKernelInvokeTest, SwigluOaiMatchesReferenceWithDefaultOptions) {
+  ExpectSwigluOaiMatchesReference(/*swiglu_alpha=*/std::nullopt,
+                                  /*swiglu_limit=*/std::nullopt);
+}
+
+TEST(MoeDelegateKernelInvokeTest,
+     SwigluOaiMatchesReferenceWithExplicitOptions) {
+  ExpectSwigluOaiMatchesReference(/*swiglu_alpha=*/1.25f,
+                                  /*swiglu_limit=*/2.5f);
 }
 
 }  // namespace
