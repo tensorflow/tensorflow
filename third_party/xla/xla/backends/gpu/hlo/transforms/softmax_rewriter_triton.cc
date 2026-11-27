@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -169,6 +170,23 @@ bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
 
   *producer = consumer;
   return true;
+}
+
+// Returns the broadcast that an operand of `root` is trivially connected to,
+// and the other operand of `root`. Operand 1 is tried first, so that a root
+// with a broadcast on both sides keeps matching the one it matched before
+// operand 0 was considered.
+std::optional<std::pair<HloInstruction*, HloInstruction*>>
+MatchBroadcastOperand(HloInstruction* root,
+                      const se::GpuComputeCapability& gpu_version) {
+  for (int i : {1, 0}) {
+    HloInstruction* broadcast;
+    if (TrivialEdge(&broadcast, root->mutable_operand(i), HloOpcode::kBroadcast,
+                    gpu_version)) {
+      return std::make_pair(broadcast, root->mutable_operand(1 - i));
+    }
+  }
+  return std::nullopt;
 }
 
 bool IsTriviallyConnectedProducerOf(
@@ -524,14 +542,15 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   }
 
   HloInstruction* producer;
-  HloInstruction* broadcast;
   HloInstruction* reduce;
 
-  if (!TrivialEdge(&broadcast, instr->mutable_operand(1), HloOpcode::kBroadcast,
-                   cc)) {
+  // The fusion clones the root, so the operand order is kept.
+  const auto broadcast_and_producer_operand = MatchBroadcastOperand(instr, cc);
+  if (!broadcast_and_producer_operand.has_value()) {
     return FusionDecision::Forbid(
         "Could not find a trivial connection from root to a broadcast.");
   }
+  const auto [broadcast, producer_operand] = *broadcast_and_producer_operand;
 
   if (!TrivialEdge(&reduce, broadcast->mutable_operand(0), HloOpcode::kReduce,
                    cc)) {
@@ -586,12 +605,11 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
     return FusionDecision::Forbid("Producer has non-default layout.");
   }
 
-  if (!IsTriviallyConnectedProducerOf(producer, instr->mutable_operand(0),
-                                      cc)) {
+  if (!IsTriviallyConnectedProducerOf(producer, producer_operand, cc)) {
     return FusionDecision::Forbid("Producer is not trivially connected.");
   }
 
-  if (producer != instr->operand(0) && instr->operand(0)->user_count() != 1) {
+  if (producer != producer_operand && producer_operand->user_count() != 1) {
     return FusionDecision::Forbid("Unsupported root-producer connection.");
   }
 

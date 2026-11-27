@@ -52,6 +52,7 @@ namespace {
 
 namespace m = ::xla::match;
 
+using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::testing::HasSubstr;
 
@@ -1265,6 +1266,57 @@ ENTRY main {
       module->entry_computation()->root_instruction(),
       GmockMatch(
           m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
+}
+
+TEST_F(SoftmaxRewriterTritonTest, CanFuseDiamondWithBroadcastOnFirstOperand) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(broadcast, param_0)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(fusion_rewriter_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(verifier().Run(module.get()).status(), IsOk());
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  ASSERT_THAT(
+      fusion,
+      GmockMatch(
+          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
+  EXPECT_THAT(
+      fusion->fused_expression_root(),
+      GmockMatch(m::Subtract(m::Broadcast(m::Reduce()), m::Parameter())));
+}
+
+TEST_F(SoftmaxRewriterTritonTest,
+       DoesNotFuseDiamondWithBroadcastOnFirstOperandAndSharedSecondOperand) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  abs = f32[127,125]{1,0} abs(param_0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(broadcast, abs)
+  ROOT tuple = (f32[127,125]{1,0}, f32[127,125]{1,0}) tuple(subtract, abs)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(fusion_rewriter_.Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // anonymous namespace
