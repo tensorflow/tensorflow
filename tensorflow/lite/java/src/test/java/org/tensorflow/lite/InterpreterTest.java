@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 
 import java.io.File;
@@ -694,6 +695,15 @@ public final class InterpreterTest {
                 "Cannot cancel the inference. "
                     + "Have you called InterpreterApi.Options.setCancellable?");
       }
+    }
+  }
+
+  @Test
+  public void testCancelInferenceAfterClose() throws Exception {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      interpreter.close();
+      var e = assertThrows(IllegalStateException.class, () -> interpreter.setCancelled(true));
+      assertThat(e).hasMessageThat().contains("The Interpreter has already been closed.");
     }
   }
 
