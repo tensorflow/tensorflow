@@ -20,7 +20,9 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 
 namespace tensorflow {
