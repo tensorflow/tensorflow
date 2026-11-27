@@ -25,11 +25,10 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <list>
-#include <map>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -422,13 +421,40 @@ class SharedBatchScheduler
 namespace internal {
 // A priority queue of tasks, designed to be used with
 // SharedBatchScheduler when `enable_priority_aware_batch_scheduler` is true.
-// Tasks are stored in a priority queue ordered by criticality and arrival time.
-// When forming a batch, tasks are drawn based on their priority. Higher
-// criticality tasks are processed before lower criticality ones. Tasks with the
-// same criticality are processed in FIFO order.
+// Tasks are stored in one subqueue per criticality and latency priority,
+// ordered by admission order and arrival time. When forming a batch, tasks are
+// drawn based on their priority: higher criticality tasks first, then higher
+// latency priority ones, then lower admission order ones. Tasks that tie on
+// all three are processed in FIFO order.
 template <typename TaskType>
 class PriorityTaskQueue {
  public:
+  // Orderable key of a task: the task with the smallest key is processed first.
+  // That is the task with the highest priority, then the lowest admission
+  // order, then the earliest start time.
+  struct TaskPriorityKey {
+    // The index of the subqueue of the task; see PriorityIndex().
+    int priority;
+    int64_t admission_order;
+    uint64_t start_time_micros;
+
+    // Returns the key of a task with the given criticality and start time, the
+    // default latency priority and no admission order.
+    static constexpr TaskPriorityKey FromCriticality(
+        tsl::criticality::Criticality criticality, uint64_t start_time_micros) {
+      return {PriorityIndex(criticality, kDefaultLatencyPriority),
+              kUnsetAdmissionOrder, start_time_micros};
+    }
+
+    constexpr bool operator<(const TaskPriorityKey& other) const {
+      if (priority != other.priority) return priority > other.priority;
+      if (admission_order != other.admission_order) {
+        return admission_order < other.admission_order;
+      }
+      return start_time_micros < other.start_time_micros;
+    }
+  };
+
   explicit PriorityTaskQueue(
       const std::vector<int32_t>& allowed_batch_sizes,
       absl::string_view batch_padding_policy, size_t max_queue_depth,
@@ -443,8 +469,7 @@ class PriorityTaskQueue {
       const absl::flat_hash_map<tsl::criticality::Criticality, int64_t>&
           criticality_batch_timeout_micros,
       bool disable_padding, ModelBatchStats* model_batch_stats, Env* env)
-      : start_times_(batch_timeout_micros, criticality_batch_timeout_micros),
-        allowed_batch_sizes_(allowed_batch_sizes),
+      : allowed_batch_sizes_(allowed_batch_sizes),
         batch_padding_policy_(batch_padding_policy),
         max_queue_depth_(max_queue_depth),
         split_input_task_func_(split_input_task_func),
@@ -454,30 +479,47 @@ class PriorityTaskQueue {
         max_execution_batch_size_(max_execution_batch_size),
         disable_padding_(disable_padding),
         model_batch_stats_(model_batch_stats),
-        env_(env) {}
+        env_(env) {
+    for (const tsl::criticality::Criticality criticality :
+         tsl::criticality::kAllCriticalitiesDescending) {
+      const int64_t timeout_micros = gtl::FindWithDefault(
+          criticality_batch_timeout_micros, criticality, batch_timeout_micros);
+      for (int32_t latency_priority = 0;
+           latency_priority < kNumLatencyPriorities; ++latency_priority) {
+        subqueues_[PriorityIndex(criticality, latency_priority)]
+            .timeout_micros = timeout_micros;
+      }
+    }
+  }
 
   // If queue has capacity, adds task to queue and returns OK.
   // If queue doesn't have capacity:
-  // - If task has higher criticality than lowest criticality task in queue,
-  //   evicts lowest criticality tasks until there is capacity, adds task to
-  //   queue and returns OK.
+  // - If task has higher priority than lowest priority task in queue, evicts
+  //   lowest priority tasks until there is capacity, adds task to queue and
+  //   returns OK. The priority includes the admission order: a task also
+  //   evicts tasks of the same criticality and latency priority that have a
+  //   higher admission order, or that have none if it has one. A task that
+  //   came later does not evict a task of the same criticality, latency
+  //   priority and admission order.
   // - Otherwise, returns UnavailableError.
   // The entire task is either accepted or rejected; partial acceptance is not
   // supported.
   absl::Status AddTask(std::unique_ptr<TaskType>* task,
                        uint64_t start_time_micros) {
     QueueEntry new_task_entry;
-    new_task_entry.criticality = GetCriticality(**task);
+    new_task_entry.priority = GetPriority(**task);
+    new_task_entry.admission_order = GetAdmissionOrder(**task);
     new_task_entry.start_time_micros = start_time_micros;
 
     while (current_queue_size_ + (*task)->size() > max_queue_depth_ &&
-           !tasks_.empty()) {
+           !empty()) {
       // Evict if necessary
-      auto it = std::prev(tasks_.end());
+      auto it = std::prev(subqueues_[LowestNonEmptyPriority()].entries.end());
       const QueueEntry& lowest_priority_entry = *it;
 
-      // Would new task be sorted into the queue before the lowest priority
-      // entry?
+      // The entry that would be processed last: of the lowest priority, the
+      // one with the highest admission order. It is evicted only if the new
+      // task would be processed before it.
       if (new_task_entry < lowest_priority_entry) {
         // Evict lower-priority tasks to make room for a higher-priority task,
         // even if the higher-priority task may end up being rejected. This is
@@ -510,8 +552,8 @@ class PriorityTaskQueue {
   }
 
   // Returns tasks whose sizes sum up to `size`; highest priority tasks are
-  // considered first. Within a priority, tasks that came first are
-  // considered first.
+  // considered first. Within a priority, tasks with a lower admission order
+  // are considered first, then tasks that came first.
   std::vector<std::unique_ptr<TaskType>> RemoveTask(int size) {
     std::vector<std::unique_ptr<TaskType>> tasks_to_schedule;
     int remaining_size = size;
@@ -519,8 +561,8 @@ class PriorityTaskQueue {
     // Get current timestamp outside the loop to avoid repeated calls.
     const absl::Time now = absl::FromUnixMicros(env_->NowMicros());
 
-    while (remaining_size > 0 && !tasks_.empty()) {
-      auto it = tasks_.begin();
+    while (remaining_size > 0 && !empty()) {
+      auto it = subqueues_[HighestNonEmptyPriority()].entries.begin();
 
       // TODO(b/491965163): Consider optimizing by evicting the highest priority
       // task if the shared status is an error potentially due to an evicted
@@ -584,7 +626,8 @@ class PriorityTaskQueue {
           new_entry.task = std::move(output_tasks[i]);
           new_entry.start_time_micros =
               highest_priority_entry.start_time_micros;
-          new_entry.criticality = highest_priority_entry.criticality;
+          new_entry.priority = highest_priority_entry.priority;
+          new_entry.admission_order = highest_priority_entry.admission_order;
           AddEntryInternal(std::move(new_entry));
         }
       }
@@ -596,43 +639,50 @@ class PriorityTaskQueue {
     return tasks_to_schedule;
   }
 
-  std::optional<uint64_t> EarliestHighPriorityTaskStartTime() const {
-    if (tasks_.empty()) {
+  // Returns the key of the task that RemoveTask() considers first, or
+  // nullopt if the queue is empty.
+  std::optional<TaskPriorityKey> PeekTaskPriorityKey() const {
+    if (empty()) {
       return std::nullopt;
     }
-    return tasks_.begin()->start_time_micros;
+    return subqueues_[HighestNonEmptyPriority()].entries.begin()->key();
   }
 
-  bool empty() const { return tasks_.empty(); }
+  bool empty() const { return num_tasks_ == 0; }
 
-  int num_tasks() const { return tasks_.size(); }
+  int num_tasks() const { return num_tasks_; }
 
   size_t size() const { return current_queue_size_; }
 
   size_t max_queue_depth() const { return max_queue_depth_; }
 
-  std::optional<tsl::criticality::Criticality> HighestCriticality() const {
-    if (tasks_.empty()) {
-      return std::nullopt;
-    }
-    return tasks_.begin()->criticality;
-  }
-
   bool IsSchedulable() const {
     if (empty()) return false;
     return size() >= max_execution_batch_size_ ||
-           start_times_.HasTimedOutRequest(env_->NowMicros());
+           HasTimedOutRequest(env_->NowMicros());
   }
 
   // Returns the current number of enqueued tasks with the given criticality.
   int num_tasks(tsl::criticality::Criticality criticality) const {
-    return gtl::FindWithDefault(num_tasks_by_criticality_, criticality, 0);
+    int count = 0;
+    for (int32_t latency_priority = 0; latency_priority < kNumLatencyPriorities;
+         ++latency_priority) {
+      count += subqueues_[PriorityIndex(criticality, latency_priority)]
+                   .entries.size();
+    }
+    return count;
   }
 
   // Returns the current summed size (sum of task sizes) of all enqueued tasks
   // with the given criticality.
   size_t size(tsl::criticality::Criticality criticality) const {
-    return gtl::FindWithDefault(size_by_criticality_, criticality, size_t{0});
+    size_t total = 0;
+    for (int32_t latency_priority = 0; latency_priority < kNumLatencyPriorities;
+         ++latency_priority) {
+      total +=
+          subqueues_[PriorityIndex(criticality, latency_priority)].total_size;
+    }
+    return total;
   }
 
   // Returns a batch of tasks from the queue if the batch is ready to be
@@ -672,91 +722,131 @@ class PriorityTaskQueue {
   }
 
  private:
+  // Admission order of the tasks that do not have one. These are processed
+  // after the tasks of the same criticality and latency priority that do.
+  static constexpr int64_t kUnsetAdmissionOrder =
+      std::numeric_limits<int64_t>::max();
+
+  static constexpr int32_t kDefaultLatencyPriority = 0;
+  static constexpr int32_t kNumLatencyPriorities = 2;
+
+  // Number of priorities: one per criticality and latency priority.
+  static constexpr int kNumPriorities =
+      kNumLatencyPriorities *
+      tsl::criticality::kAllCriticalitiesDescending.size();
+
+  // Returns the priority of the tasks of the given criticality and latency
+  // priority, which is the index of their subqueue; a higher value is a higher
+  // priority. Latency priorities outside [0, kNumLatencyPriorities) are
+  // treated as kDefaultLatencyPriority.
+  static constexpr int PriorityIndex(tsl::criticality::Criticality criticality,
+                                     int32_t latency_priority) {
+    const int32_t normalized_latency_priority =
+        latency_priority >= 0 && latency_priority < kNumLatencyPriorities
+            ? latency_priority
+            : kDefaultLatencyPriority;
+    return kNumLatencyPriorities * static_cast<int>(criticality) +
+           normalized_latency_priority;
+  }
+
+  // PriorityIndex() requires the values of the criticalities to be 0 for the
+  // lowest one up to the number of criticalities minus one for the highest.
+  static_assert(static_cast<int>(tsl::criticality::Criticality::kSheddable) ==
+                0);
+  static_assert(
+      static_cast<int>(tsl::criticality::Criticality::kCriticalPlus) ==
+      kNumPriorities / kNumLatencyPriorities - 1);
+
   struct QueueEntry {
-    mutable std::unique_ptr<TaskType> task;
+    std::unique_ptr<TaskType> task;
     uint64_t start_time_micros;
-    tsl::criticality::Criticality criticality;
+    int priority;
+    int64_t admission_order;
+
+    TaskPriorityKey key() const {
+      return {priority, admission_order, start_time_micros};
+    }
 
     // If qe1 < qe2, then q1 is higher priority than q2.
     bool operator<(const QueueEntry& other) const {
-      if (criticality != other.criticality) {
-        return criticality > other.criticality;
-      }
-      return start_time_micros < other.start_time_micros;
+      return key() < other.key();
     }
   };
 
-  // Tracks the start times of requests and computes whether any request has
-  // timed out.
-  // This class is not thread-safe. Callers must handle synchronization.
-  // Requires: all time arguments are provided in micros.
-  class StartTimes {
-   public:
-    StartTimes(int64_t default_batch_timeout,
-               const absl::flat_hash_map<tsl::criticality::Criticality,
-                                         int64_t>& criticality_batch_timeouts)
-        : default_batch_timeout_(default_batch_timeout),
-          criticality_batch_timeouts_(criticality_batch_timeouts) {}
-
-    void Insert(tsl::criticality::Criticality criticality,
-                uint64_t start_time) {
-      start_times_by_criticality_[criticality].insert(start_time);
-    }
-
-    void Erase(tsl::criticality::Criticality criticality, uint64_t start_time) {
-      auto& start_times = start_times_by_criticality_[criticality];
-      auto it = start_times.find(start_time);
-      if (it != start_times.end()) {
-        start_times.erase(it);
-      }
-    }
-
-    bool HasTimedOutRequest(uint64_t now) const {
-      for (const auto& [criticality, start_times] :
-           start_times_by_criticality_) {
-        if (start_times.empty()) continue;
-        uint64_t earliest_start_time = *start_times.begin();
-        int64_t effective_timeout = gtl::FindWithDefault(
-            criticality_batch_timeouts_, criticality, default_batch_timeout_);
-        if (now >= earliest_start_time + effective_timeout) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-   private:
-    absl::flat_hash_map<tsl::criticality::Criticality,
-                        absl::btree_multiset<uint64_t>>
-        start_times_by_criticality_;
-    const int64_t default_batch_timeout_;
-    const absl::flat_hash_map<tsl::criticality::Criticality, int64_t>
-        criticality_batch_timeouts_;
+  // The tasks of one criticality and latency priority.
+  struct Subqueue {
+    absl::btree_multiset<QueueEntry> entries;
+    // The start times of `entries`, to find the task that has waited the
+    // longest: it is not necessarily the first entry, which is the one with
+    // the lowest admission order.
+    absl::btree_multiset<uint64_t> start_times;
+    // The sum of the task sizes of `entries`.
+    size_t total_size = 0;
+    // How long a task waits before a batch is formed for it.
+    int64_t timeout_micros = 0;
   };
 
-  tsl::criticality::Criticality GetCriticality(const TaskType& task) const {
+  int GetPriority(const TaskType& task) const {
     if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
-      return task.criticality();
+      return PriorityIndex(task.criticality(), task.latency_priority());
     }
-    return tsl::criticality::Criticality::kSheddable;
+    return PriorityIndex(tsl::criticality::Criticality::kSheddable,
+                         kDefaultLatencyPriority);
+  }
+
+  int64_t GetAdmissionOrder(const TaskType& task) const {
+    if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+      return task.admission_order().value_or(kUnsetAdmissionOrder);
+    }
+    return kUnsetAdmissionOrder;
+  }
+
+  // Returns the highest priority that has tasks. Requires: !empty().
+  int HighestNonEmptyPriority() const {
+    int priority = kNumPriorities - 1;
+    while (subqueues_[priority].entries.empty()) --priority;
+    return priority;
+  }
+
+  // Returns the lowest priority that has tasks. Requires: !empty().
+  int LowestNonEmptyPriority() const {
+    int priority = 0;
+    while (subqueues_[priority].entries.empty()) ++priority;
+    return priority;
+  }
+
+  // Returns true if a task has waited for the timeout of its criticality.
+  // Requires: `now` is provided in micros.
+  bool HasTimedOutRequest(uint64_t now) const {
+    for (const Subqueue& subqueue : subqueues_) {
+      if (!subqueue.start_times.empty() &&
+          now >= *subqueue.start_times.begin() + subqueue.timeout_micros) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void AddEntryInternal(QueueEntry entry) {
+    Subqueue& subqueue = subqueues_[entry.priority];
     current_queue_size_ += entry.task->size();
-    num_tasks_by_criticality_[entry.criticality] += 1;
-    size_by_criticality_[entry.criticality] += entry.task->size();
-    start_times_.Insert(entry.criticality, entry.start_time_micros);
-    tasks_.insert(std::move(entry));
+    num_tasks_ += 1;
+    subqueue.total_size += entry.task->size();
+    subqueue.start_times.insert(entry.start_time_micros);
+    subqueue.entries.insert(std::move(entry));
   }
 
   QueueEntry RemoveEntryInternal(
-      typename std::multiset<QueueEntry>::iterator it) {
-    auto node = tasks_.extract(it);
+      typename absl::btree_multiset<QueueEntry>::iterator it) {
+    Subqueue& subqueue = subqueues_[it->priority];
+    auto node = subqueue.entries.extract(it);
     QueueEntry& entry = node.value();
     current_queue_size_ -= entry.task->size();
-    num_tasks_by_criticality_[entry.criticality] -= 1;
-    size_by_criticality_[entry.criticality] -= entry.task->size();
-    start_times_.Erase(entry.criticality, entry.start_time_micros);
+    num_tasks_ -= 1;
+    subqueue.total_size -= entry.task->size();
+    // Erases a single start time: other tasks may have the same one.
+    subqueue.start_times.erase(
+        subqueue.start_times.find(entry.start_time_micros));
     return std::move(entry);
   }
 
@@ -771,19 +861,9 @@ class PriorityTaskQueue {
     return enable_large_batch_splitting_;
   }
 
-  std::multiset<QueueEntry> tasks_;
-  StartTimes start_times_;
+  std::array<Subqueue, kNumPriorities> subqueues_;
   size_t current_queue_size_ = 0;
-
-  // Per-criticality bookkeeping for the currently-enqueued tasks. Maintained
-  // incrementally by AddEntryInternal/RemoveEntryInternal so that queue state
-  // can be exported as tfstreamz metrics without scanning the multiset. A
-  // criticality that has never been enqueued is absent; read these through the
-  // num_tasks()/size() accessors, which treat a missing key as zero.
-  absl::flat_hash_map<tsl::criticality::Criticality, int>
-      num_tasks_by_criticality_;
-  absl::flat_hash_map<tsl::criticality::Criticality, size_t>
-      size_by_criticality_;
+  int num_tasks_ = 0;
 
   const std::vector<int32_t> allowed_batch_sizes_;
   const std::string batch_padding_policy_;
@@ -841,9 +921,10 @@ class Queue {
   // batches will be prioritized for execution first (when using
   // rank_queues=true).
   // - A smaller key value is higher priority than a larger one.
-  // - This is a pair formed from <priority, batch_timestamp>. The exact values
+  // - This is the priority of the first task of the batch. The exact values
   //   used are an implementation detail of PeekBatchPriority().
-  using BatchPriorityKey = std::pair<int, int64_t>;
+  using BatchPriorityKey =
+      typename PriorityTaskQueue<TaskType>::TaskPriorityKey;
 
   Queue(const typename SharedBatchScheduler<TaskType>::QueueOptions& options,
         Env* env, bool enable_warmup_queue,
@@ -2118,27 +2199,20 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
     if (!tasks_priority_queue_.IsSchedulable()) {
       return std::nullopt;
     }
-    std::optional<tsl::criticality::Criticality> highest_criticality =
-        tasks_priority_queue_.HighestCriticality();
-    // Priority is 4 - criticality, so CRITICAL_PLUS (3) -> 1, CRITICAL (2) ->
-    // 2, etc.
-
-    const int max_priority =
-        static_cast<int>(tsl::criticality::Criticality::kCriticalPlus);
-    return std::make_pair(
-        max_priority - static_cast<int>(highest_criticality.value()),
-        tasks_priority_queue_.EarliestHighPriorityTaskStartTime().value());
+    return tasks_priority_queue_.PeekTaskPriorityKey();
   }
 
-  const int kHighPriority = 1;
-  const int kLowPriority = 2;
+  // Batches of high and low priority tasks have the priority of CRITICAL and
+  // SHEDDABLE_PLUS tasks of priority aware queues, respectively.
+  const auto kHighPriority = tsl::criticality::Criticality::kCritical;
+  const auto kLowPriority = tsl::criticality::Criticality::kSheddablePlus;
 
   const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
 
   if (batches.size() >= 2) {
     Batch<TaskType>* batch = batches.front().get();
-    return std::make_pair(kHighPriority,
-                          batch->EarliestTaskStartTime().value());
+    return BatchPriorityKey::FromCriticality(
+        kHighPriority, batch->EarliestTaskStartTime().value());
   }
 
   Batch<TaskType>* open_batch = batches.back().get();
@@ -2182,8 +2256,9 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
     return std::nullopt;
   }
 
-  int priority = open_batch->empty() ? kLowPriority : kHighPriority;
-  return std::make_pair(priority, effective_start_time_micros);
+  const auto priority = open_batch->empty() ? kLowPriority : kHighPriority;
+  return BatchPriorityKey::FromCriticality(priority,
+                                           effective_start_time_micros);
 }
 
 template <typename TaskType>
