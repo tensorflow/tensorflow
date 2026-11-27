@@ -259,7 +259,9 @@ Winograd4x4To36TileX6::Winograd4x4To36TileX6(const OperationDef& definition,
     : GPUOperation(definition), padding_(padding) {
   work_group_size_ = int3(32, 1, 1);
   code_ = GetWinograd4x4To36TileX6Code(definition_, gpu_info);
-  if (gpu_info.IsAdreno()) {
+  if (gpu_info.IsAdreno() && !gpu_info.opencl_info.IsCLVK() &&
+      !(gpu_info.adreno_info.IsAdreno3xx() ||
+        gpu_info.adreno_info.IsAdreno4xx())) {
     compiler_options_.push_back(CompilerOptions::kAdrenoMoreWaves);
   }
   if (definition_.precision == CalculationsPrecision::F16 &&
