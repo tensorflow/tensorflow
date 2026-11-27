@@ -5837,15 +5837,13 @@ def non_max_suppression_padded_v2(boxes,
     with ops.name_scope('canonicalize_coordinates'):
       y_1, x_1, y_2, x_2 = array_ops.split(
           value=boxes, num_or_size_splits=4, axis=2)
-      y_1_is_min = math_ops.reduce_all(
-          math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
-      y_min, y_max = tf_cond.cond(
-          y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
-      x_1_is_min = math_ops.reduce_all(
-          math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
-      x_min, x_max = tf_cond.cond(
-          x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
-      boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
+      # Each box may give its corners in a different order.
+      boxes = array_ops.concat([
+          math_ops.minimum(y_1, y_2),
+          math_ops.minimum(x_1, x_2),
+          math_ops.maximum(y_1, y_2),
+          math_ops.maximum(x_1, x_2)
+      ], axis=2)
   # TODO(@bhack): https://github.com/tensorflow/tensorflow/issues/56089
   # this will be required after deprecation
   # else:
