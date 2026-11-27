@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "xla/debug_options_runtime_fields.h"
 
-#include <cstddef>
+#include <functional>
+#include <iterator>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
@@ -97,20 +98,10 @@ constexpr int kRuntimeFields[] = {
     kXlaGpuExperimentalCacheNcclWindowInCommunicatorFieldNumber,          // 590
 };
 
-// Hand-written because std::is_sorted and std::adjacent_find are not
-// constexpr in C++17, which the OSS build uses.
-constexpr bool IsStrictlyIncreasing(absl::Span<const int> fields) {
-  for (size_t i = 1; i < fields.size(); ++i) {
-    if (fields[i - 1] >= fields[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-static_assert(IsStrictlyIncreasing(kRuntimeFields),
-              "kRuntimeFields must be sorted by field number, without "
-              "duplicates.");
+static_assert(
+    absl::c_adjacent_find(kRuntimeFields, std::greater_equal<>()) ==
+        std::end(kRuntimeFields),
+    "kRuntimeFields must be sorted by field number, without duplicates.");
 
 }  // namespace
 

@@ -576,14 +576,8 @@ ENTRY triton_computation {
           hlo_text, data_type_in,  // The type provided here is irrelevant.
           HloOpcode::kConvert));
 
-  // The two variables below are only needed prior to C++20 as capturing
-  // structured bindings is not supported.
-  // TODO(b/328238952): remove this indirection after XLA moves to C++20.
-  PrimitiveType captured_in = data_type_in;
-  PrimitiveType captured_out = data_type_out;
-
   auto any_is = [=](PrimitiveType compare) {
-    return captured_in == compare || captured_out == compare;
+    return data_type_in == compare || data_type_out == compare;
   };
 
   bool crashes_on_failure = false;

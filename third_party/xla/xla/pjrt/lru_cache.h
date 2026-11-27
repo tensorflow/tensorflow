@@ -290,9 +290,7 @@ Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
   }
 
   Value value = factory(key);
-  // To be compatible with C++17, we need to pass a Node to make_unique<Node>.
-  auto node =
-      std::make_unique<Node>(Node{nullptr, nullptr, this, hash, key, value});
+  auto node = std::make_unique<Node>(nullptr, nullptr, this, hash, key, value);
   AppendNode(*node);
   bucket.push_back(std::move(node));
 

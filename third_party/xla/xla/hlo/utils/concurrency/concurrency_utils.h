@@ -53,10 +53,6 @@ template <typename T, typename ForwardIt, typename Action>
 std::vector<Future<T>> Dispatch(ForwardIt begin, ForwardIt end, Action& action,
                                 tsl::Executor& executor);
 
-// Available in C++20 as std::iter_value_t.
-template <typename It>
-using iter_value_t = typename std::iterator_traits<It>::value_type;  // NOLINT
-
 // Runs an action on all elements from an iterator. A successful run collects
 // all the return values from actions. The implementation guarantees that the
 // order of returned values corresponds to the order of elements in the argument
@@ -80,7 +76,8 @@ template <typename T, typename ForwardIt,
           std::enable_if_t<!std::is_void_v<T>>* = nullptr>
 absl::StatusOr<std::vector<T>> ForEach(
     ForwardIt begin, ForwardIt end,
-    absl::AnyInvocable<absl::StatusOr<T>(iter_value_t<ForwardIt> arg)> action,
+    absl::AnyInvocable<absl::StatusOr<T>(std::iter_value_t<ForwardIt> arg)>
+        action,
     tsl::Executor& executor) {
   auto futures = Dispatch<T>(begin, end, action, executor);
   return JoinFutures<T>(absl::MakeSpan(futures)).Await();
@@ -102,7 +99,7 @@ absl::StatusOr<std::vector<T>> ForEach(
 template <typename ForwardIt>
 absl::Status ForEach(
     ForwardIt begin, ForwardIt end,
-    absl::AnyInvocable<absl::Status(iter_value_t<ForwardIt> arg)> action,
+    absl::AnyInvocable<absl::Status(std::iter_value_t<ForwardIt> arg)> action,
     tsl::Executor& executor) {
   auto futures = Dispatch<void>(begin, end, action, executor);
   return JoinFutures(absl::MakeSpan(futures)).Await();

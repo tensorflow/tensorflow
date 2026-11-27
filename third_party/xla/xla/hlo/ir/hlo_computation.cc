@@ -1826,11 +1826,7 @@ absl::Status HloComputation::ReplaceAsyncInstructionsWithSync(
   }
 
   // Remove the replaced async instructions and their unused operands.
-  for (const auto& pair : async_pairs) {
-    // Explicit locals rather than a structured binding: lambdas capturing
-    // structured bindings require C++20, and OSS XLA builds as C++17.
-    HloInstruction* async_start = pair.first;
-    HloInstruction* async_done = pair.second;
+  for (const auto& [async_start, async_done] : async_pairs) {
     bool is_async_start_removed = false;
     auto track_async_start_removed = [&](const HloInstruction* instr) {
       is_async_start_removed |= instr == async_start;

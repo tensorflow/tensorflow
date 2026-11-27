@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -382,13 +383,12 @@ float GetEffectiveHbmBandwidth(int64_t dma_size,
       [](const BandwidthEntry& a, int64_t b) { return a.dma_size_bytes < b; });
   auto it1 = it2 - 1;
 
-  // Linear interpolation between the two entries in the lookup table. std::lerp
-  // is not used as it is only available since C++20.
+  // Linear interpolation between the two entries in the lookup table.
   float a = it1->bandwidth_fraction;
   float b = it2->bandwidth_fraction;
   float t = (dma_size - it1->dma_size_bytes) /
             static_cast<float>(it2->dma_size_bytes - it1->dma_size_bytes);
-  return (a + t * (b - a)) * peak_hbm_bandwidth;
+  return std::lerp(a, b, t) * peak_hbm_bandwidth;
 }
 
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
