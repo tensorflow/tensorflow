@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/hlo/analysis/hlo_fusion_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {

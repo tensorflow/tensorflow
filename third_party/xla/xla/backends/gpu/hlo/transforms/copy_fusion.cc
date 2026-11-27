@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/hlo/analysis/gpu_fusible.h"
+#include "xla/backends/gpu/hlo/analysis/reduction_utils.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
@@ -34,8 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/reduction_utils.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace xla {

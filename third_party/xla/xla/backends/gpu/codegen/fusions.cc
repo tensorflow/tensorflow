@@ -33,12 +33,12 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/tensor_ir/fusion.h"
 #include "xla/backends/gpu/codegen/thread_block_specialized.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/backends/gpu/hlo/analysis/hlo_fusion_analysis.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 

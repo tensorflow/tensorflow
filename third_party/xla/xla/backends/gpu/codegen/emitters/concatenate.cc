@@ -29,6 +29,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/backends/gpu/hlo/analysis/gpu_fusible.h"
+#include "xla/backends/gpu/hlo/analysis/hlo_fusion_analysis.h"
 #include "xla/backends/gpu/runtime/gpu_constants.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/concatenate_kernel_emitter.h"
@@ -36,8 +38,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/tsl/platform/statusor.h"
 

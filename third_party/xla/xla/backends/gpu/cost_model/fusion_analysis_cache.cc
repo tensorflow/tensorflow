@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/hlo/analysis/hlo_fusion_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
 
 namespace xla::gpu {
 

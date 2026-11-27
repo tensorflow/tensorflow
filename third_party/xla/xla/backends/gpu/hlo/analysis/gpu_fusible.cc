@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_fusible.h"
+#include "xla/backends/gpu/hlo/analysis/gpu_fusible.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -33,6 +33,8 @@ limitations under the License.
 #include "absl/numeric/bits.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
+#include "xla/backends/gpu/hlo/analysis/hlo_fusion_analysis.h"
+#include "xla/backends/gpu/hlo/analysis/reduction_utils.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -45,10 +47,8 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"

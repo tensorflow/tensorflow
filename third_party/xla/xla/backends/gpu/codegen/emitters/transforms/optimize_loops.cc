@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"  // IWYU pragma: keep
-#include "xla/service/gpu/gpu_fusible.h"
+#include "xla/backends/gpu/hlo/analysis/gpu_fusible.h"
 
 namespace xla {
 namespace gpu {

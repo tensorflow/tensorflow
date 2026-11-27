@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "xla/backends/gpu/hlo/analysis/hlo_fusion_analysis.h"
+#include "xla/backends/gpu/hlo/analysis/reduction_utils.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/reduction_utils.h"
 #include "xla/util.h"
 
 namespace xla {

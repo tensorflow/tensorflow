@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/hlo/transforms/fusion/fusion_wrapper.h"
 
+#include "xla/backends/gpu/hlo/analysis/gpu_fusible.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/gpu_fusible.h"
 
 namespace xla {
 namespace gpu {
