@@ -1280,30 +1280,6 @@ TEST(ShapeUtilTest, InsertDimensionsAtIndex) {
                                                 {4, 3, 2, 1, 0}));
 }
 
-TEST(ShapeUtilTest, MoveDimToMajor) {
-  Shape shape = ShapeUtil::MakeShape(F32, {10, 10, 10});  // implicit {2, 1, 0}
-  Shape new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
-  EXPECT_EQ(shape, new_shape);
-
-  new_shape = ShapeUtil::MoveDimToMajor(shape, 1);
-  EXPECT_EQ(new_shape,
-            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 10, 10}, {2, 0, 1}));
-
-  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 10, 10}, {0, 2, 1});
-  new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
-  EXPECT_EQ(new_shape,
-            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 10, 10}, {2, 1, 0}));
-
-  shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {10, 10, 10}),
-       ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 10, 10}, {0, 2, 1})});
-  new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
-  EXPECT_EQ(new_shape,
-            ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {10, 10, 10}),
-                                       ShapeUtil::MakeShapeWithDenseLayout(
-                                           F32, {10, 10, 10}, {2, 1, 0})}));
-}
-
 TEST(ShapeUtilTest, DeleteDimensions) {
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3, 2}, {2, 0, 1});
   Shape new_shape = ShapeUtil::DeleteDimensions({1}, shape);

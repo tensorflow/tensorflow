@@ -331,6 +331,19 @@ void SetFortranLayout(Shape* shape) {
             shape->mutable_layout()->mutable_minor_to_major()->at(1));
 }
 
+Shape MoveDimToMajor(const Shape& shape, int64_t dim) {
+  Shape ret = shape;
+  ShapeUtil::ForEachMutableLeafShape(
+      &ret, [dim](Shape* subshape, const ShapeIndex&) {
+        if (!subshape->has_layout()) {
+          LayoutUtil::SetToDefaultLayout(subshape);
+        }
+        *subshape->mutable_layout() =
+            LayoutUtil::MoveDimToMajor(subshape->layout(), dim);
+      });
+  return ret;
+}
+
 bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
                                   const Shape& shape) {
   const DotDimensionNumbers& dot_dims = dot->dot_dimension_numbers();
@@ -741,31 +754,27 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       // is the most major dimension in the layout.
       auto ars = Cast<HloReduceScatterInstruction>(instruction);
       ABSL_RETURN_IF_ERROR(SetInstructionLayout(
-          ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
-          ars));
+          MoveDimToMajor(ars->shape(), ars->scatter_dimension()), ars));
     } else if (HloPredicateIsOp<HloOpcode::kAllGather>(instruction)) {
       // XLA:GPU can only support all-gathers where the gather dimension is the
       // most major dimension in the layout.
       auto ag = Cast<HloAllGatherInstruction>(instruction);
       ABSL_RETURN_IF_ERROR(SetInstructionLayout(
-          ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
-          ag));
+          MoveDimToMajor(ag->shape(), ag->all_gather_dimension()), ag));
     } else if (HloPredicateIsOp<HloOpcode::kAllToAll>(instruction) &&
                instruction->shape().IsArray()) {
       // XLA:GPU can only support all-to-all with split dimensions where the
       // split dimension is the most major dimension in the layout.
       auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
       ABSL_RETURN_IF_ERROR(SetInstructionLayout(
-          ShapeUtil::MoveDimToMajor(all_to_all->shape(),
-                                    *all_to_all->split_dimension()),
+          MoveDimToMajor(all_to_all->shape(), *all_to_all->split_dimension()),
           all_to_all));
     } else if (HloPredicateIsOp<HloOpcode::kRaggedAllToAll>(instruction)) {
       auto* ragged_all_to_all = Cast<HloRaggedAllToAllInstruction>(instruction);
       // XLA:GPU can only support ragged-all-to-all with the most major ragged
       // dimension in the layout.
       ABSL_RETURN_IF_ERROR(SetInstructionLayout(
-          ShapeUtil::MoveDimToMajor(ragged_all_to_all->shape(), 0),
-          ragged_all_to_all));
+          MoveDimToMajor(ragged_all_to_all->shape(), 0), ragged_all_to_all));
     } else if (HloPredicateIsOp<HloOpcode::kSend>(instruction)) {
       Shape s = instruction->operand(0)->shape();
       LayoutUtil::SetToDefaultLayout(&s);

@@ -584,12 +584,6 @@ class ShapeUtil {
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major);
 
-  // Constructs a new shape with the given dimension `dim` as the most major
-  // dimension in the layout. If the shape does not have a layout, assumes a
-  // default layout. If the shape is a tuple, apply this to all the leaf shapes
-  // of the tuple.
-  static Shape MoveDimToMajor(const Shape& shape, int64_t dim);
-
   // Returns the same shape except with all dimensions set to be static.
   [[nodiscard]] static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 

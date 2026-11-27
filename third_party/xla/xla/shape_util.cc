@@ -427,32 +427,6 @@ ShapeUtil::MakeValidatedShapeWithSparseLayout(
       /*split_configs=*/{}, /*physical_shape=*/std::nullopt);
 }
 
-/* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64_t dim) {
-  if (shape.IsTuple()) {
-    std::vector<Shape> result_shapes;
-    result_shapes.reserve(shape.tuple_shapes().size());
-    for (const Shape& s : shape.tuple_shapes()) {
-      result_shapes.push_back(MoveDimToMajor(s, dim));
-    }
-    return ShapeUtil::MakeTupleShape(result_shapes);
-  }
-
-  Shape ret = shape;
-  if (!ret.has_layout()) {
-    LayoutUtil::SetToDefaultLayout(&ret);
-  }
-  *ret.mutable_layout() = LayoutUtil::MoveDimToMajor(ret.layout(), dim);
-  DimensionVector minor_to_major;
-  for (int64_t d : LayoutUtil::MinorToMajor(ret)) {
-    if (d != dim) {
-      minor_to_major.push_back(d);
-    }
-  }
-  minor_to_major.push_back(dim);
-  *ret.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
-  return ret;
-}
-
 /* static */ absl::StatusOr<Shape>
 ShapeUtil::MakeValidatedShapeWithDescendingLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
