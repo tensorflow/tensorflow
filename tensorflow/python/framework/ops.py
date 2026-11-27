@@ -24,6 +24,7 @@ import sys
 import threading
 import types
 from typing import cast, TypeVar, Any, AnyStr, NoReturn, Optional, Pattern, Union, ContextManager
+import warnings
 
 from absl import app
 import numpy as np
@@ -1074,6 +1075,8 @@ _VALID_SCOPE_NAME_REGEX: Pattern[str] = re.compile(
 _VALID_EAGER_SCOPE_NAME_REGEX: Pattern[str] = re.compile(
     r"^[A-Za-z0-9_.:\\/>-]*$"
 )
+# Whitespace is never usable in a scope name, so eager mode rejects it.
+_WHITESPACE_IN_SCOPE_NAME_REGEX: Pattern[str] = re.compile(r"\s")
 
 
 @tf_export("__internal__.create_c_op", v1=[])
@@ -5900,12 +5903,26 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       # This also prevents auto-incrementing.
       old_name = ctx.scope_name
       name = self._name
-      if name and not _VALID_EAGER_SCOPE_NAME_REGEX.match(name):
-        raise ValueError(
-            f"'{name}' is not a valid scope name. A scope name has to "
-            "match the following pattern: "
-            f"{_VALID_EAGER_SCOPE_NAME_REGEX.pattern}"
-        )
+      if name:
+        if _WHITESPACE_IN_SCOPE_NAME_REGEX.search(name):
+          raise ValueError(
+              f"'{name}' is not a valid scope name. A scope name cannot "
+              "contain whitespace."
+          )
+        if not _VALID_EAGER_SCOPE_NAME_REGEX.match(name):
+          # Eager mode has always accepted these names and callers rely on
+          # them (e.g. Keras metric names such as "Recall@1"), so warn
+          # instead of raising.
+          # `warnings.warn` reports once per call site and points at the
+          # caller's `with` statement, which matters because scopes are often
+          # entered in hot loops.
+          warnings.warn(
+              f"'{name}' is not a valid scope name and may be rejected in a "
+              "future version of TensorFlow. A scope name should match the "
+              f"following pattern: {_VALID_EAGER_SCOPE_NAME_REGEX.pattern}",
+              UserWarning,
+              stacklevel=2,
+          )
 
       if not name:
         scope_name = ""
