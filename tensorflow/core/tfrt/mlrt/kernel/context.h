@@ -48,6 +48,7 @@ class Context : public mlrt::UserContext<Context> {
       const tfd::KernelFallbackCompatRequestState* fallback_request_state) {
     DCHECK(fallback_request_state);
     fallback_request_state_ = fallback_request_state;
+    op_kernel_context_.InitParams(fallback_request_state_);
   }
 
   OpKernelContext::Params& params() { return op_kernel_context_.params; }
@@ -82,34 +83,40 @@ class Context : public mlrt::UserContext<Context> {
     OpKernelContext::Params params;
     OpKernelContext op_kernel_context;
 
+    void InitParams(
+        const tfd::KernelFallbackCompatRequestState* fallback_request_state) {
+      DCHECK(fallback_request_state);
+      params.step_id = fallback_request_state->step_id();
+      auto* device = fallback_request_state->cpu_device();
+      params.device = device;
+      // Still use original device's resource_manager.
+      params.resource_manager = device->resource_manager();
+      params.step_container = fallback_request_state->step_container();
+      // Following two parameters are used to support executing
+      // tf.data via fallback.
+      params.function_library =
+          fallback_request_state->cpu_function_library_runtime();
+      params.runner = fallback_request_state->runner();
+      params.collective_executor =
+          fallback_request_state->collective_executor();
+      params.rendezvous = fallback_request_state->rendezvous();
+      params.session_metadata = &fallback_request_state->session_metadata();
+      params.cancellation_manager =
+          fallback_request_state->cancellation_manager();
+    }
+
     explicit CopyableOpKernelContext(
         const tfd::KernelFallbackCompatRequestState* fallback_request_state)
         : params(),
           op_kernel_context(
               [this, fallback_request_state]() {
-                DCHECK(fallback_request_state);
-                params.step_id = fallback_request_state->step_id();
-                auto* device = fallback_request_state->cpu_device();
-                params.device = device;
-                // Still use original device's resource_manager.
-                params.resource_manager = device->resource_manager();
-                params.step_container =
-                    fallback_request_state->step_container();
-                // Following two parameters are used to support executing
-                // tf.data via fallback.
-                params.function_library =
-                    fallback_request_state->cpu_function_library_runtime();
-                params.runner = fallback_request_state->runner();
-                params.collective_executor =
-                    fallback_request_state->collective_executor();
-                params.rendezvous = fallback_request_state->rendezvous();
-                params.session_metadata =
-                    &fallback_request_state->session_metadata();
-                params.cancellation_manager =
-                    fallback_request_state->cancellation_manager();
+                InitParams(fallback_request_state);
                 return &params;
               }(),
               0) {}
+    // TODO(b/584116396): Initialize `op_kernel_context_` directly from
+    // `fallback_request_state_` when copying `Context` instead of copying
+    // `other.params` without synchronization.
     CopyableOpKernelContext(const CopyableOpKernelContext& other)
         : params(other.params),
           op_kernel_context(&params, other.op_kernel_context.num_outputs()) {}
