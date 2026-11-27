@@ -4589,6 +4589,8 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
 
   let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI4, QI16, QUI16, TFL_Quint8]>:$output);
 
+  let hasVerifier = 1;
+
   let builders = [
     OpBuilder<(ins "TypeAttr":$qtype, "Attribute":$value,
       "SparsityParameterAttr":$s_param, "Attribute":$compressed_data),
