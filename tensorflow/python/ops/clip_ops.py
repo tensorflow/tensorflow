@@ -234,7 +234,9 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
           is_clip_norm_inf, array_ops.ones_like(clip_norm), clip_norm
       )
 
-    # Accumulate float16 norms in float32 to avoid overflow.
+    # Squaring float16 values or summing their squares can overflow
+    # even when the final norm is representable. Compute in float32
+    # and cast the clipped values back to their original dtype.
     original_dtype = values.dtype
     if original_dtype == dtypes.float16:
       values = math_ops.cast(values, dtypes.float32)
