@@ -98,7 +98,7 @@ class TrackingAllocator : public Allocator {
   absl::InlinedVector<AllocRecord, 4UL> GetCurrentRecords();
 
  protected:
-  ~TrackingAllocator() override {}
+  ~TrackingAllocator() override = default;
 
  private:
   bool UnRef() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
