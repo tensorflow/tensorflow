@@ -34,9 +34,9 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
-void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
-                                         int m_cols, const float* vector,
-                                         int n_batch, float* result) {
+inline void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
+                                                int m_cols, const float* vector,
+                                                int n_batch, float* result) {
 #if defined(__AVX2__)
   Avx2MatrixBatchVectorMultiplyAccumulateImpl(matrix, m_rows, m_cols, vector,
                                               n_batch, result);
@@ -46,7 +46,7 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
 #endif
 }
 
-void MatrixBatchVectorMultiplyAccumulate(
+inline void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
@@ -55,7 +55,7 @@ void MatrixBatchVectorMultiplyAccumulate(
                   vectors, scaling_factors, n_batch, result);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(
+inline void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
@@ -66,7 +66,7 @@ void MatrixBatchVectorMultiplyAccumulate(
                   input_offset, scratch, row_sums, compute_row_sums, context);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(
+inline void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
@@ -76,7 +76,7 @@ void MatrixBatchVectorMultiplyAccumulate(
                   vectors, scaling_factors, n_batch, scratch, result, context);
 }
 
-void SparseMatrixBatchVectorMultiplyAccumulate1x4(
+inline void SparseMatrixBatchVectorMultiplyAccumulate1x4(
     const float* __restrict__ matrix, const int32_t* __restrict__ segments,
     const int32_t* __restrict__ indices, int m_rows, int m_cols,
     const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
@@ -84,7 +84,7 @@ void SparseMatrixBatchVectorMultiplyAccumulate1x4(
                    segments, indices, m_rows, m_cols, vector, n_batch, result);
 }
 
-void SparseMatrixBatchVectorMultiplyAccumulate1x16(
+inline void SparseMatrixBatchVectorMultiplyAccumulate1x16(
     const int8_t* __restrict__ matrix, const int32_t* __restrict__ segments,
     const int32_t* __restrict__ indices, int m_rows, int m_cols,
     const int8_t* __restrict__ vector, const int32_t* __restrict__ bias_vector,
@@ -100,7 +100,7 @@ void SparseMatrixBatchVectorMultiplyAccumulate1x16(
                    output_activation_min, output_activation_max, result);
 }
 
-void SparseMatrixBatchVectorMultiplyAccumulate(
+inline void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
     float* __restrict__ result) {
@@ -108,7 +108,7 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
                    m_rows, m_cols, vector, n_batch, result);
 }
 
-void SparseMatrixBatchVectorMultiplyAccumulate(
+inline void SparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
@@ -118,7 +118,7 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
                   per_channel_scale);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(
+inline void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
@@ -128,7 +128,7 @@ void MatrixBatchVectorMultiplyAccumulate(
       shift, n_batch, n_input, n_output, output_zp, scratch, output, context);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(
+inline void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
@@ -138,203 +138,209 @@ void MatrixBatchVectorMultiplyAccumulate(
       shift, n_batch, n_input, n_output, output_zp, scratch, output, context);
 }
 
-void MatrixBatchVectorMultiply(const int8_t* input, int32_t input_zeropoint,
-                               const int8_t* input_to_gate_weights,
-                               int32_t input_to_gate_effective_scale_a,
-                               int32_t input_to_gate_effective_scale_b,
-                               int32_t n_batch, int32_t n_input, int32_t n_cell,
-                               int8_t* gate_output, int8_t gate_output_zp) {
+inline void MatrixBatchVectorMultiply(const int8_t* input,
+                                      int32_t input_zeropoint,
+                                      const int8_t* input_to_gate_weights,
+                                      int32_t input_to_gate_effective_scale_a,
+                                      int32_t input_to_gate_effective_scale_b,
+                                      int32_t n_batch, int32_t n_input,
+                                      int32_t n_cell, int8_t* gate_output,
+                                      int8_t gate_output_zp) {
   PortableMatrixBatchVectorMultiply(
       input, input_zeropoint, input_to_gate_weights,
       input_to_gate_effective_scale_a, input_to_gate_effective_scale_b, n_batch,
       n_input, n_cell, gate_output, gate_output_zp);
 }
 
-void MatrixBatchVectorMultiply(const int16_t* hidden,
-                               const int8_t* hidden_to_output_weights,
-                               int32_t proj_effective_scale_a,
-                               int32_t proj_effective_scale_b,
-                               const int32_t* gate_bias, int32_t n_batch,
-                               int32_t n_hidden, int32_t n_output,
-                               int32_t output_zp, int8_t* proj_output) {
+inline void MatrixBatchVectorMultiply(const int16_t* hidden,
+                                      const int8_t* hidden_to_output_weights,
+                                      int32_t proj_effective_scale_a,
+                                      int32_t proj_effective_scale_b,
+                                      const int32_t* gate_bias, int32_t n_batch,
+                                      int32_t n_hidden, int32_t n_output,
+                                      int32_t output_zp, int8_t* proj_output) {
   PortableMatrixBatchVectorMultiply(hidden, hidden_to_output_weights,
                                     proj_effective_scale_a,
                                     proj_effective_scale_b, gate_bias, n_batch,
                                     n_hidden, n_output, output_zp, proj_output);
 }
 
-void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
-                                    int32_t n_row, int32_t n_col,
-                                    int32_t* output) {
+inline void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
+                                           int32_t n_row, int32_t n_col,
+                                           int32_t* output) {
   PortableMatrixScalarMultiplyAccumulate(matrix, scalar, n_row, n_col, output);
 }
 
-void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
-                    const int32_t* bias, int32_t layer_norm_scale_a,
-                    int32_t layer_norm_scale_b, int32_t variance_limit,
-                    int n_batch, int n_input, int16_t* output) {
+inline void ApplyLayerNorm(const int16_t* input,
+                           const int16_t* layer_norm_weights,
+                           const int32_t* bias, int32_t layer_norm_scale_a,
+                           int32_t layer_norm_scale_b, int32_t variance_limit,
+                           int n_batch, int n_input, int16_t* output) {
   PortableApplyLayerNorm(input, layer_norm_weights, bias, layer_norm_scale_a,
                          layer_norm_scale_b, variance_limit, n_batch, n_input,
                          output);
 }
 
-void ApplyLayerNormFloat(const int16_t* input,
-                         const int16_t* layer_norm_weights,
-                         int32_t layer_norm_scale_a, int32_t layer_norm_scale_b,
-                         const int32_t* bias, int n_batch, int n_input,
-                         int16_t* output) {
+inline void ApplyLayerNormFloat(const int16_t* input,
+                                const int16_t* layer_norm_weights,
+                                int32_t layer_norm_scale_a,
+                                int32_t layer_norm_scale_b, const int32_t* bias,
+                                int n_batch, int n_input, int16_t* output) {
   PortableApplyLayerNormFloat(input, layer_norm_weights, layer_norm_scale_a,
                               layer_norm_scale_b, bias, n_batch, n_input,
                               output);
 }
 
-void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
-                  int16_t* output) {
+inline void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
+                         int16_t* output) {
   PortableApplySigmoid(input, n_batch, n_input, output);
 }
 
-void ApplySigmoidFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
-                       int16_t* output) {
+inline void ApplySigmoidFloat(const int16_t* input, int32_t n_batch,
+                              int32_t n_input, int16_t* output) {
   PortableApplySigmoidFloat(input, n_batch, n_input, output);
 }
 
-void ApplyTanh(int32_t intger_bits, const int16_t* input, int32_t n_batch,
-               int32_t n_input, int16_t* output) {
+inline void ApplyTanh(int32_t intger_bits, const int16_t* input,
+                      int32_t n_batch, int32_t n_input, int16_t* output) {
   PortableApplyTanh(intger_bits, input, n_batch, n_input, output);
 }
 
-void ApplyTanhFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int32_t integer_bits, int16_t* output) {
+inline void ApplyTanhFloat(const int16_t* input, int32_t n_batch,
+                           int32_t n_input, int32_t integer_bits,
+                           int16_t* output) {
   PortableApplyTanhFloat(input, n_batch, n_input, integer_bits, output);
 }
 
-void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
-              int n_input, int shift, int16_t* output) {
+inline void CwiseMul(const int16_t* input_1, const int16_t* input_2,
+                     int n_batch, int n_input, int shift, int16_t* output) {
   PortableCwiseMul(input_1, input_2, n_batch, n_input, shift, output);
 }
 
-void CwiseMul(const int16_t* input_1, const int16_t* input_2,
-              int32_t multiplier, int32_t shift, int32_t n_batch,
-              int32_t n_input, int32_t output_zp, int8_t* output) {
+inline void CwiseMul(const int16_t* input_1, const int16_t* input_2,
+                     int32_t multiplier, int32_t shift, int32_t n_batch,
+                     int32_t n_input, int32_t output_zp, int8_t* output) {
   PortableCwiseMul(input_1, input_2, multiplier, shift, n_batch, n_input,
                    output_zp, output);
 }
 
-void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
-              int n_input, int16_t* output) {
+inline void CwiseAdd(const int16_t* input_1, const int16_t* input_2,
+                     int n_batch, int n_input, int16_t* output) {
   PortableCwiseAdd(input_1, input_2, n_batch, n_input, output);
 }
 
-void CwiseClipping(float* vector, const int v_size,
-                   const float clipping_value) {
+inline void CwiseClipping(float* vector, const int v_size,
+                          const float clipping_value) {
   PortableCwiseClipping(vector, v_size, clipping_value);
 }
 
-void CwiseClipping(int16_t* vector, const int v_size,
-                   const int16_t clipping_value) {
+inline void CwiseClipping(int16_t* vector, const int v_size,
+                          const int16_t clipping_value) {
   PortableCwiseClipping(vector, v_size, clipping_value);
 }
 
-void CwiseClipping(int8_t* vector, const int v_size,
-                   const int8_t clipping_value) {
+inline void CwiseClipping(int8_t* vector, const int v_size,
+                          const int8_t clipping_value) {
   PortableCwiseClipping(vector, v_size, clipping_value);
 }
 
-void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
-                                      const int16_t* vector2, int v_size,
-                                      int n_batch, int32_t* result) {
+inline void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
+                                             const int16_t* vector2, int v_size,
+                                             int n_batch, int32_t* result) {
   PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size, n_batch,
                                            result);
 }
 
-void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
-                                             const int16_t* batch_vector,
-                                             int n_batch, int32_t multiplier,
-                                             int shift, int16_t* result) {
+inline void VectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result) {
   NEON_OR_PORTABLE(VectorBatchVectorCwiseProductAccumulate, vector, v_size,
                    batch_vector, n_batch, multiplier, shift, result);
 }
 
-float VectorVectorDotProduct(const float* vector1, const float* vector2,
-                             int v_size) {
+inline float VectorVectorDotProduct(const float* vector1, const float* vector2,
+                                    int v_size) {
   return NEON_OR_PORTABLE(VectorVectorDotProduct, vector1, vector2, v_size);
 }
 
-void Sub1Vector(const float* vector, int v_size, float* result) {
+inline void Sub1Vector(const float* vector, int v_size, float* result) {
   NEON_OR_PORTABLE(Sub1Vector, vector, v_size, result);
 }
 
-void Sub1Vector(const int16_t* vector, int v_size, int16_t* result) {
+inline void Sub1Vector(const int16_t* vector, int v_size, int16_t* result) {
   PortableSub1Vector(vector, v_size, result);
 }
 
 // Check if all entries of a vector are zero for float.
-bool IsZeroVector(const float* vector, int v_size) {
+inline bool IsZeroVector(const float* vector, int v_size) {
   return NEON_OR_PORTABLE(IsZeroVector, vector, v_size);
 }
 
 // Check if all entries of a vector are zero for int8.
-bool IsZeroVector(const int8_t* vector, int v_size) {
+inline bool IsZeroVector(const int8_t* vector, int v_size) {
   return PortableIsZeroVector(vector, v_size);
 }
 
-void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
-                          float* result) {
+inline void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                                 float* result) {
   NEON_OR_PORTABLE(VectorScalarMultiply, vector, v_size, scale, result);
 }
 
-void SymmetricQuantizeFloats(const float* values, const int size,
-                             int8_t* quantized_values, float* min_value,
-                             float* max_value, float* scaling_factor) {
+inline void SymmetricQuantizeFloats(const float* values, const int size,
+                                    int8_t* quantized_values, float* min_value,
+                                    float* max_value, float* scaling_factor) {
   NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values,
                    min_value, max_value, scaling_factor);
 }
 
-void SymmetricQuantizeFloats(const float* values, const int size,
-                             int8_t* quantized_values, float min_value,
-                             float max_value, float* scaling_factor) {
+inline void SymmetricQuantizeFloats(const float* values, const int size,
+                                    int8_t* quantized_values, float min_value,
+                                    float max_value, float* scaling_factor) {
   NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values,
                    min_value, max_value, scaling_factor);
 }
 
-void AsymmetricQuantizeFloats(const float* values, const int size,
-                              int8_t* quantized_values, float* scaling_factor,
-                              int32_t* offset) {
+inline void AsymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values,
+                                     float* scaling_factor, int32_t* offset) {
   NEON_OR_PORTABLE(AsymmetricQuantizeFloats, values, size, quantized_values,
                    scaling_factor, offset);
 }
 
-void ReductionSumVector(const float* input_vector, float* output_vector,
-                        int output_size, int reduction_size) {
+inline void ReductionSumVector(const float* input_vector, float* output_vector,
+                               int output_size, int reduction_size) {
   NEON_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
                    reduction_size);
 }
 
-void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
-                        int output_size, int reduction_size) {
+inline void ReductionSumVector(const int32_t* input_vector,
+                               int32_t* output_vector, int output_size,
+                               int reduction_size) {
   PortableReductionSumVector(input_vector, output_vector, output_size,
                              reduction_size);
 }
 
-void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
-                        int output_size, int reduction_size) {
+inline void ReductionSumVector(const int8_t* input_vector,
+                               int32_t* output_vector, int output_size,
+                               int reduction_size) {
   SSE_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
                   reduction_size);
 }
 
-void MeanStddevNormalization(const float* __restrict__ input_vector,
-                             float* __restrict__ output_vector, int v_size,
-                             int n_batch) {
+inline void MeanStddevNormalization(const float* __restrict__ input_vector,
+                                    float* __restrict__ output_vector,
+                                    int v_size, int n_batch) {
   PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch);
 }
 
-void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
-                          const int8_t* recurrent, int8_t recurrent_zp,
-                          int32_t input_effective_scale_a,
-                          int32_t input_effective_scale_b,
-                          int32_t recurrent_effective_scale_a,
-                          int32_t recurrent_effective_scale_b, int32_t n_batch,
-                          int32_t n_cell, int16_t* output) {
+inline void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                                 const int8_t* recurrent, int8_t recurrent_zp,
+                                 int32_t input_effective_scale_a,
+                                 int32_t input_effective_scale_b,
+                                 int32_t recurrent_effective_scale_a,
+                                 int32_t recurrent_effective_scale_b,
+                                 int32_t n_batch, int32_t n_cell,
+                                 int16_t* output) {
   PortableTwoGateSaturatingAdd(
       input, input_zp, recurrent, recurrent_zp, input_effective_scale_a,
       input_effective_scale_b, recurrent_effective_scale_a,
