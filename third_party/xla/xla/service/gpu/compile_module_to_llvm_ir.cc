@@ -38,7 +38,6 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Linker/Linker.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
@@ -315,18 +314,6 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   }
 
   return results;
-}
-
-void LinkLlvmModulesInPlace(
-    std::vector<std::unique_ptr<llvm::Module>>& llvm_modules) {
-  CHECK(!llvm_modules.empty());
-
-  llvm::Linker linker(*llvm_modules[0]);
-  for (int i = 1; i < llvm_modules.size(); i++) {
-    CHECK(!linker.linkInModule(std::move(llvm_modules[i]),
-                               llvm::Linker::Flags::OverrideFromSrc));
-  }
-  llvm_modules.resize(1);
 }
 
 }  // namespace xla::gpu

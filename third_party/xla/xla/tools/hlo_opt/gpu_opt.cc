@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -30,6 +32,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Linker/Linker.h"
 #include "xla/backends/gpu/gpu_compiler.h"
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/backends/gpu/hlo/analysis/nvptx_alias_info.h"
@@ -62,7 +66,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/llvm_compiler.h"
@@ -90,6 +93,18 @@ std::string GetAlphaSmallestFunctionName(const llvm::Module& module) {
     }
   }
   return name;
+}
+
+void LinkLlvmModulesInPlace(
+    std::vector<std::unique_ptr<llvm::Module>>& llvm_modules) {
+  CHECK(!llvm_modules.empty());
+
+  llvm::Linker linker(*llvm_modules[0]);
+  for (size_t i = 1; i < llvm_modules.size(); ++i) {
+    CHECK(!linker.linkInModule(std::move(llvm_modules[i]),
+                               llvm::Linker::Flags::OverrideFromSrc));
+  }
+  llvm_modules.resize(1);
 }
 
 class GpuOptProvider : public CompiledOptProvider {
@@ -275,7 +290,7 @@ class GpuOptProvider : public CompiledOptProvider {
                        GetAlphaSmallestFunctionName(*m2);
               });
 
-    gpu::LinkLlvmModulesInPlace(modules);
+    LinkLlvmModulesInPlace(modules);
 
     return llvm_ir::DumpToString(modules[0].get());
   }

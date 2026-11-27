@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/hlo/analysis/alias_info.h"
 #include "xla/backends/gpu/runtime/gpu_executable.h"
@@ -73,9 +72,6 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     KernelCompiler* compiler,
     xla::cpu::TargetMachineOptions cpu_target_machine_options,
     MlirContextPool* mlir_context_pool);
-
-void LinkLlvmModulesInPlace(
-    std::vector<std::unique_ptr<llvm::Module>>& llvm_modules);
 
 }  // namespace xla::gpu
 
