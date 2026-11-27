@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_DEVICE_COMPILER_H_
 #define TENSORFLOW_COMPILER_JIT_DEVICE_COMPILER_H_
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/device_compilation_cache.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
@@ -352,6 +354,19 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
   TF_RETURN_IF_ERROR(cache_value.compilation_status);
   TF_RET_CHECK(cache_value.executable == nullptr);
   TF_RET_CHECK(out_compilation_result->computation != nullptr);
+
+  // Validate that no cluster output crosses the XLA/TF boundary as DT_VARIANT
+  // or TensorList, which is not supported by TensorFlow and would cause
+  // runtime failure and allocator corruption if executed.
+  for (size_t i = 0; i < out_compilation_result->outputs.size(); ++i) {
+    const auto& output = out_compilation_result->outputs[i];
+    if (output.type == DT_VARIANT || output.is_tensor_list) {
+      return absl::UnimplementedError(
+          absl::StrCat("Support for TensorList crossing the XLA/TF boundary "
+                       "is not implemented (output index ",
+                       i, ")"));
+    }
+  }
 
   auto loaded_executable = persistor_->TryToLoadExecutable(
       DeviceCompilationClusterSignature::Hash()(sig), sig.HumanString(),
