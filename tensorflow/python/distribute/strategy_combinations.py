@@ -490,6 +490,7 @@ multi_worker_mirrored_2x1_gpu = combinations.NamedDistribution(
     required_gpus=1,
     pool_runner_fn=_two_worker_pool,
     share_gpu=False,
+    no_xla=True,
 )
 
 # Same as above, but not sharing the GPU between the workers.
