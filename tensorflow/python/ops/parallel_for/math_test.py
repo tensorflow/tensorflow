@@ -457,18 +457,26 @@ class MathTest(PForTestCase, parameterized.TestCase):
           self._test_loop_fn(loop_fn, 2)
 
   def test_bias_add(self):
-    for data_format in ("NCHW", "NHWC"):
+    cases = (
+        ("NCW", [3, 4, 5]),
+        ("NCW", [4, 4, 5]),
+        ("NCHW", [3, 4, 5, 6]),
+        ("NCDHW", [3, 4, 5, 2, 2]),
+        ("NCDHW", [3, 2, 2, 4, 5]),
+        ("NWC", [3, 4, 5]),
+        ("NHWC", [3, 4, 5, 6]),
+        ("NDHWC", [3, 2, 2, 3, 4]),
+    )
+    for data_format, base_shape in cases:
       for stacked_value in (True, False):
-        x_shape = [3, 4, 5, 6]
-        if stacked_value:
-          x_shape = [2] + x_shape
+        x_shape = [2] + base_shape if stacked_value else list(base_shape)
         x = random_ops.random_uniform(x_shape)
         for stacked_bias in (True, False):
           if not (stacked_value or stacked_bias):
             continue
           with backprop.GradientTape(persistent=True) as g:
             bias_dim = -1
-            if data_format == "NCHW":
+            if data_format.startswith("NC"):
               bias_dim = 2 if stacked_value else 1
             bias_shape = [x_shape[bias_dim]]
             if stacked_bias:
@@ -493,9 +501,6 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
           # pylint: enable=cell-var-from-loop
 
-          out_dtypes = [dtypes.float32, dtypes.float32]
-          if stacked_bias:
-            out_dtypes = out_dtypes + [dtypes.int32]
           self._test_loop_fn(loop_fn, 2)
 
   @parameterized.parameters(
