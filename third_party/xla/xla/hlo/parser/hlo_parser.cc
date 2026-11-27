@@ -4396,6 +4396,15 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
 
   std::vector<absl::string_view> axis_names_views(axis_names_storage.begin(),
                                                   axis_names_storage.end());
+  auto set_mesh = [&](TileAssignment tile_assignment) {
+    absl::StatusOr<Mesh> parsed_mesh =
+        Mesh::TryCreate(std::move(tile_assignment), axis_names_views);
+    if (!parsed_mesh.ok()) {
+      return TokenError(parsed_mesh.status().message());
+    }
+    mesh = *std::move(parsed_mesh);
+    return true;
+  };
 
   // Optional device_ids=(...)
   std::string device_ids_str;
@@ -4440,16 +4449,12 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
           !ParseToken(TokKind::kRparen, "expected ')' to end device_ids")) {
         return false;
       }
-      if (Product(axis_sizes) != Product(iota_reshape_dims)) {
-        return TokenError(absl::StrCat(
-            "mesh device_ids iota size ", Product(iota_reshape_dims),
-            " does not match the product of the mesh axis sizes ",
-            Product(axis_sizes)));
+      absl::StatusOr<IotaTileAssignment> iota = IotaTileAssignment::TryCreate(
+          axis_sizes, iota_reshape_dims, iota_transpose_perm);
+      if (!iota.ok()) {
+        return TokenError(iota.status().message());
       }
-      mesh.emplace(
-          TileAssignment(axis_sizes, iota_reshape_dims, iota_transpose_perm),
-          axis_names_views);
-      return true;
+      return set_mesh(TileAssignment(*std::move(iota)));
     }
 
     // Non-iota: d1,d2,d3...
@@ -4474,9 +4479,11 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
     // device-id array (using an overflow-checked product of the axis sizes).
     int64_t num_elements = 1;
     for (int64_t axis_size : axis_sizes) {
-      if (axis_size < 0 ||
-          (axis_size != 0 &&
-           num_elements > std::numeric_limits<int64_t>::max() / axis_size)) {
+      if (axis_size <= 0) {
+        return TokenError(absl::StrCat(
+            "Mesh axis size must be positive. Axis size: ", axis_size));
+      }
+      if (num_elements > std::numeric_limits<int64_t>::max() / axis_size) {
         return TokenError("mesh size overflows int64");
       }
       num_elements *= axis_size;
@@ -4486,15 +4493,17 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
           "Expected %d device_ids based on mesh axes, but got %d", num_elements,
           devices.size()));
     }
-    Array<int64_t> device_ids_array(axis_sizes);
-    absl::c_copy(devices, device_ids_array.begin());
-    mesh.emplace(device_ids_array, axis_names_views);
-    return true;
+    return set_mesh(
+        TileAssignment(std::make_shared<Array<int64_t>>(axis_sizes, devices)));
   }
 
   // Simple iota case
-  mesh.emplace(axis_sizes, axis_names_views);
-  return true;
+  absl::StatusOr<IotaTileAssignment> iota =
+      IotaTileAssignment::TryCreate(axis_sizes);
+  if (!iota.ok()) {
+    return TokenError(iota.status().message());
+  }
+  return set_mesh(TileAssignment(*std::move(iota)));
 }
 
 bool HloParserImpl::ParseAxisRef(

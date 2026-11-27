@@ -5043,6 +5043,54 @@ TEST_F(HloParserTest, ParseNamedShardingNonIotaMeshDeviceList) {
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
+TEST_F(HloParserTest, ParseNamedShardingInvalidMesh) {
+  // Iota device_ids with duplicate axis names.
+  EXPECT_THAT(
+      ParseSharding("{mesh['a'=2,'a'=2], device_ids=([2,2]T(1,0)), [{'a'}]}"),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Mesh has duplicate axis names")));
+  // Iota device_ids with invalid permutation.
+  EXPECT_THAT(
+      ParseSharding("{mesh['a'=2,'b'=2], device_ids=([2,2]T(0,0)), [{'a'}]}"),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("not unique")));
+  // Iota device_ids with mismatched reshape size.
+  EXPECT_THAT(
+      ParseSharding("{mesh['a'=2,'b'=2], device_ids=([2,3]T(1,0)), [{'a'}]}"),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("must match expected")));
+  // Iota device_ids with negative axis sizes.
+  EXPECT_THAT(
+      ParseSharding("{mesh['a'=-2,'b'=-2], device_ids=([2,2]T(1,0)), [{'a'}]}"),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("nonnegative")));
+  // Non-iota device_ids with invalid permutation, identity list, duplicate axis
+  // names, or zero-sized axis with overflowing trailing dims.
+  EXPECT_THAT(
+      ParseSharding("{mesh['x'=2,'y'=2], device_ids=(0,1,2,4), [{'x'}]}"),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Device ids must be a permutation of")));
+  EXPECT_THAT(
+      ParseSharding("{mesh['x'=2,'y'=2], device_ids=(0,1,2,3), [{'x'}]}"),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Non-iota device assignment has iota device id "
+                         "list")));
+  EXPECT_THAT(
+      ParseSharding("{mesh['x'=2,'x'=2], device_ids=(0,2,1,3), [{'x'}]}"),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Mesh has duplicate axis names")));
+  EXPECT_THAT(ParseSharding(
+                  "{mesh['a'=0,'b'=4000000000,'c'=4000000000], device_ids=(), "
+                  "[{'a'}]}"),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Mesh axis size must be positive")));
+  // Simple iota mesh with duplicate axis names or non-positive axis size.
+  EXPECT_THAT(ParseSharding("{mesh['a'=2,'a'=2], [{'a'}]}"),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Mesh has duplicate axis names")));
+  EXPECT_THAT(ParseSharding("{mesh['a'=0,'b'=2], [{'a'}]}"),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Mesh axis size must be positive")));
+}
+
 TEST_F(HloParserTest, ParseNamedShardingEmptyMeshReplicated) {
   const std::string original = "{mesh[], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));

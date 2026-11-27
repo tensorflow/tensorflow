@@ -209,10 +209,12 @@ TEST(NamedShardingTest, ToString) {
   NamedSharding single_device_sharding(single_device_mesh);
   EXPECT_EQ(single_device_sharding.ToString(), "{single_device[device_id=5]}");
 
-  Mesh non_iota_mesh(
-      TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
-                     /*transpose_perm=*/{2, 3, 0, 1}),
-      {"a", "b", "c", "d"});
+  ASSERT_OK_AND_ASSIGN(
+      Mesh non_iota_mesh,
+      Mesh::TryCreate(TileAssignment(/*dims=*/{2, 4, 4, 2},
+                                     /*reshape_dims=*/{1, 4, 1, 16},
+                                     /*transpose_perm=*/{2, 3, 0, 1}),
+                      {"a", "b", "c", "d"}));
   NamedSharding sharding_non_iota =
       test_utils::FromAxisNames(non_iota_mesh, {{"a"}});
   EXPECT_EQ(

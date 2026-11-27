@@ -231,7 +231,8 @@ TEST(MeshAxesReplicaGroupListTest,
   // Create a mesh with non-iota device ordering.
   Array2D<int64_t> array({{3, 1}, {0, 2}});
   TileAssignment tile_assignment(std::make_shared<Array<int64_t>>(array));
-  Mesh mesh_xy(tile_assignment, {"x", "y"});
+  ASSERT_OK_AND_ASSIGN(Mesh mesh_xy,
+                       Mesh::TryCreate(tile_assignment, {"x", "y"}));
 
   // Reduce along x axis.
   MeshAxesReplicaGroupList replica_group_x(mesh_xy, {AxisRef(0)});
@@ -322,10 +323,12 @@ TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
             "mesh['u'=10,'v'=12,'w'=15] {'u','v'}");
 
   // Subaxes and replica group v2 iota style device assignment.
-  Mesh mesh_abcd(
-      TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
-                     /*transpose_perm=*/{2, 3, 0, 1}),
-      {"a", "b", "c", "d"});
+  ASSERT_OK_AND_ASSIGN(
+      Mesh mesh_abcd,
+      Mesh::TryCreate(TileAssignment(/*dims=*/{2, 4, 4, 2},
+                                     /*reshape_dims=*/{1, 4, 1, 16},
+                                     /*transpose_perm=*/{2, 3, 0, 1}),
+                      {"a", "b", "c", "d"}));
   MeshAxesReplicaGroupList rg_abcd_across_multiple_axes_and_subaxes(
       mesh_abcd, {AxisRef(0), AxisRef(1, {1, 2}), AxisRef(3)});
   EXPECT_EQ(rg_abcd_across_multiple_axes_and_subaxes.ToString(),
@@ -336,7 +339,8 @@ TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
   Array<int64_t> array({{8, 3, 7, 5, 4, 2, 6, 0, 1, 9}});
   array.Reshape({10});
   TileAssignment tile_assignment(std::make_shared<Array<int64_t>>(array));
-  Mesh mesh_ooo(tile_assignment, {"ooo"});
+  ASSERT_OK_AND_ASSIGN(Mesh mesh_ooo,
+                       Mesh::TryCreate(tile_assignment, {"ooo"}));
   MeshAxesReplicaGroupList rg_ooo_across_ooo_5_2(mesh_ooo,
                                                  {AxisRef(0, {5, 2})});
   EXPECT_EQ(rg_ooo_across_ooo_5_2.ToString(),
@@ -542,9 +546,11 @@ TEST(MeshAxesReplicaGroupListTest, ToReplicaGroupV2) {
 }
 
 TEST(MeshAxesReplicaGroupListTest, ToReplicaGroupV2WithComplexMesh) {
-  Mesh mesh(TileAssignment(/*dims=*/{8, 2}, /*reshape_dims=*/{2, 4, 2},
-                           /*transpose_perm=*/{2, 1, 0}),
-            {"a", "b"});
+  ASSERT_OK_AND_ASSIGN(
+      Mesh mesh, Mesh::TryCreate(
+                     TileAssignment(/*dims=*/{8, 2}, /*reshape_dims=*/{2, 4, 2},
+                                    /*transpose_perm=*/{2, 1, 0}),
+                     {"a", "b"}));
 
   MeshAxesReplicaGroupList replica_group_a(mesh, {AxisRef(0)});
   EXPECT_EQ(replica_group_a.ToIotaReplicaGroupList().flattened_replica_groups(),

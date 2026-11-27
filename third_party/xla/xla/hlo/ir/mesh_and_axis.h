@@ -76,11 +76,8 @@ class Mesh {
                  std::move(device_assignment))),
              axes_names) {}
 
-  explicit Mesh(TileAssignment device_assignment,
-                absl::Span<const absl::string_view> axes_names);
-
-  // Same as the constructor above, but returns an error instead of crashing if
-  // the mesh is invalid.
+  // Constructs a mesh with the given `device_assignment` and `axes_names`,
+  // returning an error if the mesh is invalid.
   static absl::StatusOr<Mesh> TryCreate(
       TileAssignment device_assignment,
       absl::Span<const absl::string_view> axes_names);
@@ -125,6 +122,9 @@ class Mesh {
   bool ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const;
 
  private:
+  explicit Mesh(TileAssignment device_assignment,
+                absl::Span<const absl::string_view> axes_names);
+
   absl::Status Validate();
   // Dimensions of the `device_assignment_` array correspond to the axes of the
   // mesh.

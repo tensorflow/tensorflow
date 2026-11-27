@@ -457,7 +457,9 @@ MeshAxesReplicaGroupList MeshAxesReplicaGroupList::CanonicalizeWithoutSubaxes()
   TileAssignment new_device_assignment =
       mesh_.device_assignment().Reshape(reindex_axis_sizes);
 
-  Mesh new_mesh(new_device_assignment, new_axes_names_views);
+  absl::StatusOr<Mesh> new_mesh =
+      Mesh::TryCreate(std::move(new_device_assignment), new_axes_names_views);
+  CHECK_OK(new_mesh);
 
   std::vector<AxisRef> new_axes;
   new_axes.reserve(reindexed_grouped_axes.size());
@@ -465,7 +467,7 @@ MeshAxesReplicaGroupList MeshAxesReplicaGroupList::CanonicalizeWithoutSubaxes()
     new_axes.push_back(AxisRef(idx));
   }
 
-  return MeshAxesReplicaGroupList(new_mesh, new_axes);
+  return MeshAxesReplicaGroupList(*std::move(new_mesh), std::move(new_axes));
 }
 
 MeshAxesReplicaGroupListProto MeshAxesReplicaGroupList::ToProto() const {

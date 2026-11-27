@@ -132,12 +132,12 @@ TEST(MeshAndAxisTest, MeshToProtoIotaTilingWithReshapeDims) {
   expected.mutable_iota_transform()->add_transpose_perm(2);
 
   std::vector<absl::string_view> axes_names = {"axis1", "axis2", "axis3"};
-  EXPECT_THAT(
-      Mesh(TileAssignment(/*dims=*/{4, 4, 1}, /*reshape_dims=*/{4, 2, 2},
-                          /*transpose_perm=*/{1, 0, 2}),
-           axes_names)
-          .ToProto(),
-      EqualsProto(expected));
+  ASSERT_OK_AND_ASSIGN(
+      Mesh mesh, Mesh::TryCreate(TileAssignment(/*dims=*/{4, 4, 1},
+                                                /*reshape_dims=*/{4, 2, 2},
+                                                /*transpose_perm=*/{1, 0, 2}),
+                                 axes_names));
+  EXPECT_THAT(mesh.ToProto(), EqualsProto(expected));
 }
 
 TEST(MeshAndAxisTest, MeshToProtoNonIotaTiling) {
@@ -180,9 +180,10 @@ TEST(MeshAndAxisTest, MeshRoundtripProto) {
               IsOkAndHolds(mesh_simple_iota));
 
   // Transformed iota tiling.
-  Mesh mesh_iota(
-      TileAssignment(IotaTileAssignment::Create({5, 3}, {5, 3}, {1, 0})),
-      axes_xy);
+  ASSERT_OK_AND_ASSIGN(
+      Mesh mesh_iota, Mesh::TryCreate(TileAssignment(IotaTileAssignment::Create(
+                                          {5, 3}, {5, 3}, {1, 0})),
+                                      axes_xy));
   EXPECT_THAT(Mesh::FromProto(mesh_iota.ToProto()), IsOkAndHolds(mesh_iota));
 
   // Non-iota tiling.
@@ -486,10 +487,12 @@ TEST(MeshAndAxisTest, MeshToString) {
   Mesh mesh_uvw({10, 12, 15}, {"u", "v", "w"});
   EXPECT_EQ(mesh_uvw.ToString(), "mesh['u'=10,'v'=12,'w'=15]");
 
-  Mesh mesh_abcd(
-      TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
-                     /*transpose_perm=*/{2, 3, 0, 1}),
-      {"a", "b", "c", "d"});
+  ASSERT_OK_AND_ASSIGN(
+      Mesh mesh_abcd,
+      Mesh::TryCreate(TileAssignment(/*dims=*/{2, 4, 4, 2},
+                                     /*reshape_dims=*/{1, 4, 1, 16},
+                                     /*transpose_perm=*/{2, 3, 0, 1}),
+                      {"a", "b", "c", "d"}));
   EXPECT_EQ(mesh_abcd.ToString(),
             "mesh['a'=2,'b'=4,'c'=4,'d'=2], device_ids=([4,16]T(1,0))");
 

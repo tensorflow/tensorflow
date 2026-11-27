@@ -812,7 +812,7 @@ TEST_F(HloShardingTest, DeviceAssignmentTiledSharding) {
 }
 TEST_F(HloShardingTest, DeviceAssignmentNamedSharding) {
   TileAssignment ta({2, 4}, {4, 2}, {1, 0});
-  Mesh mesh(ta, {"a", "b"});
+  ASSERT_OK_AND_ASSIGN(Mesh mesh, Mesh::TryCreate(ta, {"a", "b"}));
   HloSharding hlo_sharding_from_named(
       test_utils::FromAxisNames(mesh, {{"a"}, {"b"}}));
 
@@ -1341,13 +1341,17 @@ TEST(V3ToV2Sharding, SimpleIotaTile) {
 }
 
 TEST(V3ToV2Sharding, MeshWithIotaReshapeTranspose) {
-  Mesh mesh(TileAssignment({2, 4}, {4, 2}, {1, 0}), {"a", "b"});
+  ASSERT_OK_AND_ASSIGN(
+      Mesh mesh,
+      Mesh::TryCreate(TileAssignment({2, 4}, {4, 2}, {1, 0}), {"a", "b"}));
   NamedSharding ns = test_utils::FromAxisNames(mesh, {{"b"}, {"a"}});
   EXPECT_EQ(HloSharding::V3ToV2Sharding(ns), HloSharding::IotaTile({4, 2}));
 }
 
 TEST(V3ToV2Sharding, ResultantMeshWithIotaReshapeTranspose) {
-  Mesh mesh(TileAssignment({2, 4}, {4, 2}, {1, 0}), {"a", "b"});
+  ASSERT_OK_AND_ASSIGN(
+      Mesh mesh,
+      Mesh::TryCreate(TileAssignment({2, 4}, {4, 2}, {1, 0}), {"a", "b"}));
   NamedSharding ns = test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
   EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
             HloSharding::IotaTile({2, 4}, {4, 2}, {1, 0}));
