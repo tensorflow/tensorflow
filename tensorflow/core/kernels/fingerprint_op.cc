@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -91,17 +92,29 @@ class FingerprintOp : public OpKernel {
                                 input.shape()));
 
     const int64_t dim0 = input.shape().dim_size(0);
-    int64_t dim1;
-    if (dim0 == 0) {
-      dim1 = 0;
-    } else {
-      dim1 = input.shape().num_elements() / dim0;
-    }
-
+    // `dim0` may be arbitrarily large for zero-element inputs (e.g. `[N, 0]`),
+    // so validate the output shape instead of CHECK-failing on overflow.
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                                {dim0, kFingerprintSize}, &output_shape));
     Tensor* output;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       0, TensorShape{dim0, kFingerprintSize}, &output));
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    if (dim0 == 0) {
+      return;
+    }
+    const int64_t dim1 = input.shape().num_elements() / dim0;
+    if (dim1 == 0) {
+      // Every row is empty (e.g. shape `[N, 0]`), so each output row is the
+      // fingerprint of an empty buffer, regardless of the data type. This must
+      // be handled up front: for strings, the flat input has no elements, so
+      // the per-string paths below would leave the output uninitialized.
+      const uint64_t fingerprint = Fingerprint64("");
+      auto output_matrix = output->matrix<uint8_t>();
+      for (int64_t i = 0; i < dim0; ++i) {
+        CopyToBuffer(fingerprint, &output_matrix(i, 0));
+      }
+      return;
+    }
 
     if (input.dtype() == DT_STRING) {
       if (dim1 > 1) {
