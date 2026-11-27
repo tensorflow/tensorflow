@@ -49,7 +49,8 @@ void DestroyRemoteTensorHandle(EagerContext* ctx,
     return;
   }
 
-  std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
+  std::unique_ptr<eager::EnqueueRequest> request =
+      std::make_unique<eager::EnqueueRequest>();
   request->set_context_id(context_id);
 
   auto* handle_to_decref = request->add_queue()->mutable_handle_to_decref();
