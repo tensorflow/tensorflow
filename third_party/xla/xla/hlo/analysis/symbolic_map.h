@@ -163,8 +163,7 @@ class SymbolicMap {
   SymbolicMap Replace(
       const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map) const;
 
-  bool operator==(const SymbolicMap& other) const;
-  bool operator!=(const SymbolicMap& other) const { return !(*this == other); }
+  friend bool operator==(const SymbolicMap&, const SymbolicMap&) = default;
 
   template <typename H>
   friend H AbslHashValue(H h, const SymbolicMap& map) {

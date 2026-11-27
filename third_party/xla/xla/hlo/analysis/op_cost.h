@@ -90,7 +90,7 @@ class CostMetricId {
   CostMetricId(const CostMetricId& other) = default;
   CostMetricId& operator=(const CostMetricId& other) = default;
 
-  bool operator==(const CostMetricId& other) const;
+  friend bool operator==(const CostMetricId&, const CostMetricId&) = default;
 
   template <typename H>
   friend H AbslHashValue(H h, const CostMetricId& id) {
@@ -131,7 +131,7 @@ class CostMetricId {
   std::string OperandNumStr() const;
   std::string ShapeIndexStr() const;
 
-  // Returns a tuple of private data members for use in equality and hashing.
+  // Returns a tuple of private data members for use in hashing.
   Tuple MakeTuple() const;
 
   MetricType type_;
@@ -152,7 +152,7 @@ class CostValue {
   static CostValue MakeError();
   static CostValue MakeValue(double value);
 
-  bool operator==(const CostValue& other) const;
+  friend bool operator==(const CostValue&, const CostValue&) = default;
 
   bool IsOk() const { return type_ == Type::kOk; }
   bool IsNotFound() const { return type_ == Type::kNotFound; }
@@ -169,12 +169,9 @@ class CostValue {
 
  private:
   enum class Type : std::uint8_t { kNotFound, kError, kOk };
-  using DataTuple = std::tuple<Type, double>;
 
   CostValue() = default;
   CostValue(Type type, double value) : type_(type), value_(value) {}
-
-  DataTuple MakeTuple() const { return DataTuple(type_, value_); }
 
   Type type_ = Type::kNotFound;
   double value_ = 0.0;

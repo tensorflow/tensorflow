@@ -323,17 +323,10 @@ class IndexingMap {
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
-inline bool operator!=(const IndexingMap& lhs, const IndexingMap& rhs) {
-  return !(lhs == rhs);
-}
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs);
 
 bool operator==(const IndexingMap::Variable& lhs,
                 const IndexingMap::Variable& rhs);
-inline bool operator!=(const IndexingMap::Variable& lhs,
-                       const IndexingMap::Variable& rhs) {
-  return !(lhs == rhs);
-}
 
 template <typename H>
 H AbslHashValue(H h, const IndexingMap::Variable& dimension) {

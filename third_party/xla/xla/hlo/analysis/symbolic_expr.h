@@ -58,8 +58,7 @@ class SymbolicExpr {
 
   explicit operator bool() const { return impl_ != nullptr; }
   bool operator!() const { return impl_ == nullptr; }
-  bool operator==(SymbolicExpr other) const { return impl_ == other.impl_; }
-  bool operator!=(SymbolicExpr other) const { return !(*this == other); }
+  friend bool operator==(SymbolicExpr, SymbolicExpr) = default;
   bool operator<(const SymbolicExpr& other) const;
 
   mlir::MLIRContext* GetContext() const;

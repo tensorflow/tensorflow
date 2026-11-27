@@ -246,11 +246,6 @@ SymbolicMap SymbolicMap::SetNumDimensions(int num_new_dims) const {
   return ReplaceDimsAndSymbols({}, {}, num_new_dims, GetNumSymbols());
 }
 
-bool SymbolicMap::operator==(const SymbolicMap& other) const {
-  return (ctx_ == other.ctx_ && num_dimensions_ == other.num_dimensions_ &&
-          num_symbols_ == other.num_symbols_ && exprs_ == other.exprs_);
-}
-
 llvm::SmallBitVector GetUnusedDimensionsBitVector(const SymbolicMap& map) {
   llvm::SmallBitVector unused_dims(map.GetNumDims(), true);
   if (map.IsEmpty() || map.GetNumDims() == 0) {

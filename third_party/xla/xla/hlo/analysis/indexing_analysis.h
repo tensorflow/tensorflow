@@ -139,10 +139,12 @@ struct RuntimeVarIndexing {
   }
 
   std::string ToString() const;
+
+  friend bool operator==(const RuntimeVarIndexing&,
+                         const RuntimeVarIndexing&) = default;
 };
 
 std::ostream& operator<<(std::ostream& os, const RuntimeVarIndexing& var);
-bool operator==(const RuntimeVarIndexing& lhs, const RuntimeVarIndexing& rhs);
 
 // Indexing of an operand of a HLO instruction with information about runtime
 // variables.

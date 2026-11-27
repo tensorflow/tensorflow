@@ -308,7 +308,6 @@ class HloReachabilityMap {
       absl::Span<Word> bspan(other.ptr_, other.NumWords());
       return aspan == bspan;
     }
-    bool operator!=(const BitSet& other) const { return !(*this == other); }
 
    private:
     Word* ptr_;

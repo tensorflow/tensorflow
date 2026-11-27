@@ -106,11 +106,8 @@ struct ReachingParameter {
   friend H AbslHashValue(H h, const ReachingParameter& p) {
     return H::combine(std::move(h), p.parameter_number, p.tuple_index);
   }
-  friend bool operator==(const ReachingParameter& a,
-                         const ReachingParameter& b) {
-    return a.parameter_number == b.parameter_number &&
-           a.tuple_index == b.tuple_index;
-  }
+  friend bool operator==(const ReachingParameter&,
+                         const ReachingParameter&) = default;
 };
 
 struct HelperState {
@@ -121,9 +118,7 @@ struct HelperState {
   friend H AbslHashValue(H h, const HelperState& s) {
     return H::combine(std::move(h), s.instr, s.tuple_index);
   }
-  friend bool operator==(const HelperState& a, const HelperState& b) {
-    return a.instr == b.instr && a.tuple_index == b.tuple_index;
-  }
+  friend bool operator==(const HelperState&, const HelperState&) = default;
 };
 
 }  // namespace

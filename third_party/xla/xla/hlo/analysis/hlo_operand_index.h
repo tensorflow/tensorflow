@@ -34,14 +34,8 @@ struct HloOperandIndex {
     return H::combine(std::move(h), hlo_operand_index.ToTuple());
   }
 
-  friend bool operator==(const HloOperandIndex& lhs,
-                         const HloOperandIndex& rhs) {
-    return lhs.ToTuple() == rhs.ToTuple();
-  }
-
-  bool operator!=(const HloOperandIndex& other) const {
-    return !(*this == other);
-  }
+  friend bool operator==(const HloOperandIndex&,
+                         const HloOperandIndex&) = default;
 
   MyTuple ToTuple() const {
     return std::make_tuple(operand_number, std::cref(operand_index));

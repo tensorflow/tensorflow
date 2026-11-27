@@ -73,7 +73,6 @@ class ShapeTracker {
   // transformations chains can result in the same input/output elements
   // mapping. In this case, this operator will return false.
   bool operator==(const ShapeTracker& other) const;
-  bool operator!=(const ShapeTracker& other) const { return !(*this == other); }
 
   // Sets the element type of input/output shapes.
   void SetElementType(PrimitiveType element_type);
@@ -99,9 +98,7 @@ class ShapeTracker {
     // Target dimensions.
     std::vector<int64_t> dimensions;
 
-    bool operator==(const Reshape& other) const {
-      return dimensions == other.dimensions;
-    }
+    friend bool operator==(const Reshape&, const Reshape&) = default;
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const Reshape& step) {
       sink.Append("Reshape[");
@@ -114,9 +111,7 @@ class ShapeTracker {
     // `permutation[i]`.
     std::vector<int64_t> permutation;
 
-    bool operator==(const Transpose& other) const {
-      return permutation == other.permutation;
-    }
+    friend bool operator==(const Transpose&, const Transpose&) = default;
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const Transpose& step) {
       sink.Append("Transpose[");
@@ -131,10 +126,7 @@ class ShapeTracker {
     // HloBroadcastInstruction::dimensions()).
     std::vector<int64_t> broadcast_dimensions;
 
-    bool operator==(const Broadcast& other) const {
-      return dimensions == other.dimensions &&
-             broadcast_dimensions == other.broadcast_dimensions;
-    }
+    friend bool operator==(const Broadcast&, const Broadcast&) = default;
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const Broadcast& step) {
       sink.Append("Broadcast[");
@@ -149,9 +141,7 @@ class ShapeTracker {
     // Sorted indices of the dimensions to collapse.
     std::vector<int64_t> dimensions;
 
-    bool operator==(const Reduce& other) const {
-      return dimensions == other.dimensions;
-    }
+    friend bool operator==(const Reduce&, const Reduce&) = default;
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const Reduce& step) {
       sink.Append("Reduce[");
@@ -366,12 +356,7 @@ class ShapeTracker::BufferView {
     return strides_.size() == 1 && strides_[0] == 1 && extents_[0] == 1 &&
            collapsed_strides_.empty();
   }
-  bool operator==(const BufferView& other) const {
-    return strides_ == other.strides_ && extents_ == other.extents_ &&
-           collapsed_strides_ == other.collapsed_strides_ &&
-           collapsed_extents_ == other.collapsed_extents_;
-  }
-  bool operator!=(const BufferView& other) const { return !(*this == other); }
+  friend bool operator==(const BufferView&, const BufferView&) = default;
   absl::Span<const int64_t> strides() const { return strides_; }
   absl::Span<const int64_t> extents() const { return extents_; }
   absl::Span<const int64_t> collapsed_strides() const {

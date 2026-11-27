@@ -61,12 +61,10 @@ struct Interval {
       if (result) return {!*result};
       return {result};
     }
-    bool operator==(const ComparisonResult& other) const {
-      return result == other.result;
-    }
+    friend bool operator==(const ComparisonResult&,
+                           const ComparisonResult&) = default;
     bool operator==(bool other) const { return result && *result == other; }
     bool operator==(std::nullopt_t) const { return !result; }
-    bool operator!=(std::nullopt_t) const { return result.has_value(); }
     bool operator*() const { return *result; }
   };
 
@@ -120,11 +118,7 @@ struct Interval {
   }
 
   // This is not the same as "Eq".  See the implementations.
-  bool operator==(const Interval& rhs) const {
-    return lower == rhs.lower && upper == rhs.upper;
-  }
-  // This is not the same as "Ne".  See the implementations.
-  bool operator!=(const Interval& rhs) const { return !(*this == rhs); }
+  friend bool operator==(const Interval&, const Interval&) = default;
 
   int64_t lower = 0;
   int64_t upper = 0;

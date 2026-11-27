@@ -103,10 +103,6 @@ bool operator==(const HLORTVar& lhs, const HLORTVar& rhs) {
          lhs.map == rhs.map;
 }
 
-inline bool operator!=(const HLORTVar& lhs, const HLORTVar& rhs) {
-  return !(lhs == rhs);
-}
-
 std::optional<int64_t> GetIntOrSplatIntValue(mlir::Attribute attr) {
   if (auto int_attr = mlir::dyn_cast<mlir::IntegerAttr>(attr)) {
     return int_attr.getInt();
@@ -1906,10 +1902,6 @@ void OperandIndexing::VerifyOrDie() const {
 
 bool operator==(const OperandIndexing& lhs, const OperandIndexing& rhs) {
   return lhs.map_ == rhs.map_ && absl::c_equal(lhs.rt_vars_, rhs.rt_vars_);
-}
-
-bool operator==(const RuntimeVarIndexing& lhs, const RuntimeVarIndexing& rhs) {
-  return lhs.map == rhs.map && lhs.instruction_ref == rhs.instruction_ref;
 }
 
 OperandIndexing ComposeOperandIndexing(const OperandIndexing& first,

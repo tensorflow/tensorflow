@@ -86,10 +86,6 @@ std::vector<std::string> CostMetricId::LoggingColumnNames() {
   };
 }
 
-bool CostMetricId::operator==(const CostMetricId& other) const {
-  return MakeTuple() == other.MakeTuple();
-}
-
 int64_t CostMetricId::operand_num() const {
   CHECK(operand_num_.has_value());
   return *operand_num_;
@@ -201,10 +197,6 @@ CostValue CostValue::MakeError() { return CostValue(Type::kError, 0.0); }
 
 CostValue CostValue::MakeValue(double value) {
   return CostValue(Type::kOk, value);
-}
-
-bool CostValue::operator==(const CostValue& other) const {
-  return MakeTuple() == other.MakeTuple();
 }
 
 double CostValue::value() const {

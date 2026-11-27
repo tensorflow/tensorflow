@@ -1683,9 +1683,6 @@ template <typename T>
 void ExpectSupportsAbslHashAndEqAndNe(absl::Span<const T> values) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(values));
 
-  // C++20 compilers automatically generate != from ==, but XLA has to work with
-  // C++17, so we test that we explicitly implemented !=. Otherwise it could
-  // happen that some compilers can compile XLA, and some can't.
   for (const T& a : values) {
     for (const T& b : values) {
       EXPECT_EQ(a != b, !(a == b));
