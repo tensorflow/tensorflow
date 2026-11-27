@@ -331,6 +331,127 @@ struct ConvertBatchMatMulOpToReduceSum
   }
 };
 
+// Rewrites a batch_matmul whose LHS is a constant with a single row as a
+// broadcast multiply followed by a sum over the contracting dimension:
+//
+//   BMM(X, Y), X constant [..., 1, K], Y [..., K, N]
+//     = SUM(MUL(Y, reshape(X, [..., K, 1])), axis = K, keep_dims)
+//
+// This generalizes `ConvertBatchMatMulOpToReduceSum` (X all ones) to any
+// constant row. The shape comes from a single learned query attended against
+// runtime keys, e.g. the attention-pooling probe of SigLIP2 once the query
+// projection has been folded: `[12, 1, 64] x [12, 64, 196]`.
+//
+// GPU delegates treat the LHS of batch_matmul as an activation and reject a
+// constant there (ML Drift: "inputs[0] should not be a constant tensor"), and
+// swapping the operands is not an option while the constant batched-RHS path
+// is unverified (b/581393027). MUL and SUM with a constant operand are plain
+// elementwise/reduce ops on every backend. The intermediate product has the
+// shape of Y, so this is only applied while Y is small.
+struct ConvertConstantRowLhsBatchMatMulToMulSum
+    : public OpRewritePattern<TFL::BatchMatMulOp> {
+  using OpRewritePattern<TFL::BatchMatMulOp>::OpRewritePattern;
+
+  // Upper bound on the elements of Y (and so of the MUL result) to keep the
+  // materialized product cheap relative to the matmul it replaces.
+  static constexpr int64_t kMaxRhsElements = 1 << 20;
+
+  LogicalResult matchAndRewrite(TFL::BatchMatMulOp bmm_op,
+                                PatternRewriter& rewriter) const override {
+    DenseElementsAttr lhs_value;
+    if (!matchPattern(bmm_op.getX(), m_Constant(&lhs_value)) ||
+        matchPattern(bmm_op.getY(), m_Constant())) {
+      return rewriter.notifyMatchFailure(
+          bmm_op, "lhs is not the only constant operand");
+    }
+    // A splat-ones LHS is a plain reduce_sum; leave it to
+    // ConvertBatchMatMulOpToReduceSum.
+    if (auto splat = mlir::dyn_cast<SplatElementsAttr>(lhs_value);
+        splat && mlir::isa<DenseFPElementsAttr>(splat) &&
+        splat.getSplatValue<APFloat>().isExactlyValue(1.0)) {
+      return rewriter.notifyMatchFailure(bmm_op, "lhs is a splat of ones");
+    }
+
+    auto lhs_type = mlir::dyn_cast<RankedTensorType>(bmm_op.getX().getType());
+    auto rhs_type = mlir::dyn_cast<RankedTensorType>(bmm_op.getY().getType());
+    auto out_type = mlir::dyn_cast<RankedTensorType>(bmm_op.getType());
+    if (!lhs_type || !rhs_type || !out_type || !lhs_type.hasStaticShape() ||
+        !rhs_type.hasStaticShape() || !out_type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(bmm_op, "shapes are not static");
+    }
+    if (!lhs_type.getElementType().isF32() ||
+        !rhs_type.getElementType().isF32() ||
+        !out_type.getElementType().isF32()) {
+      return rewriter.notifyMatchFailure(bmm_op, "not a float32 matmul");
+    }
+    const int64_t rank = out_type.getRank();
+    if (rank < 2 || lhs_type.getRank() != rank || rhs_type.getRank() != rank) {
+      return rewriter.notifyMatchFailure(bmm_op, "operand ranks differ");
+    }
+    if (rhs_type.getNumElements() > kMaxRhsElements) {
+      return rewriter.notifyMatchFailure(bmm_op, "rhs is too large");
+    }
+
+    llvm::ArrayRef<int64_t> lhs_shape = lhs_type.getShape();
+    llvm::ArrayRef<int64_t> rhs_shape = rhs_type.getShape();
+    const int64_t lhs_rows = lhs_shape[bmm_op.getAdjX() ? rank - 1 : rank - 2];
+    const int64_t lhs_cols = lhs_shape[bmm_op.getAdjX() ? rank - 2 : rank - 1];
+    // The contracting axis of Y, and the axis of Y the constant row runs along.
+    const int64_t rhs_contract_axis = bmm_op.getAdjY() ? rank - 1 : rank - 2;
+    if (lhs_rows != 1 || lhs_cols != rhs_shape[rhs_contract_axis]) {
+      return rewriter.notifyMatchFailure(bmm_op, "lhs is not a single row");
+    }
+    // The batch dimensions of X must broadcast onto Y without expanding Y.
+    for (int64_t i = 0; i < rank - 2; ++i) {
+      if (lhs_shape[i] != 1 && lhs_shape[i] != rhs_shape[i]) {
+        return rewriter.notifyMatchFailure(bmm_op,
+                                           "lhs batch dims do not broadcast");
+      }
+    }
+
+    // X holds exactly one row, so laying it along the contracting axis of Y is
+    // a reshape of the same elements.
+    llvm::SmallVector<int64_t> row_shape(lhs_shape.begin(),
+                                         lhs_shape.end() - 2);
+    row_shape.push_back(bmm_op.getAdjY() ? 1 : lhs_cols);
+    row_shape.push_back(bmm_op.getAdjY() ? lhs_cols : 1);
+    auto row_type = RankedTensorType::get(row_shape, rewriter.getF32Type());
+    auto row_const = TFL::ConstOp::create(rewriter, bmm_op.getLoc(),
+                                          lhs_value.reshape(row_type));
+
+    auto mul_op =
+        TFL::MulOp::create(rewriter, bmm_op.getLoc(), rhs_type, bmm_op.getY(),
+                           row_const, rewriter.getStringAttr("NONE"));
+
+    llvm::SmallVector<int64_t> sum_shape(rhs_shape.begin(), rhs_shape.end());
+    sum_shape[rhs_contract_axis] = 1;
+    auto sum_type = RankedTensorType::get(sum_shape, rewriter.getF32Type());
+    auto reduce_dim_op = TFL::ConstOp::create(
+        rewriter, bmm_op.getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({1}, rewriter.getI32Type()),
+            {static_cast<int32_t>(rhs_contract_axis)}));
+    auto sum_op = TFL::SumOp::create(rewriter, bmm_op.getLoc(), sum_type,
+                                     mul_op.getResult(), reduce_dim_op,
+                                     /*keep_dims=*/rewriter.getBoolAttr(true));
+
+    if (sum_type == out_type) {
+      rewriter.replaceOp(bmm_op, sum_op.getResult());
+      return success();
+    }
+    // adj_y: the sum is [..., N, 1] while the matmul result is [..., 1, N].
+    llvm::SmallVector<int32_t> out_shape(out_type.getShape().begin(),
+                                         out_type.getShape().end());
+    auto shape_const = TFL::ConstOp::create(
+        rewriter, bmm_op.getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({rank}, rewriter.getI32Type()), out_shape));
+    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
+        bmm_op, out_type, sum_op.getResult(), shape_const);
+    return success();
+  }
+};
+
 // Pattern to fuse transpose op into RHS of batch_matmul op if the transpose and
 // batch_matmul are separated by a reshape op; and the transpose op is used
 // exclusively to transpose the contracting dimension and the LHS-Output
@@ -462,10 +583,10 @@ void OptimizeBatchMatmulPass::runOnOperation() {
   auto* ctx = &getContext();
 
   RewritePatternSet patterns(ctx);
-  patterns
-      .add<ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs,
-           ConvertBatchMatMulOpToReduceSum, FuseRhsTransposeIntoBatchMatMulOp>(
-          ctx);
+  patterns.add<ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs,
+               ConvertBatchMatMulOpToReduceSum,
+               ConvertConstantRowLhsBatchMatMulToMulSum,
+               FuseRhsTransposeIntoBatchMatMulOp>(ctx);
   TFL::populateWithGenerated(patterns);
   (void)applyPatternsGreedily(func, std::move(patterns));
 }
