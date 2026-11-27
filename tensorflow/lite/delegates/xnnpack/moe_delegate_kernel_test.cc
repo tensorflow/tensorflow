@@ -14,19 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "xnnpack.h"  // from @XNNPACK
+#include "absl/algorithm/container.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 
 namespace tflite {
@@ -62,8 +66,8 @@ std::vector<uint8_t> MoeCustomData(const std::string& weight_type,
 
 // Builds a single-node interpreter holding one custom "moe" op so that
 // MoeExpertsDelegateKernel::IsSupported can be called against a real
-// TfLiteContext. The op is never invoked, so the tensor contents are
-// irrelevant; only types, shapes and constness matter.
+// TfLiteContext. For IsSupported the tensor contents are irrelevant; only
+// types, shapes and constness matter. Run invokes the op.
 class MoeNodeBuilder {
  public:
   MoeNodeBuilder() : interpreter_(std::make_unique<Interpreter>()) {
@@ -125,6 +129,20 @@ class MoeNodeBuilder {
                                         &registration_);
   }
 
+  // Adds a constant tensor holding `bytes` without making it a node input, so
+  // that one tensor can be passed as two inputs (see AddTensorInput).
+  int AddConstTensor(TfLiteType type, const std::vector<int>& shape,
+                     std::vector<char> bytes) {
+    buffers_.push_back(std::move(bytes));
+    interpreter_->AddTensors(1);
+    interpreter_->SetTensorParametersReadOnly(
+        next_tensor_, type, "", shape, {kTfLiteNoQuantization, nullptr},
+        buffers_.back().data(), buffers_.back().size());
+    return next_tensor_++;
+  }
+
+  void AddTensorInput(int tensor) { inputs_.push_back(tensor); }
+
   TfLiteStatus IsSupported() {
     const auto* pair = interpreter_->node_and_registration(0);
     return MoeExpertsDelegateKernel::IsSupported(
@@ -132,7 +150,39 @@ class MoeNodeBuilder {
         /*node_index=*/0);
   }
 
+  // Runs the node through the XNNPACK delegate, which hands a moe node to
+  // MoeExpertsDelegateKernel, and returns the output.
+  std::vector<float> Run(const std::vector<float>& src,
+                         const std::vector<float>& top_weights,
+                         const std::vector<int32_t>& top_indices) {
+    delegate_.reset(TfLiteXNNPackDelegateCreate(/*options=*/nullptr));
+    if (interpreter_->ModifyGraphWithDelegate(delegate_.get()) != kTfLiteOk ||
+        interpreter_->AllocateTensors() != kTfLiteOk) {
+      ADD_FAILURE() << "could not apply the XNNPACK delegate";
+      return {};
+    }
+    const std::vector<int>& plan = interpreter_->execution_plan();
+    if (plan.size() != 1 ||
+        interpreter_->node_and_registration(plan[0])->first.delegate !=
+            delegate_.get()) {
+      ADD_FAILURE() << "the XNNPACK delegate did not take the moe node";
+      return {};
+    }
+    absl::c_copy(src, interpreter_->typed_tensor<float>(inputs_[0]));
+    absl::c_copy(top_weights, interpreter_->typed_tensor<float>(inputs_[1]));
+    absl::c_copy(top_indices, interpreter_->typed_tensor<int32_t>(inputs_[2]));
+    if (interpreter_->Invoke() != kTfLiteOk) {
+      ADD_FAILURE() << "the moe node did not run";
+      return {};
+    }
+    const float* output = interpreter_->typed_tensor<float>(outputs_[0]);
+    return std::vector<float>(output, output + src.size());
+  }
+
  private:
+  // Declared before the interpreter, which has to be destroyed first.
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      delegate_{nullptr, &TfLiteXNNPackDelegateDelete};
   std::unique_ptr<Interpreter> interpreter_;
   TfLiteRegistration registration_;
   std::vector<int> inputs_;
@@ -314,6 +364,152 @@ TEST(MoeDelegateKernelInvokeTest, ExecutesSiluSingleAndMultiToken) {
   EXPECT_NEAR(out[1 * kModelDim + 0], silu(1.0f) * 2.0f * 1.5f * 0.5f, 1e-5f);
   EXPECT_NEAR(out[2 * kModelDim + 0], silu(-2.0f) * (-4.0f) * 1.5f * 2.0f,
               1e-5f);
+}
+
+// Where a node that is run takes its gate weights from.
+enum class Gate {
+  kFf1,        // the ff1 tensors themselves
+  kCopyOfFf1,  // separate tensors holding the ff1 values
+  kOther,      // separate tensors holding other values
+};
+
+// Deterministic values in [-1, 1].
+float Pattern(int i, int salt) {
+  return static_cast<float>((i * 37 + salt * 101) % 41 - 20) / 20.0f;
+}
+
+template <typename T>
+std::vector<char> AsBytes(const std::vector<T>& values) {
+  std::vector<char> bytes(values.size() * sizeof(T));
+  if (!values.empty()) {
+    std::memcpy(bytes.data(), values.data(), bytes.size());
+  }
+  return bytes;
+}
+
+// Adds a `rows` x `cols` expert weight tensor of `weight_type` (int4 packs two
+// values into each int8 byte) and its per-row scales. Returns the tensor
+// indices of the weights and the scales (-1 for fp32, which has no scales).
+std::pair<int, int> AddExpertWeight(MoeNodeBuilder& builder,
+                                    const std::string& weight_type, int rows,
+                                    int cols, int salt) {
+  const int count = rows * cols;
+  if (weight_type == "fp32") {
+    std::vector<float> weights(count);
+    for (int i = 0; i < count; ++i) {
+      weights[i] = Pattern(i, salt);
+    }
+    return {builder.AddConstTensor(kTfLiteFloat32, {count}, AsBytes(weights)),
+            -1};
+  }
+  const bool is_int8 = weight_type == "int8";
+  const int max_q = is_int8 ? 127 : 7;
+  std::vector<int8_t> weights(is_int8 ? count : (count + 1) / 2, 0);
+  for (int i = 0; i < count; ++i) {
+    const int q = static_cast<int>(std::lround(Pattern(i, salt) * max_q));
+    if (is_int8) {
+      weights[i] = static_cast<int8_t>(q);
+    } else {
+      weights[i / 2] =
+          static_cast<int8_t>(weights[i / 2] | ((q & 0xF) << (4 * (i % 2))));
+    }
+  }
+  std::vector<float> scales(rows);
+  for (int r = 0; r < rows; ++r) {
+    scales[r] = (0.5f + 0.1f * static_cast<float>(r % 5)) / max_q;
+  }
+  const int weight_tensor = builder.AddConstTensor(
+      kTfLiteInt8, {static_cast<int>(weights.size())}, AsBytes(weights));
+  return {weight_tensor,
+          builder.AddConstTensor(kTfLiteFloat32, {rows}, AsBytes(scales))};
+}
+
+// Runs one gelu_tanh moe node with one active expert per token, token t going
+// to expert top_indices[t], and returns its output.
+std::vector<float> RunMoe(const std::string& weight_type, Gate gate,
+                          const std::vector<int32_t>& top_indices) {
+  const int tokens = static_cast<int>(top_indices.size());
+  MoeNodeBuilder builder;
+  builder.AddInput(kTfLiteFloat32, {1, 1, tokens, kModelDim});
+  builder.AddInput(kTfLiteFloat32, {1, 1, tokens, kNumActiveExperts});
+  builder.AddInput(kTfLiteInt32, {1, 1, tokens, kNumActiveExperts});
+
+  const std::pair<int, int> ff1 = AddExpertWeight(
+      builder, weight_type, kGateFf1Rows, kModelDim, /*salt=*/1);
+  const std::pair<int, int> gate_weight =
+      gate == Gate::kFf1
+          ? ff1
+          : AddExpertWeight(builder, weight_type, kGateFf1Rows, kModelDim,
+                            /*salt=*/gate == Gate::kCopyOfFf1 ? 1 : 2);
+  const std::pair<int, int> linear = AddExpertWeight(
+      builder, weight_type, kLinearRows, kHiddenDim, /*salt=*/3);
+  const int per_expert_scale = builder.AddConstTensor(
+      kTfLiteFloat32, {kNumExperts}, AsBytes(std::vector<float>{1.0f, 0.5f}));
+
+  const bool is_quantized = weight_type != "fp32";
+  for (const std::pair<int, int>& weight : {gate_weight, ff1, linear}) {
+    builder.AddTensorInput(weight.first);
+    if (is_quantized) {
+      builder.AddTensorInput(weight.second);
+    }
+  }
+  builder.AddTensorInput(per_expert_scale);
+  builder.AddOutput(kTfLiteFloat32, {1, 1, tokens, kModelDim});
+  builder.SetCustomData(MoeCustomData(weight_type, "gelu_tanh"));
+  builder.Finish();
+
+  std::vector<float> src(tokens * kModelDim);
+  for (int i = 0; i < tokens * kModelDim; ++i) {
+    src[i] = Pattern(i, /*salt=*/4);
+  }
+  std::vector<float> top_weights(tokens);
+  for (int t = 0; t < tokens; ++t) {
+    top_weights[t] = 1.0f - 0.25f * static_cast<float>(t);
+  }
+  return builder.Run(src, top_weights, top_indices);
+}
+
+// A node whose gate input is its ff1 input, as a model with ungated experts
+// passes them, has to give the output of a node with a separate gate tensor
+// holding the same values. The node with other gate values is the control
+// that the output depends on the gate at all.
+void ExpectGateIsFf1MatchesSeparateGate(
+    const std::vector<int32_t>& top_indices) {
+  for (const char* weight_type : {"fp32", "int8", "int4"}) {
+    SCOPED_TRACE(weight_type);
+    const std::vector<float> separate =
+        RunMoe(weight_type, Gate::kCopyOfFf1, top_indices);
+    const std::vector<float> aliased =
+        RunMoe(weight_type, Gate::kFf1, top_indices);
+    const std::vector<float> other =
+        RunMoe(weight_type, Gate::kOther, top_indices);
+    ASSERT_EQ(separate.size(), top_indices.size() * kModelDim);
+    ASSERT_EQ(aliased.size(), separate.size());
+    ASSERT_EQ(other.size(), separate.size());
+    float max_output = 0.0f;
+    float max_other_difference = 0.0f;
+    for (size_t i = 0; i < separate.size(); ++i) {
+      EXPECT_NEAR(aliased[i], separate[i],
+                  1e-5f * std::max(1.0f, std::fabs(separate[i])))
+          << "output " << i;
+      max_output = std::max(max_output, std::fabs(separate[i]));
+      max_other_difference =
+          std::max(max_other_difference, std::fabs(other[i] - separate[i]));
+    }
+    EXPECT_GT(max_output, 1e-2f);
+    EXPECT_GT(max_other_difference, 1e-2f);
+  }
+}
+
+// Several tokens routed to one expert take the batched path (one dynamic fully
+// connected call for all of them).
+TEST(MoeDelegateKernelInvokeTest, GateIsFf1BatchedTokens) {
+  ExpectGateIsFf1MatchesSeparateGate({1, 1, 1});
+}
+
+// One token per expert takes the single-token path.
+TEST(MoeDelegateKernelInvokeTest, GateIsFf1SingleTokens) {
+  ExpectGateIsFf1MatchesSeparateGate({1, 0});
 }
 
 }  // namespace
