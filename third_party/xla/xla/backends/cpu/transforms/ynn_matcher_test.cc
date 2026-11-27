@@ -13,16 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 namespace {
@@ -394,6 +402,199 @@ TEST_F(YnnReduceTest, ReduceSquared) {
     CHECK: ENTRY
     CHECK: __ynn_fusion
   )");
+}
+
+struct Int8EltwiseTestCase {
+  absl::string_view dtype;
+  PrimitiveType type;
+  absl::string_view reducer;
+  absl::string_view op;
+  int init;
+  int a;
+  int b;
+  int expected;
+};
+
+class YnnReduceInt8EltwiseTest
+    : public YnnReduceTest,
+      public ::testing::WithParamInterface<Int8EltwiseTestCase> {
+ public:
+  static std::string Name(
+      const ::testing::TestParamInfo<Int8EltwiseTestCase>& info) {
+    return absl::StrCat(info.param.dtype, "_", info.param.reducer, "_",
+                        info.param.op);
+  }
+};
+
+// YNNPACK's 8-bit integer arithmetic saturates and its integer division rounds,
+// while XLA's integer arithmetic wraps and its division truncates, so these ops
+// must not be fused into YNNPACK.
+// https://github.com/openxla/xla/issues/51826
+TEST_P(YnnReduceInt8EltwiseTest, EltwiseAfterReduceWraps) {
+  constexpr absl::string_view kHloTemplate = R"(
+  HloModule int8_eltwise_after_reduce
+
+  reducer {
+    lhs = $dtype[] parameter(0)
+    rhs = $dtype[] parameter(1)
+    ROOT result = $dtype[] $reducer(lhs, rhs)
+  }
+
+  ENTRY main {
+    a = $dtype[1024,17] parameter(0)
+    b = $dtype[1024,17] parameter(1)
+    init = $dtype[] constant($init)
+    reduced = $dtype[17] reduce(a, init), dimensions={0}, to_apply=reducer
+    broadcast = $dtype[1024,17] broadcast(reduced), dimensions={1}
+    ROOT result = $dtype[1024,17] $op(broadcast, b)
+  }
+  )";
+
+  const Int8EltwiseTestCase& c = GetParam();
+  std::string hlo_text =
+      absl::StrReplaceAll(kHloTemplate, {{"$dtype", c.dtype},
+                                         {"$reducer", c.reducer},
+                                         {"$op", c.op},
+                                         {"$init", absl::StrCat(c.init)}});
+
+  // Only the reduce is offloaded to YNNPACK; the 8-bit op runs in a regular
+  // XLA:CPU loop fusion.
+  MatchOptimizedHlo(hlo_text, absl::StrReplaceAll(R"(
+    CHECK: ENTRY
+    CHECK-DAG: = $dtype[17]{0} fusion(%a), kind=kCustom, {{.+}}__ynn_fusion
+    CHECK-DAG: = $dtype[1024,17]{1,0} fusion({{.+}}), kind=kLoop
+  )",
+                                                  {{"$dtype", c.dtype}}));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(
+      Literal a,
+      LiteralUtil::CreateFull<int32_t>({1024, 17}, c.a).Convert(c.type));
+  ASSERT_OK_AND_ASSIGN(
+      Literal b,
+      LiteralUtil::CreateFull<int32_t>({1024, 17}, c.b).Convert(c.type));
+  ASSERT_OK_AND_ASSIGN(
+      Literal expected,
+      LiteralUtil::CreateFull<int32_t>({1024, 17}, c.expected).Convert(c.type));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&a, &b}));
+  EXPECT_TRUE(result == expected) << result.GetAsString({0, 0});
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    YnnReduceInt8EltwiseTestSuite, YnnReduceInt8EltwiseTest,
+    ::testing::ValuesIn({
+        Int8EltwiseTestCase{"u8", U8, "maximum", "add", 0, 255, 103, 102},
+        Int8EltwiseTestCase{"s8", S8, "maximum", "add", -128, 127, 1, -128},
+        Int8EltwiseTestCase{"u8", U8, "minimum", "subtract", 255, 0, 1, 255},
+        Int8EltwiseTestCase{"s8", S8, "maximum", "multiply", -128, 100, 2, -56},
+        Int8EltwiseTestCase{"s8", S8, "maximum", "divide", -128, 7, 2, 3},
+        Int8EltwiseTestCase{"s8", S8, "maximum", "power", -128, 2, 7, -128},
+    }),
+    YnnReduceInt8EltwiseTest::Name);
+
+struct Int8UnaryTestCase {
+  absl::string_view dtype;
+  PrimitiveType type;
+  absl::string_view op;
+  int init;
+  int a;
+  int expected;
+};
+
+class YnnReduceInt8UnaryTest
+    : public YnnReduceTest,
+      public ::testing::WithParamInterface<Int8UnaryTestCase> {
+ public:
+  static std::string Name(
+      const ::testing::TestParamInfo<Int8UnaryTestCase>& info) {
+    return absl::StrCat(info.param.dtype, "_", info.param.op);
+  }
+};
+
+// YNNPACK computes 8-bit integer unary ops in fp32 and saturates the result,
+// while XLA wraps, so these ops must not be fused into YNNPACK.
+TEST_P(YnnReduceInt8UnaryTest, UnaryBeforeReduceWraps) {
+  constexpr absl::string_view kHloTemplate = R"(
+  HloModule int8_unary_before_reduce
+
+  max {
+    lhs = $dtype[] parameter(0)
+    rhs = $dtype[] parameter(1)
+    ROOT max = $dtype[] maximum(lhs, rhs)
+  }
+
+  ENTRY main {
+    a = $dtype[1024,17] parameter(0)
+    unary = $dtype[1024,17] $op(a)
+    init = $dtype[] constant($init)
+    ROOT reduced = $dtype[17] reduce(unary, init), dimensions={0}, to_apply=max
+  }
+  )";
+
+  const Int8UnaryTestCase& c = GetParam();
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$dtype", c.dtype}, {"$op", c.op}, {"$init", absl::StrCat(c.init)}});
+
+  // Only the reduce is offloaded to YNNPACK; the 8-bit op runs in a regular
+  // XLA:CPU loop fusion.
+  MatchOptimizedHlo(hlo_text, absl::StrReplaceAll(R"(
+    CHECK: ENTRY
+    CHECK: = $dtype[1024,17]{1,0} fusion(%a), kind=kLoop
+    CHECK: = $dtype[17]{0} fusion({{.+}}), kind=kCustom, {{.+}}__ynn_fusion
+  )",
+                                                  {{"$dtype", c.dtype}}));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(
+      Literal a,
+      LiteralUtil::CreateFull<int32_t>({1024, 17}, c.a).Convert(c.type));
+  ASSERT_OK_AND_ASSIGN(
+      Literal expected,
+      LiteralUtil::CreateFull<int32_t>({17}, c.expected).Convert(c.type));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&a}));
+  EXPECT_TRUE(result == expected) << result.GetAsString({0});
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    YnnReduceInt8UnaryTestSuite, YnnReduceInt8UnaryTest,
+    ::testing::ValuesIn({
+        Int8UnaryTestCase{"u8", U8, "negate", 0, 1, 255},
+        Int8UnaryTestCase{"s8", S8, "negate", -128, -128, -128},
+        Int8UnaryTestCase{"s8", S8, "abs", -128, -128, -128},
+    }),
+    YnnReduceInt8UnaryTest::Name);
+
+// Integer max/min are exact in YNNPACK, so they are still fused.
+TEST_F(YnnReduceTest, Int8MaximumAfterReduceIsFused) {
+  const char* hlo_text = R"(
+  HloModule int8_maximum_after_reduce
+
+  max {
+    lhs = s8[] parameter(0)
+    rhs = s8[] parameter(1)
+    ROOT max = s8[] maximum(lhs, rhs)
+  }
+
+  ENTRY main {
+    a = s8[1024,17] parameter(0)
+    b = s8[1024,17] parameter(1)
+    init = s8[] constant(-128)
+    reduced = s8[17] reduce(a, init), dimensions={0}, to_apply=max
+    broadcast = s8[1024,17] broadcast(reduced), dimensions={1}
+    ROOT result = s8[1024,17] maximum(broadcast, b)
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: s8[17]{0} reduce(
+    CHECK: s8[1024,17]{1,0} maximum(
+    CHECK: ENTRY
+    CHECK: __ynn_fusion
+  )");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
 class YnnReduceEltwiseTest : public HloTestBase {

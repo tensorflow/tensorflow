@@ -381,10 +381,26 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
     return false;
   }
 
+  const bool is_8bit_int =
+      hlo->shape().element_type() == S8 || hlo->shape().element_type() == U8;
+
   switch (hlo->operand_count()) {
     case 1:
+      // YNNPACK computes 8-bit integer unary ops in fp32 and saturates the
+      // result, e.g. negate(s8(-128)) gives 127 instead of -128.
+      if (is_8bit_int && hlo->opcode() != HloOpcode::kConvert &&
+          hlo->opcode() != HloOpcode::kSign) {
+        return false;
+      }
       return YnnUnaryOperator(hlo->opcode()).ok();
     case 2:
+      // YNNPACK's 8-bit integer arithmetic saturates and its integer division
+      // rounds, while XLA's integer arithmetic wraps and its division
+      // truncates. Only maximum and minimum give the same results.
+      if (is_8bit_int && hlo->opcode() != HloOpcode::kMaximum &&
+          hlo->opcode() != HloOpcode::kMinimum) {
+        return false;
+      }
       return YnnBinaryOperator(hlo->opcode()).ok();
     default:
       return false;

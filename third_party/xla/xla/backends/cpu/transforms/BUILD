@@ -219,7 +219,11 @@ xla_test(
     backends = ["cpu"],
     deps = [
         "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "@com_google_absl//absl/strings",
