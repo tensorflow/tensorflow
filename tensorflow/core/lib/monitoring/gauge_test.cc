@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -85,6 +89,14 @@ TEST(GaugeOfStringValue, GetCell) {
   same_cell->Set("bar");
   EXPECT_EQ("bar", cell->value());
   EXPECT_EQ("bar", same_cell->value());
+
+  constexpr absl::string_view kBaz = "baz";
+  same_cell->Set(kBaz);
+  EXPECT_EQ("baz", cell->value());
+
+  std::string qux = "qux";
+  same_cell->Set(std::move(qux));
+  EXPECT_EQ("qux", cell->value());
 }
 
 auto* bool_gauge =
