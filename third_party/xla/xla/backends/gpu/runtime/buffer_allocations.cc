@@ -159,8 +159,11 @@ std::optional<BufferAllocation::Index> BufferAllocations::FindAllocationIndex(
     return std::nullopt;
   }
   --it;
-  // TODO(b/590382967): Add a bounds check once bug is fixed.
-  return it->index;
+  uint64_t offset = ptr - it->begin;
+  if (offset < it->size && addr.size() <= it->size - offset) {
+    return it->index;
+  }
+  return std::nullopt;
 }
 
 }  // namespace gpu

@@ -73,14 +73,12 @@ class BufferAllocations {
   se::DeviceAddressBase GetDeviceAddress(
       const BufferAllocation::Slice& buffer_slice) const;
 
-  // Returns the index of the allocation with the closest start address at or
-  // below `addr.opaque()` (or any matching index when identical buffers appear
-  // at multiple indices), or nullopt if there is none. The result is not
-  // checked against the allocation bounds, so callers must pass an address
-  // that lies within an allocation. Non-identical overlapping allocations are
-  // treated as an error: the first call logs an error and lookups return
-  // nullopt. The first call builds a sorted index in O(n log n); later lookups
-  // are O(log n).
+  // Returns the index of the allocation that fully contains `addr` (or any
+  // matching index when identical buffers appear at multiple indices), or
+  // nullopt if none does. Non-identical overlapping allocations are treated as
+  // an error: the first call logs an error and lookups return nullopt. The
+  // first call builds a sorted index in O(n log n); later lookups are
+  // O(log n).
   std::optional<BufferAllocation::Index> FindAllocationIndex(
       const se::DeviceAddressBase& addr) const;
 
