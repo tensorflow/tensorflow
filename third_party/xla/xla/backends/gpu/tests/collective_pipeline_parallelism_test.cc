@@ -967,7 +967,7 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
   ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), inputs,
-                        /*num_replicas=*/kNumPartitions,
+                        /*num_devices=*/kNumPartitions,
                         /*run_hlo_passes=*/false, &device_assignment));
 
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
@@ -1058,7 +1058,7 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
   ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), inputs,
-                        /*num_replicas=*/kNumPartitions,
+                        /*num_devices=*/kNumPartitions,
                         /*run_hlo_passes=*/false, &device_assignment));
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
   LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[1]);
@@ -1159,7 +1159,7 @@ TEST_P(CollectivePipelineParallelismTest, PartiallyPipelinedAsyncSendRecvLoop) {
   ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), inputs,
-                        /*num_replicas=*/kNumPartitions,
+                        /*num_devices=*/kNumPartitions,
                         /*run_hlo_passes=*/false, &device_assignment));
 
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
@@ -1262,7 +1262,7 @@ TEST_P(CollectivePipelineParallelismTest,
   ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), inputs,
-                        /*num_replicas=*/kNumPartitions,
+                        /*num_devices=*/kNumPartitions,
                         /*run_hlo_passes=*/false, &device_assignment));
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[1]);
@@ -2013,7 +2013,7 @@ ENTRY %main.204 (Arg_0.1: f32[4,16,16], Arg_1.2: f32[4,5,16,32])
   ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), args,
-                        /*num_replicas=*/kNumPartitions, &device_assignment,
+                        /*num_devices=*/kNumPartitions, &device_assignment,
                         /*run_hlo_passes=*/true, /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumPartitions);
 }
