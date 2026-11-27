@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 
@@ -60,9 +62,10 @@ class BaseConvolutionOpModel : public SingleOpModel {
       int stride_height = 2, enum Padding padding = Padding_VALID,
       enum ActivationFunctionType activation = ActivationFunctionType_NONE,
       int dilation_width_factor = 1, int dilation_height_factor = 1,
-      int num_threads = -1, std::initializer_list<FilterType> filter_data = {},
+      int num_threads = -1, const std::vector<FilterType>& filter_data = {},
       const TensorType bias_type = TensorType_INT32,
-      std::optional<TensorType> quantized_bias_type = std::nullopt) {
+      std::optional<TensorType> quantized_bias_type = std::nullopt,
+      bool apply_delegate = true, int version = 1) {
     input_ = AddInput(input);
 
     if (filter_data.size()) {
@@ -118,18 +121,23 @@ class BaseConvolutionOpModel : public SingleOpModel {
                      quantized_bias_type.value_or(bias_type))
                      .Union());
 
-    resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
-                                                   registration);
+    if (registration != nullptr) {
+      resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
+                                                     registration, version);
+    }
+    if (!apply_delegate) {
+      SetBypassDefaultDelegates();
+    }
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
                      num_threads, /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/true);
+                     apply_delegate);
   }
 
  protected:
-  int input_;
-  int filter_;
-  int bias_;
-  int output_;
+  int input_ = -1;
+  int filter_ = -1;
+  int bias_ = -1;
+  int output_ = -1;
 };
 
 class ConvolutionOpModel : public BaseConvolutionOpModel<float> {
@@ -138,13 +146,95 @@ class ConvolutionOpModel : public BaseConvolutionOpModel<float> {
 
   void SetFilter(std::initializer_list<float> f) { PopulateTensor(filter_, f); }
 
+  void SetFilter(const std::vector<float>& filter_values) {
+    PopulateTensor(filter_, filter_values);
+  }
+
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
+
+  void SetBias(const std::vector<float>& bias_values) {
+    PopulateTensor(bias_, bias_values);
+  }
 
   void SetInput(std::initializer_list<float> data) {
     PopulateTensor(input_, data);
   }
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+  void SetInput(const std::vector<float>& input_values) {
+    PopulateTensor(input_, input_values);
+  }
+
+  std::vector<float> GetOutput() const { return ExtractVector<float>(output_); }
 };
+
+class Float16FilterConvolutionOpModel : public BaseConvolutionOpModel<half> {
+ public:
+  Float16FilterConvolutionOpModel(
+      TfLiteRegistration* registration, const TensorData& input,
+      const TensorData& filter, const std::vector<half>& filter_data,
+      const TensorData& output, int stride_width = 2, int stride_height = 2,
+      Padding padding = Padding_VALID,
+      ActivationFunctionType activation = ActivationFunctionType_NONE,
+      int dilation_width_factor = 1, int dilation_height_factor = 1,
+      int num_threads = -1, bool apply_delegate = true)
+      : BaseConvolutionOpModel<half>(
+            registration, input, filter, output, stride_width, stride_height,
+            padding, activation, dilation_width_factor, dilation_height_factor,
+            num_threads, filter_data, TensorType_FLOAT32,
+            /*quantized_bias_type=*/std::nullopt, apply_delegate,
+            /*version=*/9) {}
+
+  void SetBias(const std::vector<float>& bias_values) {
+    PopulateTensor(bias_, bias_values);
+  }
+
+  void SetInput(std::initializer_list<float> input_values) {
+    PopulateTensor(input_, input_values);
+  }
+
+  void SetInput(const std::vector<float>& input_values) {
+    PopulateTensor(input_, input_values);
+  }
+
+  TfLiteStatus ResizeInput(const std::vector<int>& new_shape) {
+    return interpreter_->ResizeInputTensor(input_, new_shape);
+  }
+
+  int CountTemporaryTensors() const {
+    const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
+        interpreter_->node_and_registration(0);
+    if (node_and_reg == nullptr || node_and_reg->first.temporaries == nullptr) {
+      return 0;
+    }
+    return node_and_reg->first.temporaries->size;
+  }
+
+  std::vector<float> GetOutput() const { return ExtractVector<float>(output_); }
+};
+
+// Widens FP16 filter weights to FP32 and runs the undelegated reference FP32
+// CONV_2D kernel to compute expected output activations.
+TfLiteStatus RunFloat32ReferenceConv(
+    const std::vector<int>& input_shape, const std::vector<float>& input_data,
+    const std::vector<int>& filter_shape, const std::vector<half>& filter_data,
+    const std::vector<float>& bias_data, int stride_width, int stride_height,
+    Padding padding, ActivationFunctionType activation,
+    int dilation_width_factor, int dilation_height_factor,
+    std::vector<float>& output) {
+  ConvolutionOpModel conv_model(
+      ops::builtin::Register_CONVOLUTION_REF(),
+      {TensorType_FLOAT32, input_shape}, {TensorType_FLOAT32, filter_shape},
+      {TensorType_FLOAT32, {}}, stride_width, stride_height, padding,
+      activation, dilation_width_factor, dilation_height_factor,
+      /*num_threads=*/-1, /*filter_data=*/{}, TensorType_INT32,
+      /*quantized_bias_type=*/std::nullopt, /*apply_delegate=*/false);
+  conv_model.SetInput(input_data);
+  conv_model.SetFilter(ToVector<float>(filter_data));
+  conv_model.SetBias(bias_data);
+  TF_LITE_ENSURE_STATUS(conv_model.Invoke());
+  output = conv_model.GetOutput();
+  return kTfLiteOk;
+}
 
 template <typename FilterType>
 class PrepareOnlyConvolutionOpModel : public SingleOpModel {
@@ -156,7 +246,7 @@ class PrepareOnlyConvolutionOpModel : public SingleOpModel {
       enum ActivationFunctionType activation = ActivationFunctionType_NONE,
       int dilation_width_factor = 1, int dilation_height_factor = 1,
       int num_threads = -1, bool const_filter = false,
-      const TensorType bias_type = TensorType_INT32) {
+      const TensorType bias_type = TensorType_INT32, bool include_bias = true) {
     input_ = AddInput(input);
     if (const_filter) {
       filter_ = AddConstInput(
@@ -165,36 +255,38 @@ class PrepareOnlyConvolutionOpModel : public SingleOpModel {
       filter_ = AddInput(filter);
     }
 
-    const int bias_size = GetShape(filter_)[0];
-    if (input.type == TensorType_FLOAT32) {
-      bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
-    } else {
-      if (filter.per_channel_quantization) {
-        std::vector<float> bias_scale(
-            filter.per_channel_quantization_scales.size());
-        std::vector<int64_t> bias_zero_points(
-            filter.per_channel_quantization_scales.size());
-        for (size_t i = 0; i < filter.per_channel_quantization_scales.size();
-             ++i) {
-          bias_scale[i] =
-              input.scale * filter.per_channel_quantization_scales[i];
-          bias_zero_points[i] = 0;
-        }
-        TensorData bias{bias_type,
-                        {bias_size},
-                        /*min=*/0,
-                        /*max=*/0,
-                        /*scale=*/0,
-                        /*zero_point=*/0,
-                        true,
-                        /*per_channel_quantization_scales=*/bias_scale,
-                        /*per_channel_quantization_offsets=*/bias_zero_points,
-                        /*channel_index==*/0};
-        bias_ = AddInput(bias);
+    if (include_bias) {
+      const int bias_size = GetShape(filter_)[0];
+      if (input.type == TensorType_FLOAT32) {
+        bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
       } else {
-        const auto bias_scale = GetScale(input_) * GetScale(filter_);
-        TensorData bias{bias_type, {bias_size}, 0, 0, bias_scale};
-        bias_ = AddInput(bias);
+        if (filter.per_channel_quantization) {
+          std::vector<float> bias_scale(
+              filter.per_channel_quantization_scales.size());
+          std::vector<int64_t> bias_zero_points(
+              filter.per_channel_quantization_scales.size());
+          for (size_t i = 0; i < filter.per_channel_quantization_scales.size();
+               ++i) {
+            bias_scale[i] =
+                input.scale * filter.per_channel_quantization_scales[i];
+            bias_zero_points[i] = 0;
+          }
+          TensorData bias{bias_type,
+                          {bias_size},
+                          /*min=*/0,
+                          /*max=*/0,
+                          /*scale=*/0,
+                          /*zero_point=*/0,
+                          true,
+                          /*per_channel_quantization_scales=*/bias_scale,
+                          /*per_channel_quantization_offsets=*/bias_zero_points,
+                          /*channel_index==*/0};
+          bias_ = AddInput(bias);
+        } else {
+          const auto bias_scale = GetScale(input_) * GetScale(filter_);
+          TensorData bias{bias_type, {bias_size}, 0, 0, bias_scale};
+          bias_ = AddInput(bias);
+        }
       }
     }
 
@@ -208,17 +300,22 @@ class PrepareOnlyConvolutionOpModel : public SingleOpModel {
 
     resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
                                                    registration);
-    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
-                     num_threads, /*allow_fp32_relax_to_fp16=*/false,
+    std::vector<std::vector<int>> input_shapes = {GetShape(input_),
+                                                  GetShape(filter_)};
+    if (include_bias) {
+      input_shapes.push_back(GetShape(bias_));
+    }
+    BuildInterpreter(input_shapes, num_threads,
+                     /*allow_fp32_relax_to_fp16=*/false,
                      /*apply_delegate=*/false,
                      /*allocate_and_delegate=*/false);
   }
 
  private:
-  int input_;
-  int filter_;
-  int bias_;
-  int output_;
+  int input_ = -1;
+  int filter_ = -1;
+  int bias_ = -1;
+  int output_ = -1;
 };
 
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
@@ -2900,6 +2997,433 @@ TEST(ConvPrepareSecurityTest, RejectsInputElementOverflowWithStridedIm2Col) {
   EXPECT_FALSE(state.resize_tensor_called);
   EXPECT_FALSE(state.add_tensors_called);
   registration->free(&context, node.user_data);
+}
+
+TEST_P(ConvolutionOpTest, SimpleTestFloat16Filter) {
+  const std::vector<half> filter_data = {
+      half(1.0f),  half(2.0f),  half(3.0f),  half(4.0f),  // first 2x2 filter
+      half(-1.0f), half(1.0f),  half(-1.0f), half(1.0f),  // second 2x2 filter
+      half(-1.0f), half(-1.0f), half(1.0f),  half(1.0f),  // third 2x2 filter
+  };
+  Float16FilterConvolutionOpModel model(GetRegistration(),
+                                        {TensorType_FLOAT32, {2, 2, 4, 1}},
+                                        {TensorType_FLOAT16, {3, 2, 2, 1}},
+                                        filter_data, {TensorType_FLOAT32, {}});
+
+  model.SetInput({
+      // First batch
+      1,
+      1,
+      1,
+      1,  // row = 1
+      2,
+      2,
+      2,
+      2,  // row = 2
+      // Second batch
+      1,
+      2,
+      3,
+      4,  // row = 1
+      1,
+      2,
+      3,
+      4,  // row = 2
+  });
+  model.SetBias({1, 2, 3});
+
+  EXPECT_EQ(model.CountTemporaryTensors(), 0);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({
+                                     18,
+                                     2,
+                                     5,  // first batch, left
+                                     18,
+                                     2,
+                                     5,  // first batch, right
+                                     17,
+                                     4,
+                                     3,  // second batch, left
+                                     37,
+                                     4,
+                                     3,  // second batch, right
+                                 }));
+}
+
+TEST_P(ConvolutionOpTest, Float16FilterMatchesDequantizePlusFloat32Conv) {
+  const std::vector<int> input_shape = {2, 4, 5, 3};
+  std::vector<float> input_data(2 * 4 * 5 * 3);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] =
+        (static_cast<int>(i % 13) - 6) * 0.25f + (1.0f / 1048576.0f);
+  }
+  const std::vector<int> filter_shape = {4, 3, 2, 3};
+  std::vector<half> filter_data(4 * 3 * 2 * 3);
+  for (size_t i = 0; i < filter_data.size(); ++i) {
+    filter_data[i] = half((static_cast<int>(i % 11) - 5) * 0.375f);
+  }
+  const std::vector<float> bias_data = {
+      0.125f + (1.0f / 524288.0f),
+      -1.5f - (1.0f / 1048576.0f),
+      0.75f,
+      2.25f,
+  };
+
+  for (Padding padding : {Padding_SAME, Padding_VALID}) {
+    for (int stride : {1, 2}) {
+      for (int dilation : {1, 2}) {
+        if (padding == Padding_VALID && dilation == 2) {
+          // filter_height=3 with dilation=2 needs input_height >= 5 for VALID.
+          continue;
+        }
+        for (ActivationFunctionType activation :
+             {ActivationFunctionType_NONE, ActivationFunctionType_RELU,
+              ActivationFunctionType_RELU_N1_TO_1,
+              ActivationFunctionType_RELU6}) {
+          Float16FilterConvolutionOpModel model(
+              GetRegistration(), {TensorType_FLOAT32, input_shape},
+              {TensorType_FLOAT16, filter_shape}, filter_data,
+              {TensorType_FLOAT32, {}}, stride, stride, padding, activation,
+              dilation, dilation);
+          model.SetInput(input_data);
+          model.SetBias(bias_data);
+          EXPECT_EQ(model.CountTemporaryTensors(), 0);
+          ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+          std::vector<float> expected;
+          ASSERT_EQ(RunFloat32ReferenceConv(
+                        input_shape, input_data, filter_shape, filter_data,
+                        bias_data, stride, stride, padding, activation,
+                        dilation, dilation, expected),
+                    kTfLiteOk);
+          EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(ConvolutionOpTest, Float16FilterGroupedConvolution) {
+  const std::vector<int> input_shape = {2, 3, 3, 4};
+  std::vector<float> input_data(2 * 3 * 3 * 4);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = (static_cast<int>(i % 9) - 4) * 0.5f;
+  }
+  // 2 groups: input_depth=4, filter_input_depth=2, output_depth=4.
+  const std::vector<int> filter_shape = {4, 2, 2, 2};
+  std::vector<half> filter_data(4 * 2 * 2 * 2);
+  for (size_t i = 0; i < filter_data.size(); ++i) {
+    filter_data[i] = half((static_cast<int>(i % 7) - 3) * 0.25f);
+  }
+  const std::vector<float> bias_data = {0.5f, -0.25f, 1.25f, -0.75f};
+
+  Float16FilterConvolutionOpModel model(
+      GetRegistration(), {TensorType_FLOAT32, input_shape},
+      {TensorType_FLOAT16, filter_shape}, filter_data, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1, Padding_SAME,
+      ActivationFunctionType_NONE);
+  model.SetInput(input_data);
+  model.SetBias(bias_data);
+  EXPECT_EQ(model.CountTemporaryTensors(), 0);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  std::vector<float> expected;
+  ASSERT_EQ(RunFloat32ReferenceConv(input_shape, input_data, filter_shape,
+                                    filter_data, bias_data,
+                                    /*stride_width=*/1, /*stride_height=*/1,
+                                    Padding_SAME, ActivationFunctionType_NONE,
+                                    /*dilation_width_factor=*/1,
+                                    /*dilation_height_factor=*/1, expected),
+            kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected));
+}
+
+TEST(Float16FilterConvolutionRegistrationTest,
+     MultithreadedThreadCountsAndDefaultRegistration) {
+  const std::vector<int> input_shape = {2, 4, 4, 3};
+  std::vector<float> input_data(2 * 4 * 4 * 3);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = (static_cast<int>(i % 11) - 5) * 0.5f;
+  }
+  const std::vector<int> filter_shape = {4, 3, 3, 3};
+  std::vector<half> filter_data(4 * 3 * 3 * 3);
+  for (size_t i = 0; i < filter_data.size(); ++i) {
+    filter_data[i] = half((static_cast<int>(i % 7) - 3) * 0.5f);
+  }
+  const std::vector<float> bias_data = {0.25f, -0.5f, 0.75f, -1.0f};
+
+  std::vector<float> expected;
+  ASSERT_EQ(RunFloat32ReferenceConv(input_shape, input_data, filter_shape,
+                                    filter_data, bias_data,
+                                    /*stride_width=*/1, /*stride_height=*/1,
+                                    Padding_SAME, ActivationFunctionType_NONE,
+                                    /*dilation_width_factor=*/1,
+                                    /*dilation_height_factor=*/1, expected),
+            kTfLiteOk);
+
+  for (int num_threads : {1, 2, 4}) {
+#ifndef TFLITE_WITH_RUY
+    Float16FilterConvolutionOpModel mt_model(
+        ops::builtin::Register_CONVOLUTION_MULTITHREADED_OPT(),
+        {TensorType_FLOAT32, input_shape}, {TensorType_FLOAT16, filter_shape},
+        filter_data, {TensorType_FLOAT32, {}}, /*stride_width=*/1,
+        /*stride_height=*/1, Padding_SAME, ActivationFunctionType_NONE,
+        /*dilation_width_factor=*/1, /*dilation_height_factor=*/1, num_threads,
+        /*apply_delegate=*/false);
+    mt_model.SetInput(input_data);
+    mt_model.SetBias(bias_data);
+    EXPECT_EQ(mt_model.CountTemporaryTensors(), 0);
+    ASSERT_EQ(mt_model.Invoke(), kTfLiteOk);
+    EXPECT_THAT(mt_model.GetOutput(), ElementsAreArray(expected));
+#endif
+
+    Float16FilterConvolutionOpModel default_model(
+        /*registration=*/nullptr, {TensorType_FLOAT32, input_shape},
+        {TensorType_FLOAT16, filter_shape}, filter_data,
+        {TensorType_FLOAT32, {}}, /*stride_width=*/1, /*stride_height=*/1,
+        Padding_SAME, ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, num_threads, /*apply_delegate=*/false);
+    default_model.SetInput(input_data);
+    default_model.SetBias(bias_data);
+    EXPECT_EQ(default_model.CountTemporaryTensors(), 0);
+    ASSERT_EQ(default_model.Invoke(), kTfLiteOk);
+    EXPECT_THAT(default_model.GetOutput(), ElementsAreArray(expected));
+  }
+}
+
+TEST_P(ConvolutionOpTest, Float16FilterSpecialValuesAndFp32Accumulation) {
+  // 4 output channels over a 1x1x3 input:
+  // Channel 0: cancellation 2048 + 1 - 2048 = 1 (would be 0 in FP16 accum).
+  // Channel 1: product exceeding FP16 max (2 * 65504 = 131008, +inf in FP16).
+  // Channel 2: subnormal FP16 weights (0x0001 = 2^-24, 0x03ff, 0x8001 = -2^-24)
+  //            and non-FP16-representable FP32 bias.
+  // Channel 3: signed zero weights (+0.0 = 0x0000, -0.0 = 0x8000).
+  const std::vector<int> input_shape = {1, 1, 1, 3};
+  const float precise_fp32_in = 1.0f + (1.0f / 1048576.0f);
+  const std::vector<float> input_data = {1.0f, 1.0f, precise_fp32_in};
+
+  const std::vector<int> filter_shape = {4, 1, 1, 3};
+  const std::vector<half> filter_data = {
+      // Channel 0: 2048, 1, -2048
+      half(2048.0f),
+      half(1.0f),
+      half(-2048.0f),
+      // Channel 1: 65504, 65504, 0
+      half::from_bits(0x7bff),
+      half::from_bits(0x7bff),
+      half::from_bits(0x0000),
+      // Channel 2: smallest subnormal, largest subnormal, negative subnormal
+      half::from_bits(0x0001),
+      half::from_bits(0x03ff),
+      half::from_bits(0x8001),
+      // Channel 3: +0.0, -0.0, +0.0
+      half::from_bits(0x0000),
+      half::from_bits(0x8000),
+      half::from_bits(0x0000),
+  };
+  const float precise_fp32_bias = 0.5f + (1.0f / 2097152.0f);
+  const std::vector<float> bias_data = {
+      2048.0f * (precise_fp32_in - 1.0f),
+      0.0f,
+      precise_fp32_bias,
+      -0.0f,
+  };
+
+  Float16FilterConvolutionOpModel model(
+      GetRegistration(), {TensorType_FLOAT32, input_shape},
+      {TensorType_FLOAT16, filter_shape}, filter_data, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+      ActivationFunctionType_NONE);
+  model.SetInput(input_data);
+  model.SetBias(bias_data);
+  EXPECT_EQ(model.CountTemporaryTensors(), 0);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  const std::vector<float> actual = model.GetOutput();
+  std::vector<float> expected;
+  ASSERT_EQ(RunFloat32ReferenceConv(input_shape, input_data, filter_shape,
+                                    filter_data, bias_data,
+                                    /*stride_width=*/1, /*stride_height=*/1,
+                                    Padding_VALID, ActivationFunctionType_NONE,
+                                    /*dilation_width_factor=*/1,
+                                    /*dilation_height_factor=*/1, expected),
+            kTfLiteOk);
+  EXPECT_THAT(actual, ElementsAreArray(expected));
+  EXPECT_EQ(actual[0], 1.0f);
+  EXPECT_EQ(actual[1], 131008.0f);
+}
+
+TEST_P(ConvolutionOpTest, Float16FilterResizeInputAndRepeatedPrepare) {
+  const std::vector<int> filter_shape = {2, 2, 2, 1};
+  const std::vector<half> filter_data = {
+      half(1.0f),  half(2.0f), half(3.0f), half(4.0f),
+      half(-1.0f), half(0.5f), half(1.5f), half(-2.0f),
+  };
+  const std::vector<float> bias_data = {0.5f, -0.5f};
+
+  Float16FilterConvolutionOpModel model(
+      GetRegistration(), {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT16, filter_shape}, filter_data, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+      ActivationFunctionType_NONE);
+  model.SetInput({1.0f, 2.0f, 3.0f, 4.0f});
+  model.SetBias(bias_data);
+  EXPECT_EQ(model.CountTemporaryTensors(), 0);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({30.5f, -4.0f}));
+
+  const std::vector<int> resized_shape = {2, 3, 3, 1};
+  const std::vector<float> resized_input = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9,  // batch 0
+      9, 8, 7, 6, 5, 4, 3, 2, 1,  // batch 1
+  };
+  ASSERT_EQ(model.ResizeInput(resized_shape), kTfLiteOk);
+  ASSERT_EQ(model.AllocateTensors(), kTfLiteOk);
+  EXPECT_EQ(model.CountTemporaryTensors(), 0);
+  model.SetInput(resized_input);
+  model.SetBias(bias_data);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  std::vector<float> expected;
+  ASSERT_EQ(RunFloat32ReferenceConv(resized_shape, resized_input, filter_shape,
+                                    filter_data, bias_data,
+                                    /*stride_width=*/1, /*stride_height=*/1,
+                                    Padding_VALID, ActivationFunctionType_NONE,
+                                    /*dilation_width_factor=*/1,
+                                    /*dilation_height_factor=*/1, expected),
+            kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected));
+}
+
+TEST(Float16FilterConvolutionRejectTest, RejectsUnsupportedSignatures) {
+  // Missing bias tensor (2-input node) with FLOAT16 filter must be rejected.
+  {
+    PrepareOnlyConvolutionOpModel<half> missing_bias(
+        ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+        {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 1, 1, 1}},
+        {TensorType_FLOAT32, {}},
+        /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+        ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, /*num_threads=*/1,
+        /*const_filter=*/true, /*bias_type=*/TensorType_FLOAT32,
+        /*include_bias=*/false);
+    EXPECT_EQ(missing_bias.AllocateTensors(), kTfLiteError);
+  }
+
+  // Non-constant (arena-allocated) FP16 filter must be rejected.
+  {
+    PrepareOnlyConvolutionOpModel<half> non_const_filter(
+        ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+        {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 2, 2, 1}},
+        {TensorType_FLOAT32, {}},
+        /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+        ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, /*num_threads=*/1,
+        /*const_filter=*/false);
+    EXPECT_EQ(non_const_filter.AllocateTensors(), kTfLiteError);
+  }
+
+  // Dynamic FP16 filter must be rejected.
+  {
+    PrepareOnlyConvolutionOpModel<half> dynamic_filter(
+        ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+        {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 1, 1, 1}},
+        {TensorType_FLOAT32, {}},
+        /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+        ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, /*num_threads=*/1,
+        /*const_filter=*/false);
+    const TfLiteAllocationType orig_alloc =
+        dynamic_filter.GetInputTensor(1)->allocation_type;
+    dynamic_filter.GetInputTensor(1)->allocation_type = kTfLiteDynamic;
+    EXPECT_EQ(dynamic_filter.AllocateTensors(), kTfLiteError);
+    dynamic_filter.GetInputTensor(1)->allocation_type = orig_alloc;
+  }
+
+  // Sparse FP16 filter must be rejected.
+  {
+    PrepareOnlyConvolutionOpModel<half> sparse_filter(
+        ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+        {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 1, 1, 1}},
+        {TensorType_FLOAT32, {}},
+        /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+        ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, /*num_threads=*/1,
+        /*const_filter=*/true);
+    TfLiteSparsity dummy_sparsity = {};
+    sparse_filter.GetInputTensor(1)->sparsity = &dummy_sparsity;
+    EXPECT_EQ(sparse_filter.AllocateTensors(), kTfLiteError);
+    sparse_filter.GetInputTensor(1)->sparsity = nullptr;
+  }
+
+  // Mismatched output type (FLOAT16 output with FLOAT32 input and FLOAT16
+  // filter) must be rejected.
+  {
+    PrepareOnlyConvolutionOpModel<half> fp16_output(
+        ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+        {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 1, 1, 1}},
+        {TensorType_FLOAT16, {}},
+        /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+        ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, /*num_threads=*/1,
+        /*const_filter=*/true);
+    EXPECT_EQ(fp16_output.AllocateTensors(), kTfLiteError);
+  }
+
+  // Mismatched input/output type (all FLOAT16) must be rejected.
+  {
+    PrepareOnlyConvolutionOpModel<half> all_fp16(
+        ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+        {TensorType_FLOAT16, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 1, 1, 1}},
+        {TensorType_FLOAT16, {}},
+        /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+        ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, /*num_threads=*/1,
+        /*const_filter=*/true, /*bias_type=*/TensorType_FLOAT16);
+    EXPECT_EQ(all_fp16.AllocateTensors(), kTfLiteError);
+  }
+
+  // Mismatched bias type (FLOAT16 bias with FLOAT32 input and FLOAT16 filter)
+  // must be rejected.
+  {
+    PrepareOnlyConvolutionOpModel<half> fp16_bias(
+        ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+        {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 1, 1, 1}},
+        {TensorType_FLOAT32, {}},
+        /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+        ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, /*num_threads=*/1,
+        /*const_filter=*/true);
+    fp16_bias.GetInputTensor(2)->type = kTfLiteFloat16;
+    EXPECT_EQ(fp16_bias.AllocateTensors(), kTfLiteError);
+  }
+
+  // INT8 input with FLOAT16 filter must be rejected.
+  {
+    PrepareOnlyConvolutionOpModel<half> int8_input_fp16_filter(
+        ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+        {TensorType_INT8, {1, 2, 2, 1}, -1.0f, 1.0f},
+        {TensorType_FLOAT16, {1, 1, 1, 1}}, {TensorType_INT8, {}, -1.0f, 1.0f},
+        /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+        ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, /*num_threads=*/1,
+        /*const_filter=*/true);
+    EXPECT_EQ(int8_input_fp16_filter.AllocateTensors(), kTfLiteError);
+  }
+
+  // Unsupported filter type (INT16 filter with FLOAT32 input) must be rejected.
+  {
+    PrepareOnlyConvolutionOpModel<int16_t> fp32_input_int16_filter(
+        ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+        {TensorType_FLOAT32, {1, 2, 2, 1}},
+        {TensorType_INT16, {1, 1, 1, 1}, -1.0f, 1.0f}, {TensorType_FLOAT32, {}},
+        /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+        ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1, /*num_threads=*/1,
+        /*const_filter=*/true);
+    EXPECT_EQ(fp32_input_int16_filter.AllocateTensors(), kTfLiteError);
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
