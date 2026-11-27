@@ -144,7 +144,7 @@ inline WorkQueue::WorkQueue(size_t num_work_items, size_t num_partitions)
 
 inline std::optional<size_t> WorkQueue::Pop(size_t partition_index) {
   DCHECK(partition_index < partitions_.size()) << "Invalid partition index";
-  Partition& partition = partitions_.data()[partition_index];
+  Partition& partition = partitions_[partition_index];
 
   // Check if partition is already empty.
   if (size_t index = partition.index.load(std::memory_order_relaxed);

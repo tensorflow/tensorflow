@@ -65,7 +65,7 @@ StatusOr<T> GetNext(Iterator& iterator) {
   if (result.size() != 1) {
     return absl::InternalError("GetNext result Tensor size should be 1.");
   }
-  return result[0].unaligned_flat<T>().data()[0];
+  return result[0].unaligned_flat<T>()(0);
 }
 
 TEST(TaskRunnerCheckpointTest, SaveAndRestoreFromCheckpoints) {

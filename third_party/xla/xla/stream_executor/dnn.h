@@ -108,7 +108,7 @@ inline void SetDim(std::vector<int64_t>* data, DimIndex dim, int64_t value) {
 template <typename T>
 inline absl::Span<const int64_t> AsInt64Slice(const T& repeated_field) {
   using data_ty =
-      typename std::remove_reference<decltype(*repeated_field.data())>::type;
+      typename std::remove_reference<decltype(repeated_field[0])>::type;
   static_assert(std::is_integral<data_ty>::value &&
                     std::is_signed<data_ty>::value && sizeof(data_ty) == 8,
                 "repeated_field.data() must return a pointer to a signed "
@@ -120,7 +120,7 @@ inline absl::Span<const int64_t> AsInt64Slice(const T& repeated_field) {
 template <typename T>
 inline absl::Span<int64_t> AsInt64Slice(T* repeated_field) {
   using data_ty =
-      typename std::remove_reference<decltype(*repeated_field->data())>::type;
+      typename std::remove_reference<decltype((*repeated_field)[0])>::type;
   static_assert(std::is_integral<data_ty>::value &&
                     std::is_signed<data_ty>::value && sizeof(data_ty) == 8,
                 "repeated_field->data() must return a pointer to a signed "
