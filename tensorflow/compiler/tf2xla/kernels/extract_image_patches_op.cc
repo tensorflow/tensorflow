@@ -14,20 +14,28 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/util/overflow.h"
+#include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -113,10 +121,12 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     int64_t kernel_size = 1;
     for (int i = 0; i < num_spatial_dims; ++i) {
       int input_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-      kernel_size *= ksizes_[input_dim];
+      kernel_size = MultiplyWithoutOverflow(kernel_size, ksizes_[input_dim]);
     }
+    OP_REQUIRES(ctx, kernel_size >= 0,
+                absl::InvalidArgumentError("Kernel size is too large"));
 
-    xla::PaddingConfig padding_config = xla::MakeNoPaddingConfig(num_dims);
+    std::vector<std::pair<int64_t, int64_t>> padding(num_dims, {0, 0});
     bool has_padding = false;
     std::vector<int64_t> output_sizes(num_spatial_dims);
 
@@ -130,58 +140,90 @@ class ExtractImagePatchesOp : public XlaOpKernel {
                               &output_sizes[i], &pad_low, &pad_high));
       if (pad_low != 0 || pad_high != 0) {
         has_padding = true;
-        padding_config.mutable_dimensions(dim)->set_edge_padding_low(pad_low);
-        padding_config.mutable_dimensions(dim)->set_edge_padding_high(pad_high);
+        padding[dim] = {pad_low, pad_high};
       }
     }
-
-    xla::XlaOp padded_input = ctx->Input(0);
-    if (has_padding) {
-      padded_input =
-          xla::Pad(padded_input, xla::Zero(builder, type), padding_config);
+    std::vector<int64_t> padded_dims;
+    padded_dims.reserve(num_dims);
+    for (int i = 0; i < num_dims; ++i) {
+      padded_dims.push_back(AddWithoutOverflow(
+          input_shape.dim_size(i),
+          AddWithoutOverflow(padding[i].first, padding[i].second)));
     }
 
-    std::vector<xla::XlaOp> slices;
-    slices.reserve(kernel_size);
-
-    std::vector<int64_t> start_indices(num_dims, 0);
-    std::vector<int64_t> limit_indices(num_dims, 0);
-    std::vector<int64_t> slice_strides(num_dims, 1);
-    limit_indices[batch_dim] = input_shape.dim_size(batch_dim);
-    limit_indices[feature_dim] = depth;
+    std::vector<int64_t> output_dims(num_dims);
+    output_dims[batch_dim] = input_shape.dim_size(batch_dim);
+    output_dims[feature_dim] = MultiplyWithoutOverflow(kernel_size, depth);
+    bool empty_output = output_dims[batch_dim] == 0 || depth == 0;
     for (int i = 0; i < num_spatial_dims; ++i) {
+      output_dims[GetTensorSpatialDimIndex(num_dims, data_format, i)] =
+          output_sizes[i];
+      empty_output |= output_sizes[i] == 0;
+    }
+    TensorShape output_shape;
+    OP_REQUIRES_OK(ctx,
+                   TensorShape::BuildTensorShape(output_dims, &output_shape));
+    // XLA shape inference aborts on a shape whose byte size overflows, so
+    // validate each shape before the builder sees it.
+    OP_REQUIRES_OK(
+        ctx, xla::ShapeUtil::MakeValidatedShape(type, output_dims).status());
+    if (empty_output) {
+      ctx->SetOutput(0, xla::Broadcast(xla::Zero(builder, type), output_dims));
+      return;
+    }
+
+    xla::XlaOp patches = ctx->Input(0);
+    if (has_padding) {
+      OP_REQUIRES_OK(
+          ctx, xla::ShapeUtil::MakeValidatedShape(type, padded_dims).status());
+      patches = xla::Pad(patches, xla::Zero(builder, type),
+                         xla::MakeEdgePaddingConfig(padding));
+    }
+
+    // One slice per kernel position makes the graph grow with the kernel size:
+    // a 40x320 kernel compiles to 12800 slices and a concatenation. An identity
+    // convolution has a fixed size, but it spreads a NaN to other patch
+    // elements. A gather for each spatial dimension has neither problem.
+    //
+    // The loop goes from the last spatial dimension to the first. Each step
+    // splits one axis into an (output, kernel offset) pair, and the axes still
+    // to be gathered then keep their positions.
+    std::vector<int64_t> dims = padded_dims;
+    for (int i = num_spatial_dims - 1; i >= 0; --i) {
       const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-      slice_strides[dim] = strides_[dim];
+      const int64_t ksize = ksizes_[dim];
+      OP_REQUIRES_VALUE(const xla::Shape index_shape, ctx,
+                        xla::ShapeUtil::MakeValidatedShape(
+                            xla::S64, {output_sizes[i], ksize}));
+      const xla::XlaOp index = xla::Add(
+          xla::Mul(xla::Iota(builder, index_shape, /*iota_dimension=*/0),
+                   xla::ConstantR0<int64_t>(builder, strides_[dim])),
+          xla::Mul(xla::Iota(builder, index_shape, /*iota_dimension=*/1),
+                   xla::ConstantR0<int64_t>(builder, dilations_[dim])));
+      dims.erase(dims.begin() + dim);
+      dims.insert(dims.begin() + dim, {output_sizes[i], ksize});
+      OP_REQUIRES_OK(ctx,
+                     xla::ShapeUtil::MakeValidatedShape(type, dims).status());
+      patches = xla::TorchIndexSelect(
+          patches,
+          xla::Reshape(index, {xla::ShapeUtil::ElementsIn(index_shape)}), dim);
+      patches = xla::Reshape(patches, dims);
     }
 
-    for (int64_t patch_idx = 0; patch_idx < kernel_size; ++patch_idx) {
-      int64_t temp = patch_idx;
-      for (int i = num_spatial_dims - 1; i >= 0; --i) {
-        const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-        const int64_t ksize = ksizes_[dim];
-        const int64_t patch_offset = temp % ksize;
-        temp /= ksize;
-
-        if (output_sizes[i] > 0) {
-          const int64_t start = patch_offset * dilations_[dim];
-          start_indices[dim] = start;
-          limit_indices[dim] =
-              start + (output_sizes[i] - 1) * strides_[dim] + 1;
-        } else {
-          start_indices[dim] = 0;
-          limit_indices[dim] = 0;
-        }
-      }
-
-      slices.push_back(xla::Slice(padded_input, start_indices, limit_indices,
-                                  slice_strides));
+    // The axes are now [batch, out_0, k_0, ..., out_n, k_n, depth]. Move the
+    // kernel axes next to depth to get the (k_0, ..., k_n, depth) patch order.
+    std::vector<int64_t> permutation;
+    permutation.reserve(2 + 2 * num_spatial_dims);
+    permutation.push_back(0);
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      permutation.push_back(1 + 2 * i);
     }
-
-    if (slices.size() == 1) {
-      ctx->SetOutput(0, slices[0]);
-    } else {
-      ctx->SetOutput(0, xla::ConcatInDim(builder, slices, feature_dim));
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      permutation.push_back(2 + 2 * i);
     }
+    permutation.push_back(1 + 2 * num_spatial_dims);
+    patches = xla::Transpose(patches, permutation);
+    ctx->SetOutput(0, xla::Reshape(patches, output_dims));
   }
 
  protected:
