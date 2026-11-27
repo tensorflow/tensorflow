@@ -221,3 +221,7 @@ def tflite_copts_extra():
 def tflite_extra_arm_config_settings():
     """Defines extra ARM CPU config_setting targets. Currently empty."""
     return []
+
+def tflite_android_jni_library():
+    """Returns an optional Android JNI library target, or None."""
+    return None
