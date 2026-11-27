@@ -234,7 +234,7 @@ func.func @main(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %7 = "tf.F"() : () -> tensor<?xi32>
     "tf.IfRegion"(%6) ({
 
-      // expected-error @+1 {{found nested tf_device.Cluster op with inputs}}
+      // expected-error @+1 @times(3) {{found nested tf_device.Cluster op with inputs}}
       "tf_device.cluster"() ({
         "tf.D"(%4, %3, %7) {} : (tensor<?xi32>, tensor<?xi32>, tensor<?xi32>) -> ()
         tf_device.return

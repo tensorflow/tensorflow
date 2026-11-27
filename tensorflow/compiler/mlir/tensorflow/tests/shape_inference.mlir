@@ -329,7 +329,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @reused_if_then_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
-  // expected-warning @+1 {{expected control flow function @reused_if_then_branch to have exactly 1 use}}
+  // expected-warning @+1 @times(2) {{expected control flow function @reused_if_then_branch to have exactly 1 use}}
   func.func @reused_if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: return
     // CHECK-SAME: tensor<*xf32>
@@ -338,7 +338,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @reused_if_else_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
-  // expected-warning @+1 {{expected control flow function @reused_if_else_branch to have exactly 1 use}}
+  // expected-warning @+1 @times(2) {{expected control flow function @reused_if_else_branch to have exactly 1 use}}
   func.func @reused_if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
     %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)

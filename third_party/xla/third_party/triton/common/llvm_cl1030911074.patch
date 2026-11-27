@@ -1,0 +1,12 @@
+--- a/test/Triton/invalid.mlir
++++ b/test/Triton/invalid.mlir
+@@ -468,7 +468,7 @@
+ #blocked1 = #ttg.blocked<{sizePerThread = [1,2,4], threadsPerWarp = [4,2,4], warpsPerCTA = [4,2,8], order = [1,0,2], CGALayout = [[1, 0, 0], [0, 0, 1], [0, 0, 2]]}>
+ module attributes {"ttg.target" = "cuda:80", "ttg.num-ctas" = 8 : i32, "ttg.num-warps" = 64 : i32, "ttg.threads-per-warp" = 32 : i32} {
+ tt.func public @fn(%arg0: tensor<16x32x64xf32, #blocked>) {
+-    // expected-error @+1 {{type}}
++    // expected-error @+1 @times(2) {{type}}
+     %a = tt.trans %arg0 {order = array<i32: 1, 0, 2>} : tensor<16x32x64xf32, #blocked> -> tensor<32x16x64xf32, #blocked1>
+     tt.return
+ }
+

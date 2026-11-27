@@ -1,0 +1,26 @@
+diff --git a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_call_op_failures.mlir b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_call_op_failures.mlir
+index f24eb809..9547dc84 100644
+--- a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_call_op_failures.mlir
++++ b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_call_op_failures.mlir
+@@ -56,7 +56,7 @@ module {
+     return %4, %5, %6 : !mpmd.mesh_tensor<"m1", tensor<3x5xf32>>, !mpmd.mesh_tensor<"m2", tensor<3x5xf32>>, !mpmd.mesh_tensor<"m3", tensor<3x5xf32>>
+   }
+ 
+-  // expected-error @+1 {{Mesh assignment is not possible for mpmd.call "f"}}
++  // expected-error @+1 @times(3) {{Mesh assignment is not possible for mpmd.call "f"}}
+   func.func private @f(
+     %arg0: tensor<3x5xf32>, %arg1: tensor<3x5xf32>, %arg2: tensor<3x5xf32>
+   ) -> (tensor<3x5xf32>, tensor<3x5xf32>, tensor<3x5xf32>) attributes
+diff --git a/shardy/dialect/sdy/ir/test/sharding_rule_parsing_failure.mlir b/shardy/dialect/sdy/ir/test/sharding_rule_parsing_failure.mlir
+index 3b3d5dbf..2abe9973 100644
+--- a/shardy/dialect/sdy/ir/test/sharding_rule_parsing_failure.mlir
++++ b/shardy/dialect/sdy/ir/test/sharding_rule_parsing_failure.mlir
+@@ -131,7 +131,7 @@ func.func @z_0(%arg0: tensor<2x4xf32>) -> tensor<8xf32> {
+ 
+ func.func @int_overflow(%arg0: tensor<2x4xf32>) -> tensor<8xf32> {
+   // expected-error@+2 {{expecting factor indices to be ordered like an iota ([0,1,2,...], e.g. {i=#, j=#, ...})}}
+-  // expected-error@+1 {{expecting symbol index <=2^63-1. Received: '9223372036854775808'}}
++  // expected-error@+1 @times(3) {{expecting symbol index <=2^63-1. Received: '9223372036854775808'}}
+   %0 = stablehlo.reshape %arg0 {sdy.sharding_rule = #sdy.op_sharding_rule<([j, z_9223372036854775808])->([jz_9223372036854775808]) {i=4, z_9223372036854775808=2}>} : (tensor<2x4xf32>) -> tensor<8xf32>
+   return %0 : tensor<8xf32>
+ }
