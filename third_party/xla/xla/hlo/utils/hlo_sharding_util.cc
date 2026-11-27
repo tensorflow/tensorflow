@@ -2507,11 +2507,9 @@ GroupedSharding GroupShardingOnAllDimsExcept(
   std::vector<int64_t> group_dims(sharding.num_dimensions());
   absl::c_iota(group_dims, 0);
 
-  group_dims.erase(
-      std::remove_if(
-          group_dims.begin(), group_dims.end(),
-          [&](int64_t i) { return absl::c_linear_search(non_group_dims, i); }),
-      group_dims.end());
+  std::erase_if(group_dims, [&](int64_t i) {
+    return absl::c_linear_search(non_group_dims, i);
+  });
   return GroupShardingOnDims(sharding, group_dims, subgroup_manual);
 }
 
@@ -2578,7 +2576,7 @@ GroupedSharding GroupShardingOnDims(const HloSharding& input_sharding,
   absl::c_iota(perm, 0);
   for (int64_t i = 0; i < group_dims.size(); ++i) {
     const int64_t index = group_dim_to_index[group_dims[i]];
-    perm.erase(std::remove(perm.begin(), perm.end(), index), perm.end());
+    std::erase(perm, index);
     perm.insert(perm.begin() + i, index);
   }
 

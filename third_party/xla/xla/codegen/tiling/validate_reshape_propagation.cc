@@ -337,10 +337,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  reshapes_str.erase(
-      std::remove_if(reshapes_str.begin(), reshapes_str.end(),
-                     [](unsigned char c) { return std::isspace(c); }),
-      reshapes_str.end());
+  std::erase_if(reshapes_str, [](unsigned char c) { return std::isspace(c); });
 
   if (reshapes_str.empty()) {
     LOG(INFO) << "No reshapes provided.";

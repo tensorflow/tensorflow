@@ -372,16 +372,14 @@ class NearComparatorBase {
   void UpdateCandidates(double abs, double rel) {
     ErrorSpec mismatch(abs, rel);
     std::vector<ErrorSpec> split_candidates;
-    auto remove_it = std::remove_if(
-        candidates_.begin(), candidates_.end(), [&](const ErrorSpec& c) {
-          if (mismatch.abs > c.abs && mismatch.rel > c.rel) {
-            split_candidates.push_back(ErrorSpec(mismatch.abs, c.rel));
-            split_candidates.push_back(ErrorSpec(c.abs, mismatch.rel));
-            return true;
-          }
-          return false;
-        });
-    candidates_.erase(remove_it, candidates_.end());
+    std::erase_if(candidates_, [&](const ErrorSpec& c) {
+      if (mismatch.abs > c.abs && mismatch.rel > c.rel) {
+        split_candidates.push_back(ErrorSpec(mismatch.abs, c.rel));
+        split_candidates.push_back(ErrorSpec(c.abs, mismatch.rel));
+        return true;
+      }
+      return false;
+    });
 
     for (const auto& p : split_candidates) {
       InsertCandidate(p, candidates_);

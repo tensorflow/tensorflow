@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
@@ -237,12 +236,10 @@ absl::Status AddSymmetricMemoryClique(GpuClique& clique) {
   for (LocalDeviceId device : devices) {
     std::vector<std::shared_ptr<SymmetricMemoryCliqueEntry>>& entries =
         registry.cliques[device];
-    entries.erase(std::remove_if(
-                      entries.begin(), entries.end(),
-                      [](const std::shared_ptr<SymmetricMemoryCliqueEntry>& e) {
-                        return e->guard.Expired();
-                      }),
-                  entries.end());
+    std::erase_if(entries,
+                  [](const std::shared_ptr<SymmetricMemoryCliqueEntry>& e) {
+                    return e->guard.Expired();
+                  });
     entries.push_back(entry);
   }
   return absl::OkStatus();

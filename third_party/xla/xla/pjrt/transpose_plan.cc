@@ -2492,7 +2492,7 @@ void Planner::IdentifyContiguousLoops(std::vector<Loop>& loop_order) const {
 }
 
 void RemoveTrivialLoops(std::vector<Loop>& loops) {
-  auto it = std::remove_if(loops.begin(), loops.end(), [](const Loop& loop) {
+  std::erase_if(loops, [](const Loop& loop) {
     // Preserve loops explicitly flagged as stride-1 inner dimensions (used by
     // direct unit-test callers; `Planner::Initialize` assigns those flags after
     // `RemoveTrivialLoops` and synthesizes a size-1 loop if needed).
@@ -2501,7 +2501,6 @@ void RemoveTrivialLoops(std::vector<Loop>& loops) {
     }
     return loop.full_extent == 1;
   });
-  loops.erase(it, loops.end());
 }
 
 void CoalesceLoops(std::vector<Loop>& loops) {

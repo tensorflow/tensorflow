@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/host_callback_registry.h"
 
-#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <string>
@@ -311,7 +310,7 @@ void HostCallbackRegistry::CopyOnWriteImpl(StreamCallbackRegistry* handle,
   absl::MutexLock lock(mutex_);
   auto next = std::make_shared<RegistryHandles>(*registry_handles_);
   if (is_deregister) {
-    next->erase(std::remove(next->begin(), next->end(), handle), next->end());
+    std::erase(*next, handle);
   } else {
     next->push_back(handle);
   }

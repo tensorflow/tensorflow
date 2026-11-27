@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/debug_options_flags.h"
 
-#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -906,10 +905,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           }
 
           std::string op_name = absl::AsciiStrToUpper(parts[0]);
-          op_name.erase(std::remove(op_name.begin(), op_name.end(), '-'),
-                        op_name.end());
-          op_name.erase(std::remove(op_name.begin(), op_name.end(), '_'),
-                        op_name.end());
+          std::erase(op_name, '-');
+          std::erase(op_name, '_');
           if (op_name == "ALL") {
             op_name = "ALLCOLLECTIVES";
           }

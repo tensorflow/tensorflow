@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/hlo/transforms/config_assigner_pass.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -541,13 +540,9 @@ std::vector<autotuner::Backend> GetEnabledBackendTypes(
         autotuner::Backend::BLOCK_LEVEL_EMITTER);
   }
 
-  autotune_backends.erase(
-      std::remove_if(autotune_backends.begin(), autotune_backends.end(),
-                     [&](autotuner::Backend backend) {
-                       return absl::c_linear_search(disabled_autotune_backends,
-                                                    backend);
-                     }),
-      autotune_backends.end());
+  std::erase_if(autotune_backends, [&](autotuner::Backend backend) {
+    return absl::c_linear_search(disabled_autotune_backends, backend);
+  });
   return autotune_backends;
 }
 

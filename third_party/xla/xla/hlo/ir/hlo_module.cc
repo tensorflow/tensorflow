@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module.h"
 
-#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -1440,12 +1439,9 @@ void HloModule::CleanupComputations() {
     return;
   }
   std::vector<int> old_to_new(computations_.size(), -1);
-  computations_.erase(
-      std::remove_if(computations_.begin(), computations_.end(),
-                     [](const std::unique_ptr<HloComputation>& comp) {
-                       return comp == nullptr;
-                     }),
-      computations_.end());
+  std::erase_if(computations_, [](const std::unique_ptr<HloComputation>& comp) {
+    return comp == nullptr;
+  });
   for (size_t i = 0; i < computations_.size(); ++i) {
     old_to_new[computations_[i]->index_in_module_] = i;
     computations_[i]->index_in_module_ = i;
@@ -1602,11 +1598,9 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   std::vector<HloComputation*> post_order =
       this->MakeComputationPostOrder(execution_threads, dfs_postorder);
 
-  post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
-                                  [&allow_list](HloComputation* computation) {
-                                    return !allow_list.contains(computation);
-                                  }),
-                   post_order.end());
+  std::erase_if(post_order, [&allow_list](HloComputation* computation) {
+    return !allow_list.contains(computation);
+  });
 
   return post_order;
 }
@@ -1678,12 +1672,9 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
                  << " num_computations=" << num_computations;
     }
     if (!execution_threads.empty()) {
-      post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
-                                      [&](HloComputation* computation) {
-                                        return !execution_threads.contains(
-                                            computation->execution_thread());
-                                      }),
-                       post_order.end());
+      std::erase_if(post_order, [&](HloComputation* computation) {
+        return !execution_threads.contains(computation->execution_thread());
+      });
     }
     return post_order;
   }  // The topological sort is a reverse post-order, reverse it so we get a
@@ -1775,10 +1766,8 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations(
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   std::vector<HloComputation*> result =
       MakeComputationPostOrder(execution_threads);
-  result.erase(std::remove_if(
-                   result.begin(), result.end(),
-                   [](HloComputation* c) { return c->IsFusionComputation(); }),
-               result.end());
+  std::erase_if(result,
+                [](HloComputation* c) { return c->IsFusionComputation(); });
   return result;
 }
 

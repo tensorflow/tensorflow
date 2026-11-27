@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_BACKENDS_GPU_AUTOTUNER_CUDA_FACTORY_H_
 #define TENSORFLOW_COMPILER_XLA_BACKENDS_GPU_AUTOTUNER_CUDA_FACTORY_H_
 
-#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -126,16 +125,13 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
                                                        target_config));
 
   if (!backend_allowlist.empty()) {
-    backends.erase(
-        std::remove_if(backends.begin(), backends.end(),
-                       [&](const std::unique_ptr<CodegenBackend>& backend) {
-                         return !absl::c_any_of(
-                             backend_allowlist,
-                             [&](autotuner::Backend backend_id) {
-                               return backend->backend() == backend_id;
-                             });
-                       }),
-        backends.end());
+    std::erase_if(backends,
+                  [&](const std::unique_ptr<CodegenBackend>& backend) {
+                    return !absl::c_any_of(
+                        backend_allowlist, [&](autotuner::Backend backend_id) {
+                          return backend->backend() == backend_id;
+                        });
+                  });
   }
   return backends;
 }

@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/allocator_memory_registration.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -95,11 +95,8 @@ void AllocatorMemoryRegistration::RecordFree(void* ptr, int32_t device_ordinal,
   // allocation releases its TiedRefs, deregistering the range from every clique
   // it was registered with.
   auto& allocs = allocations_[LocalDeviceId(device_ordinal)];
-  allocs.erase(std::remove_if(allocs.begin(), allocs.end(),
-                              [&](const Allocation& a) {
-                                return a.range.opaque() == ptr;
-                              }),
-               allocs.end());
+  std::erase_if(allocs,
+                [&](const Allocation& a) { return a.range.opaque() == ptr; });
 }
 
 absl::Status AllocatorMemoryRegistration::RegisterWithClique(

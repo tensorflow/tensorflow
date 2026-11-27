@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "xla/literal_pool.h"
 
-#include <algorithm>
 #include <cstddef>
-#include <iterator>
 #include <memory>
 #include <vector>
 
@@ -37,12 +35,7 @@ LiteralPool* LiteralPool::Default() {
 // elements that were erased.
 static size_t EraseExpiredLiterals(
     std::vector<std::weak_ptr<Literal>>& literals) {
-  auto it = std::remove_if(literals.begin(), literals.end(),
-                           [](auto& ptr) { return ptr.expired(); });
-  size_t num_erased = std::distance(it, literals.end());
-
-  literals.erase(it, literals.end());
-  return num_erased;
+  return std::erase_if(literals, [](auto& ptr) { return ptr.expired(); });
 }
 
 size_t LiteralPool::GarbageCollect() {

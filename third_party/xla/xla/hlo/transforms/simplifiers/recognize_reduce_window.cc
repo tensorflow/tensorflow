@@ -664,11 +664,8 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
                 .EvaluateElementwiseUnaryOp(HloOpcode::kNegate, one)
                 .value();
 
-        folded.erase(std::remove_if(folded.begin(), folded.end(),
-                                    [&](const WeightedSlice& ws) {
-                                      return ws.weight == zero;
-                                    }),
-                     folded.end());
+        std::erase_if(
+            folded, [&](const WeightedSlice& ws) { return ws.weight == zero; });
 
         if (folded.empty()) {
           auto zero_replacement = computation->AddInstruction(

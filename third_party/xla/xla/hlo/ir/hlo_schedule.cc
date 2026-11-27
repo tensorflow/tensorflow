@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_schedule.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <ostream>
 #include <queue>
@@ -394,13 +393,10 @@ absl::Status HloSchedule::Verify() const {
     std::vector<HloComputation*> nonfusion_computations =
         module_->MakeNonfusionComputations({thread_name});
 
-    // TODO(dasenov): Replace with std::erase_if after XLA uses C++20.
-    auto remove_it = std::remove_if(nonfusion_computations.begin(),
-                                    nonfusion_computations.end(),
-                                    [](const HloComputation* computation) {
-                                      return computation->IsDeadComputation();
-                                    });
-    nonfusion_computations.erase(remove_it, nonfusion_computations.end());
+    std::erase_if(nonfusion_computations,
+                  [](const HloComputation* computation) {
+                    return computation->IsDeadComputation();
+                  });
 
     // It's possible to have more sequences than non_fusion_computations.
     // This is because in some cases computations that have schedules are

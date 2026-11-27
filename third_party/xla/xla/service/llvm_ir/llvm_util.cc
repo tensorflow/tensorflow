@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/llvm_util.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -459,7 +458,7 @@ llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
 
 std::string IrName(absl::string_view a) {
   std::string s(a);
-  s.erase(std::remove(s.begin(), s.end(), '%'), s.end());
+  std::erase(s, '%');
   return s;
 }
 

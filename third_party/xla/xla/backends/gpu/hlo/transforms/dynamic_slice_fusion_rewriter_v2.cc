@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/hlo/transforms/dynamic_slice_fusion_rewriter_v2.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -523,13 +522,10 @@ void FilterAliasedParametersAndResults(
     if ((res == nullptr || res->update_slice == nullptr) &&
         aliased_param == nullptr) {
       const HloInstruction* target = hero->operand(op_idx);
-      sliced_params.erase(
-          std::remove_if(sliced_params.begin(), sliced_params.end(),
-                         [&](const SlicedParameter& param) {
-                           return param.operand_number != op_idx &&
-                                  param.slice->operand(0) == target;
-                         }),
-          sliced_params.end());
+      std::erase_if(sliced_params, [&](const SlicedParameter& param) {
+        return param.operand_number != op_idx &&
+               param.slice->operand(0) == target;
+      });
     }
   }
 

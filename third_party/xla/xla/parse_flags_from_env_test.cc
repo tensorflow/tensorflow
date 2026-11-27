@@ -20,7 +20,6 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -156,8 +155,7 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
                               << stdout_str << "\nstderr\n"
                               << stderr_str;
     // On windows, we get CR characters. Remove them.
-    stdout_str.erase(std::remove(stdout_str.begin(), stdout_str.end(), '\r'),
-                     stdout_str.end());
+    std::erase(stdout_str, '\r');
     CHECK_EQ(stdout_str, test[i].expected_value) << "test " << i;
   }
 }

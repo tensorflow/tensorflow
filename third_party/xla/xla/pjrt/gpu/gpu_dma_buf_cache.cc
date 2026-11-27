@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/gpu_dma_buf_cache.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -105,18 +104,15 @@ void GpuDmaBufCache::RecordFree(void* ptr, int32_t device_ordinal,
       return;
     }
     std::vector<Chunk>& device_chunks = it->second;
-    device_chunks.erase(
-        std::remove_if(device_chunks.begin(), device_chunks.end(),
-                       [&](Chunk& chunk) {
-                         if (chunk.range.opaque() == ptr) {
-                           if (chunk.dma_buf != nullptr) {
-                             to_release.push_back(std::move(chunk.dma_buf));
-                           }
-                           return true;
-                         }
-                         return false;
-                       }),
-        device_chunks.end());
+    std::erase_if(device_chunks, [&](Chunk& chunk) {
+      if (chunk.range.opaque() == ptr) {
+        if (chunk.dma_buf != nullptr) {
+          to_release.push_back(std::move(chunk.dma_buf));
+        }
+        return true;
+      }
+      return false;
+    });
   }
 }
 

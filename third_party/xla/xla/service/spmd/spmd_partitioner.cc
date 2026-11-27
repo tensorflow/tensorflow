@@ -5696,9 +5696,7 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
       if (leaf->opcode() == HloOpcode::kReverse) {
         for (int64_t d : leaf->dimensions()) {
           if (absl::c_linear_search(reverse_dims, d)) {
-            reverse_dims.erase(
-                std::remove(reverse_dims.begin(), reverse_dims.end(), d),
-                reverse_dims.end());
+            std::erase(reverse_dims, d);
           } else {
             reverse_dims.push_back(d);
           }

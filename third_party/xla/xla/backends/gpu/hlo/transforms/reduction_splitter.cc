@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/hlo/transforms/reduction_splitter.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
@@ -111,10 +110,7 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
 
     std::vector<int64_t> final_reduce_dims(reduce->dimensions().begin(),
                                            reduce->dimensions().end());
-    final_reduce_dims.erase(
-        std::remove(final_reduce_dims.begin(), final_reduce_dims.end(),
-                    max_reduce_dim),
-        final_reduce_dims.end());
+    std::erase(final_reduce_dims, max_reduce_dim);
     for (int64_t i = 0; i < final_reduce_dims.size(); ++i) {
       if (final_reduce_dims[i] > max_reduce_dim) {
         final_reduce_dims[i]--;

@@ -591,8 +591,7 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
       } else {
         // Since operands only holds ops that are not part of the graph, remove
         // instr.
-        operands.erase(std::remove(operands.begin(), operands.end(), instr),
-                       operands.end());
+        std::erase(operands, instr);
         ++num_existing_users;
       }
       continue;

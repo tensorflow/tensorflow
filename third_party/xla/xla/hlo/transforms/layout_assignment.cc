@@ -431,9 +431,7 @@ void LayoutAssignment::PushAddedConstraints(
     const LayoutConstraint* constraint) {
   // Remove any prior entry for this constraint before reinserting it.
   if (!added_constraints_set_.insert(constraint).second) {
-    added_constraints_.erase(std::remove(added_constraints_.begin(),
-                                         added_constraints_.end(), constraint),
-                             added_constraints_.end());
+    std::erase(added_constraints_, constraint);
   }
   if (!constraint->dfs()) {
     // Insert a new constraint to the first location where it's strictly greater

@@ -876,14 +876,10 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     // Drop completed sends, so `send_events` does not grow in loops. Pruning
     // only after the list has doubled keeps this amortized O(1).
     if (send_events->size() >= prune_threshold) {
-      // Use erase-remove idiom for C++ 17 compatibility.
-      send_events->erase(
-          std::remove_if(
-              send_events->begin(), send_events->end(),
-              [](const AsyncValueRef<std::unique_ptr<se::Event>>& e) {
-                return e.IsAvailable();
-              }),
-          send_events->end());
+      std::erase_if(*send_events,
+                    [](const AsyncValueRef<std::unique_ptr<se::Event>>& e) {
+                      return e.IsAvailable();
+                    });
       prune_threshold = std::max(kMinPruneThreshold, 2 * send_events->size());
     }
     send_events->push_back(done_event);

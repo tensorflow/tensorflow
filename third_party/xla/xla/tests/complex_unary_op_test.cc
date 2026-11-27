@@ -97,11 +97,9 @@ class ComplexUnaryOpTest : public ClientLibraryTestRunnerMixin<
     XlaBuilder builder(TestName());
     auto table = C().get();
     if (skip_input != nullptr) {
-      table.erase(std::remove_if(table.begin(), table.end(),
-                                 [&](const auto& item) {
-                                   return skip_input(std::get<0>(item));
-                                 }),
-                  table.end());
+      std::erase_if(table, [&](const auto& item) {
+        return skip_input(std::get<0>(item));
+      });
     }
     auto inputs_vec = get_column<InputType, 0>(table);
     auto expected_vec = get_column<OutputType, 1>(table);
