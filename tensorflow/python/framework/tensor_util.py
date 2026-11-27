@@ -1113,9 +1113,14 @@ def _ConstantValue(tensor, partial):
         s = int(s)
         if shrink_axis_mask & (1 << i):
           # The op reads begin[i] even when begin_mask is set, ignores
-          # end[i] and end_mask, and drops the axis. It allows any
-          # positive stride; only stride 1 is folded here.
-          if s != 1:
+          # end[i] and end_mask, drops the axis, and never applies the
+          # stride, so every positive stride folds to the same value. A zero
+          # stride is rejected on every axis and a non-positive stride on a
+          # shrunk axis is rejected outright (`strided_slice_op.cc`, :334 and
+          # :360); both are refused when the op is created, so only an
+          # imported graph can get here with one, and folding it would hand
+          # back a value that running the op never produces.
+          if s <= 0:
             return None
           index.append(int(b))
           continue

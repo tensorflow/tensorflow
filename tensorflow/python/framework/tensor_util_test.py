@@ -1566,6 +1566,19 @@ class ConstantValueTest(test.TestCase):
           c, [2], [3], begin_mask=1, shrink_axis_mask=1)
       self.assertEqual(10, tensor_util.constant_value(y))
 
+  def testStridedSliceShrinkIgnoresStride(self):
+    # A shrunk axis selects `begin[i]` and never applies the stride, so every
+    # positive stride folds to the same value. Non-positive strides cannot be
+    # built at all: the op rejects a zero stride on any axis and a
+    # non-positive stride on a shrunk axis during construction, so there is no
+    # op to fold and nothing to assert for them here.
+    with ops.Graph().as_default():
+      c = constant_op.constant([8, 9, 10])
+      for stride in (2, 5):
+        y = array_ops.strided_slice(
+            c, [2], [3], strides=[stride], shrink_axis_mask=1)
+        self.assertEqual(10, tensor_util.constant_value(y))
+
   def testStridedSlicePartial(self):
     with ops.Graph().as_default():
       p = array_ops.placeholder(dtypes.int32, shape=[])
