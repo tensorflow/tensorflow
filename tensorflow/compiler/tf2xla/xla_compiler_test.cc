@@ -321,7 +321,7 @@ TEST_F(XlaCompilerTest, SimpleDynamicShapeParameter) {
                                 /*dynamic_dimensions=*/{true});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = TensorShape(/*dimensions=*/{2});
+  args[1].shape = TensorShape(/*dim_sizes=*/{2});
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
