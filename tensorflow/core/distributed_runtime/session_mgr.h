@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SESSION_MGR_H_
 
 #include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
@@ -79,7 +81,12 @@ class SessionMgr {
         LOG(ERROR) << "Coordination agent is set to error: " << s;
       });
 
+  // Takes ownership of `worker_cache`. The previous default cache is retired,
+  // not deleted.
   void ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache);
+  // Returns the current default worker cache. The pointer stays valid for the
+  // lifetime of this SessionMgr, even after a later ResetDefaultWorkerCache().
+  WorkerCacheInterface* DefaultWorkerCache();
 
   // Updates state (worker cache, devices) of worker session identified by
   // session name (`session`) based on a new server_def and set of devices.
@@ -132,7 +139,15 @@ class SessionMgr {
   // legacy_session_ is deleted. Further, we must ensure that WorkerSession's
   // device_mgr is deleted after WorkerSession's graph_mgr.
 
-  std::unique_ptr<WorkerCacheInterface> default_worker_cache_;
+  // Default worker caches replaced by ResetDefaultWorkerCache(). Kept alive
+  // (one per UpdateServerDef) because legacy_session_, default-cache
+  // WorkerSessions, MasterEnv, and DefaultWorkerCache() callers may still hold
+  // raw pointers to them. Must be declared before default_worker_cache_ and
+  // legacy_session_ so it is destroyed after them.
+  std::vector<std::unique_ptr<WorkerCacheInterface>>
+      retired_default_worker_caches_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<WorkerCacheInterface> default_worker_cache_
+      TF_GUARDED_BY(mu_);
   std::shared_ptr<WorkerSession> legacy_session_;
   std::unique_ptr<tsl::CoordinationService> coordination_service_;
   std::unique_ptr<tsl::CoordinationServiceAgent> coordination_service_agent_;
