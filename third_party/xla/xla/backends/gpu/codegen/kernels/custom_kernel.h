@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -55,6 +56,8 @@ class CustomKernel {
   const se::KernelLoaderSpec& kernel_loader_spec() const {
     return loader_spec_;
   }
+
+  const LaunchDimensions& launch_dimensions() const;
 
   const se::BlockDim& block_dims() const;
 

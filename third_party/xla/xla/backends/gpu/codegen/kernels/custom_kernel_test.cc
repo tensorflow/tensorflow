@@ -146,6 +146,9 @@ TEST(CustomKernelTest, FromProto) {
   EXPECT_THAT(custom_kernel.kernel_spec().in_process_symbol(),
               Optional(Field(&stream_executor::InProcessSymbol::persistent_name,
                              "persistent_kernel_name")));
+  EXPECT_EQ(custom_kernel.launch_dimensions(),
+            LaunchDimensions(stream_executor::BlockDim(1, 2, 3),
+                             stream_executor::ThreadDim(4, 5, 6)));
   EXPECT_EQ(custom_kernel.block_dims(), stream_executor::BlockDim(1, 2, 3));
   EXPECT_EQ(custom_kernel.thread_dims(), stream_executor::ThreadDim(4, 5, 6));
   EXPECT_EQ(custom_kernel.cluster_dims(), std::nullopt);
@@ -177,6 +180,10 @@ TEST(CustomKernelTest, FromProtoWithClusterDims) {
   EXPECT_THAT(custom_kernel.kernel_spec().in_process_symbol(),
               Optional(Field(&stream_executor::InProcessSymbol::persistent_name,
                              "persistent_kernel_name")));
+  EXPECT_EQ(custom_kernel.launch_dimensions(),
+            LaunchDimensions(stream_executor::BlockDim(1, 2, 3),
+                             stream_executor::ThreadDim(4, 5, 6),
+                             stream_executor::ClusterDim(7, 8, 9)));
   EXPECT_EQ(custom_kernel.block_dims(), stream_executor::BlockDim(1, 2, 3));
   EXPECT_EQ(custom_kernel.thread_dims(), stream_executor::ThreadDim(4, 5, 6));
   EXPECT_EQ(custom_kernel.cluster_dims(), stream_executor::ClusterDim(7, 8, 9));

@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/ffi/api/kernel_registry_api.h"
 #include "xla/ffi/api/kernel_registry_c_api.h"
 #include "xla/ffi/ffi_interop.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
@@ -175,13 +176,13 @@ absl::Status LaunchKernelImpl(XLA_FFI_KernelRegistry_Launch_Args* args) {
   ABSL_ASSIGN_OR_RETURN(
       stream_executor::Kernel * se_kernel,
       FindDeviceKernel(args->kernel, stream->parent()->device_ordinal()));
-  ABSL_ASSIGN_OR_RETURN(FfiLaunchDims dims,
+  ABSL_ASSIGN_OR_RETURN(LaunchDimensions dims,
                    ConvertFfiLaunchDims(params->launch_dims));
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<stream_executor::KernelArgsPackedArray> packed_args,
       PackKernelArgs(params->args, params->shared_mem_bytes));
-  return se_kernel->Launch(dims.threads, dims.blocks, dims.cluster, stream,
-                           *packed_args);
+  return se_kernel->Launch(dims.thread_counts_per_block(), dims.block_counts(),
+                           dims.cluster_dims(), stream, *packed_args);
 }
 
 }  // namespace
@@ -234,7 +235,7 @@ PackKernelArgs(const XLA_FFI_KernelArgs* absl_nullable args,
   return packed_args;
 }
 
-absl::StatusOr<FfiLaunchDims> ConvertFfiLaunchDims(
+absl::StatusOr<LaunchDimensions> ConvertFfiLaunchDims(
     const XLA_FFI_LaunchDims& launch_dims) {
   auto positive = [](const XLA_FFI_Dim3& d) {
     return d.x > 0 && d.y > 0 && d.z > 0;
@@ -256,9 +257,9 @@ absl::StatusOr<FfiLaunchDims> ConvertFfiLaunchDims(
   if (!no_cluster) {
     cluster_dim = stream_executor::ClusterDim(cluster.x, cluster.y, cluster.z);
   }
-  return FfiLaunchDims{stream_executor::ThreadDim(block.x, block.y, block.z),
-                       stream_executor::BlockDim(grid.x, grid.y, grid.z),
-                       cluster_dim};
+  return LaunchDimensions(stream_executor::BlockDim(grid.x, grid.y, grid.z),
+                          stream_executor::ThreadDim(block.x, block.y, block.z),
+                          cluster_dim);
 }
 
 absl::StatusOr<stream_executor::Kernel*> FindDeviceKernel(

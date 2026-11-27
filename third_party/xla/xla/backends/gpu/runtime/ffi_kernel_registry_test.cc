@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/ffi/api/kernel_registry_c_api.h"
 #include "xla/ffi/ffi_interop.h"
 #include "xla/ffi/kernel_registry_ffi.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
@@ -261,11 +262,15 @@ TEST(FfiKernelRegistryHelpersTest, ConvertFfiLaunchDimsValidatesDims) {
     EXPECT_THAT(ConvertFfiLaunchDims(bad),
                 StatusIs(absl::StatusCode::kInvalidArgument));
   }
-  ASSERT_OK_AND_ASSIGN(
-      FfiLaunchDims dims,
-      ConvertFfiLaunchDims({{16, 1, 1}, {4, 1, 1}, {2, 1, 1}}));
-  ASSERT_TRUE(dims.cluster.has_value());
-  EXPECT_EQ(dims.cluster->x, 2);
+  EXPECT_THAT(ConvertFfiLaunchDims({{16, 2, 1}, {4, 3, 1}, {0, 0, 0}}),
+              absl_testing::IsOkAndHolds(
+                  LaunchDimensions(stream_executor::BlockDim(16, 2, 1),
+                                   stream_executor::ThreadDim(4, 3, 1))));
+  EXPECT_THAT(ConvertFfiLaunchDims({{16, 2, 1}, {4, 3, 1}, {2, 1, 1}}),
+              absl_testing::IsOkAndHolds(
+                  LaunchDimensions(stream_executor::BlockDim(16, 2, 1),
+                                   stream_executor::ThreadDim(4, 3, 1),
+                                   stream_executor::ClusterDim(2, 1, 1))));
 }
 
 // Prepare and Initialize may only register kernels; Execute may only launch

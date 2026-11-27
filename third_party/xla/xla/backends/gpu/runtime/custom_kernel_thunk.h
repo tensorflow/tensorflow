@@ -78,10 +78,8 @@ class CustomKernelThunk : public Command {
 
   const std::vector<bool>& written() const { return written_; }
 
-  LaunchDimensions launch_dimensions() const {
-    return LaunchDimensions(custom_kernel_.block_dims(),
-                            custom_kernel_.thread_dims(),
-                            custom_kernel_.cluster_dims());
+  const LaunchDimensions& launch_dimensions() const {
+    return custom_kernel_.launch_dimensions();
   }
 
   int64_t shmem_bytes() const { return custom_kernel_.shared_memory_bytes(); }

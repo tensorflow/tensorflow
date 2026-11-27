@@ -41,6 +41,10 @@ CustomKernel::CustomKernel(const GpuKernelSpec& spec,
 
 absl::string_view CustomKernel::name() const { return spec_.name(); }
 
+const LaunchDimensions& CustomKernel::launch_dimensions() const {
+  return spec_.launch_dimensions();
+}
+
 const se::BlockDim& CustomKernel::block_dims() const {
   return spec_.launch_dimensions().block_counts();
 }

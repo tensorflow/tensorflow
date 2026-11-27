@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
@@ -28,9 +27,9 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/kernel_c_api.h"
 #include "xla/ffi/api/kernel_registry_c_api.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -42,16 +41,9 @@ absl::StatusOr<std::unique_ptr<stream_executor::KernelArgsPackedArray>>
 PackKernelArgs(const XLA_FFI_KernelArgs* absl_nullable args,
                uint32_t shared_mem_bytes);
 
-// Launch dimensions converted from `XLA_FFI_LaunchDims`.
-struct FfiLaunchDims {
-  stream_executor::ThreadDim threads;
-  stream_executor::BlockDim blocks;
-  std::optional<stream_executor::ClusterDim> cluster;
-};
-
 // Validates and converts `XLA_FFI_LaunchDims`. Grid and block dimensions must
 // be positive. The cluster is either all zeros (no cluster) or all positive.
-absl::StatusOr<FfiLaunchDims> ConvertFfiLaunchDims(
+absl::StatusOr<LaunchDimensions> ConvertFfiLaunchDims(
     const XLA_FFI_LaunchDims& launch_dims);
 
 // Returns the kernel loaded on `device_ordinal` for `kernel`, or errors if

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -41,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
@@ -168,10 +166,10 @@ XLA_FFI_Error* RecordKernelLaunch(
   }
   const std::vector<const se::CommandBuffer::Command*>& resolved_deps = *deps;
   const uint32_t shared_mem_bytes = launch_params->shared_mem_bytes;
-  absl::StatusOr<FfiLaunchDims> dims =
+  absl::StatusOr<LaunchDimensions> launch_dimensions =
       ConvertFfiLaunchDims(launch_params->launch_dims);
-  if (!dims.ok()) {
-    return xla::ffi::CreateError(dims.status());
+  if (!launch_dimensions.ok()) {
+    return xla::ffi::CreateError(launch_dimensions.status());
   }
   absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArray>> packed_args =
       PackKernelArgs(launch_params->args, shared_mem_bytes);
@@ -182,14 +180,10 @@ XLA_FFI_Error* RecordKernelLaunch(
   se::CommandBuffer* cmd_buffer = ctx->command_buffer;
   auto* cache = cmd_buffer->GetOrConstructResource<FfiKernelCache>();
 
-  const se::ThreadDim& threads = dims->threads;
-  const se::BlockDim& blocks = dims->blocks;
-  const std::optional<se::ClusterDim>& cluster_dims = dims->cluster;
-
   FfiLaunchParams params{
-      /*.launch_dimensions = */ LaunchDimensions(blocks, threads, cluster_dims),
-      /*.kernel =*/std::move(kernel_target),
-      /*.shared_mem_bytes = */ shared_mem_bytes,
+      /*.launch_dimensions=*/*launch_dimensions,
+      /*.kernel=*/std::move(kernel_target),
+      /*.shared_mem_bytes=*/shared_mem_bytes,
   };
   XLA_VLOG_DEVICE(3, ctx->executor->device_ordinal())
       << "FfiCreateLaunch for kernel: " << params.kernel_name()
@@ -200,15 +194,20 @@ XLA_FFI_Error* RecordKernelLaunch(
 
   const se::KernelArgsPackedArray& kernel_args = **packed_args;
   absl::StatusOr<const se::CommandBuffer::Command*> status_or_cmd = std::visit(
-      absl::Overload{
-          [&](se::Kernel* k) {
-            return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, *k,
-                                            kernel_args, resolved_deps);
-          },
-          [&](const se::NativeKernel& nk) {
-            return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, nk,
-                                            kernel_args, resolved_deps);
-          }},
+      absl::Overload{[&](se::Kernel* k) {
+                       return cmd_buffer->CreateLaunch(
+                           params.launch_dimensions.thread_counts_per_block(),
+                           params.launch_dimensions.block_counts(),
+                           params.launch_dimensions.cluster_dims(), *k,
+                           kernel_args, resolved_deps);
+                     },
+                     [&](const se::NativeKernel& nk) {
+                       return cmd_buffer->CreateLaunch(
+                           params.launch_dimensions.thread_counts_per_block(),
+                           params.launch_dimensions.block_counts(),
+                           params.launch_dimensions.cluster_dims(), nk,
+                           kernel_args, resolved_deps);
+                     }},
       params.kernel);
 
   if (!status_or_cmd.ok()) {
