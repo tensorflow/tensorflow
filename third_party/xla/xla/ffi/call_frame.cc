@@ -237,6 +237,7 @@ static XLA_FFI_DataType ToDataType(PrimitiveType primitive_type) {
     case PrimitiveType::F8E4M3FNUZ:
     case PrimitiveType::F8E3M4:
     case PrimitiveType::F8E8M0FNU:
+    case PrimitiveType::F8E5M3FNU:
     case PrimitiveType::TUPLE:
     case PrimitiveType::OPAQUE_TYPE:
       return static_cast<XLA_FFI_DataType>(primitive_type);
