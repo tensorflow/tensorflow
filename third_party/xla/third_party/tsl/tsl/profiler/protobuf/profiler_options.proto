@@ -85,6 +85,16 @@ message ProfileOptions {
     // Only lowest 32 bits of the mask are used. The higher 32 bits are reserved
     // and won't be applied if set.
     uint64 host_traceme_filter_mask = 1;
+
+    // If true, collect only the host TraceMes tagged with the host
+    // enqueue/callback filter bit (program enqueue, completion callbacks, and
+    // per-run completion instants), for low-overhead continuous step-time
+    // monitoring such as straggler detection. The host tracer then overrides
+    // `host_traceme_filter_mask` and `host_tracer_level`, and device tracers
+    // that support this option (e.g. the Cloud TPU tracer) do not run. Can also
+    // be set through advanced_configuration["host_enqueue_callback_only"]
+    // (bool).
+    bool host_enqueue_callback_only = 2;
   }
 
   TraceOptions trace_options = 11;
