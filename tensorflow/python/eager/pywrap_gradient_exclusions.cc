@@ -52,7 +52,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 365> a = {{
+  static std::array<OpIndexInfo, 364> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -143,7 +143,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"GetSessionTensor"},
       {"Greater"},
       {"GreaterEqual"},
-      {"HSVToRGB"},
       {"HashTable"},
       {"HashTableV2"},
       {"HistogramSummary"},
@@ -430,7 +429,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 491> a = {{
+  static std::array<OpIndexInfo, 493> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -438,6 +437,8 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"AddN"},
       {"AddV2"},
       {"AdjustContrastv2"},
+      {"AdjustHue"},
+      {"AdjustSaturation"},
       {"AllToAll"},
       {"Angle"},
       {"ApproxTopK", 1, {0}},
