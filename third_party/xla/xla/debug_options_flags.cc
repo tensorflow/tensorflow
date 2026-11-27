@@ -587,7 +587,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback(false);
   opts.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
   opts.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(false);
-  opts.set_xla_gpu_experimental_use_ragged_dot_fusion(false);
+  opts.set_xla_gpu_experimental_use_ragged_dot_fusion(true);
 
 #if defined(ABSL_HAVE_ADDRESS_SANITIZER) ||   \
     defined(ABSL_HAVE_HWADDRESS_SANITIZER) || \
