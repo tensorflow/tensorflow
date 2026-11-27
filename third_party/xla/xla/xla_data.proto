@@ -109,6 +109,16 @@ enum PrimitiveType {
   F8E5M2FNUZ = 24;
   F8E4M3FNUZ = 25;
 
+  // FP8 dtype without a sign bit, as described in:
+  // https://docs.nvidia.com/cuda/parallel-thread-execution/#alternate-floating-point-data-formats
+  //
+  // F8E5M3FNU has 5 exponent bits, 3 mantissa bits and no sign bit, with a bias
+  // of 15. The "FNU" means only Finite and NaN values are supported and that
+  // the format is Unsigned. Unlike IEEE types, infinities are not supported.
+  // NaN is represented when the exponent and mantissa bits are all 1s. All
+  // other values are finite and non-negative.
+  F8E5M3FNU = 37;
+
   // MX float dtypes, as described in:
   // https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf
   //
@@ -160,7 +170,7 @@ enum PrimitiveType {
   // its underlying primitive type is in the tuple_shapes field.
   BUFFER = 34;
 
-  // Next = 37
+  // Next = 38
 }
 
 // There are broadly 4 modes that collective communication ops use to describe
@@ -703,12 +713,13 @@ message LiteralProto {
   bytes f8e4m3s = 28;
   bytes f8e5m2fnuzs = 24;
   bytes f8e5m2s = 19;
+  bytes f8e5m3fnus = 37;
   bytes f8e8m0fnus = 33;
   bytes f6e3m2fns = 35;
   bytes f6e2m3fns = 36;
   repeated int64 sparse_indices = 14;
   repeated int32 dynamic_sizes = 34;
-  // Next = 37
+  // Next = 38
 }
 
 message WindowDimension {

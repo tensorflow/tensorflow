@@ -222,6 +222,14 @@ gpu_device_info {
         ops_per_clock: 4096
       }
     }
+    rate_infos {
+      key: 37
+      value {
+        clock_rate_ghz: 2.424
+        units_per_core: 4
+        ops_per_clock: 4096
+      }
+    }
   }
   driver_version: "13.4.0"
   kernel_mode_driver_version: "615.31.0"

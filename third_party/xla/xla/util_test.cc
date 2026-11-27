@@ -386,6 +386,18 @@ TEST(UtilTest, TotalOrder_F8E8M0FNU) {
   }
 }
 
+TEST(UtilTest, TotalOrder_F8E5M3FNU) {
+  for (int a = 0; a < 256; ++a) {
+    tsl::float8_e5m3fnu x =
+        Eigen::numext::bit_cast<tsl::float8_e5m3fnu>(static_cast<uint8_t>(a));
+    for (int b = 0; b < 256; ++b) {
+      tsl::float8_e5m3fnu y =
+          Eigen::numext::bit_cast<tsl::float8_e5m3fnu>(static_cast<uint8_t>(b));
+      TotalOrderHelper(x, y);
+    }
+  }
+}
+
 void PackInt4(absl::Span<const char> input, absl::Span<char> output) {
   CHECK_EQ(output.size(), CeilOfRatio(input.size(), size_t{2}));
   for (size_t i = 0; i < input.size(); ++i) {
