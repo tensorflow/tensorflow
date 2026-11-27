@@ -20,15 +20,25 @@ limitations under the License.
 #include "tensorflow/core/kernels/bincount_op.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/sparse_utils.h"
@@ -45,6 +55,10 @@ typedef Eigen::GpuDevice GPUDevice;
 
 constexpr int64_t kMaxGpuHistogramBins =
     std::numeric_limits<int32_t>::max() - 1024;
+
+// Matches Eigen::TensorCostModel::kStartupCycles / Adaptive(8) cost so we
+// stay single-threaded when Eigen would not parallelize anyway.
+constexpr int64_t kMinParallelBincountElements = 12500;
 
 namespace functor {
 
@@ -64,31 +78,51 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
       return absl::InvalidArgumentError("Input arr must be non-negative!");
     }
 
-    // Allocate partial output bin sums for each worker thread. Worker ids in
-    // ParallelForWithWorkerId range from 0 to NumThreads() inclusive.
+    if (num_bins == 0) {
+      return absl::OkStatus();
+    }
+
     ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
-    const int64_t num_threads = thread_pool->NumThreads() + 1;
-    Tensor partial_bins_t;
-    TF_RETURN_IF_ERROR(context->allocate_temp(
-        DT_BOOL, TensorShape({num_threads, num_bins}), &partial_bins_t));
-    auto partial_bins = partial_bins_t.matrix<bool>();
-    partial_bins.setZero();
-    thread_pool->ParallelForWithWorkerId(
-        arr.size(), thread::ThreadPool::SchedulingParams::Adaptive(8),
-        [&](int64_t start_ind, int64_t limit_ind, int64_t worker_id) {
-          for (int64_t i = start_ind; i < limit_ind; i++) {
-            Tidx value = arr(i);
+    const Tidx* arr_data = arr.data();
+    const int64_t arr_size = arr.size();
+    T* output_data = output.data();
+
+    // ThreadPoolInterface implementations like UnboundedThreadPool may report
+    // NumThreads() == -1, and small/sparse inputs do not benefit from extra
+    // parallel buffers.
+    if (thread_pool->NumThreads() <= 1 ||
+        arr_size < kMinParallelBincountElements ||
+        arr_size <= static_cast<int64_t>(num_bins)) {
+      output.setZero();
+      for (int64_t i = 0; i < arr_size; ++i) {
+        const Tidx value = arr_data[i];
+        if (value < num_bins) {
+          output_data[value] = T(1);
+        }
+      }
+      return absl::OkStatus();
+    }
+
+    auto seen = std::make_unique<std::atomic<uint8_t>[]>(num_bins);
+    for (Tidx b = 0; b < num_bins; ++b) {
+      seen[b].store(0, std::memory_order_relaxed);
+    }
+    thread_pool->ParallelFor(
+        arr_size, thread::ThreadPool::SchedulingParams::Adaptive(8),
+        [&](int64_t start_ind, int64_t limit_ind) {
+          for (int64_t i = start_ind; i < limit_ind; ++i) {
+            const Tidx value = arr_data[i];
             if (value < num_bins) {
-              partial_bins(worker_id, value) = true;
+              if (seen[value].load(std::memory_order_relaxed) == 0) {
+                seen[value].store(1, std::memory_order_relaxed);
+              }
             }
           }
         });
-
-    // Sum the partial bins along the 0th axis.
-    Eigen::array<int, 1> reduce_dim{0};
-    output.device(context->eigen_cpu_device()) =
-        partial_bins.any(reduce_dim).cast<T>();
+    for (Tidx b = 0; b < num_bins; ++b) {
+      output_data[b] = seen[b].load(std::memory_order_relaxed) ? T(1) : T(0);
+    }
     return absl::OkStatus();
   }
 };
@@ -109,11 +143,8 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       return absl::InvalidArgumentError("Input arr must be non-negative!");
     }
 
-    // Allocate partial output bin sums for each worker thread. Worker ids in
-    // ParallelForWithWorkerId range from 0 to NumThreads() inclusive.
     ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
-    const int64_t num_threads = thread_pool->NumThreads() + 1;
     const Tidx* arr_data = arr.data();
     const std::ptrdiff_t arr_size = arr.size();
     const T* weight_data = weights.data();
@@ -121,18 +152,26 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       return absl::InvalidArgumentError(
           "Input indices and weights must have the same size.");
     }
-    if (num_threads == 1) {
+    if (num_bins == 0) {
+      return absl::OkStatus();
+    }
+
+    // Do not rely on CurrentThreadId() (some pools return -1 for all workers)
+    // and treat NumThreads() <= 1 (including -1) as single-threaded.
+    if (thread_pool->NumThreads() <= 1 ||
+        arr_size < kMinParallelBincountElements ||
+        arr_size <= static_cast<std::ptrdiff_t>(num_bins)) {
       output.setZero();
       T* output_data = output.data();
       if (weights.size()) {
-        for (int64_t i = 0; i < arr_size; i++) {
+        for (int64_t i = 0; i < arr_size; ++i) {
           const Tidx value = arr_data[i];
           if (value < num_bins) {
             output_data[value] += weight_data[i];
           }
         }
       } else {
-        for (int64_t i = 0; i < arr_size; i++) {
+        for (int64_t i = 0; i < arr_size; ++i) {
           const Tidx value = arr_data[i];
           if (value < num_bins) {
             // Complex numbers don't support "++".
@@ -140,37 +179,67 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
           }
         }
       }
-    } else {
-      Tensor partial_bins_t;
-      TF_RETURN_IF_ERROR(context->allocate_temp(
-          DataTypeToEnum<T>::value, TensorShape({num_threads, num_bins}),
-          &partial_bins_t));
-      auto partial_bins = partial_bins_t.matrix<T>();
-      partial_bins.setZero();
-      thread_pool->ParallelForWithWorkerId(
-          arr_size, thread::ThreadPool::SchedulingParams::Adaptive(8),
-          [&](int64_t start_ind, int64_t limit_ind, int64_t worker_id) {
-            if (weights.size()) {
-              for (int64_t i = start_ind; i < limit_ind; i++) {
-                Tidx value = arr_data[i];
-                if (value < num_bins) {
-                  partial_bins(worker_id, value) += weight_data[i];
-                }
-              }
-            } else {
-              for (int64_t i = start_ind; i < limit_ind; i++) {
-                Tidx value = arr_data[i];
-                if (value < num_bins) {
-                  // Complex numbers don't support "++".
-                  partial_bins(worker_id, value) += T(1);
-                }
+      return absl::OkStatus();
+    }
+
+    // Reuse per-concurrent-worker scratch buffers via a freelist instead of
+    // indexing by CurrentThreadId(), avoiding both worker ID collisions and
+    // per-shard allocations when ParallelFor overshards.
+    absl::Mutex mu;
+    std::vector<std::unique_ptr<std::vector<T>>> all_buffers;
+    std::vector<std::vector<T>*> free_buffers;
+    const bool has_weights = weights.size() > 0;
+
+    thread_pool->ParallelFor(
+        arr_size, thread::ThreadPool::SchedulingParams::Adaptive(8),
+        [&](int64_t start_ind, int64_t limit_ind) {
+          std::vector<T>* local_bins = nullptr;
+          {
+            absl::MutexLock lock(mu);
+            if (!free_buffers.empty()) {
+              local_bins = free_buffers.back();
+              free_buffers.pop_back();
+            }
+          }
+          if (local_bins == nullptr) {
+            auto buf = std::make_unique<std::vector<T>>(num_bins, T(0));
+            local_bins = buf.get();
+            absl::MutexLock lock(mu);
+            all_buffers.push_back(std::move(buf));
+          }
+
+          T* local_data = local_bins->data();
+          if (has_weights) {
+            for (int64_t i = start_ind; i < limit_ind; ++i) {
+              const Tidx value = arr_data[i];
+              if (value < num_bins) {
+                local_data[value] += weight_data[i];
               }
             }
-          });
+          } else {
+            for (int64_t i = start_ind; i < limit_ind; ++i) {
+              const Tidx value = arr_data[i];
+              if (value < num_bins) {
+                // Complex numbers don't support "++".
+                local_data[value] += T(1);
+              }
+            }
+          }
 
-      // Sum the partial bins along the 0th axis.
-      Eigen::array<int, 1> reduce_dim{0};
-      output.device(context->eigen_cpu_device()) = partial_bins.sum(reduce_dim);
+          absl::MutexLock lock(mu);
+          free_buffers.push_back(local_bins);
+        });
+
+    T* output_data = output.data();
+    const T* first_data = all_buffers[0]->data();
+    for (Tidx b = 0; b < num_bins; ++b) {
+      output_data[b] = first_data[b];
+    }
+    for (size_t k = 1; k < all_buffers.size(); ++k) {
+      const T* buf_data = all_buffers[k]->data();
+      for (Tidx b = 0; b < num_bins; ++b) {
+        output_data[b] += buf_data[b];
+      }
     }
     return absl::OkStatus();
   }
@@ -183,19 +252,19 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
                               const typename TTypes<T, 2>::ConstTensor& weights,
                               typename TTypes<T, 2>::Tensor& out,
                               const Tidx num_bins) {
-    std::atomic<int> err_neg_val = 0;
+    std::atomic<Tidx> err_neg_val{0};
     const int num_rows = out.dimension(0);
     const int num_cols = in.dimension(1);
     ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
-    thread_pool->ParallelForWithWorkerId(
+    thread_pool->ParallelFor(
         num_rows, thread::ThreadPool::SchedulingParams::Adaptive(8),
-        [&](int64_t start_row, int64_t end_row, int64_t worker_id) {
+        [&](int64_t start_row, int64_t end_row) {
           for (int64_t i = start_row; i < end_row; ++i) {
             for (int64_t j = 0; j < num_cols; ++j) {
               Tidx value = in(i, j);
               if (value < 0) {
-                err_neg_val = value;
+                err_neg_val.store(value, std::memory_order_relaxed);
               } else if (value < num_bins) {
                 if (binary_output) {
                   out(i, value) = T(1);
@@ -211,10 +280,11 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
           }
         });
 
-    if (err_neg_val < 0) {
+    const Tidx neg_val = err_neg_val.load(std::memory_order_relaxed);
+    if (neg_val < 0) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Input 'in' must be non-negative! Negative input value found: ",
-          static_cast<int>(err_neg_val)));
+          neg_val));
     }
 
     return absl::OkStatus();
@@ -292,7 +362,7 @@ class DenseBincountOp : public OpKernel {
  public:
   explicit DenseBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(
           ctx, !OpDeterminismRequired(),
           absl::UnimplementedError(
