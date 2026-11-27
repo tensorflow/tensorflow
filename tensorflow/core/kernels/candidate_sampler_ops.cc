@@ -182,6 +182,9 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
  public:
   explicit FixedUnigramCandidateSamplerOp(OpKernelConstruction* context)
       : BaseCandidateSamplerOp(context) {
+    // Base construction can fail before initializing the sampling options.
+    if (!context->status().ok()) return;
+
     int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
     std::string vocab_file;
