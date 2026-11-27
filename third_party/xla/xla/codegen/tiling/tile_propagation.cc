@@ -702,6 +702,26 @@ Tiles PropagateTileToOutputForTransposeOp(const HloInstruction& transpose,
   return {output_tile};
 }
 
+Tiles PropagateTileThroughReverseOp(const HloReverseInstruction& reverse,
+                                    const Tile& tile) {
+  MLIRContext* ctx = tile.mlir_context();
+  SmallVector<DimTile> dim_tiles(tile.dim_tiles().begin(),
+                                 tile.dim_tiles().end());
+  for (int64_t dim : reverse.dimensions()) {
+    int64_t dim_size = reverse.shape().dimensions(dim);
+    DimTile& dim_tile = dim_tiles[dim];
+    // To get the new offset, we need to subtract the "end" of the tile from the
+    // dimension size.
+    SymbolicExpr dim_size_sym = CreateSymbolicConstant(dim_size, ctx);
+    dim_tile.offset =
+        (dim_size_sym - 1 -
+         (dim_tile.offset + (dim_tile.size - 1) * dim_tile.stride))
+            .Canonicalize();
+    dim_tile.upper_bound = dim_size_sym;
+  }
+  return {tile.CloneWithNewDims(std::move(dim_tiles))};
+}
+
 Tiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
                                    const HloInstruction& hlo,
                                    const Tile& output_tile) {
@@ -2173,6 +2193,10 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   if (hlo.opcode() == HloOpcode::kReshape) {
     return PropagateTileToInputForReshapeOp(hlo, output_tile);
   }
+  if (hlo.opcode() == HloOpcode::kReverse) {
+    return PropagateTileThroughReverseOp(*Cast<HloReverseInstruction>(&hlo),
+                                         output_tile);
+  }
   if (hlo.opcode() == HloOpcode::kScan) {
     return PropagateTileToInputForScanOp(hlo, output_tile, output_index);
   }
@@ -2253,6 +2277,10 @@ absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
   }
   if (hlo.opcode() == HloOpcode::kReshape) {
     return PropagateTileToOutputForReshapeOp(hlo, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kReverse) {
+    return PropagateTileThroughReverseOp(*Cast<HloReverseInstruction>(&hlo),
+                                         input_tile);
   }
   if (hlo.opcode() == HloOpcode::kScan) {
     return PropagateTileToOutputForScanOp(hlo, input_tile, input_index);
