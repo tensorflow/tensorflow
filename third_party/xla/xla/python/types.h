@@ -92,6 +92,7 @@ struct NumpyScalarTypes {
   nanobind::object np_float8_e4m3fnuz;
   nanobind::object np_float8_e5m2;
   nanobind::object np_float8_e5m2fnuz;
+  nanobind::object np_float8_e5m3fnu;
   nanobind::object np_float8_e8m0fnu;
   nanobind::object np_float16;
   nanobind::object np_float32;

@@ -54,6 +54,7 @@ std::optional<int> DType::byte_size() const {
     case kF8E4M3FNUZ:
     case kF8E5M2:
     case kF8E5M2FNUZ:
+    case kF8E5M3FNU:
       return 1;
     case kS16:
     case kU16:
@@ -106,6 +107,7 @@ std::optional<int> DType::bit_size() const {
     case kF8E4M3FNUZ:
     case kF8E5M2:
     case kF8E5M2FNUZ:
+    case kF8E5M3FNU:
       return 8;
     case kS16:
     case kU16:
@@ -177,6 +179,7 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
       CASE(F8E4M3FNUZ);
       CASE(F8E5M2);
       CASE(F8E5M2FNUZ);
+      CASE(F8E5M3FNU);
       CASE(F8E8M0FNU);
       CASE(F4E2M1FN);
       CASE(F6E2M3FN);
@@ -240,6 +243,7 @@ void DType::ToProto(DTypeProto& dtype_proto, SerDesVersion version) const {
       CASE(F8E4M3FNUZ);
       CASE(F8E5M2);
       CASE(F8E5M2FNUZ);
+      CASE(F8E5M3FNU);
       CASE(F8E8M0FNU);
       CASE(F4E2M1FN);
       CASE(F6E2M3FN);
@@ -324,6 +328,8 @@ std::string DType::DebugString() const {
       return "F8E5M2";
     case kF8E5M2FNUZ:
       return "F8E5M2FNUZ";
+    case kF8E5M3FNU:
+      return "F8E5M3FNU";
     case kF8E8M0FNU:
       return "F8E8M0FNU";
     case kString:
