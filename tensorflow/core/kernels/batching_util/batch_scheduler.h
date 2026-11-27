@@ -103,6 +103,17 @@ class BatchTask {
     return tsl::criticality::Criticality::kCritical;
   }
 
+  // Returns the latency priority of the task among the tasks of the same
+  // criticality: 1 for a high priority and 0, the default, for a regular one.
+  virtual int32_t latency_priority() const { return 0; }
+
+  // Returns the admission order of the task among the tasks of the same
+  // criticality and latency priority: tasks with a lower value are processed
+  // first, and tasks without one last.
+  virtual std::optional<int64_t> admission_order() const {
+    return std::nullopt;
+  }
+
   // If true, the task is a warmup task.
   virtual bool is_warmup() const { return false; }
 

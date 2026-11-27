@@ -161,6 +161,17 @@ class BatchResourceBase : public ResourceBase {
       return criticality_val;
     };
 
+    // The latency priority and admission order of the task. See
+    // serving::BatchTask.
+    int32_t latency_priority_val = 0;
+    std::optional<int64_t> admission_order_val;
+
+    int32_t latency_priority() const override { return latency_priority_val; }
+
+    std::optional<int64_t> admission_order() const override {
+      return admission_order_val;
+    }
+
     // If nonzero, make a batch of this size entirely out of padding. This
     // batch is processed, but is not propagated to the kernel outputs.
     int forced_warmup_batch_size = 0;
@@ -293,6 +304,14 @@ class BatchResourceBase : public ResourceBase {
       int32_t max_batch_size, int32_t batch_timeout_micros,
       int32_t max_enqueued_batches, bool enable_large_batch_splitting,
       const std::vector<int32>& allowed_batch_sizes, bool disable_padding);
+
+  // Sets whether priority-aware batch ops share the process-wide batch
+  // scheduler. Production model-loading paths latch this to `true` before
+  // `BatchResource` creation when global scheduling is requested (so loading a
+  // subsequent model with default options on the same server does not overwrite
+  // a server-wide setting); pass `false` in tests to reset process-wide state.
+  static void SetUseGlobalPriorityAwareBatchScheduler(bool use_global);
+  static bool UseGlobalPriorityAwareBatchScheduler();
 
   // Split 'input' of 'input_task_ptr' along 0th dimension, into a list of
   // 'output_tasks'.

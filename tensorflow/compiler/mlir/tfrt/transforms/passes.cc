@@ -153,6 +153,8 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
           options.batch_queue_global_prioritization_num_threads,
       .enable_priority_aware_batch_scheduler =
           options.enable_priority_aware_batch_scheduler,
+      .priority_aware_batch_scheduler_use_global_scheduler =
+          options.priority_aware_batch_scheduler_use_global_scheduler,
       .enable_priority_aware_batch_scheduler_resplit =
           options.enable_priority_aware_batch_scheduler_resplit,
       .enable_batching_task_lazy_cancellation =

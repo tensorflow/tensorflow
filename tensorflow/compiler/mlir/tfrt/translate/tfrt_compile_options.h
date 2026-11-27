@@ -158,6 +158,9 @@ struct TfrtCompileOptions {
   // criticality.
   bool enable_priority_aware_batch_scheduler = false;
 
+  // If true, priority-aware batch ops share the process-wide batch scheduler.
+  bool priority_aware_batch_scheduler_use_global_scheduler = false;
+
   // If true, the queue implementation will resplit tasks for priority aware
   // scheduling.
   bool enable_priority_aware_batch_scheduler_resplit = false;

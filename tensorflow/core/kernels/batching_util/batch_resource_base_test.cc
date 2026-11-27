@@ -121,6 +121,15 @@ TEST(BatchTaskTest, CreateSplitTaskCopiesFields) {
   EXPECT_TRUE(split_task->IsCancelled());
 }
 
+TEST(UseGlobalPriorityAwareBatchSchedulerTest, DefaultSetAndReset) {
+  BatchResourceBase::SetUseGlobalPriorityAwareBatchScheduler(false);
+  EXPECT_FALSE(BatchResourceBase::UseGlobalPriorityAwareBatchScheduler());
+  BatchResourceBase::SetUseGlobalPriorityAwareBatchScheduler(true);
+  EXPECT_TRUE(BatchResourceBase::UseGlobalPriorityAwareBatchScheduler());
+  BatchResourceBase::SetUseGlobalPriorityAwareBatchScheduler(false);
+  EXPECT_FALSE(BatchResourceBase::UseGlobalPriorityAwareBatchScheduler());
+}
+
 struct PriorityTestParams {
   std::string test_name;
   bool enable_large_batch_splitting;
@@ -813,6 +822,42 @@ TEST_F(SplitInputTaskTest, ResplitAlreadySplitTask) {
   }
   for (int i = 4 * 4; i < 6 * 4; ++i) {
     EXPECT_EQ(flat(i), 40);
+  }
+}
+
+TEST_F(SplitInputTaskTest, SubtasksKeepLatencyPriorityAndAdmissionOrder) {
+  auto task = std::make_unique<BatchResourceBase::BatchTask>();
+  task->inputs.push_back(Tensor(DataType::DT_INT64, TensorShape({6, 4})));
+  task->context = context_.get();
+  task->output = std::make_shared<BatchResourceBase::TensorMatrix>();
+  task->status = std::make_shared<ThreadSafeStatus>();
+  task->guid = 0;
+  task->start_time = 0;
+  task->latency_priority_val = 1;
+  task->admission_order_val = 7;
+  task->set_done_callback([]() {});
+
+  std::vector<std::unique_ptr<BatchResourceBase::BatchTask>> split;
+  TF_ASSERT_OK(
+      BatchResourceBase::SplitInputTask(&task, /*open_batch_remaining_slot=*/2,
+                                        /*max_batch_size=*/4, &split));
+  ASSERT_EQ(split.size(), 2);
+  std::vector<std::unique_ptr<BatchResourceBase::BatchTask>> resplit;
+  TF_ASSERT_OK(BatchResourceBase::SplitInputTask(
+      &split[1], /*open_batch_remaining_slot=*/1,
+      /*max_batch_size=*/4, &resplit));
+  ASSERT_EQ(resplit.size(), 2);
+
+  for (const auto* subtask :
+       {split[0].get(), resplit[0].get(), resplit[1].get()}) {
+    EXPECT_EQ(subtask->latency_priority(), 1);
+    EXPECT_EQ(subtask->admission_order(), 7);
+  }
+
+  // Finish the subtasks with an error: they have no output.
+  split[0]->FinishTask(absl::UnavailableError("No output"));
+  for (auto& subtask : resplit) {
+    subtask->FinishTask(absl::UnavailableError("No output"));
   }
 }
 

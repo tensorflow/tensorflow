@@ -141,6 +141,7 @@ cc_library(
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/kernels/batching_util:batch_resource_base",
         "//tensorflow/core/ops",
         "//tensorflow/core/platform:enable_tf2_utils",
         "//tensorflow/core/platform:errors",

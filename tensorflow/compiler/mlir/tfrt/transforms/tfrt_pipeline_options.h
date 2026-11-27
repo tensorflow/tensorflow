@@ -161,6 +161,12 @@ struct TfrtPipelineOptions
                      "subqueue for each criticality."),
       llvm::cl::init(false)};
 
+  Option<bool> priority_aware_batch_scheduler_use_global_scheduler{
+      *this, "tfrt-priority-aware-batch-scheduler-use-global-scheduler",
+      llvm::cl::desc("If true, priority-aware batch ops share the "
+                     "process-wide batch scheduler."),
+      llvm::cl::init(false)};
+
   Option<bool> enable_priority_aware_batch_scheduler_resplit{
       *this, "tfrt-enable-priority-aware-batch-scheduler-resplit",
       llvm::cl::desc("If true, the queue implementation will allow task "
