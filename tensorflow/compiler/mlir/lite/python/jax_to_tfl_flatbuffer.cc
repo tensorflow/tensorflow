@@ -124,6 +124,7 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(
   pass_config.enable_hlo_to_tf_conversion = true;
   pass_config.enable_stablehlo_conversion =
       converter_flags.convert_to_stablehlo();
+  pass_config.rank_reduction = converter_flags.rank_reduction();
 
   mlir::OwningOpRef<mlir::ModuleOp> module;
   std::string content(input.data(), input.size());

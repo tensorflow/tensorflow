@@ -728,7 +728,7 @@ class TFLiteConverterBase:
     self._experimental_unsafe_fuse_dynamic_shaped_broadcast = False
     # Runs RankReductionPass (folds unit dims out of rank > 4 ops; assumes the
     # exported batch size is kept).
-    self._experimental_rank_reduction = False
+    self._experimental_rank_reduction = True
     # Runs GpuCompatibilityPass (GPU-delegate-only rewrites, unbounded
     # materialization).
     self._experimental_unsafe_gpu_compatibility = False

@@ -117,7 +117,10 @@ struct PassConfig {
   bool unsafe_fuse_dynamic_shaped_broadcast = false;
 
   // When set to true, run RankReductionPass: fold unit dimensions out of ops
-  // over tensors of rank > 4, assuming the exported batch size is kept.
+  // over tensors of rank > 4, assuming the exported batch size is kept. Off
+  // here so that embedders building a PassConfig directly (e.g. accelerator
+  // compilers) keep their graphs; the converter enables it by default through
+  // `ConverterFlags.rank_reduction`.
   bool rank_reduction = false;
 
   // When set to true, run GpuCompatibilityPass: rewrite ops the GPU delegates
