@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/emitters/concatenate_kernel_emitter.h"
 
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
