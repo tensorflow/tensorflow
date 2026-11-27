@@ -43,6 +43,7 @@ absl::StatusOr<ncclDataType_t> ToNcclDataType(
       [[fallthrough]];
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
+    case F8E5M3FNU:
     case F8E8M0FNU:
       if (is_reduction_op) {
         return InvalidArgument(
