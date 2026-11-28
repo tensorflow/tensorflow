@@ -84,6 +84,32 @@ class SlurmClusterResolverTest(test.TestCase):
     self.assertEqual(slurm_cluster_resolver.num_accelerators(), {'GPU': 1})
     self.assertEqual(os.environ['CUDA_VISIBLE_DEVICES'], '0')
 
+  @mock.patch.dict(os.environ, {
+      'SLURM_PROCID': '1',
+      'SLURM_STEP_NUM_TASKS': '4',
+      'SLURM_STEP_NODELIST': 'node[2,10]',
+      'SLURM_STEP_TASKS_PER_NODE': '2(x2)',
+  })
+  def testRankFollowsSlurmNodeOrder(self):
+    for tasks_per_node in (None, 2):
+      with self.subTest(tasks_per_node=tasks_per_node):
+        resolver = SlurmClusterResolver(
+            tasks_per_node=tasks_per_node, gpus_per_node=2, auto_set_gpu=False)
+        self.assertEqual(resolver.cluster_spec().as_dict(), {
+            'worker': ['node2:8888', 'node2:8889', 'node10:8888', 'node10:8889']
+        })
+        self.assertEqual(resolver.master(), 'grpc://node2:8889')
+
+  @mock.patch.dict(os.environ, {'SLURM_PROCID': '0'})
+  def testExplicitTaskMappingUsesSortedHostnames(self):
+    resolver = SlurmClusterResolver(
+        jobs={'worker': 2},
+        tasks_per_node={'node2': 1, 'node10': 1},
+        gpus_per_node=1,
+        auto_set_gpu=False)
+    self.assertEqual(resolver.cluster_spec().as_dict(),
+                     {'worker': ['node10:8888', 'node2:8888']})
+
   @mock.patch.dict(
       os.environ, {
           'SLURM_PROCID': '0',
