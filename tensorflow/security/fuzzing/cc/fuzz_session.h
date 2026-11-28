@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"  // tensorflow::ops::Placeholder
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"

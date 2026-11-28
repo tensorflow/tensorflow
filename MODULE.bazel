@@ -115,7 +115,7 @@ single_version_override(
     version = "1.18.0",
 )
 
-bazel_dep(name = "fuzztest", version = "20250805.0", dev_dependency = True, repo_name = "com_google_fuzztest")
+bazel_dep(name = "fuzztest", version = "20260629.0", dev_dependency = True, repo_name = "com_google_fuzztest")
 
 bazel_dep(name = "gflags", version = "2.2.2", repo_name = "com_github_gflags_gflags")
 bazel_dep(name = "snappy", version = "1.2.2.bcr.3")
