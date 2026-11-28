@@ -151,6 +151,90 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop) {
   EXPECT_EQ(2, found);
 }
 
+// Returns a graph with an input "x", a node "y" that is the other fetch, and a
+// node named dead_name that computes Add(x, w), where "w" is not a node in the
+// graph, and that nothing consumes. DependencyOptimizer replaces such a node
+// with a NoOp but cannot remove it, because one of its inputs is missing, and
+// then looks at the fanout of "x" again. When dead_name is "dead:0",
+// NodeName(dead_name) is "dead", which is not a key in the NodeMap, so the
+// rewrite must not leave a null fanout behind.
+GraphDef DeadNodeGraph(bool const_input, const std::string& dead_name) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = const_input ? ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2})
+                         : ops::Placeholder(s.WithOpName("x"), DT_FLOAT);
+  Output w = ops::Const(s.WithOpName("w"), {5.0f, 6.0f}, {1, 2});
+  ops::Const(s.WithOpName("y"), {3.0f, 4.0f}, {1, 2});
+  ops::Add(s.WithOpName("dead"), x, w);
+  GraphDef complete;
+  TF_CHECK_OK(s.ToGraphDef(&complete));
+  GraphDef graph;
+  for (NodeDef& node : *complete.mutable_node()) {
+    if (node.name() == "w") {
+      continue;
+    }
+    if (node.name() == "dead") {
+      node.set_name(dead_name);
+    }
+    *graph.add_node() = node;
+  }
+  return graph;
+}
+
+void ExpectDeadNodeBecomesNoOp(bool const_input, const std::string& dead_name) {
+  GrapplerItem item;
+  item.graph = DeadNodeGraph(const_input, dead_name);
+  item.fetch = {"x", "y"};
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  // The missing input makes the topological sort fail, which Optimize reports
+  // with an error log. Capture stderr to keep that expected message out of the
+  // test output.
+  ::testing::internal::CaptureStderr();
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
+  ::testing::internal::GetCapturedStderr();
+  TF_EXPECT_OK(status);
+
+  // The dead node is now a NoOp; both fetches are untouched.
+  EXPECT_EQ(output.node_size(), 3);
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == dead_name) {
+      EXPECT_EQ(node.op(), "NoOp");
+      ++found;
+    } else if (node.name() == "x") {
+      EXPECT_EQ(node.op(), const_input ? "Const" : "Placeholder");
+      EXPECT_EQ(node.input_size(), 0);
+      ++found;
+    } else if (node.name() == "y") {
+      EXPECT_EQ(node.op(), "Const");
+      EXPECT_EQ(node.input_size(), 0);
+      ++found;
+    }
+  }
+  EXPECT_EQ(found, 3);
+}
+
+// The input is a Placeholder, so the null fanout is reached through
+// HasRegularOutputs.
+TEST_F(DependencyOptimizerTest, ChangeToNoop_ControlName_Placeholder) {
+  ExpectDeadNodeBecomesNoOp(/*const_input=*/false, "dead");
+}
+
+TEST_F(DependencyOptimizerTest, ChangeToNoop_ColonName_Placeholder) {
+  ExpectDeadNodeBecomesNoOp(/*const_input=*/false, "dead:0");
+}
+
+// The input is a Const, so the null fanout is reached through the Const fanout
+// loop in OptimizeNode.
+TEST_F(DependencyOptimizerTest, ChangeToNoop_ControlName_Const) {
+  ExpectDeadNodeBecomesNoOp(/*const_input=*/true, "dead");
+}
+
+TEST_F(DependencyOptimizerTest, ChangeToNoop_ColonName_Const) {
+  ExpectDeadNodeBecomesNoOp(/*const_input=*/true, "dead:0");
+}
+
 TEST_F(DependencyOptimizerTest, FullTypeForKeptNoop) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);

@@ -417,6 +417,247 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
   }
 }
 
+// Returns a graph in which "x" feeds "y" and a node named dead_name. With
+// dead_name "dead:0" the node is stored in a NodeMap under the key "dead:0",
+// but NodeName("dead:0") is "dead", which is not a key.
+GraphDef GraphWithColonNamedNode(const std::string& dead_name) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  ops::Square(s.WithOpName("y"), x);
+  ops::Square(s.WithOpName("dead"), x);
+  GraphDef graph;
+  TF_CHECK_OK(s.ToGraphDef(&graph));
+  for (NodeDef& node : *graph.mutable_node()) {
+    if (node.name() == "dead") {
+      node.set_name(dead_name);
+    }
+  }
+  return graph;
+}
+
+template <typename NodeMapT>
+void ExpectNoNullOutputs(const NodeMapT& node_map, const std::string& name) {
+  for (const auto* output : node_map.GetOutputs(name)) {
+    EXPECT_NE(output, nullptr) << "null fanout of " << name;
+  }
+}
+
+TEST_F(UtilsTest, NodeMapMutatorsControlWithKeyNames) {
+  GraphDef graph = GraphWithColonNamedNode("dead");
+  NodeMap node_map(&graph);
+  const NodeDef* y = node_map.GetNode("y");
+  const NodeDef* dead = node_map.GetNode("dead");
+  ASSERT_NE(y, nullptr);
+  ASSERT_NE(dead, nullptr);
+  ASSERT_EQ(node_map.GetOutputs("x").size(), 2);
+  EXPECT_TRUE(node_map.GetOutputs("x").contains(y));
+  EXPECT_TRUE(node_map.GetOutputs("x").contains(dead));
+
+  node_map.RemoveOutput("x", "y");
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 1);
+  EXPECT_FALSE(node_map.GetOutputs("x").contains(y));
+
+  node_map.AddOutput("x", "y");
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  EXPECT_TRUE(node_map.GetOutputs("x").contains(y));
+
+  // "y" stops consuming "x" and consumes "dead" through a control edge.
+  node_map.UpdateInput("y", "x", "^dead");
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 1);
+  EXPECT_FALSE(node_map.GetOutputs("x").contains(y));
+  EXPECT_EQ(node_map.GetOutputs("dead").size(), 1);
+  EXPECT_TRUE(node_map.GetOutputs("dead").contains(y));
+
+  node_map.UpdateOutput("x", "dead", "y");
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 1);
+  EXPECT_TRUE(node_map.GetOutputs("x").contains(y));
+
+  // RemoveInputs drops "y" from the fanout of each of its inputs ("x").
+  node_map.RemoveInputs("y");
+  EXPECT_TRUE(node_map.GetOutputs("x").empty());
+  EXPECT_TRUE(node_map.NodeExists("y"));
+  EXPECT_TRUE(node_map.NodeExists("dead"));
+}
+
+TEST_F(UtilsTest, NodeMapAddOutputSkipsNamesThatAreNotKeys) {
+  GraphDef graph = GraphWithColonNamedNode("dead:0");
+  NodeMap node_map(&graph);
+  ASSERT_EQ(node_map.GetOutputs("x").size(), 2);
+
+  node_map.AddOutput("x", "missing");
+  node_map.AddOutput("x", "dead:0");
+  node_map.AddOutput("untracked_src", "missing");
+
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  ExpectNoNullOutputs(node_map, "x");
+  EXPECT_FALSE(node_map.NodeExists("missing"));
+  EXPECT_FALSE(node_map.NodeExists("dead"));
+  EXPECT_EQ(&node_map.GetOutputs("untracked_src"),
+            &node_map.GetOutputs("untracked_sentinel"));
+}
+
+TEST_F(UtilsTest, NodeMapRemoveOutputSkipsNamesThatAreNotKeys) {
+  GraphDef graph = GraphWithColonNamedNode("dead:0");
+  NodeMap node_map(&graph);
+
+  node_map.RemoveOutput("x", "missing");
+  node_map.RemoveOutput("x", "dead:0");
+  node_map.RemoveOutput("untracked_src", "y");
+
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  ExpectNoNullOutputs(node_map, "x");
+  EXPECT_FALSE(node_map.NodeExists("missing"));
+  EXPECT_FALSE(node_map.NodeExists("dead"));
+  EXPECT_EQ(&node_map.GetOutputs("untracked_src"),
+            &node_map.GetOutputs("untracked_sentinel"));
+}
+
+TEST_F(UtilsTest, NodeMapUpdateInputSkipsNamesThatAreNotKeys) {
+  GraphDef graph = GraphWithColonNamedNode("dead:0");
+  NodeMap node_map(&graph);
+
+  // The call sequence DependencyOptimizer makes when it replaces a node with a
+  // NoOp: the old data input becomes a control input.
+  node_map.UpdateInput("dead:0", "x", "^x");
+
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  ExpectNoNullOutputs(node_map, "x");
+  EXPECT_FALSE(node_map.NodeExists("dead"));
+  const NodeDef* x_node = node_map.GetNode("x");
+  ASSERT_NE(x_node, nullptr);
+  EXPECT_TRUE(HasRegularOutputs(*x_node, node_map));
+}
+
+TEST_F(UtilsTest, NodeMapUpdateOutputSkipsNamesThatAreNotKeys) {
+  GraphDef graph = GraphWithColonNamedNode("dead:0");
+  NodeMap node_map(&graph);
+
+  node_map.UpdateOutput("x", "missing", "dead:0");
+  node_map.UpdateOutput("x", "dead:0", "missing");
+  node_map.UpdateOutput("untracked_src_1", "y", "dead:0");
+  node_map.UpdateOutput("untracked_src_2", "missing", "dead:0");
+
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  ExpectNoNullOutputs(node_map, "x");
+  EXPECT_FALSE(node_map.NodeExists("missing"));
+  EXPECT_FALSE(node_map.NodeExists("dead"));
+  EXPECT_EQ(&node_map.GetOutputs("untracked_src_1"),
+            &node_map.GetOutputs("untracked_sentinel"));
+  EXPECT_EQ(&node_map.GetOutputs("untracked_src_2"),
+            &node_map.GetOutputs("untracked_sentinel"));
+}
+
+TEST_F(UtilsTest, NodeMapUpdateOutputInsertsOnlyWhenNewOutputExists) {
+  GraphDef graph = GraphWithColonNamedNode("dead:0");
+  NodeMap node_map(&graph);
+  const NodeDef* y = node_map.GetNode("y");
+  ASSERT_NE(y, nullptr);
+
+  node_map.UpdateOutput("untracked_missing_new", "y", "dead:0");
+  EXPECT_EQ(&node_map.GetOutputs("untracked_missing_new"),
+            &node_map.GetOutputs("untracked_sentinel"));
+
+  node_map.UpdateOutput("untracked_valid_new", "missing", "y");
+  EXPECT_EQ(node_map.GetOutputs("untracked_valid_new").size(), 1);
+  EXPECT_TRUE(node_map.GetOutputs("untracked_valid_new").contains(y));
+}
+
+TEST_F(UtilsTest, NodeMapRemoveInputsSkipsNamesThatAreNotKeys) {
+  GraphDef graph = GraphWithColonNamedNode("dead:0");
+  NodeMap node_map(&graph);
+
+  node_map.RemoveInputs("missing");
+  // "dead" is not a key either; the node is stored as "dead:0".
+  node_map.RemoveInputs("dead");
+
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  ExpectNoNullOutputs(node_map, "x");
+  EXPECT_FALSE(node_map.NodeExists("missing"));
+  EXPECT_FALSE(node_map.NodeExists("dead"));
+
+  // Removing inputs of an existing node whose input list references an
+  // untracked input name must not insert an empty set into outputs_.
+  NodeDef* y = node_map.GetNode("y");
+  ASSERT_NE(y, nullptr);
+  y->add_input("untracked_input");
+  node_map.RemoveInputs("y");
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 1);
+  EXPECT_EQ(&node_map.GetOutputs("untracked_input"),
+            &node_map.GetOutputs("untracked_sentinel"));
+}
+
+// AddNode rejects nullptr only with a DCHECK, which optimized builds compile
+// out, so a key can hold a null pointer there. The mutators must treat such a
+// key like a missing one instead of inserting the pointer into a fanout set.
+TEST_F(UtilsTest, NodeMapNullValuedKeyIsNotInsertedIntoOutputs) {
+#ifndef NDEBUG
+  GTEST_SKIP() << "AddNode(nullptr) trips a DCHECK in builds without NDEBUG";
+#endif
+  GraphDef graph = GraphWithColonNamedNode("dead");
+  NodeMap node_map(&graph);
+  node_map.AddNode("null_node", nullptr);
+  ASSERT_EQ(node_map.GetOutputs("x").size(), 2);
+
+  node_map.AddOutput("x", "null_node");
+  node_map.AddOutput("untracked_src_1", "null_node");
+  node_map.UpdateOutput("untracked_src_2", "null_node", "null_node");
+  node_map.RemoveOutput("x", "null_node");
+
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  ExpectNoNullOutputs(node_map, "x");
+  EXPECT_TRUE(node_map.GetOutputs("null_node").empty());
+  EXPECT_EQ(&node_map.GetOutputs("untracked_src_1"),
+            &node_map.GetOutputs("untracked_sentinel"));
+  EXPECT_EQ(&node_map.GetOutputs("untracked_src_2"),
+            &node_map.GetOutputs("untracked_sentinel"));
+}
+
+TEST_F(UtilsTest, NodeMapRemoveInputsNullValuedKeyIsNoOp) {
+#ifndef NDEBUG
+  GTEST_SKIP() << "AddNode(nullptr) trips a DCHECK in builds without NDEBUG";
+#endif
+  GraphDef graph = GraphWithColonNamedNode("dead");
+  NodeMap node_map(&graph);
+  node_map.AddNode("null_node", nullptr);
+
+  node_map.RemoveInputs("null_node");
+
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  ExpectNoNullOutputs(node_map, "x");
+}
+
+TEST_F(UtilsTest, ImmutableNodeMapNullValuedKeyIsSkipped) {
+#ifndef NDEBUG
+  GTEST_SKIP() << "AddNode(nullptr) trips a DCHECK in builds without NDEBUG";
+#endif
+  GraphDef graph = GraphWithColonNamedNode("dead");
+  ImmutableNodeMap node_map(&graph);
+  node_map.AddNode("null_node", nullptr);
+
+  node_map.AddOutput("x", "null_node");
+  node_map.RemoveInputs("null_node");
+
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  ExpectNoNullOutputs(node_map, "x");
+}
+
+TEST_F(UtilsTest, ImmutableNodeMapSkipsNamesThatAreNotKeys) {
+  GraphDef graph = GraphWithColonNamedNode("dead:0");
+  ImmutableNodeMap node_map(&graph);
+
+  node_map.AddOutput("x", "dead:0");
+  node_map.RemoveOutput("x", "missing");
+  node_map.RemoveOutput("untracked_src", "y");
+  node_map.RemoveInputs("dead");
+
+  EXPECT_EQ(node_map.GetOutputs("x").size(), 2);
+  ExpectNoNullOutputs(node_map, "x");
+  EXPECT_FALSE(node_map.NodeExists("missing"));
+  EXPECT_FALSE(node_map.NodeExists("dead"));
+  EXPECT_EQ(&node_map.GetOutputs("untracked_src"),
+            &node_map.GetOutputs("untracked_sentinel"));
+}
+
 TEST(CheckAttrExists, All) {
   NodeDef node;
   node.set_name("node");

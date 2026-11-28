@@ -186,16 +186,30 @@ class NodeMapInternal {
     return nodes_.find(node_name) != nodes_.end();
   }
 
+  // The output mutators below look up nodes_ with FindNode() instead of
+  // operator[] and skip names that have no usable node, so a name that is not a
+  // key (such as "a:0", looked up via NodeName as "a") never inserts a null
+  // entry into nodes_ or a null fanout into outputs_. Erasing uses
+  // outputs_.find() so untracked input names do not gain empty fanout sets.
   void AddOutput(const std::string& node_name, const std::string& output_name) {
-    auto output_node = nodes_[NodeName(output_name)];
-    DCHECK(output_node) << "Output node " << output_name
-                        << " is missing in NodeMap.";
+    NodeDefT* output_node = FindNode(NodeName(output_name));
+    if (output_node == nullptr) {
+      VLOG(1) << "Output node " << output_name << " is missing in NodeMap.";
+      return;
+    }
     outputs_[node_name].insert(output_node);
   }
 
   void RemoveOutput(const std::string& node_name,
                     const std::string& output_name) {
-    outputs_[node_name].erase(nodes_[NodeName(output_name)]);
+    NodeDefT* output_node = FindNode(NodeName(output_name));
+    if (output_node == nullptr) {
+      return;
+    }
+    auto outputs_it = outputs_.find(node_name);
+    if (outputs_it != outputs_.end()) {
+      outputs_it->second.erase(output_node);
+    }
   }
 
   void UpdateInput(const std::string& node_name,
@@ -206,7 +220,10 @@ class NodeMapInternal {
   }
 
   void RemoveInputs(const std::string& node_name) {
-    auto node = nodes_[node_name];
+    NodeDefT* node = FindNode(node_name);
+    if (node == nullptr) {
+      return;
+    }
     for (const auto& input : node->input()) {
       RemoveOutput(NodeName(input), node->name());
     }
@@ -219,14 +236,29 @@ class NodeMapInternal {
   void UpdateOutput(const std::string& node_name,
                     const std::string& old_output_name,
                     const std::string& new_output_name) {
-    absl::flat_hash_set<NodeDef*>& outputs = outputs_[node_name];
-    outputs.erase(nodes_[NodeName(old_output_name)]);
-    outputs.insert(nodes_[NodeName(new_output_name)]);
+    NodeDefT* old_node = FindNode(NodeName(old_output_name));
+    if (old_node != nullptr) {
+      auto outputs_it = outputs_.find(node_name);
+      if (outputs_it != outputs_.end()) {
+        outputs_it->second.erase(old_node);
+      }
+    }
+    NodeDefT* new_node = FindNode(NodeName(new_output_name));
+    if (new_node != nullptr) {
+      outputs_[node_name].insert(new_node);
+    }
   }
 
  private:
   // Helper method to get the NodeDef pointer of i-th node in a graph.
   inline NodeDefT* GetNodeDefFromGraph(GraphDefT* graph, int64_t i) const;
+
+  // Returns the node stored under exactly `key`, or nullptr if `key` is not in
+  // nodes_ or its stored pointer is null. Unlike nodes_[key], never inserts.
+  NodeDefT* FindNode(const std::string& key) const {
+    auto it = nodes_.find(key);
+    return it == nodes_.end() ? nullptr : it->second;
+  }
 
   const absl::flat_hash_set<NodeDefT*> empty_set_;
   absl::node_hash_map<std::string, NodeDefT*> nodes_;
