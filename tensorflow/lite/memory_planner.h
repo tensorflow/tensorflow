@@ -69,6 +69,19 @@ class MemoryPlanner {
   // Returns a map of allocation information. It's only used for debugging.
   virtual void GetAllocInfo(size_t *arena_size,
                             size_t *arena_persist_size) const = 0;
+
+  // Optional execution lifecycle hooks for memory planners that support
+  // execution-time allocation and reclamation (e.g. SimplePlanner).
+  virtual TfLiteStatus BeginInvocation() { return kTfLiteOk; }
+  virtual TfLiteStatus BeforeNode(int execution_plan_index) {
+    return kTfLiteOk;
+  }
+  virtual TfLiteStatus AfterNode(int execution_plan_index) { return kTfLiteOk; }
+  virtual void EndInvocation(bool completed_successfully) {}
+
+  // Optional configuration hooks.
+  virtual void SetReclamationMode(bool enable) {}
+  virtual void SetPreserveAllTensors(bool preserve) {}
 };
 
 }  // namespace tflite
