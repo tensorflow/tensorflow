@@ -168,6 +168,37 @@ cc_library(
 )
 
 cc_library(
+    name = "partition_report",
+    srcs = ["partition_report.cc"],
+    hdrs = ["partition_report.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_test(
+    name = "partition_report_test",
+    srcs = ["partition_report_test.cc"],
+    deps = [
+        ":partition_report",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "benchmark_tflite_model_lib",
     srcs = ["benchmark_tflite_model.cc"],
     hdrs = ["benchmark_tflite_model.h"],
@@ -181,6 +212,7 @@ cc_library(
         ":benchmark_model_lib",
         ":benchmark_params",
         ":benchmark_utils",
+        ":partition_report",
         ":profiling_listener",
         "//tensorflow/core/example:example_protos_cc_impl",
         "//tensorflow/lite:framework",
