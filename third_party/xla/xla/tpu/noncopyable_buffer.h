@@ -96,7 +96,7 @@ class NoncopyableBuffer {
   // owned data for modification.
   template <typename T>
   absl::Span<T> mutable_data() {
-    static_assert(std::is_arithmetic<T>::value, "Must be arithmetic type.");
+    static_assert(std::is_arithmetic_v<T>, "Must be arithmetic type.");
     EnsureDataOwned();
     DCHECK_EQ(size_ % sizeof(T), 0);
     return absl::Span<T>(reinterpret_cast<T*>(data_.get()), size_ / sizeof(T));
@@ -104,7 +104,7 @@ class NoncopyableBuffer {
 
   template <typename T>
   absl::Span<const T> const_data() const {
-    static_assert(std::is_arithmetic<T>::value, "Must be arithmetic type.");
+    static_assert(std::is_arithmetic_v<T>, "Must be arithmetic type.");
     DCHECK_EQ(size_ % sizeof(T), 0);
     return absl::Span<const T>(static_cast<const T*>(buf_), size_ / sizeof(T));
   }
