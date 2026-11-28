@@ -6067,6 +6067,37 @@ class NonMaxSuppressionWithScoresTest(test_util.TensorFlowTestCase):
                         [0.95, 0.9, 0.384, 0.3, 0.256, 0.197],
                         rtol=1e-2, atol=1e-2)
 
+  @test_util.xla_allow_fallback(
+      "non_max_suppression with dynamic output shape unsupported.")
+  def testFloat16BoxesAndScores(self):
+    boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+
+    def _nms(dtype, iou_threshold, score_threshold, soft_nms_sigma):
+      return self.evaluate(
+          image_ops.non_max_suppression_with_scores(
+              constant_op.constant(boxes_np, dtype=dtype),
+              constant_op.constant(scores_np, dtype=dtype),
+              max_output_size=6,
+              iou_threshold=iou_threshold,
+              score_threshold=score_threshold,
+              soft_nms_sigma=soft_nms_sigma))
+
+    # The thresholds can be Python floats or float32 tensors, as in the other
+    # tests, for both standard and Soft-NMS.
+    for soft_nms_sigma in (0.0, 0.5):
+      for to_tensor in (False, True):
+        with self.subTest(soft_nms_sigma=soft_nms_sigma, to_tensor=to_tensor):
+          thresholds = [0.5, 0.0, soft_nms_sigma]
+          if to_tensor:
+            thresholds = [constant_op.constant(t) for t in thresholds]
+          indices, scores = _nms(dtypes.float16, *thresholds)
+          expected_indices, expected_scores = _nms(dtypes.float32, *thresholds)
+          self.assertEqual(scores.dtype, np.float16)
+          self.assertAllEqual(expected_indices, indices)
+          self.assertAllClose(expected_scores, scores, rtol=1e-2, atol=1e-2)
+
 
 class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase,
                                   parameterized.TestCase):

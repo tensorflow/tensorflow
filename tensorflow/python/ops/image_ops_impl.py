@@ -4076,11 +4076,20 @@ def non_max_suppression_with_scores(boxes,
       (i.e. when `soft_nms_sigma>0`)
   """
   with ops.name_scope(name, 'non_max_suppression_with_scores'):
+    boxes = ops.convert_to_tensor(boxes, name='boxes')
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')
     soft_nms_sigma = ops.convert_to_tensor(
         soft_nms_sigma, name='soft_nms_sigma')
+    # NonMaxSuppressionV5 takes the thresholds in the dtype of the boxes, which
+    # can be float16.
+    if iou_threshold.dtype != boxes.dtype:
+      iou_threshold = math_ops.cast(iou_threshold, boxes.dtype)
+    if score_threshold.dtype != boxes.dtype:
+      score_threshold = math_ops.cast(score_threshold, boxes.dtype)
+    if soft_nms_sigma.dtype != boxes.dtype:
+      soft_nms_sigma = math_ops.cast(soft_nms_sigma, boxes.dtype)
     (selected_indices, selected_scores,
      _) = gen_image_ops.non_max_suppression_v5(
          boxes,
