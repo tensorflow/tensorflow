@@ -33,7 +33,7 @@ limitations under the License.
 #define TF_RED_WARPSIZE 64
 #endif
 
-// Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
+// Deprecated, use 'for(T i : GpuGridRangeX<T>(n))' instead.
 #define TF_GPU_1D_KERNEL_LOOP_2(i, n) \
   for (int i : ::tensorflow::GpuGridRangeX<int>(n))
 #define TF_GPU_1D_KERNEL_LOOP_3(i, n, T) \
