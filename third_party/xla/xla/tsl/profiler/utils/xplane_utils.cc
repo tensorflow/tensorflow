@@ -143,8 +143,8 @@ void CopyEventMetadata(const XEventMetadata& src_event_metadata,
       }
       dst_stat.set_metadata_id(metadata.id());
     });
+    DCHECK_EQ(src_event_metadata.stats_size(), dst_event_metadata.stats_size());
   }
-  DCHECK_EQ(src_event_metadata.stats_size(), dst_event_metadata.stats_size());
 }
 
 // Copies src_event from source line to the destination line in the destination
