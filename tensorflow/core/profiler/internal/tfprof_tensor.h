@@ -55,7 +55,7 @@ class TFProfTensor {
   void Build();
 
   template <typename T>
-  bool AddValue(const T& value, TFProfTensorProto* dim) {
+  void AddValue(const T& value, TFProfTensorProto* dim) {
     std::ostringstream sstream;
     sstream << value;
     if (typeid(value) == typeid(double)) {

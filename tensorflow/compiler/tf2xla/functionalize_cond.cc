@@ -477,9 +477,6 @@ absl::Status Conditional::BuildArgumentNodes() {
         // The graph may contain dead switch nodes,
         if (dst_copy == nullptr) continue;
 
-        TF_RET_CHECK(dst_copy != nullptr)
-            << "Unable to find copied node for " << e->dst()->DebugString()
-            << " on branch " << Branch_Name(BranchType(branch_index));
         // If the input goes directly to a merge then the merge has
         // been replaced by a retval so the dst input is 0 instead of
         // dst_input.
