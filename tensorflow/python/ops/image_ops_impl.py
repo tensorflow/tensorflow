@@ -4691,8 +4691,9 @@ def ssim_multiscale(img1,
 
   Args:
     img1: First image batch with only Positive Pixel Values.
-    img2: Second image batch with only Positive Pixel Values. Must have the
-    same rank as img1.
+    img2: Second image batch with only Positive Pixel Values. Its last three
+      dimensions must match those of `img1`; any leading batch dimensions must
+      be broadcastable against `img1`'s.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     power_factors: Iterable of weights for each of the scales. The number of
