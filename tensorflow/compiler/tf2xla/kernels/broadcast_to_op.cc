@@ -76,9 +76,9 @@ class BroadcastToOp : public XlaOpKernel {
           OP_REQUIRES(
               context,
               dynamic_dims[i + rank_difference] && input_size <= output_size,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Incompatible shapes: ", input_shape.DebugString(), " vs. ",
-                  output_shape.DebugString()));
+                  output_shape.DebugString())));
           output_shape.set_dim(i + rank_difference, input_size);
           dynamic_dims[i + rank_difference] = false;
         }
