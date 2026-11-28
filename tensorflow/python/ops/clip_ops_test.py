@@ -66,6 +66,104 @@ class ClipOpsTest(test.TestCase):
     result, expected = self.evaluate([clipped, dense_clipped])
     self.assertAllClose(result, expected)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16NormIntermediateOverflow(self):
+    values = constant_op.constant([4.0] * 4096, dtype=dtypes.float16)
+    norm = clip_ops.global_norm([values])
+    clipped = clip_ops.clip_by_norm(values, 1.0)
+    global_clipped, returned_norm = clip_ops.clip_by_global_norm(
+        [values], 1.0)
+    self.assertEqual(norm.dtype, dtypes.float16)
+    self.assertEqual(clipped.dtype, dtypes.float16)
+    self.assertEqual(global_clipped[0].dtype, dtypes.float16)
+    self.assertEqual(returned_norm.dtype, dtypes.float16)
+    expected = np.full(4096, 0.015625, dtype=np.float16)
+    self.assertAllClose(self.evaluate([norm, returned_norm]),
+                        [256.0, 256.0])
+    self.assertAllClose(self.evaluate(clipped), expected)
+    self.assertAllClose(self.evaluate(global_clipped[0]), expected)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGlobalNormMixedFloat16Float32Order(self):
+    small = constant_op.constant([1.0], dtype=dtypes.float16)
+    large = constant_op.constant([65536.0], dtype=dtypes.float32)
+    for values in ([small, large], [large, small]):
+      norm = clip_ops.global_norm(values)
+      clipped, returned_norm = clip_ops.clip_by_global_norm(values, 1.0)
+      self.assertEqual(norm.dtype, dtypes.float32)
+      self.assertEqual(returned_norm.dtype, dtypes.float32)
+      self.assertAllClose(self.evaluate(norm), 65536.0)
+      self.assertAllClose(self.evaluate(returned_norm), 65536.0)
+      self.assertAllClose(
+          self.evaluate(clipped[1] if values[0] is small else clipped[0]),
+          [1.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16UnrepresentableFinalNorm(self):
+    values = constant_op.constant([60000.0] * 16, dtype=dtypes.float16)
+    norm = clip_ops.global_norm([values])
+    clipped = clip_ops.clip_by_norm(values, 1.0)
+    global_clipped, returned_norm = clip_ops.clip_by_global_norm(
+        [values], 1.0)
+
+    self.assertEqual(norm.dtype, dtypes.float16)
+    self.assertEqual(returned_norm.dtype, dtypes.float16)
+    self.assertEqual(clipped.dtype, dtypes.float16)
+    self.assertEqual(global_clipped[0].dtype, dtypes.float16)
+    self.assertTrue(np.isposinf(self.evaluate(norm)))
+    self.assertTrue(np.isposinf(self.evaluate(returned_norm)))
+    self.assertAllClose(self.evaluate(clipped), [0.25] * 16)
+    self.assertTrue(np.all(np.isnan(self.evaluate(global_clipped[0]))))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMixedPrecisionClippedValuesAndDtypes(self):
+    half = constant_op.constant([3.0, 4.0], dtype=dtypes.float16)
+    single = constant_op.constant([12.0], dtype=dtypes.float32)
+
+    for values in ([half, single], [single, half]):
+      norm = clip_ops.global_norm(values)
+      clipped, returned_norm = clip_ops.clip_by_global_norm(
+          values, 1.0)
+
+      self.assertEqual(norm.dtype, dtypes.float32)
+      self.assertEqual(returned_norm.dtype, dtypes.float32)
+      self.assertAllClose(self.evaluate(norm), 13.0)
+      self.assertAllClose(self.evaluate(returned_norm), 13.0)
+
+      for original, result in zip(values, clipped):
+        self.assertEqual(original.dtype, result.dtype)
+        expected = self.evaluate(original).astype(np.float64) / 13.0
+        tolerance = 1e-3 if original.dtype == dtypes.float16 else 1e-6
+        self.assertAllClose(
+            self.evaluate(result), expected,
+            rtol=tolerance, atol=tolerance)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16SparseNormIntermediateOverflow(self):
+    values = constant_op.constant([4.0] * 4096, dtype=dtypes.float16)
+    indices = constant_op.constant(np.arange(4096), dtype=dtypes.int32)
+    dense_shape = constant_op.constant([8192], dtype=dtypes.int32)
+    sparse = indexed_slices_lib.IndexedSlices(
+        values, indices, dense_shape)
+
+    norm = clip_ops.global_norm([None, sparse])
+    clipped = clip_ops.clip_by_norm(sparse, 1.0)
+    global_clipped, returned_norm = clip_ops.clip_by_global_norm(
+        [None, sparse], 1.0)
+
+    self.assertIsNone(global_clipped[0])
+    self.assertAllClose(self.evaluate(norm), 256.0)
+    self.assertAllClose(self.evaluate(returned_norm), 256.0)
+
+    for result in (clipped, global_clipped[1]):
+      self.assertIsInstance(result, indexed_slices_lib.IndexedSlices)
+      self.assertEqual(result.values.dtype, dtypes.float16)
+      self.assertAllEqual(
+          self.evaluate(result.indices), np.arange(4096))
+      self.assertAllEqual(self.evaluate(result.dense_shape), [8192])
+      self.assertAllClose(
+          self.evaluate(result.values), [0.015625] * 4096)
+
   @test_util.run_deprecated_v1
   def testClipTensorByNorm(self):
     # Simple example

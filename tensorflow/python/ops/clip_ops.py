@@ -234,7 +234,13 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
           is_clip_norm_inf, array_ops.ones_like(clip_norm), clip_norm
       )
 
-    # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
+    # Squaring float16 values or summing their squares can overflow
+    # even when the final norm is representable. Compute in float32
+    # and cast the clipped values back to their original dtype.
+    original_dtype = values.dtype
+    if original_dtype == dtypes.float16:
+      values = math_ops.cast(values, dtypes.float32)
+      clip_norm_safe = math_ops.cast(clip_norm_safe, dtypes.float32)
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
     pred = l2sum > 0
     # Two-tap tf.where trick to bypass NaN gradients
@@ -247,7 +253,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     values_clip = intermediate / math_ops.maximum(l2norm, clip_norm_safe)
     if is_clip_norm_inf is not None:
       values_clip = array_ops.where(is_clip_norm_inf, values, values_clip)
-    values_clip = array_ops.identity(values_clip, name=name)
+    values_clip = array_ops.identity(
+        math_ops.cast(values_clip, original_dtype), name=name)
 
     if isinstance(t, indexed_slices.IndexedSlices):
       return indexed_slices.IndexedSlices(values_clip, t.indices, t.dense_shape)
@@ -291,11 +298,17 @@ def global_norm(t_list, name=None):
             name="t_%d" % i) if t is not None else t
         for i, t in enumerate(t_list)
     ]
+    all_fp16 = (
+        any(v is not None for v in values)
+        and all(v.dtype == dtypes.float16 for v in values if v is not None)
+    )
     half_squared_norms = []
     for v in values:
       if v is not None:
         with ops.colocate_with(v):
-          half_squared_norms.append(gen_nn_ops.l2_loss(v))
+          half_squared_norms.append(gen_nn_ops.l2_loss(
+              math_ops.cast(v, dtypes.float32)
+              if v.dtype == dtypes.float16 else v))
 
     half_squared_norm = math_ops.reduce_sum(
         array_ops_stack.stack(half_squared_norms))
@@ -304,6 +317,8 @@ def global_norm(t_list, name=None):
         half_squared_norm *
         constant_op.constant(2.0, dtype=half_squared_norm.dtype),
         name="global_norm")
+    if all_fp16:
+      norm = math_ops.cast(norm, dtypes.float16)
 
   return norm
 
