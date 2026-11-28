@@ -182,6 +182,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
      *
      * <p>WARNING: This is an experimental interface that is subject to change.
      */
+    @Override
     public boolean getCompressQuantizationZeroPoints() {
       return compressQuantizationZeroPoints != null && compressQuantizationZeroPoints;
     }
@@ -263,6 +264,8 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    * <p>If a variable tensor doesn't have an associated buffer, it will be reset to zero.
    *
    * <p>WARNING: This is an experimental API and subject to change.
+   *
+   * @throws IllegalStateException if called after {@link #close()}.
    */
   public void resetVariableTensors() {
     checkNotClosed();
@@ -282,10 +285,11 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    * @param cancelled {@code true} to cancel inference in a best-effort way; {@code false} to
    *     resume.
    * @throws IllegalStateException if the interpreter is not initialized with the cancellable
-   *     option, which is by default off.
+   *     option, which is by default off, or if called after {@link #close()}.
    * @see Interpreter.Options#setCancellable(boolean).
    */
   public void setCancelled(boolean cancelled) {
+    checkNotClosed();
     wrapper.setCancelled(cancelled);
   }
 
