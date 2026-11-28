@@ -315,7 +315,7 @@ class TestTfMustBeConstantOp : public OpKernel {
     OP_REQUIRES_OK(ctx, stream->BlockHostUntilDone());
 
     for (int i = 0; i < input.NumElements(); i++) {
-      tmp.flat<float>().data()[i] += constant_to_add;
+      tmp.flat<float>()(i) += constant_to_add;
     }
 
     Tensor* out_tensor = nullptr;

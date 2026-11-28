@@ -68,7 +68,7 @@ TEST(PjRtTensorBufferUtilTest, MakeTensorFromPjRtBuffer) {
                ->pjrt_context->CopyDeviceTensorToCPUSync(&tensor, "", device,
                                                          &dest_cpu_tensor);
   for (int i = 0; i < tensor.NumElements(); ++i) {
-    EXPECT_EQ(dest_cpu_tensor.flat<int32_t>().data()[i], data[i]);
+    EXPECT_EQ(dest_cpu_tensor.flat<int32_t>()(i), data[i]);
   }
 }
 
