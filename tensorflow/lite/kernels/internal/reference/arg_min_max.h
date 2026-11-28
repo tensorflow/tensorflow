@@ -27,8 +27,7 @@ namespace reference_ops {
 
 // Default comparator for non-floating-point types (no NaN possible).
 template <typename T>
-typename std::enable_if<!std::is_floating_point<T>::value,
-                        std::function<bool(T, T)>>::type
+std::enable_if_t<!std::is_floating_point_v<T>, std::function<bool(T, T)>>
 GetComparefunction(bool is_arg_max) {
   if (is_arg_max) {
     return std::greater<T>();
@@ -43,8 +42,7 @@ GetComparefunction(bool is_arg_max) {
 // candidate never replaces anything; a finite candidate always replaces a NaN
 // accumulator. For all-NaN inputs the first index is returned.
 template <typename T>
-typename std::enable_if<std::is_floating_point<T>::value,
-                        std::function<bool(T, T)>>::type
+std::enable_if_t<std::is_floating_point_v<T>, std::function<bool(T, T)>>
 GetComparefunction(bool is_arg_max) {
   if (is_arg_max) {
     return [](T candidate, T current) {

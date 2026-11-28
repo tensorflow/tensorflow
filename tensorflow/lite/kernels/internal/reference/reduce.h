@@ -336,8 +336,8 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
                                bool compute_sum) {
   const int32_t kMinValue = std::numeric_limits<T>::min();
   const int32_t kMaxValue = std::numeric_limits<T>::max();
-  const bool uint8_case = std::is_same<T, uint8_t>::value;
-  const bool int16_case = std::is_same<T, int16_t>::value;
+  const bool uint8_case = std::is_same_v<T, uint8_t>;
+  const bool int16_case = std::is_same_v<T, int16_t>;
   if (uint8_case) {
     ruy::profiler::ScopeLabel label(compute_sum ? "Sum/Uint8" : "Mean/Uint8");
   } else if (int16_case) {
