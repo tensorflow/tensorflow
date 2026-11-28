@@ -35,7 +35,7 @@ class LSHProjectionOpModel : public SingleOpModel {
                        std::initializer_list<int> weight_shape) {
     hash_ = AddInput(TensorType_FLOAT32);
     input_ = AddInput(TensorType_INT32);
-    if (weight_shape.size() > 0) {
+    if (!weight_shape.empty()) {
       weight_ = AddInput(TensorType_FLOAT32);
     }
     output_ = AddOutput(TensorType_INT32);
@@ -43,7 +43,7 @@ class LSHProjectionOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_LSH_PROJECTION,
                  BuiltinOptions_LSHProjectionOptions,
                  CreateLSHProjectionOptions(builder_, type).Union());
-    if (weight_shape.size() > 0) {
+    if (!weight_shape.empty()) {
       BuildInterpreter({hash_shape, input_shape, weight_shape});
     } else {
       BuildInterpreter({hash_shape, input_shape});

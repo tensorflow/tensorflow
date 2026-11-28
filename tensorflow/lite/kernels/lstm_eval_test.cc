@@ -646,7 +646,7 @@ class HybridLstmParam : public BaseLstmParam {
     output_tensor_.data.f = output_float_.data();
     return &output_tensor_;
   }
-  const TfLiteLSTMParams GetLSTMParam() {
+  TfLiteLSTMParams GetLSTMParam() {
     return {kTfLiteActRelu, 0, 0, kTfLiteLSTMFullKernel, true};
   }
   TfLiteTensor* GetScratchBuffer() {
