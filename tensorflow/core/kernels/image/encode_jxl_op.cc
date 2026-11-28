@@ -19,6 +19,8 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "tensorflow/core/framework/types.pb.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/status/status.h"
