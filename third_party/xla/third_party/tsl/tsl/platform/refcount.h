@@ -89,7 +89,7 @@ class RefCountPtr;
 // Adds a new reference to a RefCounted pointer.
 template <typename T>
 [[nodiscard]] RefCountPtr<T> GetNewRef(T* ptr) {
-  static_assert(std::is_base_of<RefCounted, T>::value);
+  static_assert(std::is_base_of_v<RefCounted, T>);
 
   if (ptr == nullptr) return RefCountPtr<T>();
   ptr->Ref();
