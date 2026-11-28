@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -23,7 +24,10 @@ limitations under the License.
 #include "absl/log/log_entry.h"
 #include "absl/log/log_sink.h"
 #include "absl/log/log_sink_registry.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
@@ -43,6 +47,10 @@ limitations under the License.
 namespace xla {
 namespace xla_compile {
 namespace {
+
+using ::testing::AnyOf;
+using ::testing::Each;
+using ::testing::IsEmpty;
 
 TEST(XlaCompileTest, LoadCpuExecutable) {
   std::string path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
@@ -106,7 +114,21 @@ TEST(XlaCompileTest, LoadAotResultWithDefinedTargetFeatures) {
                          ->proto()
                          .target_machine_options();
 
-  EXPECT_EQ(opts.features(), "+avx2,+fma");
+  std::vector<absl::string_view> features =
+      absl::StrSplit(opts.features(), ',');
+  ASSERT_GE(features.size(), 2);
+  EXPECT_EQ(features[0], "+avx2");
+  EXPECT_EQ(features[1], "+fma");
+  std::vector<absl::string_view> extra_features(features.begin() + 2,
+                                                features.end());
+  if (cpu::IrCompiler::HostMsanEnabled()) {
+    // Under msan, xla_aot_compile_cpu instruments the generated code, which
+    // requires workarounds for LLVM bugs; see
+    // IrCompiler::MsanTargetFeatureOverrides.
+    EXPECT_THAT(extra_features, Each(AnyOf("-avx2", "-sve")));
+  } else {
+    EXPECT_THAT(extra_features, IsEmpty());
+  }
 }
 
 TEST(XlaCompileTest, LoadAotResultWithTuningOptions) {

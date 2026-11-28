@@ -115,6 +115,15 @@ int main(int argc, char* argv[]) {
                 "The target features."),
       tsl::Flag("target_triple", &options.cpu_options.target_triple,
                 "The target triple."),
+      tsl::Flag("sanitize_memory",
+                &options.cpu_options.sanitizer_options.sanitize_memory,
+                "Instrument the generated CPU code with MemorySanitizer."),
+      tsl::Flag(
+          "sanitize_memory_track_origins",
+          &options.cpu_options.sanitizer_options.sanitize_memory_track_origins,
+          "MemorySanitizer origin tracking level for the generated CPU "
+          "code (0=disabled, 1=without store history, 2=with store "
+          "history). Setting to >0 implies --sanitize_memory."),
       tsl::Flag("use_shardy_partitioner", &options.use_shardy_partitioner,
                 "Whether to use the Shardy partitioner."),
       tsl::Flag("force_auto_layout", &options.force_auto_layout,

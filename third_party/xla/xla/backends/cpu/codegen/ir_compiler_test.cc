@@ -31,11 +31,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/AsmParser/Parser.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
@@ -284,6 +286,66 @@ TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
             kTargetTripleForHost);
   EXPECT_EQ(target_machine->getTargetFeatureString(),
             "+foo-feature,-bar-feature");
+}
+
+TEST(IrCompilerTest, MemorySanitizerDisablesSve) {
+  absl::call_once(init_once, InitializeAllLLVMTargets);
+  TargetMachineOptions target_machine_options("aarch64-unknown-linux-gnu",
+                                              "neoverse-v2", "+sve2");
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<llvm::TargetMachine> target_machine,
+      IrCompiler::InferTargetMachine(
+          llvm::TargetOptions(), llvm::CodeGenOptLevel::Default,
+          target_machine_options, /*msan_enabled=*/false));
+  EXPECT_TRUE(target_machine->getMCSubtargetInfo().checkFeatures("+sve,+sve2"));
+
+  ASSERT_OK_AND_ASSIGN(
+      target_machine, IrCompiler::InferTargetMachine(
+                          llvm::TargetOptions(), llvm::CodeGenOptLevel::Default,
+                          target_machine_options, /*msan_enabled=*/true));
+  EXPECT_TRUE(target_machine->getMCSubtargetInfo().checkFeatures("-sve,-sve2"));
+}
+
+TEST(IrCompilerTest, MemorySanitizerDisablesAvx2WithoutAvx512bwAndVlx) {
+  absl::call_once(init_once, InitializeAllLLVMTargets);
+  TargetMachineOptions znver3("x86_64-unknown-linux-gnu", "znver3", "");
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<llvm::TargetMachine> target_machine,
+      IrCompiler::InferTargetMachine(llvm::TargetOptions(),
+                                     llvm::CodeGenOptLevel::Default, znver3,
+                                     /*msan_enabled=*/false));
+  EXPECT_TRUE(target_machine->getMCSubtargetInfo().checkFeatures("+avx2"));
+
+  ASSERT_OK_AND_ASSIGN(
+      target_machine,
+      IrCompiler::InferTargetMachine(llvm::TargetOptions(),
+                                     llvm::CodeGenOptLevel::Default, znver3,
+                                     /*msan_enabled=*/true));
+  EXPECT_TRUE(target_machine->getMCSubtargetInfo().checkFeatures("-avx2"));
+
+  TargetMachineOptions sapphirerapids("x86_64-unknown-linux-gnu",
+                                      "sapphirerapids", "");
+  ASSERT_OK_AND_ASSIGN(
+      target_machine, IrCompiler::InferTargetMachine(
+                          llvm::TargetOptions(), llvm::CodeGenOptLevel::Default,
+                          sapphirerapids, /*msan_enabled=*/true));
+  EXPECT_TRUE(target_machine->getMCSubtargetInfo().checkFeatures("+avx2"));
+
+  // AVX2 is disabled unless both AVX512BW and AVX512VL are available.
+  for (absl::string_view features :
+       {"+avx512bw,-avx512vl", "-avx512bw,+avx512vl"}) {
+    TargetMachineOptions haswell("x86_64-unknown-linux-gnu", "haswell",
+                                 features);
+    ASSERT_OK_AND_ASSIGN(
+        target_machine,
+        IrCompiler::InferTargetMachine(llvm::TargetOptions(),
+                                       llvm::CodeGenOptLevel::Default, haswell,
+                                       /*msan_enabled=*/true));
+    EXPECT_TRUE(target_machine->getMCSubtargetInfo().checkFeatures("-avx2"))
+        << features;
+  }
 }
 
 TEST(IrCompilerTest, InferTargetMachineWithEmptyTriple) {
@@ -678,6 +740,73 @@ TEST(IrCompilerTest, DataFlowSanitizerInstrumentsPolynomialApproximations) {
   EXPECT_THAT(ir, HasSubstr("@test_exp.dfsan"));
   EXPECT_THAT(ir, HasSubstr("fmul contract"));
   EXPECT_THAT(ir, ContainsRegex("store i8 %[0-9]+, ptr @__dfsan_retval_tls"));
+}
+
+TEST(IrCompilerTest, MemorySanitizer) {
+  absl::call_once(init_once, InitializeAllLLVMTargets);
+  // Use a Linux triple because LLVM's MemorySanitizer doesn't support e.g.
+  // macOS or Windows.
+  IrCompiler::Options options{
+      /*opt_level=*/llvm::CodeGenOptLevel::None,
+      /*optimize_for_size=*/false,
+      TargetMachineOptions("x86_64-unknown-linux-gnu", /*cpu=*/"",
+                           /*features=*/""),
+  };
+
+  // Only instrumented functions call __msan_warning*, e.g. to check the
+  // pointers they load from.
+  auto expect_instrumented = [](const llvm::Module& module) {
+    const llvm::Function* function = module.getFunction("sum_vectors");
+    ASSERT_NE(function, nullptr);
+    EXPECT_TRUE(function->hasFnAttribute(llvm::Attribute::SanitizeMemory));
+    EXPECT_THAT(llvm_ir::DumpToString(function),
+                HasSubstr("call void @__msan_warning"));
+  };
+
+  {
+    llvm::LLVMContext context;
+    options.msan_enabled = true;
+    options.msan_track_origins = 2;
+    ASSERT_OK_AND_ASSIGN(auto ir_module, CompileIr(context, kUnoptimizedIr,
+                                                   "test_module", options));
+    expect_instrumented(*ir_module);
+    std::string ir = llvm_ir::DumpToString(ir_module.get());
+    EXPECT_THAT(ir,
+                HasSubstr("__msan_track_origins = weak_odr constant i32 2"));
+    EXPECT_THAT(ir, HasSubstr("__emutls_v.__msan_param_tls"));
+    EXPECT_THAT(ir, HasSubstr("@__emutls_get_address"));
+    EXPECT_THAT(ir, HasSubstr("@__xla_cpu_runtime_emutls_get_address"));
+  }
+  {
+    llvm::LLVMContext context;
+    options.msan_enabled = true;
+    options.msan_track_origins = 0;
+    ASSERT_OK_AND_ASSIGN(auto ir_module, CompileIr(context, kUnoptimizedIr,
+                                                   "test_module", options));
+    expect_instrumented(*ir_module);
+    std::string ir = llvm_ir::DumpToString(ir_module.get());
+    EXPECT_THAT(ir, HasSubstr("__emutls_v.__msan_param_tls"));
+    EXPECT_THAT(ir, Not(HasSubstr("__msan_track_origins")));
+  }
+  {
+    llvm::LLVMContext context;
+    options.msan_enabled = false;
+    ASSERT_OK_AND_ASSIGN(auto ir_module, CompileIr(context, kUnoptimizedIr,
+                                                   "test_module", options));
+    std::string ir = llvm_ir::DumpToString(ir_module.get());
+    EXPECT_THAT(ir, Not(HasSubstr("__msan_")));
+    EXPECT_THAT(ir, Not(HasSubstr("emutls")));
+  }
+  {
+    // LLVM's MemorySanitizer doesn't support unknown OSes; the host's is used.
+    llvm::LLVMContext context;
+    options.target_machine_options = TargetMachineOptions("x86_64", "", "");
+    options.msan_enabled = true;
+    ASSERT_OK_AND_ASSIGN(auto ir_module, CompileIr(context, kUnoptimizedIr,
+                                                   "test_module", options));
+    EXPECT_EQ(ir_module->getTargetTriple().getOS(), llvm::Triple::UnknownOS);
+    expect_instrumented(*ir_module);
+  }
 }
 
 }  // namespace

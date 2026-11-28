@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
+#include "xla/tools/xla_cpu_compile_lib.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -40,6 +41,8 @@ namespace xla {
 
 // When compiling for CPU, the compilation will always be AOT. If a result is
 // provided, the post-optimization module will be stored in it.
+// `cpu_sanitizer_options` selects sanitizer instrumentation of the generated
+// CPU code.
 //
 // This is the expected entry point to the compilation functionality.
 absl::StatusOr<std::string> CompileExecutable(
@@ -48,7 +51,8 @@ absl::StatusOr<std::string> CompileExecutable(
     std::optional<Compiler::CpuTargetConfig> cpu_target_config,
     int32_t num_partitions, int32_t num_replicas, CompilationResult& result,
     absl::string_view target_platform_version = "",
-    bool use_attached_device = false);
+    bool use_attached_device = false,
+    const CpuSanitizerOptions& cpu_sanitizer_options = {});
 
 // Merges the measured duration into compilation_result and writes
 // compilation_result to result_output_file in the wire format.
@@ -94,6 +98,7 @@ struct XlaCompileOptions {
     std::string target_features;
     std::string target_triple;
     std::string cpu_target_config_path;
+    CpuSanitizerOptions sanitizer_options;
   };
 
   SymbolRepoOptions repo_options;

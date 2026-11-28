@@ -1,0 +1,7 @@
+HloModule vector_add_module
+
+ENTRY %main (arg0: f32[4], arg1: f32[4]) -> f32[4] {
+  %arg0 = f32[4]{0} parameter(0)
+  %arg1 = f32[4]{0} parameter(1)
+  ROOT %result = f32[4]{0} add(%arg0, %arg1)
+}

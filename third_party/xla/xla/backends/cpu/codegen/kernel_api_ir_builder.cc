@@ -560,6 +560,8 @@ void KernelApiIrBuilder::SetKernelFunctionAttributes(llvm::Function* function) {
   function->addParamAttr(0, llvm::Attribute::NoUndef);
   // Non-null: simply a performance optimization. Not needed for sanitizers.
   function->addParamAttr(0, llvm::Attribute::NonNull);
+  // Noundef on the returned error: under msan, the host ignores its shadow.
+  function->addRetAttr(llvm::Attribute::NoUndef);
 
   // Generate unwind information so that GDB can crawl through the stack frames
   // created by the JIT compiled code.
