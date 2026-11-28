@@ -32,7 +32,7 @@ struct BincountFunctor {
                               const typename TTypes<Tidx, 1>::ConstTensor& arr,
                               const typename TTypes<T, 1>::ConstTensor& weights,
                               typename TTypes<T, 1>::Tensor& output,
-                              const Tidx num_bins);
+                              Tidx num_bins);
 };
 
 template <typename Device, typename Tidx, typename T, bool binary_count>
@@ -41,7 +41,7 @@ struct BincountReduceFunctor {
                               const typename TTypes<Tidx, 2>::ConstTensor& in,
                               const typename TTypes<T, 2>::ConstTensor& weights,
                               typename TTypes<T, 2>::Tensor& out,
-                              const Tidx num_bins);
+                              Tidx num_bins);
 };
 
 }  // end namespace functor
