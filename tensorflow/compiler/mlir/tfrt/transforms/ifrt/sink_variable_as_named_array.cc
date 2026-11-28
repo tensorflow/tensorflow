@@ -14,18 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <numeric>
 #include <set>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
