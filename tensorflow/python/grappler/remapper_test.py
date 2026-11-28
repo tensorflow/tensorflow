@@ -153,6 +153,33 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
     return graph
 
+  @parameterized.product(dtype=[dtypes.float32, dtypes.float16],
+                         transpose_b=[False, True])
+  @test_util.run_deprecated_v1
+  def test_matmul_empty_contraction_preserves_bias(self, dtype, transpose_b):
+    self.maybe_skip_test('mkl')
+    if not _pywrap_utils.IsDataTypeSupportedByOneDNNOnThisCPU(dtype):
+      self.skipTest('oneDNN does not support this dtype on this CPU.')
+    with ops.device('/device:CPU:0'):
+      lhs = array_ops.placeholder(dtype, shape=[None, None])
+      rhs = constant_op.constant(
+          [], dtype=dtype, shape=[2, 0] if transpose_b else [0, 2])
+      product = math_ops.matmul(lhs, rhs, transpose_b=transpose_b)
+      result = array_ops.identity(math_ops.add(product, [-2., 3.]))
+
+    ops.add_to_collection('train_op', result)
+    config = _get_config(remapping_on=True)
+    config.graph_options.rewrite_options.optimizers.append('remap')
+    graph = tf_optimizer.OptimizeGraph(
+        config, meta_graph.create_meta_graph_def(graph=result.graph))
+    op_types = [node.op for node in graph.node]
+    self.assertIn('MatMul', op_types)
+    self.assertNotIn('_FusedMatMul', op_types)
+
+    with session.Session(config=config) as sess:
+      self.assertAllEqual(sess.run(result, {lhs: [[], [], []]}),
+                          [[-2., 3.]] * 3)
+
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
