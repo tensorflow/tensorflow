@@ -17,7 +17,7 @@ limitations under the License.
 #include <cstdint>
 
 // The CollectivesFacade owns the per-device staging + Run* entry points, which
-// are now non-templated and take mori::collective::DataType / ReduceOpKind
+// are now non-templated and take mori::ccl::DataType / ReduceOpKind
 // enums. Host includers (mori_communicator.cc) see decl-only Run* methods; the
 // device TU (mori_kernels.cu.cc, compiled as HIP with MORI_KERNELS_IMPL) pulls
 // in the full device path and emits the definitions that resolve the host's

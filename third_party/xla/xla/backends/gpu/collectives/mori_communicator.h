@@ -14,6 +14,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_MORI_COMMUNICATOR_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -37,9 +39,9 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/xla_data.pb.h"
 
-namespace mori::collective {
+namespace mori::ccl {
 class CollectivesFacade;
-}  // namespace mori::collective
+}  // namespace mori::ccl
 
 namespace xla::gpu {
 
@@ -93,6 +95,9 @@ class MoriCommunicator : public GpuCommunicator {
 
   absl::Status Barrier(const Executor& executor) final;
 
+  void SetAsync(bool is_async);
+  absl::Status AsyncDone(const Executor& executor);
+
   Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) final;
 
   Future<> AllReduce(se::DeviceAddressBase send_buffer,
@@ -135,7 +140,20 @@ class MoriCommunicator : public GpuCommunicator {
   // or aborted.
   absl::Status PollUntilDone() const;
 
+  // Serves the GXL ragged-all-to-all and all-gather hooks
+  // (--xla_gpu_enable_gxl_ragged_all_to_all) with MORI kernels.
+  GxlCommunicator* gxl_communicator() const final { return gxl_.get(); }
+
  private:
+  class GxlAdapter;
+
+  absl::Status LaunchRaggedAllToAll(
+      se::DeviceAddressBase input, se::DeviceAddressBase output,
+      se::DeviceAddressBase input_offsets, se::DeviceAddressBase send_sizes,
+      se::DeviceAddressBase output_offsets, PrimitiveType dtype,
+      int64_t num_row_elements, int64_t num_total_updates,
+      const Executor& executor);
+
   absl::Status GroupLaunch(absl::FunctionRef<absl::Status()> group);
 
   absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
@@ -190,17 +208,29 @@ class MoriCommunicator : public GpuCommunicator {
   std::string ToString() const final;
 
  private:
-  // Executes f on executor_, or calls f directly if executor_ is null.
-  Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
+  // Runs `launch` with is_async = is_async_, except inside a group: there an
+  // async launch is held until the next one (which flushes it sync) or the end
+  // of the outermost GroupLaunch (which runs it async), so at most one per
+  // group is left pending for AsyncDone.
+  absl::Status LaunchOrDefer(
+      absl::AnyInvocable<absl::Status(bool is_async) &&> launch);
 
   MoriCommunicator(std::shared_ptr<CancellationToken> cancel)
       : cancel_(std::move(cancel)) {}
 
   // CollectivesFacade instance for this communicator's device
-  std::unique_ptr<mori::collective::CollectivesFacade> facade_;
+  std::unique_ptr<mori::ccl::CollectivesFacade> facade_;
+  // GxlAdapter holding a back-pointer to this communicator.
+  std::unique_ptr<GxlCommunicator> gxl_;
   // Should all pending collectives cancel?
   std::shared_ptr<CancellationToken> cancel_;
   bool aborted_ = false;  // Has Abort() been called?
+  // Do the following collective launches belong to an async start/done pair?
+  // Read by the Launch* methods, so Execute must run them synchronously.
+  bool is_async_ = false;
+  // GroupLaunch nesting depth and the async launch held back within it.
+  int group_depth_ = 0;
+  absl::AnyInvocable<absl::Status(bool) &&> deferred_;
 };
 
 }  // namespace xla::gpu

@@ -57,7 +57,7 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
 
-using mori::collective::CollectivesFacade;
+using mori::ccl::CollectivesFacade;
 
 namespace xla::gpu {
 
