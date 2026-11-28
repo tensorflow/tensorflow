@@ -133,7 +133,7 @@ std::vector<std::unique_ptr<Device>> CreateGPUDevices() {
   std::vector<std::unique_ptr<Device>> devices;
   absl::Status s = device_factory->CreateDevices(
       options, "/job:worker/replica:0/task:0", &devices);
-  CHECK(s.ok());
+  CHECK_OK(s);
   return devices;
 }
 #endif

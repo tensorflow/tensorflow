@@ -34,7 +34,7 @@ DynamicDeviceMgr::DynamicDeviceMgr(
     std::vector<std::unique_ptr<Device>>&& devices)
     : cpu_device_(nullptr) {
   absl::Status status = AddDevices(std::move(devices));
-  CHECK(status.ok());  // Crash OK
+  CHECK_OK(status);  // Crash OK
   mutex_lock l(devices_mu_);
   // Initialize cpu_device_.
   for (const auto& it : dynamic_devices_) {
