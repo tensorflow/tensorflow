@@ -258,7 +258,7 @@ IrCompiler::InferTargetMachine(
   auto attrs_vec = target_machine_options.GetTargetMachineFeaturesVector();
   llvm::SmallVector<std::string> attrs(attrs_vec.begin(), attrs_vec.end());
 
-  absl::call_once(internal::targets_init, &internal::InitializeTargets);
+  InitializeTargets();
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
@@ -284,6 +284,10 @@ IrCompiler::TargetMachineBuilder IrCompiler::InferTargetMachineBuilder(
     return InferTargetMachine(target_options, opt_level,
                               target_machine_options);
   };
+}
+
+void IrCompiler::InitializeTargets() {
+  absl::call_once(internal::targets_init, &internal::InitializeTargets);
 }
 
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
