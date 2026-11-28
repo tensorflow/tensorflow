@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -62,7 +64,7 @@ constexpr absl::string_view kGpuTargetConfig =
     )pb";
 
 absl::StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto b = ops::_Arg(scope.WithOpName("B"), DT_INT32, 1);
