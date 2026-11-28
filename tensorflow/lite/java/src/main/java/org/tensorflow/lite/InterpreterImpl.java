@@ -273,7 +273,7 @@ class InterpreterImpl implements InterpreterApi {
 
   void checkNotClosed() {
     if (wrapper == null) {
-      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
+      throw new IllegalStateException("Error: The Interpreter has already been closed.");
     }
   }
 

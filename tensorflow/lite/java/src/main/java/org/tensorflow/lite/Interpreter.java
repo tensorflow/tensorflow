@@ -182,6 +182,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
      *
      * <p>WARNING: This is an experimental interface that is subject to change.
      */
+    @Override
     public boolean getCompressQuantizationZeroPoints() {
       return compressQuantizationZeroPoints != null && compressQuantizationZeroPoints;
     }
@@ -286,6 +287,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    * @see Interpreter.Options#setCancellable(boolean).
    */
   public void setCancelled(boolean cancelled) {
+    checkNotClosed();
     wrapper.setCancelled(cancelled);
   }
 
