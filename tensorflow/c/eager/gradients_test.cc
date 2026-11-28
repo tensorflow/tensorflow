@@ -250,13 +250,13 @@ class MockVSpace
 
   int64_t NumElements(int* tensor) const override { return 1; }
   int* AggregateGradients(
-      gtl::ArraySlice<int*> gradient_tensors) const override {
+      absl::Span<int* const> gradient_tensors) const override {
     return gradient_tensors[0];
   }
   absl::Status CallBackwardFunction(
       const std::string& op_type, DummyBackwardFunction* backward_function,
       const std::vector<int64_t>& unneeded_gradients,
-      gtl::ArraySlice<int*> output_gradients,
+      absl::Span<int* const> output_gradients,
       absl::Span<int*> result) const override {
     for (int* g : output_gradients) {
       if (g) DeleteGradient(g);
