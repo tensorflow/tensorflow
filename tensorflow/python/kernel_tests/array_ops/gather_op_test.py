@@ -412,6 +412,37 @@ class GatherTest(test.TestCase, parameterized.TestCase):
           gather = array_ops.gather(params, indices, axis=2)
           self.assertAllEqual(gather, np.zeros((0, 0, 2)))
 
+  @parameterized.product(batch_dims=(-1, 1), use_resource=(False, True))
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidBatchDimsWithAxisZero(self, batch_dims, use_resource):
+    with self.cached_session():
+      params = constant_op.constant([[10, 11], [20, 21]])
+      if use_resource:
+        params = resource_variable_ops.ResourceVariable(params)
+        self.evaluate(variables.global_variables_initializer())
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), "batch_dims.*axis"):
+        self.evaluate(
+            array_ops.gather(params, [[0], [1]], axis=0, batch_dims=batch_dims))
+
+  def testAxisZeroGradientWithNegativeBatchDimsAndUnknownIndicesRank(self):
+    params = constant_op.constant([[10., 11.], [20., 21.]])
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)]
+    )
+    def gather_and_gradient(indices):
+      with backprop.GradientTape() as tape:
+        tape.watch(params)
+        values = array_ops.gather(params, indices, axis=0, batch_dims=-2)
+      return values, tape.gradient(values, params)
+
+    values, gradient = gather_and_gradient(constant_op.constant([[0], [1]]))
+    self.assertAllEqual([[[10., 11.]], [[20., 21.]]], values)
+    self.assertIsInstance(gradient, indexed_slices.IndexedSlices)
+    self.assertAllEqual([0, 1], gradient.indices)
+    self.assertAllEqual([[1., 1.], [1., 1.]], gradient.values)
+
   @parameterized.parameters([
       # batch_dims=0 (equivalent to tf.gather)
       dict(  # 2D indices
