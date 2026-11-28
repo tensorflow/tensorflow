@@ -919,9 +919,21 @@ func.func @floordiv_reverse_broadcast_i32(%arg0: tensor<3xi32>, %arg1: tensor<2x
 
 // CHECK-LABEL: func @floordiv_f32
 func.func @floordiv_f32(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK-NEXT:  %[[DIV:.*]] = chlo.broadcast_divide %arg0, %arg0
-  // CHECK-NEXT:  %[[FLOOR:.*]] = mhlo.floor %[[DIV]]
-  // CHECK-NEXT:  return %[[FLOOR]] : tensor<2xf32>
+  // CHECK-NEXT: %[[DIV:.*]] = chlo.broadcast_divide %arg0, %arg0
+  // CHECK-NEXT: %[[FLOOR:.*]] = mhlo.floor %[[DIV]]
+  // CHECK-NEXT: %[[MUL:.*]] = chlo.broadcast_multiply %[[FLOOR]], %arg0
+  // CHECK-NEXT: %[[SUB:.*]] = chlo.broadcast_subtract %[[MUL]], %arg0
+  // CHECK:      %[[MOD:.*]] = mhlo.select
+  // CHECK-NEXT: %[[ERR:.*]] = chlo.broadcast_add %[[SUB]], %[[MOD]]
+  // CHECK-NEXT: %[[ERR_DIV:.*]] = chlo.broadcast_divide %[[ERR]], %arg0
+  // CHECK-NEXT: %[[STEP:.*]] = mhlo.round_nearest_even %[[ERR_DIV]]
+  // CHECK-NEXT: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK-NEXT: %[[STEP_NE:.*]] = chlo.broadcast_compare %[[STEP]], %[[ZERO]] {comparison_direction = #chlo<comparison_direction NE>}
+  // CHECK-NEXT: %[[REF:.*]] = chlo.broadcast_subtract %[[FLOOR]], %[[STEP]]
+  // CHECK-NEXT: %[[FINITE:.*]] = mhlo.is_finite %[[REF]]
+  // CHECK-NEXT: %[[COND:.*]] = chlo.broadcast_and %[[STEP_NE]], %[[FINITE]]
+  // CHECK-NEXT: %[[RES:.*]] = mhlo.select %[[COND]], %[[REF]], %[[FLOOR]]
+  // CHECK-NEXT: return %[[RES]] : tensor<2xf32>
   %0 = "tf.FloorDiv"(%arg0, %arg0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   func.return %0: tensor<2xf32>
 }
@@ -930,12 +942,19 @@ func.func @floordiv_f32(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @floordiv_bf16
 func.func @floordiv_bf16(%arg0: tensor<2xbf16>) -> tensor<2xbf16> {
-  // CHECK-NEXT:  mhlo.convert
-  // CHECK-NEXT:  mhlo.convert
-  // CHECK-NEXT:  chlo.broadcast_divide
-  // CHECK-NEXT:  mhlo.floor
-  // CHECK-NEXT:  mhlo.convert
-  // CHECK-NEXT:  return
+  // CHECK-NEXT: mhlo.convert
+  // CHECK-NEXT: mhlo.convert
+  // CHECK-NEXT: chlo.broadcast_divide
+  // CHECK-NEXT: mhlo.floor
+  // CHECK:      mhlo.round_nearest_even
+  // CHECK-NEXT: mhlo.constant dense<0.000000e+00>
+  // CHECK-NEXT: chlo.broadcast_compare
+  // CHECK-NEXT: chlo.broadcast_subtract
+  // CHECK-NEXT: mhlo.is_finite
+  // CHECK-NEXT: chlo.broadcast_and
+  // CHECK-NEXT: mhlo.select
+  // CHECK-NEXT: mhlo.convert
+  // CHECK-NEXT: return
   %0 = "tf.FloorDiv"(%arg0, %arg0) : (tensor<2xbf16>, tensor<2xbf16>) -> tensor<2xbf16>
   func.return %0: tensor<2xbf16>
 }
@@ -944,10 +963,45 @@ func.func @floordiv_bf16(%arg0: tensor<2xbf16>) -> tensor<2xbf16> {
 
 // CHECK-LABEL: func @floordiv_f16_broadcast
 func.func @floordiv_f16_broadcast(%arg0: tensor<2x3xf16>, %arg1: tensor<3xf16>) -> tensor<2x3xf16> {
-  // CHECK-NEXT:  chlo.broadcast_divide
-  // CHECK-NEXT:  mhlo.floor
-  // CHECK-NEXT:  return
+  // CHECK-NEXT: %[[DIV:.*]] = chlo.broadcast_divide %arg0, %arg1 {broadcast_dimensions = array<i64: 1>}
+  // CHECK-NEXT: %[[FLOOR:.*]] = mhlo.floor %[[DIV]]
+  // CHECK-NEXT: %[[MUL:.*]] = chlo.broadcast_multiply %[[FLOOR]], %arg1 {broadcast_dimensions = array<i64: 1>}
+  // CHECK-NEXT: %[[SUB:.*]] = chlo.broadcast_subtract %[[MUL]], %arg0
+  // CHECK:      %[[MOD:.*]] = mhlo.select
+  // CHECK-NEXT: %[[ERR:.*]] = chlo.broadcast_add %[[SUB]], %[[MOD]]
+  // CHECK-NEXT: %[[ERR_DIV:.*]] = chlo.broadcast_divide %[[ERR]], %arg1 {broadcast_dimensions = array<i64: 1>}
+  // CHECK-NEXT: %[[STEP:.*]] = mhlo.round_nearest_even %[[ERR_DIV]]
+  // CHECK-NEXT: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK-NEXT: %[[STEP_NE:.*]] = chlo.broadcast_compare %[[STEP]], %[[ZERO]] {comparison_direction = #chlo<comparison_direction NE>}
+  // CHECK-NEXT: %[[REF:.*]] = chlo.broadcast_subtract %[[FLOOR]], %[[STEP]]
+  // CHECK-NEXT: %[[FINITE:.*]] = mhlo.is_finite %[[REF]]
+  // CHECK-NEXT: %[[COND:.*]] = chlo.broadcast_and %[[STEP_NE]], %[[FINITE]]
+  // CHECK-NEXT: %[[RES:.*]] = mhlo.select %[[COND]], %[[REF]], %[[FLOOR]]
+  // CHECK-NEXT: return %[[RES]] : tensor<2x3xf16>
   %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
+  func.return %0: tensor<2x3xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func @floordiv_f16_reverse_broadcast
+func.func @floordiv_f16_reverse_broadcast(%arg0: tensor<3xf16>, %arg1: tensor<2x3xf16>) -> tensor<2x3xf16> {
+  // CHECK-NEXT: %[[DIV:.*]] = chlo.broadcast_divide %arg0, %arg1 {broadcast_dimensions = array<i64: 1>}
+  // CHECK-NEXT: %[[FLOOR:.*]] = mhlo.floor %[[DIV]]
+  // CHECK-NEXT: %[[MUL:.*]] = chlo.broadcast_multiply %[[FLOOR]], %arg1
+  // CHECK-NEXT: %[[SUB:.*]] = chlo.broadcast_subtract %[[MUL]], %arg0 {broadcast_dimensions = array<i64: 1>}
+  // CHECK:      %[[MOD:.*]] = mhlo.select
+  // CHECK-NEXT: %[[ERR:.*]] = chlo.broadcast_add %[[SUB]], %[[MOD]]
+  // CHECK-NEXT: %[[ERR_DIV:.*]] = chlo.broadcast_divide %[[ERR]], %arg1
+  // CHECK-NEXT: %[[STEP:.*]] = mhlo.round_nearest_even %[[ERR_DIV]]
+  // CHECK-NEXT: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK-NEXT: %[[STEP_NE:.*]] = chlo.broadcast_compare %[[STEP]], %[[ZERO]] {comparison_direction = #chlo<comparison_direction NE>}
+  // CHECK-NEXT: %[[REF:.*]] = chlo.broadcast_subtract %[[FLOOR]], %[[STEP]]
+  // CHECK-NEXT: %[[FINITE:.*]] = mhlo.is_finite %[[REF]]
+  // CHECK-NEXT: %[[COND:.*]] = chlo.broadcast_and %[[STEP_NE]], %[[FINITE]]
+  // CHECK-NEXT: %[[RES:.*]] = mhlo.select %[[COND]], %[[REF]], %[[FLOOR]]
+  // CHECK-NEXT: return %[[RES]] : tensor<2x3xf16>
+  %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
   func.return %0: tensor<2x3xf16>
 }
 

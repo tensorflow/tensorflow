@@ -145,13 +145,41 @@ def LowerRightShiftUnsigned :
        (BinBroadcastDimensions $l, $r)),
       [(UnsignedIntTensor $r)]>;
 
-// Performs a substitution of FloorDiv, pseudo code below:
+// Performs a substitution of FloorDiv for float tensors, pseudo code below:
 //
-//  return floor(div(x, y))
+//  T q = floor(div(x, y));
+//  T r = floormod(x, y);
+//  T err = (q * y - x) + r;
+//  T step = round_nearest_even(div(err, y));
+//  T q_refined = q - step;
+//  return (step != 0 && is_finite(q_refined)) ? q_refined : q;
 def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
-          (StableHLO_FloorOp
-           (CHLO_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r))),
-          [(IEEEFloatTensor $l)]>;
+      (StableHLO_SelectOp
+       (CHLO_BroadcastAndOp
+        (CHLO_BroadcastCompareOp
+         (StableHLO_RoundNearestEvenOp:$step
+          (CHLO_BroadcastDivOp
+           (CHLO_BroadcastAddOp
+            (CHLO_BroadcastSubOp
+             (CHLO_BroadcastMulOp
+              (StableHLO_FloorOp:$q
+               (CHLO_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r))),
+              $r, (BinBroadcastDimensions $q, $r)),
+             $l, (BinBroadcastDimensions $q, $l)),
+            (TF_FloorModOp $l, $r),
+            (NullDenseI64ArrayAttr)),
+           $r, (BinBroadcastDimensions $q, $r))),
+         (StableHLO_ConstantOp (GetScalarOfType<0> $l)),
+         (NullDenseI64ArrayAttr),
+         CHLO_ComparisonDirectionValue<"NE">,
+         (CHLO_DEFAULT_COMPARISON_TYPE)),
+        (StableHLO_IsFiniteOp
+         (CHLO_BroadcastSubOp:$q_refined
+          $q, $step, (NullDenseI64ArrayAttr))),
+        (NullDenseI64ArrayAttr)),
+       $q_refined,
+       $q),
+      [(IEEEFloatTensor $l)]>;
 
 // Performs a substitution of FloorDiv for integer tensors, which required
 // additional correction for a negative numerator / denominator. Equivalent
