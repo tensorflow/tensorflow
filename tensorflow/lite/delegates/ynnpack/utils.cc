@@ -430,6 +430,51 @@ TfLiteStatus DefineTensor(TfLiteContext* context, ynn_subgraph_t subgraph,
 
 }  // namespace
 
+TfLiteStatus ResolveZeroPointTensorIndex(TfLiteContext* context,
+                                         const TfLiteTensor& quantized_tensor,
+                                         int scale_idx, int zp_idx,
+                                         int* resolved_zp_idx) {
+  TF_LITE_ENSURE(context, resolved_zp_idx != nullptr);
+  TF_LITE_ENSURE(context, scale_idx >= 0 && scale_idx < context->tensors_size);
+  const TfLiteTensor& scale_tensor = context->tensors[scale_idx];
+  TF_LITE_ENSURE(context, &scale_tensor != &quantized_tensor);
+  TF_LITE_ENSURE(context,
+                 IsConstant(scale_tensor) && scale_tensor.data.raw != nullptr);
+  TF_LITE_ENSURE(context, IsTensorSupported(scale_tensor));
+  TF_LITE_ENSURE(context, scale_tensor.type == kTfLiteFloat32 ||
+                              scale_tensor.type == kTfLiteFloat16 ||
+                              scale_tensor.type == kTfLiteBFloat16);
+  TF_LITE_ENSURE(context, scale_tensor.dims != nullptr);
+
+  if (zp_idx < 0) {
+    *resolved_zp_idx = -1;
+    return kTfLiteOk;
+  }
+  TF_LITE_ENSURE(context, zp_idx < context->tensors_size);
+  const TfLiteTensor& zp_tensor = context->tensors[zp_idx];
+  const bool is_int_zp_type =
+      zp_tensor.type == kTfLiteInt8 || zp_tensor.type == kTfLiteUInt8 ||
+      zp_tensor.type == kTfLiteInt4 || zp_tensor.type == kTfLiteInt2 ||
+      zp_tensor.type == kTfLiteInt32;
+  const bool same_shape =
+      zp_tensor.dims != nullptr &&
+      zp_tensor.dims->size == scale_tensor.dims->size &&
+      std::equal(zp_tensor.dims->data,
+                 zp_tensor.dims->data + zp_tensor.dims->size,
+                 scale_tensor.dims->data);
+  const bool is_valid_zp =
+      zp_idx != scale_idx && &zp_tensor != &quantized_tensor &&
+      IsConstant(zp_tensor) && zp_tensor.data.raw != nullptr &&
+      IsTensorSupported(zp_tensor) && is_int_zp_type && same_shape;
+  if (zp_idx == 0 && !is_valid_zp) {
+    *resolved_zp_idx = -1;
+    return kTfLiteOk;
+  }
+  TF_LITE_ENSURE(context, is_valid_zp);
+  *resolved_zp_idx = zp_idx;
+  return kTfLiteOk;
+}
+
 TfLiteStatus DefineQuantizationParams(TfLiteContext* context,
                                       ynn_subgraph_t subgraph,
                                       const TfLiteTensor& tensor,
@@ -444,14 +489,15 @@ TfLiteStatus DefineQuantizationParams(TfLiteContext* context,
         tensor.quantization.params);
     TF_LITE_ENSURE(context, params != nullptr);
     TF_LITE_ENSURE(context, params->blocksize == 0);
-    TF_LITE_ENSURE(
-        context, params->scales >= 0 && params->scales < context->tensors_size);
+    int resolved_zp_idx = -1;
+    TF_LITE_ENSURE_STATUS(
+        ResolveZeroPointTensorIndex(context, tensor, params->scales,
+                                    params->zero_points, &resolved_zp_idx));
     TF_LITE_ENSURE_STATUS(DefineTensor(
         context, subgraph, context->tensors[params->scales], scale_id));
-    if (params->zero_points >= 0 &&
-        params->zero_points < context->tensors_size) {
+    if (resolved_zp_idx >= 0) {
       TF_LITE_ENSURE_STATUS(DefineTensor(
-          context, subgraph, context->tensors[params->zero_points], zp_id));
+          context, subgraph, context->tensors[resolved_zp_idx], zp_id));
     } else {
       *zp_id = YNN_INVALID_VALUE_ID;
     }

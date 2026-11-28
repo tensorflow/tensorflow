@@ -39,8 +39,6 @@ typedef struct {
   bool no_excess_precision;
   // If true, enable support for blockwise quantization.
   bool enable_blockwise_quantization;
-  // If true, bucket the tokens of multi-token MoE ops by expert on the host.
-  bool dispatch_moe_on_host;
   // The type of the operands of the dot products in scaled dot product
   // attention ops. Must be one of:
   // - kTfLiteNoType: The operands are multiplied in the more precise of their
