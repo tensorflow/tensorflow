@@ -1220,6 +1220,113 @@ TEST_F(ConstantFoldingTest, NeutralElement_PartialShape_KnownOutputShape) {
   test::ExpectTensorNear<float>(expected_tensors[0], tensors[0], 1e-5);
 }
 
+Tensor MakeFilledTensor(DataType dtype, int value) {
+  Tensor t(dtype, TensorShape({2, 2}));
+  switch (dtype) {
+    case DT_FLOAT:
+      t.flat<float>().setConstant(static_cast<float>(value));
+      break;
+    case DT_DOUBLE:
+      t.flat<double>().setConstant(static_cast<double>(value));
+      break;
+    case DT_INT8:
+      t.flat<int8_t>().setConstant(static_cast<int8_t>(value));
+      break;
+    case DT_INT32:
+      t.flat<int32_t>().setConstant(value);
+      break;
+    default:
+      ADD_FAILURE() << "Unsupported dtype " << DataTypeString(dtype);
+  }
+  return t;
+}
+
+// A Const node is not required to give its `dtype` attribute and the dtype of
+// its `value` proto the same value. IsZeros and IsOnes switch on the attribute,
+// so they must not read the proto as a tensor of that type when they differ.
+// Builds `x + neutral` (all zeros) and `x * neutral` (all ones) with the
+// neutral element in either operand position, gives the neutral Const the
+// attribute and value dtypes passed in, and checks that the operation is
+// removed only when the two dtypes agree.
+void CheckNeutralConstWithDtypes(DataType attr_dtype, DataType value_dtype) {
+  for (bool is_ones : {false, true}) {
+    for (bool neutral_first : {false, true}) {
+      SCOPED_TRACE(absl::StrCat(is_ones ? "ones" : "zeros",
+                                neutral_first ? " first" : " second"));
+      tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+      Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                                  ops::Placeholder::Shape(TensorShape({2, 2})));
+      Output neutral =
+          ops::Const(s.WithOpName("neutral"), is_ones ? 1.0f : 0.0f, {2, 2});
+      const Output& lhs = neutral_first ? neutral : x;
+      const Output& rhs = neutral_first ? x : neutral;
+      if (is_ones) {
+        ops::Mul(s.WithOpName("out"), lhs, rhs);
+      } else {
+        ops::Add(s.WithOpName("out"), lhs, rhs);
+      }
+      GrapplerItem item;
+      TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+      item.fetch = {"out"};
+      bool found = false;
+      for (NodeDef& node : *item.graph.mutable_node()) {
+        if (node.name() == "neutral") {
+          found = true;
+          (*node.mutable_attr())["dtype"].set_type(attr_dtype);
+          TensorProto* value = (*node.mutable_attr())["value"].mutable_tensor();
+          value->Clear();
+          MakeFilledTensor(value_dtype, is_ones ? 1 : 0).AsProtoField(value);
+        }
+      }
+      ASSERT_TRUE(found);
+
+      ConstantFolding optimizer(/*cpu_device=*/nullptr);
+      GraphDef output;
+      TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+      const NodeDef* out = nullptr;
+      for (const NodeDef& node : output.node()) {
+        if (node.name() == "out") out = &node;
+      }
+      ASSERT_NE(out, nullptr);
+      if (attr_dtype == value_dtype) {
+        // The neutral element is recognized and the operation is removed.
+        EXPECT_EQ("Identity", out->op());
+      } else {
+        // The Const is not known to be neutral, so the operation is kept.
+        EXPECT_EQ(is_ones ? "Mul" : "Add", out->op());
+        ASSERT_EQ(2, out->input_size());
+        EXPECT_EQ(neutral_first ? "neutral" : "x", out->input(0));
+        EXPECT_EQ(neutral_first ? "x" : "neutral", out->input(1));
+      }
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, NeutralElementConstWithMatchingValueDtype) {
+  CheckNeutralConstWithDtypes(DT_FLOAT, DT_FLOAT);
+}
+
+TEST_F(ConstantFoldingTest, NeutralElementDoubleConstWithFloatValue) {
+  CheckNeutralConstWithDtypes(DT_DOUBLE, DT_FLOAT);
+}
+
+TEST_F(ConstantFoldingTest, NeutralElementFloatConstWithDoubleValue) {
+  CheckNeutralConstWithDtypes(DT_FLOAT, DT_DOUBLE);
+}
+
+TEST_F(ConstantFoldingTest, NeutralElementInt32ConstWithInt8Value) {
+  CheckNeutralConstWithDtypes(DT_INT32, DT_INT8);
+}
+
+TEST_F(ConstantFoldingTest, NeutralElementInt64ConstWithInt32Value) {
+  CheckNeutralConstWithDtypes(DT_INT64, DT_INT32);
+}
+
+TEST_F(ConstantFoldingTest, NeutralElementBoolConstWithInt32Value) {
+  CheckNeutralConstWithDtypes(DT_BOOL, DT_INT32);
+}
+
 TEST_F(ConstantFoldingTest, CreateConstNodes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
