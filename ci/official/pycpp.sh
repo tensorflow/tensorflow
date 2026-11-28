@@ -39,4 +39,4 @@ fi
 
 # Note: the profile can be viewed by visiting chrome://tracing in a Chrome browser.
 # See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
-tfrun bazel analyze-profile "$PROFILE_JSON_PATH"
+tfrun bazel analyze-profile "$PROFILE_JSON_PATH" || true
