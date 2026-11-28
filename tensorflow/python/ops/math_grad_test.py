@@ -149,6 +149,35 @@ class MinOrMaxGradientTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
 
+  def testMinOrMaxGradientZeroMatches(self):
+    class MockOp:
+
+      def __init__(self, x, y, axes, keep_dims=False):
+        self.inputs = [x, axes]
+        self.outputs = [y]
+        self._keep_dims = keep_dims
+
+      def get_attr(self, name):
+        if name == "keep_dims":
+          return self._keep_dims
+        raise AttributeError(name)
+
+    for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ]:
+      x = constant_op.constant([[1.0, 2.0]], dtype=dtype)
+      y = constant_op.constant([9.0], dtype=dtype)
+      axes = constant_op.constant([1])
+      grad = constant_op.constant([1.0], dtype=dtype)
+      op = MockOp(x, y, axes)
+      g, _ = math_grad._MinOrMaxGrad(op, grad)
+      val = self.evaluate(g)
+      self.assertFalse(np.isnan(val).any())
+      self.assertAllEqual(val, np.zeros((1, 2), dtype=dtype.as_numpy_dtype))
+
 
 class MaximumOrMinimumGradientTest(test.TestCase):
 
@@ -435,6 +464,53 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(inputs, [1], segment_max,
                                                       [1])
       self.assertLess(error, 1e-4)
+
+  def testSegmentMinOrMaxGradientZeroMatches(self):
+    class MockOp:
+
+      def __init__(self, x, y, segment_ids):
+        self.inputs = [x, segment_ids]
+        self.outputs = [y]
+
+    for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ]:
+      data = constant_op.constant([1.0, 2.0], dtype=dtype)
+      segment_ids = constant_op.constant([0, 1], dtype=dtypes.int64)
+      outputs = constant_op.constant([9.0, 9.0], dtype=dtype)
+      grad = constant_op.constant([1.0, 1.0], dtype=dtype)
+      op = MockOp(data, outputs, segment_ids)
+      g, _ = math_grad._SegmentMinOrMaxGrad(op, grad)
+      val = self.evaluate(g)
+      self.assertFalse(np.isnan(val).any())
+      self.assertAllEqual(val, np.zeros(2, dtype=dtype.as_numpy_dtype))
+
+  def testUnsortedSegmentMinOrMaxGradientZeroMatches(self):
+    class MockOp:
+
+      def __init__(self, x, segment_ids, num_segments, y):
+        self.inputs = [x, segment_ids, num_segments]
+        self.outputs = [y]
+
+    for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ]:
+      data = constant_op.constant([1.0, 2.0], dtype=dtype)
+      segment_ids = constant_op.constant([0, 1], dtype=dtypes.int64)
+      num_segments = constant_op.constant(2, dtype=dtypes.int64)
+      outputs = constant_op.constant([9.0, 9.0], dtype=dtype)
+      grad = constant_op.constant([1.0, 1.0], dtype=dtype)
+      op = MockOp(data, segment_ids, num_segments, outputs)
+      g, _, _ = math_grad._UnsortedSegmentMinOrMaxGrad(op, grad)
+      val = self.evaluate(g)
+      self.assertFalse(np.isnan(val).any())
+      self.assertAllEqual(val, np.zeros(2, dtype=dtype.as_numpy_dtype))
 
 
 @test_util.run_all_in_graph_and_eager_modes
