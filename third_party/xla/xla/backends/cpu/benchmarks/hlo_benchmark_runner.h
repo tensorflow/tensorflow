@@ -20,6 +20,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -42,6 +43,13 @@ struct HloBenchmarkOptions {
   bool disable_parallel_task_assigner = false;
   // If not null, AOT compilation will be used.
   std::unique_ptr<AotCompilationOptions> aot_options;
+  // Optional alternate non aliased argument literals swapped in on odd numbered
+  // executions (nullptr entries keep the corresponding primary `args` buffer).
+  // Any non null `Literal*` entries must outlive the `RunHloBenchmark` or
+  // `RunHloBenchmarkOnce` call, where they are uploaded to device buffers
+  // before execution. Useful for alternating positive and negative updates so
+  // aliased accumulations cancel across iterations without resetting outputs.
+  std::vector<const Literal*> alternate_odd_args;
 };
 
 // Runs the given HLO module as a benchmark.

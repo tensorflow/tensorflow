@@ -90,6 +90,16 @@ class AliasHelper {
     return !aliased_output_index_to_argument_index_.empty();
   }
 
+  bool IsParameterAliased(int64_t param_number) const {
+    for (const auto& [output_sindex, arg_index] :
+         aliased_output_index_to_argument_index_) {
+      if (arg_index == param_number) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   absl::Status SwapOutputAliasedBuffersToArgumentBuffers(
       std::vector<std::unique_ptr<PjRtBuffer>>& results,
       std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers,
@@ -257,6 +267,51 @@ absl::Status RunHloBenchmarkImpl(benchmark::State* absl_nullable state,
   }
 
   AliasHelper alias_helper(module.get(), client.get(), device, memory_space);
+  const bool has_alternate_args = !benchmark_options.alternate_odd_args.empty();
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
+      execution_alt_args_buffers;
+  if (has_alternate_args) {
+    if (args.empty()) {
+      return absl::InvalidArgumentError(
+          "alternate_odd_args requires explicit args.");
+    }
+    if (benchmark_options.alternate_odd_args.size() != expected_arg_count) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Number of alternate_odd_args ",
+          benchmark_options.alternate_odd_args.size(),
+          " does not match number of explicit args ", args.size(), "."));
+    }
+    for (size_t arg_idx = 0; arg_idx < expected_arg_count; ++arg_idx) {
+      const Literal* alt = benchmark_options.alternate_odd_args[arg_idx];
+      if (alt == nullptr) {
+        continue;
+      }
+      if (alias_helper.IsParameterAliased(static_cast<int64_t>(arg_idx))) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "alternate_odd_args[", arg_idx,
+            "] cannot replace an input/output aliased parameter."));
+      }
+      if (!ShapeUtil::Equal(alt->shape(), args[arg_idx]->shape())) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "alternate_odd_args[", arg_idx, "] shape ", alt->shape().ToString(),
+            " does not match primary shape ", args[arg_idx]->shape().ToString(),
+            "."));
+      }
+    }
+    execution_alt_args_buffers.resize(benchmark_options.num_executions);
+    for (auto& alt_buffers : execution_alt_args_buffers) {
+      alt_buffers.resize(expected_arg_count);
+      for (size_t arg_idx = 0; arg_idx < expected_arg_count; ++arg_idx) {
+        const Literal* alt = benchmark_options.alternate_odd_args[arg_idx];
+        if (alt != nullptr) {
+          ABSL_ASSIGN_OR_RETURN(alt_buffers[arg_idx],
+                           client->BufferFromHostLiteral(*alt, memory_space));
+          ABSL_RETURN_IF_ERROR(alt_buffers[arg_idx]->GetReadyFuture().Await());
+        }
+      }
+    }
+  }
+
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> execution_results(
       benchmark_options.num_executions);
 
@@ -264,7 +319,21 @@ absl::Status RunHloBenchmarkImpl(benchmark::State* absl_nullable state,
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "hlo_benchmark_runner",
                                   benchmark_options.num_executions);
 
+  bool use_alternate_args = false;
   auto run_benchmark_once = [&]() -> absl::Status {
+    if (has_alternate_args) {
+      for (int i = 0; i < benchmark_options.num_executions; ++i) {
+        for (size_t arg_idx = 0; arg_idx < expected_arg_count; ++arg_idx) {
+          if (execution_alt_args_buffers[i][arg_idx] != nullptr) {
+            execution_args_ptrs[i][arg_idx] =
+                use_alternate_args
+                    ? execution_alt_args_buffers[i][arg_idx].get()
+                    : execution_args_buffers[i][arg_idx].get();
+          }
+        }
+      }
+      use_alternate_args = !use_alternate_args;
+    }
     if (benchmark_options.num_executions == 1) {
       // Single execution always runs in the caller thread.
       execution_results[0] =
