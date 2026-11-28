@@ -210,6 +210,9 @@ class FixedUnigramSampler : public RangeSampler {
   // value representing the counts or probabilities for the corresponding ID.
   absl::Status SetDistributionSampler(Env* env, const std::string& vocab_file);
   absl::Status SetDistributionSampler(const std::vector<float>& unigrams);
+  // Call after loading the distribution. Reserved IDs and other zero-weight
+  // entries do not count toward the number of distinct samples.
+  absl::Status ValidateUniqueSampleCount(int64_t num_sampled) const;
   float Probability(int64_t value) const override;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;

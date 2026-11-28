@@ -184,6 +184,27 @@ TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
   sampler_.reset(test_sampler);
   EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
 }
+
+TEST_F(RangeSamplerTest, FixedUnigramUniqueCountWithZeroWeights) {
+  const std::vector<float> weights = {1.0f, 0.0f, 2.0f};
+  FixedUnigramSampler sampler(/*range=*/4, /*distortion=*/1.0f,
+                              /*num_reserved_ids=*/1, /*num_shards=*/1,
+                              /*shard=*/0);
+  TF_ASSERT_OK(sampler.SetDistributionSampler(weights));
+  TF_EXPECT_OK(sampler.ValidateUniqueSampleCount(2));
+  const absl::Status status = sampler.ValidateUniqueSampleCount(3);
+  EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+}
+
+TEST_F(RangeSamplerTest, FixedUnigramUniqueCountUsesDistortedWeights) {
+  const std::vector<float> weights = {1.0f, 0.0f, 2.0f};
+  FixedUnigramSampler sampler(/*range=*/3, /*distortion=*/0.0f,
+                              /*num_reserved_ids=*/0, /*num_shards=*/1,
+                              /*shard=*/0);
+  TF_ASSERT_OK(sampler.SetDistributionSampler(weights));
+  TF_EXPECT_OK(sampler.ValidateUniqueSampleCount(3));
+}
+
 TEST_F(RangeSamplerTest, FixedUnigramChecksum) {
   Env* env = Env::Default();
   std::string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
