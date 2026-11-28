@@ -43,7 +43,13 @@ list(APPEND TFLITE_BENCHMARK_SRCS
 
 list(APPEND TFLITE_BENCHMARK_LIBS
   tensorflow-lite
+  absl::flat_hash_map
+  absl::flat_hash_set
   absl::log
+  absl::str_format
+  absl::strings
+  absl::synchronization
+  absl::time
 )
 
 # TODO(b/171007016): Enable performance options on Windows.
