@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -51,6 +52,15 @@ namespace {
 
 static mutex mu(LINKER_INITIALIZED);
 static PyObject* py_trampoline TF_GUARDED_BY(mu) = nullptr;
+
+// Returns true if the Python interpreter is currently finalizing.
+bool IsPythonFinalizing() {
+#if PY_VERSION_HEX >= 0x030D0000
+  return Py_IsFinalizing() != 0;
+#else
+  return _Py_IsFinalizing() != 0;
+#endif
+}
 
 // Returns the py_trampoline that is used to pass the control to the
 // python runtime.
@@ -362,10 +372,10 @@ class PyFuncOp : public OpKernel {
     // will abort the process if `Py_Finalize()` has been called. A more robust
     // solution would be welcome, but it is not obvious how to make this work
     // using the current Python C API.
-    OP_REQUIRES(ctx, Py_IsInitialized(),
+    OP_REQUIRES(ctx, Py_IsInitialized() && !IsPythonFinalizing(),
                 absl::FailedPreconditionError(
-                    "Python interpreter state is not initialized. "
-                    "The process may be terminated."));
+                    "Python interpreter state is not initialized or is "
+                    "finalizing. The process may be terminated."));
 
     PyGILState_STATE py_threadstate;
     py_threadstate = PyGILState_Ensure();
