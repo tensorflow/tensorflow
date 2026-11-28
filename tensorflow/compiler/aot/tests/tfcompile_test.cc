@@ -58,6 +58,7 @@ limitations under the License.
 
 #endif
 
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
@@ -66,6 +67,10 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+#include <sanitizer/msan_interface.h>
+#endif
 
 #define EIGEN_USE_THREADS
 #define EIGEN_USE_CUSTOM_THREAD_POOL
@@ -127,6 +132,31 @@ TEST(TFCompileTest, Add_SetArg) {
   EXPECT_EQ(add.result0(), 42);
   EXPECT_EQ(add.result0_data()[0], 42);
   EXPECT_EQ(add.result0_data(), add.result_data(0));
+}
+
+// Under msan, tf_library instruments the generated code, so the result of an
+// addition with an uninitialized argument is uninitialized.
+TEST(TFCompileTest, AddPropagatesMsanShadow) {
+#ifndef ABSL_HAVE_MEMORY_SANITIZER
+  GTEST_SKIP() << "This test requires an msan build";
+#else
+  AddComp add;
+  add.arg0() = 1;
+  add.arg1() = 2;
+  // Poison the result, so the generated code must write its shadow.
+  __msan_poison(add.result0_data(), sizeof(int32_t));
+  EXPECT_TRUE(add.Run());
+  EXPECT_EQ(__msan_test_shadow(add.result0_data(), sizeof(int32_t)), -1);
+  EXPECT_EQ(add.result0(), 3);
+
+  // Unlike __msan_poison, __msan_allocated_memory also sets the origin.
+  __msan_allocated_memory(add.arg1_data(), sizeof(int32_t));
+  EXPECT_TRUE(add.Run());
+  EXPECT_EQ(__msan_test_shadow(add.result0_data(), sizeof(int32_t)), 0);
+  if (__msan_get_track_origins() > 0) {
+    EXPECT_NE(__msan_get_origin(add.result0_data()), 0u);
+  }
+#endif
 }
 
 TEST(TFCompileTest, AddWithCkpt) {

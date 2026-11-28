@@ -175,7 +175,6 @@ class NanoRtExecutable {
    public:
     explicit ManagedTemp(size_t size)
         : data_(CeilOfRatio(size, Align())), size_(size) {
-      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data_.data(), data_.memsize());
       // Keep the rounded chunk tail inaccessible beyond the requested size.
       AnnotateMemory(data_.memsize(), size_);
     }

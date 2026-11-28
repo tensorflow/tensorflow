@@ -47,6 +47,8 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":builtin_symbols",
+        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:OrcJIT",
@@ -71,6 +73,7 @@ cc_library(
         # Weak fallbacks for __truncsfbf2 and __truncdfbf2. Unlike
         # mlir_c_runner_utils, it doesn't depend on LLVM.
         "@llvm-project//mlir:mlir_float16_utils",  # buildcleaner: keep
+        "//xla/backends/cpu/runtime:msan_emulated_tls",
     ],
 )
 
@@ -80,6 +83,7 @@ xla_cc_test(
     linkstatic = True,
     deps = [
         ":builtin_symbols",
+        "//xla/backends/cpu/runtime:msan_emulated_tls",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -185,6 +189,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/cpu/runtime:msan_emulated_tls",
         "//xla/codegen:intrinsic_lib",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:intrinsic_compiler_lib",
@@ -196,6 +201,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
@@ -297,7 +303,6 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/service:dump",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
-        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:vlog_is_on",

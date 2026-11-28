@@ -47,6 +47,7 @@ filegroup(
         "dot_lib_f64.cc",
         "dot_lib_s32.cc",
         "dot_lib_s8.cc",
+        "msan_emulated_tls.cc",
         "rng_state_lib.cc",
         "sort_lib.cc",
     ],
@@ -59,6 +60,7 @@ filegroup(
         "convolution_lib.h",
         "dot_lib.h",
         "kernel_c_api.h",
+        "msan_emulated_tls.h",
         "rng_state_lib.h",
         "sort_lib.h",
         "work_queue.h",
@@ -163,6 +165,29 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "msan_emulated_tls",
+    srcs = ["msan_emulated_tls.cc"],
+    hdrs = ["msan_emulated_tls.h"],
+    deps = [
+        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "msan_emulated_tls_test",
+    srcs = ["msan_emulated_tls_test.cc"],
+    deps = [
+        ":msan_emulated_tls",
+        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1203,7 +1228,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
@@ -1350,7 +1374,6 @@ cc_library(
     deps = [
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
 

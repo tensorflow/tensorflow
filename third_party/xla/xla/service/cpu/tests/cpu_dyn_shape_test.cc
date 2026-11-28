@@ -50,7 +50,7 @@ TEST_F(CpuDynShapeTest, CompilePadToStaticIr) {
     }
   )hlo";
   CompileAndVerifyIr(kHlo, R"(
-    CHECK: define ptr @param.padded(ptr{{.*}})
+    CHECK: define noundef ptr @param.padded(ptr{{.*}})
     CHECK: define internal void @param.padded_wrapped(
     CHECK:   add i64 %{{.*}}, 48
     CHECK:   load i32, ptr %{{.*}}, align 4
@@ -205,7 +205,7 @@ TEST_F(CpuDynShapeTest, CompileSliceToDynamicIr) {
     }
   )hlo";
   CompileAndVerifyIr(kHlo, R"(
-    CHECK: define ptr @res(ptr{{.*}})
+    CHECK: define noundef ptr @res(ptr{{.*}})
     CHECK: define internal void @res_wrapped(
     CHECK:   add i64 %{{.*}}, 10
     CHECK:   store i32 %{{.*}}, ptr %{{.*}}, align 1

@@ -39,7 +39,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_msan_flags", "tfcompile_target_cpu")
 
 visibility(tfcompile_friends())
 
@@ -69,10 +69,6 @@ def _tfcompile_model_library_rule_impl(ctx):
         "--out_session_module=" + session_module_pb.path,
     ]
 
-    additional_xla_flags = ctx.attr.xla_flags
-    if "msan" in ctx.features:
-        additional_xla_flags += " --xla_backend_extra_options=xla_cpu_enable_msan=true"
-
     tfcompile_env = {
         "XLA_FLAGS": ("--xla_cpu_enable_fast_math=true " +
                       "--xla_cpu_fast_math_honor_nans=false " +
@@ -81,7 +77,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
                       "--xla_cpu_experimental_ynn_fusion_type= " +
-                      additional_xla_flags + " " +
+                      ctx.attr.xla_flags + " " +
                       "$${XLA_FLAGS:-} "),
         "CUDA_VISIBLE_DEVICES": "",
     }
@@ -297,7 +293,7 @@ def _tf_library(
         target_cpu = tfcompile_target_cpu(name),
         target_triple = target_llvm_triple(),
         flags = flags,
-        extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
+        extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags + tfcompile_msan_flags(),
         dfsan = tfcompile_dfsan_enabled(),
         dfsan_abilists = tfcompile_dfsan_abilists(),
         is_linux = select({
