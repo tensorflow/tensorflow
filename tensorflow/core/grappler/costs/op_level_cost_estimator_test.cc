@@ -43,7 +43,7 @@ class TestOpLevelCostEstimator : public OpLevelCostEstimator {
     compute_memory_overlap_ = true;
     device_info_ = DeviceInfo();
   }
-  ~TestOpLevelCostEstimator() override {}
+  ~TestOpLevelCostEstimator() override = default;
 
   void SetDeviceInfo(const DeviceInfo& device_info) {
     device_info_ = device_info;

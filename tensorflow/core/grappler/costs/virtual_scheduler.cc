@@ -273,8 +273,7 @@ absl::Status PriorityReadyManager::SetPriority(
   return absl::OkStatus();
 }
 
-CompositeNodeManager::CompositeNodeManager()
-    : ReadyNodeManager(), send_manager_(), recv_manager_() {}
+CompositeNodeManager::CompositeNodeManager() :, , = default;
 
 absl::Status CompositeNodeManager::Init(
     const std::unordered_map<const NodeDef*, NodeState>* node_map) {
@@ -387,7 +386,7 @@ std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
   return nullptr;
 }
 
-SchedulerState::~SchedulerState() {}
+SchedulerState::~SchedulerState() = default;
 
 SchedulerState::SchedulerState(const bool use_static_shapes,
                                const bool use_aggressive_shape_inference,
@@ -1382,7 +1381,7 @@ int64_t SchedulerState::GetOrCalculateOutputSize(const NodeState& node_state,
   return CalculateOutputSize(node_state.output_properties, port_num);
 }
 
-VirtualScheduler::~VirtualScheduler() {}
+VirtualScheduler::~VirtualScheduler() = default;
 
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
                                    const bool use_aggressive_shape_inference,
