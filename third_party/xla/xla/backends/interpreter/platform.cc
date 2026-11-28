@@ -37,7 +37,7 @@ XlaInterpreterPlatform::XlaInterpreterPlatform(absl::string_view name,
                                                const Platform::Id& id)
     : name_(name), id_(id) {}
 
-XlaInterpreterPlatform::~XlaInterpreterPlatform() {}
+XlaInterpreterPlatform::~XlaInterpreterPlatform() = default;
 
 Platform::Id XlaInterpreterPlatform::id() const { return id_; }
 
