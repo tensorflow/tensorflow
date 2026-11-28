@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
+#include <algorithm>
 #include <iterator>
 #include <string>
 #include <utility>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project

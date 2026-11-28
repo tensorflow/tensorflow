@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 
+#include <cstdint>
 #include <string>
 
 #include "absl/strings/string_view.h"
