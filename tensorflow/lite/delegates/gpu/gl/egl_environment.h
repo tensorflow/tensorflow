@@ -63,6 +63,9 @@ class EglEnvironment {
   void ForceSyncTurning();
   GLuint dummy_framebuffer_ = GL_INVALID_INDEX;
   GLuint dummy_texture_ = GL_INVALID_INDEX;
+
+  // True iff we initialized `display_` by a successful call to `eglInitialize`.
+  bool display_owned_;
 };
 
 }  // namespace gl
