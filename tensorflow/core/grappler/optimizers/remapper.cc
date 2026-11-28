@@ -790,6 +790,24 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
       IsInPreserveSet(ctx, contraction_node_def))
     return false;
 
+  if (IsMatMul(*contraction_node_def) && NodeIsOnCpu(contraction_node_def)) {
+    // An empty dot product is zero, but the bias and any activation still
+    // have to run. Keep them separate from the CPU matmul in this case.
+    const auto& inputs =
+        ctx.graph_properties.GetInputProperties(contraction_node_def->name());
+    if (inputs.size() == 2) {
+      const auto& attrs = contraction_node_def->attr();
+      const int lhs_k = attrs.at("transpose_a").b() ? 0 : 1;
+      const int rhs_k = attrs.at("transpose_b").b() ? 1 : 0;
+      const auto& lhs = inputs[0].shape();
+      const auto& rhs = inputs[1].shape();
+      if ((Rank(lhs) == 2 && lhs.dim(lhs_k).size() == 0) ||
+          (Rank(rhs) == 2 && rhs.dim(rhs_k).size() == 0)) {
+        return false;
+      }
+    }
+  }
+
   // Check that data type and data format are supported on assigned device.
   const ContractionWithBiasAdd pattern{contraction_node_view->node_index(),
                                        node_index, bias_port};
