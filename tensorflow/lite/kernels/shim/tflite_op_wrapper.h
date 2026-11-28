@@ -165,7 +165,7 @@ class OpWrapper : public OpWrapperExtension<Rt> {
   // This variant can be any permutation of the Op and its template params.
   using TmplOpType = typename VariantOp<Rt, Op, As...>::type;
   // For static calls, the exact type shouldn't matter, we just need a type.
-  using TmplOpType0 = typename std::variant_alternative<0, TmplOpType>::type;
+  using TmplOpType0 = std::variant_alternative_t<0, TmplOpType>;
 
   using typename OpKernelShim<OpWrapperExtension, Rt>::InitContext;
   using typename OpKernelShim<OpWrapperExtension, Rt>::InvokeContext;
