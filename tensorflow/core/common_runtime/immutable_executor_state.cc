@@ -155,6 +155,10 @@ absl::Status ImmutableExecutorState::Initialize(const Graph& graph) {
     }
     item->const_tensor = const_tensor;
     item->is_noop = (item->kernel->type_string_view() == "NoOp");
+    item->is_temporary_variable =
+        item->kernel->type_string_view() == "TemporaryVariable" ||
+        item->kernel->type_string_view() == "DestroyTemporaryVariable";
+    has_temporary_variables_ |= item->is_temporary_variable;
     item->is_enter = IsEnter(n);
     if (item->is_enter) {
       bool is_constant_enter;
