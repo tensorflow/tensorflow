@@ -881,9 +881,9 @@ ALWAYS_INLINE void CopyAndMayBeInterleaveBfloat16(void* bdst, const void* bsrc,
 template <typename T>
 ALWAYS_INLINE void CopyAndMayBeInterleave(void* dst, const void* src,
                                           int num_elements) {
-  if (std::is_same<T, float>::value || kNumOperands < 8) {
+  if (std::is_same_v<T, float> || kNumOperands < 8) {
     memcpy(dst, src, num_elements * sizeof(T));
-  } else if (std::is_same<T, bfloat16>::value) {
+  } else if (std::is_same_v<T, bfloat16>) {
     if (num_elements == N) {
       CopyAndMayBeInterleaveBfloat16<N>(dst, src, num_elements);
     } else {
@@ -1141,13 +1141,13 @@ class SparseMatMulOp : public OpKernel {
       auto left = &a;
       auto right = &b;
       // TODO(agarwal): multi-thread the conversions from bfloat16 to float.
-      if (std::is_same<TL, bfloat16>::value) {
+      if (std::is_same_v<TL, bfloat16>) {
         a_float.reset(new Tensor(DT_FLOAT, a.shape()));
         BFloat16ToFloat(a.flat<bfloat16>().data(),
                         a_float->flat<float>().data(), a.NumElements());
         left = a_float.get();
       }
-      if (std::is_same<TR, bfloat16>::value) {
+      if (std::is_same_v<TR, bfloat16>) {
         b_float.reset(new Tensor(DT_FLOAT, b.shape()));
         BFloat16ToFloat(b.flat<bfloat16>().data(),
                         b_float->flat<float>().data(), b.NumElements());

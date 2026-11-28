@@ -100,7 +100,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
     using Tsum = typename SumType<T>::type;
     Tsum* maybe_temp_out_data = nullptr;
     Tensor temp_out_t;
-    bool sum_type_is_different = !std::is_same<T, Tsum>::value;
+    bool sum_type_is_different = !std::is_same_v<T, Tsum>;
     if (sum_type_is_different) {
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
           DataTypeToEnum<Tsum>::value,
