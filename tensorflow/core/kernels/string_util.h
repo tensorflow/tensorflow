@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_STRING_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_STRING_UTIL_H_
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 

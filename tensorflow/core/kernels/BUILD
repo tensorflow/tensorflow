@@ -2551,7 +2551,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -3183,6 +3183,8 @@ cc_library(
         ":tensor_list",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3216,9 +3218,13 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/lib/core:refcount",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -3613,7 +3619,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "summary_audio_op",
     prefix = "summary_audio_op",
-    deps = LOGGING_DEPS,
+    deps = LOGGING_DEPS + [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
@@ -6066,10 +6075,10 @@ cc_library(
     srcs = ["string_util.cc"],
     hdrs = ["string_util.h"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "@icu//:common",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
