@@ -75,6 +75,10 @@
     indices and loop-invariant params now handles negative `batch_dims` and
     symbolic `axis` tensors instead of raising shape errors or
     `OperatorNotAllowedInGraphError`.
+*   `tf.nn.softmax_cross_entropy_with_logits`: second derivatives are now
+    correct when `labels` depend on the same variables as `logits` (e.g.
+    distillation losses whose targets come from a softmax). The gradient term
+    that flows back through `labels` used to be dropped.
 
 ## Thanks to our Contributors
 

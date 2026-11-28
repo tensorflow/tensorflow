@@ -570,11 +570,13 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op: ops.Operation, grad_loss, grad_grad):
   # (which is output[1])
   # grad_grad is the backprop for softmax gradient.
   #
-  # Second derivative is just softmax derivative w.r.t. logits.
+  # output[1] is softmax(logits) - labels, so grad_grad flows back through the
+  # softmax derivative to logits and with a negative sign to labels.
   softmax_grad = op.outputs[1]
   grad = _BroadcastMul(grad_loss, softmax_grad)
 
   logits = op.inputs[0]
+  labels_grad = _BroadcastMul(grad_loss, -gen_nn_ops.log_softmax(logits))  # pylint: disable=invalid-unary-operand-type
   if (grad_grad is not None and
       not getattr(grad_grad, "_is_zeros_tensor", False)):
     softmax = gen_nn_ops.softmax(logits)
@@ -584,8 +586,9 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op: ops.Operation, grad_loss, grad_grad):
             array_ops.expand_dims(grad_grad, 1),
             array_ops.expand_dims(softmax, 2)),
         axis=1)) * softmax)
+    labels_grad -= grad_grad
 
-  return grad, _BroadcastMul(grad_loss, -gen_nn_ops.log_softmax(logits))  # pylint: disable=invalid-unary-operand-type
+  return grad, labels_grad
 
 
 @ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")
