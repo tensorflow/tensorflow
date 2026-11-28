@@ -5714,6 +5714,8 @@ def polyval(coeffs, x, name=None):
 
   Args:
     coeffs: A list of `Tensor` representing the coefficients of the polynomial.
+      Python numbers and NumPy scalars/arrays are also accepted; they take the
+      dtype of `x`, exactly as in `coeffs[n-1] + coeffs[n-2] * x + ...`.
     x: A `Tensor` representing the variable of the polynomial.
     name: A name for the operation (optional).
 
@@ -5734,7 +5736,9 @@ def polyval(coeffs, x, name=None):
     if len(coeffs) < 1:
       return array_ops.zeros_like(x, name=name)
     coeffs = [
-        ops.convert_to_tensor(coeff, name=("coeff_%d" % index))
+        ops.convert_to_tensor(
+            coeff, dtype=x.dtype, name=("coeff_%d" % index)
+        )
         for index, coeff in enumerate(coeffs)
     ]
     p = coeffs[0]
