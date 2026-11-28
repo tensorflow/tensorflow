@@ -90,19 +90,18 @@ void ReverseRows(OpKernelContext* context, const Tensor& input,
 template <typename T>
 struct data_type_can_memcpy {
   static constexpr bool value =
-      std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value ||
-      std::is_same<T, bool>::value || std::is_same<T, uint16_t>::value ||
-      std::is_same<T, int16_t>::value || std::is_same<T, Eigen::half>::value ||
-      std::is_same<T, Eigen::bfloat16>::value ||
-      std::is_same<T, int32_t>::value || std::is_same<T, float>::value ||
-      std::is_same<T, int64_t>::value || std::is_same<T, double>::value ||
-      std::is_same<T, complex64>::value || std::is_same<T, complex128>::value;
+      std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t> ||
+      std::is_same_v<T, bool> || std::is_same_v<T, uint16_t> ||
+      std::is_same_v<T, int16_t> || std::is_same_v<T, Eigen::half> ||
+      std::is_same_v<T, Eigen::bfloat16> || std::is_same_v<T, int32_t> ||
+      std::is_same_v<T, float> || std::is_same_v<T, int64_t> ||
+      std::is_same_v<T, double> || std::is_same_v<T, complex64> ||
+      std::is_same_v<T, complex128>;
 };
 
 template <typename T, int NUM_CHANNELS>
-typename std::enable_if<data_type_can_memcpy<T>::value>::type
-DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
-                    Tensor* result) {
+std::enable_if_t<data_type_can_memcpy<T>::value> DoHandleReverseCase(
+    OpKernelContext* context, const Tensor& input, Tensor* result) {
   if (sizeof(T) == 1) {
     static_assert(sizeof(uint8_t) == 1, "uint8 must be 1 byte.");
     ReverseRows<uint8_t, NUM_CHANNELS>(context, input, result);
@@ -126,9 +125,8 @@ DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
 }
 
 template <typename T, int NUM_CHANNELS>
-typename std::enable_if<!data_type_can_memcpy<T>::value>::type
-DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
-                    Tensor* result) {}
+std::enable_if_t<!data_type_can_memcpy<T>::value> DoHandleReverseCase(
+    OpKernelContext* context, const Tensor& input, Tensor* result) {}
 
 }  // namespace
 
@@ -139,7 +137,7 @@ void HandleReverseCase(OpKernelContext* context,
   const Tensor& input = context->input(0);
 
   // Use optimized reverse if possible.
-  if (NDIMS == 3 && std::is_same<Device, CPUDevice>::value &&
+  if (NDIMS == 3 && std::is_same_v<Device, CPUDevice> &&
       data_type_can_memcpy<T>::value && (!dims(0) && dims(1) && !dims(2))) {
     if (input.dim_size(2) == 3) {
       DoHandleReverseCase<T, 3>(context, input, result);
@@ -221,7 +219,7 @@ void HandleReverseV2Case(OpKernelContext* context,
   const Tensor& input = context->input(0);
 
   // Use optimized reverse if possible.
-  if (NDIMS == 3 && std::is_same<Device, CPUDevice>::value &&
+  if (NDIMS == 3 && std::is_same_v<Device, CPUDevice> &&
       data_type_can_memcpy<T>::value && (!axes[0] && axes[1] && !axes[2])) {
     if (input.dim_size(2) == 3) {
       DoHandleReverseCase<T, 3>(context, input, result);
