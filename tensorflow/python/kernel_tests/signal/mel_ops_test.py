@@ -18,9 +18,12 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
@@ -200,6 +203,83 @@ class LinearToMelTest(test.TestCase, parameterized.TestCase):
     mel_matrix = mel_ops.linear_to_mel_weight_matrix(
         20, num_spectrogram_bins, 8000.0, 125.0, 3800.0)
     self.assertAllClose(mel_matrix_np, mel_matrix, atol=3e-6)
+
+  def test_num_spectrogram_bins_one(self):
+    mel_matrix_np = spectrogram_to_mel_matrix(
+        20, 1, 8000.0, 125.0, 3800.0)
+    mel_matrix = mel_ops.linear_to_mel_weight_matrix(
+        20, 1, 8000.0, 125.0, 3800.0)
+    self.assertAllClose(mel_matrix_np, mel_matrix, atol=3e-6)
+
+  @parameterized.parameters(0, -1, -5)
+  def test_num_spectrogram_bins_non_positive_static(self, num_bins):
+    with self.assertRaisesRegex(
+        ValueError, "num_spectrogram_bins must be positive"):
+      mel_ops.linear_to_mel_weight_matrix(num_spectrogram_bins=num_bins)
+    with self.assertRaisesRegex(
+        ValueError, "num_spectrogram_bins must be positive"):
+      mel_ops.linear_to_mel_weight_matrix(
+          num_spectrogram_bins=constant_op.constant(num_bins))
+
+  def test_num_spectrogram_bins_zero_issue_repro(self):
+    with self.assertRaisesRegex(
+        ValueError, "num_spectrogram_bins must be positive"):
+      mel_ops.linear_to_mel_weight_matrix(
+          num_mel_bins=24,
+          num_spectrogram_bins=0,
+          sample_rate=8.793655661524179,
+          lower_edge_hertz=1.175494351e-38,
+          upper_edge_hertz=5.960464477539063e-08,
+          dtype=dtypes.float64)
+
+  @parameterized.parameters(0, -1)
+  def test_num_spectrogram_bins_non_positive_dynamic(self, num_bins):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def make_matrix(bins):
+      return mel_ops.linear_to_mel_weight_matrix(
+          20, bins, 8000.0, 125.0, 3800.0)
+
+    if context.executing_eagerly():
+      bins_arg = constant_op.constant(num_bins, dtype=dtypes.int32)
+    else:
+      bins_arg = array_ops.placeholder_with_default(
+          constant_op.constant(num_bins, dtype=dtypes.int32), shape=())
+      mel_matrix = mel_ops.linear_to_mel_weight_matrix(
+          20, bins_arg, 8000.0, 125.0, 3800.0)
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "num_spectrogram_bins must be positive"):
+        self.evaluate(mel_matrix)
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "num_spectrogram_bins must be positive"):
+      self.evaluate(make_matrix(bins_arg))
+
+    if not context.executing_eagerly() and num_bins == 0:
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "num_spectrogram_bins must be positive"):
+        self.evaluate(make_matrix(constant_op.constant(0, dtype=dtypes.int32)))
+
+  def test_num_spectrogram_bins_dynamic_positive(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def make_matrix(bins):
+      return mel_ops.linear_to_mel_weight_matrix(
+          20, bins, 8000.0, 125.0, 3800.0)
+
+    for num_bins in (1, 129):
+      expected = spectrogram_to_mel_matrix(20, num_bins, 8000.0, 125.0, 3800.0)
+      actual = make_matrix(constant_op.constant(num_bins, dtype=dtypes.int32))
+      self.assertAllClose(expected, actual, atol=3e-6)
+
+  def test_num_spectrogram_bins_invalid_dtype_or_rank(self):
+    with self.assertRaises(TypeError):
+      mel_ops.linear_to_mel_weight_matrix(num_spectrogram_bins=0.0)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), "(scalar|rank 0)"):
+      self.evaluate(
+          mel_ops.linear_to_mel_weight_matrix(
+              num_spectrogram_bins=constant_op.constant([1, 2])))
 
 
 if __name__ == "__main__":

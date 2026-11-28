@@ -14,11 +14,14 @@
 # ==============================================================================
 """mel conversion ops."""
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import shape_ops
 from tensorflow.python.util import dispatch
@@ -65,11 +68,17 @@ def _hertz_to_mel(frequencies_hertz, name=None):
         1.0 + (frequencies_hertz / _MEL_BREAK_FREQUENCY_HERTZ))
 
 
-def _validate_arguments(num_mel_bins, sample_rate,
+def _validate_arguments(num_mel_bins, num_spectrogram_bins_static, sample_rate,
                         lower_edge_hertz, upper_edge_hertz, dtype):
   """Checks the inputs to linear_to_mel_weight_matrix."""
   if num_mel_bins <= 0:
     raise ValueError('num_mel_bins must be positive. Got: %s' % num_mel_bins)
+  if num_spectrogram_bins_static is not None:
+    const_bins = np.asarray(num_spectrogram_bins_static)
+    if (np.issubdtype(const_bins.dtype, np.integer) and
+        const_bins.size == 1 and const_bins.item() <= 0):
+      raise ValueError('num_spectrogram_bins must be positive. Got: %s' %
+                       const_bins.item())
   if lower_edge_hertz < 0.0:
     raise ValueError('lower_edge_hertz must be non-negative. Got: %s' %
                      lower_edge_hertz)
@@ -152,6 +161,8 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
     ValueError: If `num_mel_bins`/`num_spectrogram_bins`/`sample_rate` are not
       positive, `lower_edge_hertz` is negative, frequency edges are incorrectly
       ordered, `upper_edge_hertz` is larger than the Nyquist frequency.
+    InvalidArgumentError: If `num_spectrogram_bins` is a dynamic `Tensor` whose
+      runtime value is not positive.
 
   [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """
@@ -162,10 +173,12 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
       if maybe_const_val is not None:
         sample_rate = maybe_const_val
 
-    # Note: As num_spectrogram_bins is passed to `math_ops.linspace`
-    # and the validation is already done in linspace (both in shape function
-    # and in kernel), there is no need to validate num_spectrogram_bins here.
-    _validate_arguments(num_mel_bins, sample_rate,
+    # `math_ops.linspace` (`linspace_nd`) returns an empty tensor when `num`
+    # is 0, which `array_ops.pad` below would turn into a `[1, num_mel_bins]`
+    # matrix instead of failing. Validate `num_spectrogram_bins` explicitly.
+    num_spectrogram_bins_static = tensor_util.constant_value(
+        num_spectrogram_bins)
+    _validate_arguments(num_mel_bins, num_spectrogram_bins_static, sample_rate,
                         lower_edge_hertz, upper_edge_hertz, dtype)
 
     # This function can be constant folded by graph optimization since there are
@@ -181,8 +194,19 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
     # HTK excludes the spectrogram DC bin.
     bands_to_zero = 1
     nyquist_hertz = sample_rate / 2.0
-    linear_frequencies = math_ops.linspace(
-        zero, nyquist_hertz, num_spectrogram_bins)[bands_to_zero:]
+    if num_spectrogram_bins_static is None:
+      num_spectrogram_bins = array_ops.convert_to_int_tensor(
+          num_spectrogram_bins, name='num_spectrogram_bins')
+      with ops.control_dependencies([
+          check_ops.assert_positive(
+              num_spectrogram_bins,
+              message='num_spectrogram_bins must be positive')
+      ]):
+        linear_frequencies = math_ops.linspace(
+            zero, nyquist_hertz, num_spectrogram_bins)[bands_to_zero:]
+    else:
+      linear_frequencies = math_ops.linspace(
+          zero, nyquist_hertz, num_spectrogram_bins)[bands_to_zero:]
     spectrogram_bins_mel = array_ops.expand_dims(
         _hertz_to_mel(linear_frequencies), 1)
 
