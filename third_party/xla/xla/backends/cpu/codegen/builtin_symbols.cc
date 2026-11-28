@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/builtin_atan2.h"
 #include "xla/backends/cpu/codegen/builtin_fp16.h"
 #include "xla/backends/cpu/codegen/builtin_pow.h"
+#include "xla/backends/cpu/runtime/msan_emulated_tls.h"
 
 namespace xla::cpu {
 
@@ -228,6 +229,9 @@ Registry CreateRegistry() {
 #endif
 
 #endif
+
+  registry[kMsanEmutlsGetAddressBridgeSymbolName] =
+      SymbolAddress(__xla_cpu_runtime_emutls_get_address);
 
 #ifdef MEMORY_SANITIZER
   registry["__msan_unpoison"] = SymbolAddress(__msan_unpoison);

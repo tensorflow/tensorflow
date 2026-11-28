@@ -71,6 +71,7 @@ cc_library(
         # Weak fallbacks for __truncsfbf2 and __truncdfbf2. Unlike
         # mlir_c_runner_utils, it doesn't depend on LLVM.
         "@llvm-project//mlir:mlir_float16_utils",  # buildcleaner: keep
+        "//xla/backends/cpu/runtime:msan_emulated_tls",
     ],
 )
 
@@ -80,6 +81,7 @@ xla_cc_test(
     linkstatic = True,
     deps = [
         ":builtin_symbols",
+        "//xla/backends/cpu/runtime:msan_emulated_tls",
         "@com_google_googletest//:gtest_main",
     ],
 )
