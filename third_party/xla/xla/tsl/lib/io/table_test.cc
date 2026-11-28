@@ -91,7 +91,7 @@ static void Increment(std::string* key) { key->push_back('\0'); }
 // An STL comparator that compares two StringPieces
 namespace {
 struct STLLessThan {
-  STLLessThan() {}
+  STLLessThan() = default;
   bool operator()(const std::string& a, const std::string& b) const {
     return absl::string_view(a).compare(absl::string_view(b)) < 0;
   }
@@ -100,7 +100,7 @@ struct STLLessThan {
 
 class StringSink : public WritableFile {
  public:
-  ~StringSink() override {}
+  ~StringSink() override = default;
 
   const std::string& contents() const { return contents_; }
 
@@ -129,7 +129,7 @@ class StringSource : public RandomAccessFile {
   explicit StringSource(absl::string_view contents)
       : contents_(contents.data(), contents.size()), bytes_read_(0) {}
 
-  ~StringSource() override {}
+  ~StringSource() override = default;
 
   uint64_t Size() const { return contents_.size(); }
 
@@ -165,7 +165,7 @@ typedef std::map<std::string, std::string, STLLessThan> KVMap;
 class Constructor {
  public:
   explicit Constructor() : data_(STLLessThan()) {}
-  virtual ~Constructor() {}
+  virtual ~Constructor() = default;
 
   void Add(const std::string& key, absl::string_view value) {
     data_[key] = std::string(value);

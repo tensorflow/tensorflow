@@ -60,7 +60,7 @@ class BlockHandle {
 // end of every table file.
 class Footer {
  public:
-  Footer() {}
+  Footer() = default;
 
   // The block handle for the metaindex block of the table
   const BlockHandle& metaindex_handle() const { return metaindex_handle_; }

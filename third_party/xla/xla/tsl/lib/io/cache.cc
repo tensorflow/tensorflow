@@ -28,7 +28,7 @@ namespace tsl {
 
 namespace table {
 
-Cache::~Cache() {}
+Cache::~Cache() = default;
 
 namespace {
 
@@ -366,7 +366,7 @@ class ShardedLRUCache : public Cache {
       shard_[s].SetCapacity(per_shard);
     }
   }
-  ~ShardedLRUCache() override {}
+  ~ShardedLRUCache() override = default;
   Handle* Insert(Slice key, void* value, size_t charge,
                  void (*deleter)(Slice key, void* value)) override {
     const uint32_t hash = HashSlice(key);
