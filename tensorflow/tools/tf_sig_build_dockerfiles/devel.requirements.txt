@@ -16,7 +16,6 @@ numpy ~= 1.26.0
 opt_einsum ~= 3.3.0
 packaging ~= 23.2
 protobuf ~= 3.20.3
-six ~= 1.16.0
 termcolor ~= 2.1.1
 typing_extensions ~= 4.8.0
 wheel ~= 0.41.2

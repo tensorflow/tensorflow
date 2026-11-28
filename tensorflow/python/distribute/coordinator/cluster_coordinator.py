@@ -25,7 +25,7 @@ import threading
 import time
 import weakref
 
-from six.moves import queue
+import queue
 
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import metric_utils

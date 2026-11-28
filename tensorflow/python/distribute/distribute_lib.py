@@ -197,8 +197,6 @@ import functools
 import threading
 import weakref
 
-import six
-
 from tensorflow.python import tf2
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
@@ -776,19 +774,17 @@ class _CurrentDistributionContext(object):
       try:
         self._device_scope.__exit__(exception_type, exception_value, traceback)
       except RuntimeError as e:
-        six.raise_from(
-            RuntimeError("Device scope nesting error: move call to "
-                         "tf.distribute.set_strategy() out of `with` scope."),
-            e)
+        raise RuntimeError(
+            "Device scope nesting error: move call to "
+            "tf.distribute.set_strategy() out of `with` scope.") from e
 
     try:
       self._var_creator_scope.__exit__(
           exception_type, exception_value, traceback)
     except RuntimeError as e:
-      six.raise_from(
-          RuntimeError("Variable creator scope nesting error: move call to "
-                       "tf.distribute.set_strategy() out of `with` scope."),
-          e)
+      raise RuntimeError(
+          "Variable creator scope nesting error: move call to "
+          "tf.distribute.set_strategy() out of `with` scope.") from e
 
     if self._resource_creator_scope:
       try:
@@ -803,19 +799,18 @@ class _CurrentDistributionContext(object):
           self._resource_creator_scope.__exit__(exception_type, exception_value,
                                                 traceback)
       except RuntimeError as e:
-        six.raise_from(
-            RuntimeError("Resource creator scope nesting error: move call "
-                         "to tf.distribute.set_strategy() out of `with` "
-                         "scope."), e)
+        raise RuntimeError(
+            "Resource creator scope nesting error: move call "
+            "to tf.distribute.set_strategy() out of `with` "
+            "scope.") from e
 
     if self._var_scope:
       try:
         self._var_scope.__exit__(exception_type, exception_value, traceback)
       except RuntimeError as e:
-        six.raise_from(
-            RuntimeError("Variable scope nesting error: move call to "
-                         "tf.distribute.set_strategy() out of `with` scope."),
-            e)
+        raise RuntimeError(
+            "Variable scope nesting error: move call to "
+            "tf.distribute.set_strategy() out of `with` scope.") from e
     _pop_per_thread_mode()
 
 
@@ -1779,7 +1774,7 @@ class StrategyBase(object):
     """
     # TODO(josh11b): support `value` being a nest.
     _require_cross_replica_or_default_context_extended(self._extended)
-    if isinstance(reduce_op, six.string_types):
+    if isinstance(reduce_op, str):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     if axis is None:
       return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
@@ -1839,7 +1834,7 @@ class StrategyBase(object):
         # simple reduction if inputs are all on CPU.
         return array_ops.identity(
             array_ops.shape_v2(v, out_type=dtypes.int64)[axis])
-      if isinstance(axis, six.integer_types):
+      if isinstance(axis, int):
         denom = dimension(axis)
       elif isinstance(axis, (tuple, list)):
         denom = math_ops.reduce_prod([dimension(a) for a in axes])
@@ -2746,7 +2741,7 @@ class StrategyExtendedV2(object):
       _require_cross_replica_or_default_context_extended(self)
       assert not isinstance(destinations, (list, tuple))
       assert not isinstance(reduce_op, variable_scope.VariableAggregation)
-      if isinstance(reduce_op, six.string_types):
+      if isinstance(reduce_op, str):
         reduce_op = reduce_util.ReduceOp(reduce_op.upper())
       assert (reduce_op == reduce_util.ReduceOp.SUM or
               reduce_op == reduce_util.ReduceOp.MEAN)
@@ -2826,7 +2821,7 @@ class StrategyExtendedV2(object):
         options = collective_util.Options()
       _require_cross_replica_or_default_context_extended(self)
       assert not isinstance(reduce_op, variable_scope.VariableAggregation)
-      if isinstance(reduce_op, six.string_types):
+      if isinstance(reduce_op, str):
         reduce_op = reduce_util.ReduceOp(reduce_op.upper())
       return self._batch_reduce_to(reduce_op, value_destination_pairs, options)
 
@@ -3613,7 +3608,7 @@ class ReplicaContextBase(object):
       if isinstance(v, indexed_slices.IndexedSlices):
         has_indexed_slices = True
 
-    if isinstance(reduce_op, six.string_types):
+    if isinstance(reduce_op, str):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     if options is None:
       options = collective_util.Options()
@@ -3995,10 +3990,9 @@ class _DefaultDistributionContext(object):
         self._var_creator_scope.__exit__(
             exception_type, exception_value, traceback)
       except RuntimeError as e:
-        six.raise_from(
-            RuntimeError("Variable creator scope nesting error: move call to "
-                         "tf.distribute.set_strategy() out of `with` scope."),
-            e)
+        raise RuntimeError(
+            "Variable creator scope nesting error: move call to "
+            "tf.distribute.set_strategy() out of `with` scope.") from e
 
 
 class _DefaultDistributionExtended(StrategyExtendedV1):

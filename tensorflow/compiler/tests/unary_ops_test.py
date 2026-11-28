@@ -17,7 +17,6 @@
 import unittest
 
 import numpy as np
-import six
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
@@ -626,7 +625,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       inputs = np.array(raw_inputs, dtype=dtype)
 
       def count_bits(x):
-        return sum(bin(z).count("1") for z in six.iterbytes(x.tobytes()))
+        return sum(bin(z).count("1") for z in x.tobytes())
 
       truth = [count_bits(x) for x in inputs]
       self._assertOpOutputMatchesExpected(

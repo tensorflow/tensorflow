@@ -38,7 +38,6 @@ import time
 from absl.testing import parameterized
 import numpy as np
 from PIL import Image
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow import raw_ops
 
@@ -464,7 +463,7 @@ class SliceTest(test.TestCase):
 
   def testEmpty(self):
     inp = np.random.rand(4, 4).astype("f")
-    for k in xrange(4):
+    for k in range(4):
       with self.cached_session(use_gpu=True):
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.float32)
         slice_t = a[2, k:k]
@@ -2212,7 +2211,7 @@ class RandomUniformTest(RandomOpTestCommon):
             [num], minval=minv, maxval=maxv, dtype=dtype, seed=seed
         )
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -6259,7 +6258,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
     start = time.time()
-    for _ in xrange(num_iters):
+    for _ in range(num_iters):
       func()
     if execution_mode == context.ASYNC:
       ctx.executor.wait()

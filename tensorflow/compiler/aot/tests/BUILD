@@ -103,7 +103,6 @@ py_binary(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/training:saver",
         "@absl_py//absl:app",
-        "@six_archive//:six",
     ],
 )
 

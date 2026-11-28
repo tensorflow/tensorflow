@@ -18,8 +18,6 @@ import abc
 
 import collections
 
-import six
-
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
@@ -53,8 +51,7 @@ def get_accelerator_devices(master, config_proto):
 
 
 @tf_export('distribute.cluster_resolver.ClusterResolver')
-@six.add_metaclass(abc.ABCMeta)
-class ClusterResolver(object):
+class ClusterResolver(metaclass=abc.ABCMeta):
   """Abstract class for all implementations of ClusterResolvers.
 
   This defines the skeleton for all implementations of ClusterResolvers.

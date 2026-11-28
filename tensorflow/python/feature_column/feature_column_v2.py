@@ -30,7 +30,6 @@ import math
 import re
 
 import numpy as np
-import six
 
 from tensorflow.python.data.experimental.ops import lookup_ops as data_lookup_ops
 from tensorflow.python.data.ops import readers
@@ -424,7 +423,7 @@ def make_parse_example_spec_v2(feature_columns):
       raise ValueError('All feature_columns must be FeatureColumn instances. '
                        'Given: {}'.format(column))
     config = column.parse_example_spec
-    for key, value in six.iteritems(config):
+    for key, value in config.items():
       if key in result and value != result[key]:
         raise ValueError('feature_columns contain different parse_spec for key '
                          '{}. Given {} and {}'.format(key, value, result[key]))
@@ -1757,7 +1756,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
     raise ValueError(
         'keys must be a list with length > 1. Given: {}'.format(keys))
   for key in keys:
-    if (not isinstance(key, six.string_types) and
+    if (not isinstance(key, str) and
         not isinstance(key, (CategoricalColumn, fc_old._CategoricalColumn))):  # pylint: disable=protected-access
       raise ValueError(
           'Unsupported key type. All keys must be either string, or '
@@ -2036,7 +2035,7 @@ class FeatureTransformationCache(object):
       self._feature_tensors[key] = feature_tensor
       return feature_tensor
 
-    if isinstance(key, six.string_types):
+    if isinstance(key, str):
       raise ValueError('Feature {} is not in features dictionary.'.format(key))
 
     if not isinstance(key, fc_types.FeatureColumn):
@@ -3617,7 +3616,7 @@ class CrossedColumn(
   @property
   def _is_v2_column(self):
     for key in _collect_leaf_level_keys(self):
-      if isinstance(key, six.string_types):
+      if isinstance(key, str):
         continue
       if not isinstance(key, fc_types.FeatureColumn):
         return False
@@ -3659,7 +3658,7 @@ class CrossedColumn(
     """Generates a hashed sparse cross from the input tensors."""
     feature_tensors = []
     for key in _collect_leaf_level_keys(self):
-      if isinstance(key, six.string_types):
+      if isinstance(key, str):
         feature_tensors.append(transformation_cache.get(key, state_manager))
       elif isinstance(key, (fc_old._CategoricalColumn, CategoricalColumn)):  # pylint: disable=protected-access
         ids_and_weights = key.get_sparse_tensors(transformation_cache,
@@ -3683,7 +3682,7 @@ class CrossedColumn(
     """Generates a hashed sparse cross from the input tensors."""
     feature_tensors = []
     for key in _collect_leaf_level_keys(self):
-      if isinstance(key, six.string_types):
+      if isinstance(key, str):
         feature_tensors.append(inputs.get(key))
       elif isinstance(key, (CategoricalColumn, fc_old._CategoricalColumn)):  # pylint: disable=protected-access
         ids_and_weights = key._get_sparse_tensors(inputs)  # pylint: disable=protected-access

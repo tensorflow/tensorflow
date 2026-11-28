@@ -173,8 +173,7 @@ Traceback (most recent call last):
   File "tensorflow/python/eager/function.py", line 460, in call
     ctx=ctx)
   File "tensorflow/python/eager/execute.py", line 68, in quick_execute
-    six.raise_from(core._status_to_exception(e.code, message), None)
-  File "<string>", line 3, in raise_from
+    raise core._status_to_exception(e.code, message) from None
 InvalidArgumentError:  assertion failed: [example error]
     [[node Assert/Assert (defined at <ipython-input-16-af656fb445f0>:8) ]] [Op:__inference_my_function_79]
 ```

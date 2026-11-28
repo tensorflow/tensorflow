@@ -93,7 +93,6 @@ py_library(
     strict_deps = True,
     deps = [
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -1918,7 +1917,6 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -3040,7 +3038,6 @@ py_library(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variable_v1",
-        "@six_archive//:six",
     ],
 )
 

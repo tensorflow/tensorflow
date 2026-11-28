@@ -15,7 +15,6 @@
 """Utilities for helping test ops."""
 
 import numpy as np
-from six.moves import range
 
 
 def ConvertBetweenDataFormats(x, data_format_src, data_format_dst):

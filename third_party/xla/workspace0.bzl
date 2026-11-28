@@ -59,12 +59,6 @@ def _tf_bind():
         actual = str(Label("//third_party/python_runtime:headers")),
     )
 
-    # Needed by Protobuf
-    native.bind(
-        name = "six",
-        actual = "@six_archive//:six",
-    )
-
 def workspace():
     http_archive(
         name = "inception_v1",

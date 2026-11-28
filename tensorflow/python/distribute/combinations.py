@@ -26,8 +26,6 @@ import types
 import unittest
 
 from absl import app
-import six
-
 
 from tensorflow.python.client import session
 from tensorflow.python.distribute import collective_all_reduce_strategy
@@ -393,7 +391,7 @@ def generate(combinations, test_combinations=()):
       # If it's a test class.
       class_object = test_method_or_class
       # Decorate each test method with _multi_worker_test.
-      for name, test_method in six.iteritems(class_object.__dict__.copy()):
+      for name, test_method in class_object.__dict__.copy().items():
         if (name.startswith(unittest.TestLoader.testMethodPrefix) and
             isinstance(test_method, types.FunctionType)):
           setattr(class_object, name, _multi_worker_test(test_method))

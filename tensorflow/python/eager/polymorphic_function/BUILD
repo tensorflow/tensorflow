@@ -586,7 +586,6 @@ py_library(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
