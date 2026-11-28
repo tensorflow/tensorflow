@@ -1774,6 +1774,205 @@ TEST(TensorBundleTest, SortForSequentialAccess) {
                           "tensor-1-2", "tensor-1-1", "tensor-1-0"));
 }
 
+TEST(TensorBundleTest, MergeBundlesValidPartitionedSlices) {
+  Env* env = Env::Default();
+  const TensorShape full_shape({4, 2});
+  const TensorSlice first_slice = TensorSlice::ParseOrDie("0,2:-");
+  const TensorSlice second_slice = TensorSlice::ParseOrDie("2,2:-");
+  const std::vector<tstring> prefixes = {Prefix("merge_valid_slice_0"),
+                                         Prefix("merge_valid_slice_1")};
+  {
+    BundleWriter writer0(env, prefixes[0]);
+    TF_ASSERT_OK(writer0.AddSlice("partitioned", full_shape, first_slice,
+                                  Constant<float>(1.0f, TensorShape({2, 2}))));
+    TF_ASSERT_OK(writer0.Add("other", Constant<int32_t>(7, TensorShape({3}))));
+    TF_ASSERT_OK(writer0.Finish());
+
+    BundleWriter writer1(env, prefixes[1]);
+    TF_ASSERT_OK(writer1.AddSlice("partitioned", full_shape, second_slice,
+                                  Constant<float>(2.0f, TensorShape({2, 2}))));
+    TF_ASSERT_OK(writer1.Finish());
+  }
+
+  const std::string merged = Prefix("merge_valid_slice_out");
+  TF_ASSERT_OK(MergeBundles(env, prefixes, merged));
+
+  BundleReader reader(env, merged);
+  TF_ASSERT_OK(reader.status());
+  std::vector<TensorSlice> slices;
+  TF_ASSERT_OK(reader.LookupTensorSlices("partitioned", &slices));
+  ASSERT_EQ(slices.size(), 2);
+  EXPECT_EQ(slices[0].DebugString(), first_slice.DebugString());
+  EXPECT_EQ(slices[1].DebugString(), second_slice.DebugString());
+
+  Tensor actual(DT_FLOAT, full_shape);
+  TF_ASSERT_OK(reader.Lookup("partitioned", &actual));
+  test::ExpectTensorEqual<float>(
+      actual,
+      test::AsTensor<float>({1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f},
+                            full_shape));
+
+  Tensor other(DT_INT32, TensorShape({3}));
+  TF_ASSERT_OK(reader.Lookup("other", &other));
+  test::ExpectTensorEqual<int32_t>(other,
+                                   Constant<int32_t>(7, TensorShape({3})));
+}
+
+TEST(TensorBundleTest, MergeBundlesRejectsInvalidEntryShape) {
+  Env* env = Env::Default();
+  const TensorShape valid_shape({4, 2});
+  const TensorSlice first_slice = TensorSlice::ParseOrDie("0,2:-");
+  const TensorSlice second_slice = TensorSlice::ParseOrDie("2,2:-");
+
+  auto write_sliced_pair = [&](const std::string& tag,
+                               std::vector<tstring>* prefixes) -> absl::Status {
+    *prefixes = {Prefix(absl::StrCat(tag, "_0")),
+                 Prefix(absl::StrCat(tag, "_1"))};
+    BundleWriter writer0(env, (*prefixes)[0]);
+    TF_RETURN_IF_ERROR(
+        writer0.AddSlice("partitioned", valid_shape, first_slice,
+                         Constant<float>(1.0f, TensorShape({2, 2}))));
+    TF_RETURN_IF_ERROR(writer0.Finish());
+
+    BundleWriter writer1(env, (*prefixes)[1]);
+    TF_RETURN_IF_ERROR(
+        writer1.AddSlice("partitioned", valid_shape, second_slice,
+                         Constant<float>(2.0f, TensorShape({2, 2}))));
+    return writer1.Finish();
+  };
+
+  auto set_raw_dims = [](BundleEntryProto* entry,
+                         const std::vector<int64_t>& dims) {
+    TensorShapeProto* shape = entry->mutable_shape();
+    shape->Clear();
+    for (int64_t d : dims) {
+      shape->add_dim()->set_size(d);
+    }
+  };
+
+  // Negative dimension on both sliced metadata entries.
+  {
+    std::vector<tstring> prefixes;
+    TF_ASSERT_OK(write_sliced_pair("neg_both", &prefixes));
+    for (const tstring& p : prefixes) {
+      TF_ASSERT_OK(RewriteEntry(p, "partitioned", [&](BundleEntryProto* entry) {
+        set_raw_dims(entry, {4, -1, 2});
+      }));
+    }
+    absl::Status s = MergeBundles(env, prefixes, Prefix("neg_both_merged"));
+    EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  }
+
+  // Valid first sliced entry followed by negative-dimension second entry.
+  {
+    std::vector<tstring> prefixes;
+    TF_ASSERT_OK(write_sliced_pair("neg_second", &prefixes));
+    TF_ASSERT_OK(RewriteEntry(
+        prefixes[1], "partitioned",
+        [&](BundleEntryProto* entry) { set_raw_dims(entry, {4, -1}); }));
+    absl::Status s = MergeBundles(env, prefixes, Prefix("neg_second_merged"));
+    EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  }
+
+  // Dimension product overflow and zero-prefixed dimension product overflow.
+  for (int idx = 0; idx < 2; ++idx) {
+    const std::vector<int64_t> bad_dims =
+        idx == 0 ? std::vector<int64_t>{1LL << 40, 1LL << 40}
+                 : std::vector<int64_t>{0, 1LL << 40, 1LL << 40};
+    std::vector<tstring> prefixes;
+    TF_ASSERT_OK(write_sliced_pair(absl::StrCat("overflow_", idx), &prefixes));
+    for (const tstring& p : prefixes) {
+      TF_ASSERT_OK(RewriteEntry(p, "partitioned", [&](BundleEntryProto* entry) {
+        set_raw_dims(entry, bad_dims);
+      }));
+    }
+    absl::Status s = MergeBundles(
+        env, prefixes, Prefix(absl::StrCat("overflow_merged_", idx)));
+    EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  }
+
+  // Rank exceeding TensorShape::MaxDimensions().
+  {
+    std::vector<tstring> prefixes;
+    TF_ASSERT_OK(write_sliced_pair("excess_rank", &prefixes));
+    const std::vector<int64_t> many_dims(TensorShape::MaxDimensions() + 1, 1);
+    for (const tstring& p : prefixes) {
+      TF_ASSERT_OK(RewriteEntry(p, "partitioned", [&](BundleEntryProto* entry) {
+        set_raw_dims(entry, many_dims);
+      }));
+    }
+    absl::Status s = MergeBundles(env, prefixes, Prefix("excess_rank_merged"));
+    EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  }
+
+  // Single non-sliced bundle entry with negative dimension.
+  {
+    const std::string single = Prefix("single_invalid_shape");
+    BundleWriter writer(env, single);
+    TF_ASSERT_OK(writer.Add("x", Constant_2x3<float>(1.0f)));
+    TF_ASSERT_OK(writer.Finish());
+    TF_ASSERT_OK(RewriteEntry(single, "x", [&](BundleEntryProto* entry) {
+      set_raw_dims(entry, {-1});
+    }));
+    const std::vector<tstring> prefixes = {single};
+    absl::Status s =
+        MergeBundles(env, prefixes, Prefix("single_invalid_merged"));
+    EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  }
+}
+
+TEST(TensorBundleTest, MergeBundlesRejectsConflictingSlicedDtype) {
+  Env* env = Env::Default();
+  const TensorShape full_shape({4, 2});
+  const TensorSlice first_slice = TensorSlice::ParseOrDie("0,2:-");
+  const TensorSlice second_slice = TensorSlice::ParseOrDie("2,2:-");
+  for (DataType bad_dtype : {DT_INT32, static_cast<DataType>(9999)}) {
+    const std::string tag = absl::StrCat("conflict_dtype_", bad_dtype);
+    const std::vector<tstring> prefixes = {Prefix(absl::StrCat(tag, "_0")),
+                                           Prefix(absl::StrCat(tag, "_1"))};
+    BundleWriter writer0(env, prefixes[0]);
+    TF_ASSERT_OK(writer0.AddSlice("partitioned", full_shape, first_slice,
+                                  Constant<float>(1.0f, TensorShape({2, 2}))));
+    TF_ASSERT_OK(writer0.Finish());
+
+    BundleWriter writer1(env, prefixes[1]);
+    TF_ASSERT_OK(writer1.AddSlice("partitioned", full_shape, second_slice,
+                                  Constant<float>(2.0f, TensorShape({2, 2}))));
+    TF_ASSERT_OK(writer1.Finish());
+    TF_ASSERT_OK(RewriteEntry(
+        prefixes[1], "partitioned",
+        [&](BundleEntryProto* entry) { entry->set_dtype(bad_dtype); }));
+
+    absl::Status s =
+        MergeBundles(env, prefixes, Prefix(absl::StrCat(tag, "_merged")));
+    EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+    EXPECT_TRUE(absl::StrContains(s.message(), "conflicting dtype")) << s;
+  }
+}
+
+TEST(TensorBundleTest, MergeBundlesRejectsConflictingSlicedShape) {
+  Env* env = Env::Default();
+  const std::vector<tstring> prefixes = {Prefix("conflict_shape_0"),
+                                         Prefix("conflict_shape_1")};
+  {
+    BundleWriter writer0(env, prefixes[0]);
+    TF_ASSERT_OK(writer0.AddSlice("partitioned", TensorShape({4, 2}),
+                                  TensorSlice::ParseOrDie("0,2:-"),
+                                  Constant<float>(1.0f, TensorShape({2, 2}))));
+    TF_ASSERT_OK(writer0.Finish());
+
+    BundleWriter writer1(env, prefixes[1]);
+    TF_ASSERT_OK(writer1.AddSlice("partitioned", TensorShape({4, 3}),
+                                  TensorSlice::ParseOrDie("2,2:-"),
+                                  Constant<float>(2.0f, TensorShape({2, 3}))));
+    TF_ASSERT_OK(writer1.Finish());
+  }
+
+  absl::Status s = MergeBundles(env, prefixes, Prefix("conflict_shape_merged"));
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::StrContains(s.message(), "conflicting shape")) << s;
+}
+
 TEST(TensorBundleTest, Error) {
   {  // Dup keys.
     BundleWriter writer(Env::Default(), Prefix("dup"));
