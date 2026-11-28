@@ -601,14 +601,15 @@ def _ilabel_to_state(labels, num_labels, ilabel_log_probs):
   num_label_states = _get_dim(labels, 1)
   blank = ilabel_log_probs[:, :, :1]
   blank = array_ops.tile(blank, [1, 1, num_label_states + 1])
-  one_hot = array_ops.one_hot(labels, depth=num_labels)
+  one_hot = array_ops.one_hot(
+      labels, depth=num_labels, dtype=ilabel_log_probs.dtype)
   one_hot = array_ops.expand_dims(one_hot, axis=0)
   ilabel_log_probs = array_ops.expand_dims(ilabel_log_probs, axis=2)
   state_log_probs = math_ops.reduce_sum(ilabel_log_probs * one_hot, axis=3)
   state_log_probs = array_ops.concat([state_log_probs, blank], axis=2)
   return array_ops.pad(
       state_log_probs, [[0, 0], [0, 0], [1, 0]],
-      constant_values=math_ops.log(0.0))
+      constant_values=math_ops.cast(math_ops.log(0.0), state_log_probs.dtype))
 
 
 def _state_to_olabel(labels, num_labels, states):
@@ -623,7 +624,8 @@ def _state_to_olabel(labels, num_labels, states):
       math_ops.maximum(labels, 0) - 1,
       depth=(num_labels - 1),
       on_value=0.0,
-      off_value=math_ops.log(0.0),
+      off_value=math_ops.cast(math_ops.log(0.0), states.dtype),
+      dtype=states.dtype,
   )
   one_hot = array_ops.expand_dims(one_hot, axis=0)
   label_states = array_ops.expand_dims(label_states, axis=3)
@@ -667,7 +669,9 @@ def _state_to_olabel_unique(labels, num_labels, states, unique):
 
   scatter = array_ops.where(
       mask, scatter,
-      array_ops.fill(array_ops.shape(scatter), math_ops.log(0.0)))
+      array_ops.fill(
+          array_ops.shape(scatter),
+          math_ops.cast(math_ops.log(0.0), scatter.dtype)))
 
   label_olabels = array_ops.transpose(scatter, [2, 0, 1])
   label_olabels = label_olabels[:, :, 1:]
@@ -706,9 +710,13 @@ def ctc_loss_and_grad(logits, labels, label_length, logit_length, unique=None):
 
   ilabel_log_probs = nn_ops.log_softmax(logits)
   state_log_probs = _ilabel_to_state(labels, num_labels, ilabel_log_probs)
-  state_trans_probs = _ctc_state_trans(labels)
-  initial_state_log_probs, final_state_log_probs = ctc_state_log_probs(
-      label_length, max_label_seq_length)
+  # The helpers below build float32 tensors. Use the dtype of the logits, which
+  # can be float64.
+  state_trans_probs = math_ops.cast(
+      _ctc_state_trans(labels), ilabel_log_probs.dtype)
+  initial_state_log_probs, final_state_log_probs = (
+      math_ops.cast(log_probs, ilabel_log_probs.dtype)
+      for log_probs in ctc_state_log_probs(label_length, max_label_seq_length))
   fwd_bwd_log_probs, log_likelihood = _forward_backward_log(
       state_trans_log_probs=math_ops.log(state_trans_probs),
       initial_state_log_probs=initial_state_log_probs,
@@ -729,7 +737,7 @@ def ctc_loss_and_grad(logits, labels, label_length, logit_length, unique=None):
   # mask. However, it is just safe and clean to apply it for the gradient.
   max_logit_length = _get_dim(logits, 0)
   logit_mask = array_ops.sequence_mask(logit_length, max_logit_length,
-                                       dtypes.float32)
+                                       grad.dtype)
   logit_mask = array_ops.transpose(logit_mask, perm=[1, 0])
   logit_mask = array_ops.expand_dims(logit_mask, axis=2)
   grad *= logit_mask
@@ -1415,8 +1423,9 @@ def _sum_states(idx, states):
         idx,
         depth=num_states,
         on_value=0.0,
-        off_value=math_ops.log(0.0),
-        axis=1)
+        off_value=math_ops.cast(math_ops.log(0.0), states.dtype),
+        axis=1,
+        dtype=states.dtype)
     return math_ops.reduce_logsumexp(states + one_hot, axis=-1)
 
 
@@ -1486,9 +1495,10 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
     out += final_state_log_probs * (1.0 - batched_mask)
     return out, cum_log_sum
 
-  zero_log_sum = array_ops.zeros([batch_size])
+  zero_log_sum = array_ops.zeros([batch_size], dtype=observed_log_probs.dtype)
   maxlen = _get_dim(observed_log_probs, 0)
-  mask = array_ops.sequence_mask(sequence_length, maxlen, dtypes.float32)
+  mask = array_ops.sequence_mask(sequence_length, maxlen,
+                                 observed_log_probs.dtype)
   mask = array_ops.transpose(mask, perm=[1, 0])
 
   bwd, cum_log_sum = _scan(
