@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 
-#include <algorithm>
 #include <cassert>
 #include <climits>
 #include <cstddef>
@@ -29,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
