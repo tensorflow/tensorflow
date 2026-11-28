@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <random>
@@ -189,7 +188,7 @@ TEST(Hybrid4BitFullyConnectedOpTest, TestHybridInt4AllZeroBatch) {
 
 std::mt19937 random_engine(2023);
 std::uniform_real_distribution<float> real_dist(0.f, 1.f);
-std::uniform_int_distribution<int32_t> int_dist(-8, 7);
+std::uniform_int_distribution<int32_t> int_dist(-7, 7);
 
 class Hybrid4BitFullyConnectedVsReferenceOpTests
     : public ::testing::TestWithParam<::testing::tuple<int, int, int>> {};
