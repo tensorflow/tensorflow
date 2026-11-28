@@ -101,9 +101,10 @@ def confusion_matrix(labels,
 
   The matrix columns represent the prediction labels and the rows represent the
   real labels. The confusion matrix is always a 2-D array of shape `[n, n]`,
-  where `n` is the number of valid labels for a given classification task. Both
-  prediction and labels must be 1-D arrays of the same shape in order for this
-  function to work.
+  where `n` is the number of valid labels for a given classification task.
+  `predictions` and `labels` must be 1-D arrays of the same shape, or one of
+  them may have a single trailing dimension of size 1 (i.e. shape `[N, 1]`),
+  which is squeezed before the matrix is computed.
 
   If `num_classes` is `None`, then `num_classes` will be set to one plus the
   maximum value in either predictions or labels. Class labels are expected to
@@ -209,9 +210,10 @@ def confusion_matrix_v1(labels,
 
   The matrix columns represent the prediction labels and the rows represent the
   real labels. The confusion matrix is always a 2-D array of shape `[n, n]`,
-  where `n` is the number of valid labels for a given classification task. Both
-  prediction and labels must be 1-D arrays of the same shape in order for this
-  function to work.
+  where `n` is the number of valid labels for a given classification task.
+  `predictions` and `labels` must be 1-D arrays of the same shape, or one of
+  them may have a single trailing dimension of size 1 (i.e. shape `[N, 1]`),
+  which is squeezed before the matrix is computed.
 
   If `num_classes` is `None`, then `num_classes` will be set to one plus the
   maximum value in either predictions or labels. Class labels are expected to
