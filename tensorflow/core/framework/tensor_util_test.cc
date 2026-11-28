@@ -878,5 +878,148 @@ TEST(TensorProtoUtil, CompressTensorProtoNegatizeZero) {
   }
 }
 
+// Builds a DT_BOOL TensorProto whose one-dimensional elements are the raw
+// `tensor_content` bytes `content` (one byte per element).
+TensorProto MakeBoolTensorProtoWithRawContent(const std::string& content) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_BOOL);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(
+      static_cast<int64_t>(content.size()));
+  tensor_proto.set_tensor_content(content);
+  return tensor_proto;
+}
+
+// A rejected proto must be left untouched: content preserved, no bool_val,
+// and still rejected by Tensor::FromProto.
+void CheckBoolProtoUntouchedAndStillRejected(
+    const TensorProto& tensor_proto, const std::string& original_content) {
+  EXPECT_EQ(original_content, tensor_proto.tensor_content());
+  EXPECT_EQ(0, tensor_proto.bool_val_size());
+  Tensor parsed;
+  EXPECT_FALSE(parsed.FromProto(tensor_proto));
+}
+
+// Positive control: a true splat of valid bool bytes still compresses.
+TEST(TensorProtoUtil, CompressTensorContentValidBoolTrueSplatCompresses) {
+  TensorProto tensor_proto =
+      MakeBoolTensorProtoWithRawContent(std::string(64, '\x01'));
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_TRUE(tensor_proto.tensor_content().empty());
+  ASSERT_EQ(tensor_proto.bool_val_size(), 1);
+  EXPECT_TRUE(tensor_proto.bool_val(0));
+  Tensor parsed;
+  ASSERT_TRUE(parsed.FromProto(tensor_proto));
+  ASSERT_EQ(parsed.dtype(), DT_BOOL);
+  ASSERT_EQ(parsed.NumElements(), 64);
+  for (int i = 0; i < parsed.NumElements(); ++i) {
+    EXPECT_TRUE(parsed.flat<bool>()(i));
+  }
+}
+
+// Positive control: a constant false tail of valid bool bytes still compresses
+// into a truncated bool_val field.
+TEST(TensorProtoUtil, CompressTensorContentValidBoolConstantTailCompresses) {
+  // Ten true values followed by fifty-four false values.
+  TensorProto tensor_proto = MakeBoolTensorProtoWithRawContent(
+      std::string(10, '\x01') + std::string(54, '\x00'));
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_TRUE(tensor_proto.tensor_content().empty());
+  ASSERT_EQ(tensor_proto.bool_val_size(), 11);
+  for (int i = 0; i < tensor_proto.bool_val_size(); ++i) {
+    EXPECT_EQ(i < 10, tensor_proto.bool_val(i));
+  }
+  Tensor parsed;
+  ASSERT_TRUE(parsed.FromProto(tensor_proto));
+  ASSERT_EQ(parsed.dtype(), DT_BOOL);
+  ASSERT_EQ(parsed.NumElements(), 64);
+  for (int i = 0; i < parsed.NumElements(); ++i) {
+    EXPECT_EQ(i < 10, parsed.flat<bool>()(i));
+  }
+}
+
+// Positive control: arbitrary bytes of a non-bool one-byte type are unaffected.
+TEST(TensorProtoUtil, CompressTensorContentValidUInt8ArbitraryBytesCompress) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_UINT8);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(64);
+  tensor_proto.set_tensor_content(std::string(64, '\xff'));
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_TRUE(tensor_proto.tensor_content().empty());
+  ASSERT_EQ(tensor_proto.int_val_size(), 1);
+  EXPECT_EQ(tensor_proto.int_val(0), 0xff);
+  Tensor parsed;
+  ASSERT_TRUE(parsed.FromProto(tensor_proto));
+  ASSERT_EQ(parsed.dtype(), DT_UINT8);
+  ASSERT_EQ(parsed.NumElements(), 64);
+  for (int i = 0; i < parsed.NumElements(); ++i) {
+    EXPECT_EQ(0xff, parsed.flat<uint8_t>()(i));
+  }
+}
+
+TEST(TensorProtoUtil, CompressTensorContentRejectsInvalidBoolSplatBytes) {
+  const char kInvalidBytes[] = {2, 11, '\xff'};  // 0x02, 0x0b, 0xff
+  for (const char byte : kInvalidBytes) {
+    TensorProto tensor_proto =
+        MakeBoolTensorProtoWithRawContent(std::string(64, byte));
+    const std::string original_content = tensor_proto.tensor_content();
+    EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+    CheckBoolProtoUntouchedAndStillRejected(tensor_proto, original_content);
+  }
+}
+
+TEST(TensorProtoUtil,
+     CompressTensorContentRejectsInvalidBoolSingleElementBytes) {
+  const char kInvalidBytes[] = {2, 11, '\xff'};  // 0x02, 0x0b, 0xff
+  for (const char byte : kInvalidBytes) {
+    TensorProto tensor_proto =
+        MakeBoolTensorProtoWithRawContent(std::string(1, byte));
+    const std::string original_content = tensor_proto.tensor_content();
+    EXPECT_FALSE(tensor::CompressTensorProtoInPlace(1, 1.0f, &tensor_proto));
+    CheckBoolProtoUntouchedAndStillRejected(tensor_proto, original_content);
+  }
+}
+
+TEST(TensorProtoUtil,
+     CompressTensorContentRejectsInvalidBoolByteInCopiedPrefix) {
+  const char kInvalidBytes[] = {2, 11, '\xff'};  // 0x02, 0x0b, 0xff
+  for (const char byte : kInvalidBytes) {
+    // Invalid last element.
+    TensorProto last_proto = MakeBoolTensorProtoWithRawContent(
+        std::string(63, '\x00') + std::string(1, byte));
+    const std::string last_original = last_proto.tensor_content();
+    EXPECT_FALSE(tensor::CompressTensorProtoInPlace(1, 1.0f, &last_proto));
+    CheckBoolProtoUntouchedAndStillRejected(last_proto, last_original);
+
+    // Invalid first element in front of a false tail.
+    TensorProto first_proto = MakeBoolTensorProtoWithRawContent(
+        std::string(1, byte) + std::string(63, '\x00'));
+    const std::string first_original = first_proto.tensor_content();
+    EXPECT_FALSE(tensor::CompressTensorProtoInPlace(1, 1.0f, &first_proto));
+    CheckBoolProtoUntouchedAndStillRejected(first_proto, first_original);
+  }
+}
+
+// Every byte other than the two valid bool values must be rejected, on both
+// the splat path and the truncated-copy path.
+TEST(TensorProtoUtil, CompressTensorContentRejectsEveryNonCanonicalBoolByte) {
+  for (int byte = 0x02; byte < 0x100; ++byte) {
+    const std::string invalid(1, static_cast<char>(byte));
+    TensorProto splat_proto =
+        MakeBoolTensorProtoWithRawContent(std::string(64, invalid[0]));
+    if (tensor::CompressTensorProtoInPlace(&splat_proto)) {
+      FAIL() << "accepted bool byte " << byte << " in a splat";
+    }
+    TensorProto tail_proto =
+        MakeBoolTensorProtoWithRawContent(std::string(63, '\x00') + invalid);
+    if (tensor::CompressTensorProtoInPlace(1, 1.0f, &tail_proto)) {
+      FAIL() << "accepted bool byte " << byte << " in a constant tail";
+    }
+    EXPECT_EQ(std::string(64, invalid[0]), splat_proto.tensor_content());
+    EXPECT_EQ(0, splat_proto.bool_val_size());
+    EXPECT_EQ(std::string(63, '\x00') + invalid, tail_proto.tensor_content());
+    EXPECT_EQ(0, tail_proto.bool_val_size());
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow
