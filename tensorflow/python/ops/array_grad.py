@@ -50,6 +50,22 @@ def _UnpackGrad(op: ops.Operation, *grads):
   return array_ops_stack.stack(grads, axis=op.get_attr("axis"))
 
 
+def _CopyConstantToGradientContext(value, grad):
+  """Keeps a constant input local to the gradient graph and context."""
+  if isinstance(value, ops.SymbolicTensor) and constant_op.is_constant(value):
+    # Capturing the value or passing it through Enter can prevent XLA from
+    # recognizing it as a compile-time constant.
+    if (
+        value.graph is not ops.get_default_graph()
+        or control_flow_util.GetOutputContext(value.op)
+        != control_flow_util.GetOutputContext(grad.op)
+    ):
+      return constant_op.constant(
+          tensor_util.constant_value(value), dtype=value.dtype
+      )
+  return value
+
+
 def _ConcatGradHelper(
     op: ops.Operation, grad, start_value_index, end_value_index, dim_index
 ):
@@ -135,18 +151,7 @@ def _ConcatGradHelper(
       )
       out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
     else:
-      if constant_op.is_constant(concat_dim):
-        # If concat_dim is a constant defined in a different context,
-        # then we duplicate it in the current context to avoid passing it
-        # through an Enter node.
-        # This is a small optimization in general, but it is required when
-        # compiling with XLA, as XLA needs the concat input to be folded into a
-        # constant.
-        grad_context = control_flow_util.GetOutputContext(grad.op)
-        dim_context = control_flow_util.GetOutputContext(concat_dim.op)
-        if dim_context != grad_context:
-          value = tensor_util.constant_value(concat_dim)
-          concat_dim = constant_op.constant(value=value, dtype=concat_dim.dtype)
+      concat_dim = _CopyConstantToGradientContext(concat_dim, grad)
 
       # Using mod here for convenience since concat_dim is already verified
       # in concat implementation to be within the allowed [-rank, rank) range.
@@ -1006,14 +1011,14 @@ def _SqueezeGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("Transpose")
 def _TransposeGrad(op: ops.Operation, grad):
   """Returns unshuffle(grad)."""
-  p = op.inputs[1]
+  p = _CopyConstantToGradientContext(op.inputs[1], grad)
   return [array_ops.transpose(grad, array_ops.invert_permutation(p)), None]
 
 
 @ops.RegisterGradient("ConjugateTranspose")
 def _ConjugateTransposeGrad(op: ops.Operation, grad):
   """Returns conj(unshuffle(grad))."""
-  p = op.inputs[1]
+  p = _CopyConstantToGradientContext(op.inputs[1], grad)
   return [
       array_ops.transpose(
           grad, array_ops.invert_permutation(p), conjugate=True

@@ -18,6 +18,8 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python import pywrap_sanitizers
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -25,6 +27,7 @@ from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-te
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import googletest
 
 
@@ -283,6 +286,38 @@ class ConcatTest(xla_test.XLATestCase):
                 dc = np.random.randn(*c.get_shape().as_list())
                 dxs = self.evaluate(gradients_impl.gradients(c, xs, dc))
                 self.assertAllEqual(dc, np.concatenate(dxs, axis=axis))
+
+  def testConcatAndTransposeGradientsInCompiledLoop(self):
+    @def_function.function
+    def concat_then_transpose(x):
+      joined = array_ops.concat([array_ops.zeros_like(x), x], axis=-1)
+      return array_ops.transpose(joined, perm=[1, 0])
+
+    @def_function.function(jit_compile=True)
+    def gradient(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+
+        def body(i, value):
+          return i + 1, value + concat_then_transpose(x)
+
+        _, value = while_loop.while_loop(
+            lambda i, _: i < 3,
+            body,
+            (0, array_ops.zeros([2, 3])),
+            maximum_iterations=3,
+        )
+      return tape.gradient(
+          value,
+          x,
+          output_gradients=constant_op.constant(
+              [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+          ),
+      )
+
+    with self.device_scope():
+      x = constant_op.constant([[1.0], [2.0], [3.0]])
+      self.assertAllEqual(self.evaluate(gradient(x)), [[12.0], [15.0], [18.0]])
 
   def testConcatTuple(self):
     c1 = np.random.rand(4, 4).astype(np.float32)
