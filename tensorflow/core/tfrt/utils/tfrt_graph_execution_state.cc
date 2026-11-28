@@ -192,10 +192,7 @@ tensorflow::GraphDef CreateGraphDefFromGraphAndFlibDef(
     const tensorflow::FunctionLibraryDefinition& flib_def) {
   tensorflow::GraphDef graph_def;
   graph.ToGraphDef(&graph_def, /*include_flib_def=*/false);
-  if (tensorflow::ProtoMemoryOptimizationsEnabled()) {
-    *graph_def.mutable_library() =
-        flib_def.ReachableDefinitions(graph).ToProto();
-  } else {
+  if (!tensorflow::ProtoMemoryOptimizationsEnabled()) {
     *graph_def.mutable_library() = flib_def.ToProto();
   }
   return graph_def;
@@ -203,7 +200,8 @@ tensorflow::GraphDef CreateGraphDefFromGraphAndFlibDef(
 
 // Creates a pruned graph from `graph_def` according to `callable_options`.
 absl::StatusOr<std::unique_ptr<tensorflow::Graph>> CreatePrunedGraph(
-    tensorflow::GraphDef graph_def, const CallableOptions& callable_options) {
+    tensorflow::GraphDef graph_def, const CallableOptions& callable_options,
+    const tensorflow::FunctionLibraryDefinition* flib_def = nullptr) {
   // clang-tidy off
   VLOG(1) << "Creating pruned graph: " << callable_options.DebugString();
   // clang-tidy on
@@ -230,6 +228,21 @@ absl::StatusOr<std::unique_ptr<tensorflow::Graph>> CreatePrunedGraph(
 
   auto pruned_graph =
       std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
+  if (flib_def != nullptr && tensorflow::ProtoMemoryOptimizationsEnabled()) {
+    tensorflow::FunctionLibraryDefinition reachable_flib =
+        flib_def->ReachableDefinitions(graph_def);
+    for (const std::string& func_name : reachable_flib.ListFunctionNames()) {
+      const FunctionDef* fdef = reachable_flib.Find(func_name);
+      if (fdef != nullptr && fdef->attr().contains("_input_shapes")) {
+        FunctionDef copy = *fdef;
+        copy.mutable_attr()->erase("_input_shapes");
+        TF_RETURN_IF_ERROR(
+            reachable_flib.ReplaceFunction(func_name, std::move(copy)));
+      }
+    }
+    TF_RETURN_IF_ERROR(pruned_graph->mutable_flib_def()->AddLibrary(
+        std::move(reachable_flib)));
+  }
   tensorflow::GraphConstructorOptions options;
   options.allow_internal_ops = true;
   options.add_default_attributes = true;
@@ -280,9 +293,10 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
     DumpGraphDefToFile("before_pruning", graph_def);
   }
 
-  TF_ASSIGN_OR_RETURN(result.graph,
-                      CreatePrunedGraph(std::move(graph_def),
-                                        build_graph_options.callable_options));
+  TF_ASSIGN_OR_RETURN(
+      result.graph,
+      CreatePrunedGraph(std::move(graph_def),
+                        build_graph_options.callable_options, &flib_def()));
   DCHECK(result.graph);
 
   if (VLOG_IS_ON(1)) {
@@ -609,27 +623,31 @@ void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def) {
 
 namespace {
 
-// Optimizes the functions in `flib_proto` (filtering with
-// `functions_to_optimize`) using `flib` and `fallback_state`. Each
+// Optimizes the functions in `flib` (filtering with
+// `functions_to_optimize`) using `fallback_state`. Each
 // function is converted to a graph and optimized with Placer and Grappler, then
 // converted back to a function to replace the old one.
 absl::Status OptimizeFunctions(
-    FunctionDefLibrary& flib_proto, const FunctionLibraryDefinition& flib,
-    const FallbackState& fallback_state,
+    FunctionLibraryDefinition& flib, const FallbackState& fallback_state,
     const absl::flat_hash_set<std::string>& functions_to_optimize) {
-  for (FunctionDef& fdef : *flib_proto.mutable_function()) {
-    if (!functions_to_optimize.contains(fdef.signature().name())) {
+  std::vector<std::pair<std::string, FunctionDef>> updated_fdefs;
+  for (const std::string& func_name : flib.ListFunctionNames()) {
+    if (!functions_to_optimize.contains(func_name)) {
+      continue;
+    }
+    const FunctionDef* fdef = flib.Find(func_name);
+    if (fdef == nullptr) {
       continue;
     }
 
     // Convert function to graph.
     std::unique_ptr<FunctionBody> fbody;
     TF_RETURN_IF_ERROR(
-        FunctionDefToBodyHelper(fdef, AttrSlice(), &flib, &fbody));
+        FunctionDefToBodyHelper(*fdef, AttrSlice(), &flib, &fbody));
 
     tensorflow::Graph* graph = fbody->graph;
     tensorflow::GraphDef graph_def;
-    graph->ToGraphDef(&graph_def);
+    graph->ToGraphDef(&graph_def, /*include_flib_def=*/false);
     // We need to manually add the flib because it's not added in
     // `FunctionDefToBodyHelper()`.
     *graph_def.mutable_library() = flib.ToProto();
@@ -663,21 +681,24 @@ absl::Status OptimizeFunctions(
 
     if (!status.ok()) {
       LOG(ERROR) << "TFRT failed to optimize graph (converted from function: "
-                 << fdef.signature().name() << "): " << status;
+                 << func_name << "): " << status;
       continue;
     }
 
-    TF_RETURN_IF_ERROR(
-        optimized_graph->AddFunctionLibrary(optimized_flib->ToProto()));
+    TF_RETURN_IF_ERROR(optimized_graph->mutable_flib_def()->AddLibrary(
+        std::move(*optimized_flib)));
 
     // Convert graph back to function.
     // We need to store the conversion result into a new `FunctionDef` first to
     // avoid errors.
     FunctionDef new_fdef;
-    TF_RETURN_IF_ERROR(GraphToFunctionDef(*optimized_graph,
-                                          fdef.signature().name(), &new_fdef));
+    TF_RETURN_IF_ERROR(
+        GraphToFunctionDef(*optimized_graph, func_name, &new_fdef));
 
-    fdef = std::move(new_fdef);
+    updated_fdefs.emplace_back(func_name, std::move(new_fdef));
+  }
+  for (const auto& [func_name, new_fdef] : updated_fdefs) {
+    TF_RETURN_IF_ERROR(flib.ReplaceFunction(func_name, new_fdef));
   }
   return absl::OkStatus();
 }
@@ -697,10 +718,18 @@ TfrtGraphExecutionState::OptimizeGraph(
     TF_RETURN_IF_ERROR(graph_execution_state_->OptimizeGraph(
         build_graph_options, graph, &graph.flib_def(), &optimized_graph,
         &optimized_flib));
+
+    if (options_.run_placer_grappler_on_functions) {
+      TF_RETURN_IF_ERROR(OptimizeFunctions(*optimized_flib, fallback_state_,
+                                           functions_to_optimize_));
+      // Any optimized function is altered but still has the previous name. To
+      // avoid errors when adding the optimized flib, we should clear the
+      // current flib first.
+      optimized_graph->mutable_flib_def()->Clear();
+    }
   }
 
-  if (!options_.run_placer_grappler_on_functions &&
-      tensorflow::ProtoMemoryOptimizationsEnabled()) {
+  if (tensorflow::ProtoMemoryOptimizationsEnabled()) {
     // Fast path: Directly merge the optimized FunctionLibraryDefinition in C++
     // without serializing to a FunctionDefLibrary proto, avoiding expensive
     // heap allocations and copy overhead during model initialization.
@@ -709,19 +738,8 @@ TfrtGraphExecutionState::OptimizeGraph(
     return optimized_graph;
   }
 
-  FunctionDefLibrary optimized_flib_proto = optimized_flib->ToProto();
-  if (options_.run_placer_grappler_on_functions) {
-    TF_RETURN_IF_ERROR(OptimizeFunctions(optimized_flib_proto, *optimized_flib,
-                                         fallback_state_,
-                                         functions_to_optimize_));
-    // Any optimized function is altered but still has the previous name. To
-    // avoid errors when adding the optimized flib, we should clear the current
-    // flib first.
-    optimized_graph->mutable_flib_def()->Clear();
-  }
-
   TF_RETURN_IF_ERROR(
-      optimized_graph->AddFunctionLibrary(std::move(optimized_flib_proto)));
+      optimized_graph->AddFunctionLibrary(optimized_flib->ToProto()));
 
   return optimized_graph;
 }
