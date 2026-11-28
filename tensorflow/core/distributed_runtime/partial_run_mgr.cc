@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/partial_run_mgr.h"
 
+#include <memory>
+#include <utility>
+
+#include "absl/status/status.h"
 
 namespace tensorflow {
 
