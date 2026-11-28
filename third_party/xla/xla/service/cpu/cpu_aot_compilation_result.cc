@@ -93,7 +93,8 @@ CpuAotCompilationResult::Create(
     absl::string_view function_name, std::vector<ObjFileProto> obj_files,
     std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
     std::unique_ptr<FunctionLibrary> function_library,
-    TargetMachineOptionsProto target_machine_options, std::string data_layout) {
+    TargetMachineOptionsProto target_machine_options, std::string data_layout,
+    bool msan_enabled, int msan_track_origins) {
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
       hlo_module, &buffer_assignment->Allocations());
   ABSL_ASSIGN_OR_RETURN(ThunkSequenceProto thunk_proto,
@@ -118,11 +119,14 @@ CpuAotCompilationResult::Create(
     }
   }
 
-  return absl::WrapUnique(new CpuAotCompilationResult(
+  auto result = absl::WrapUnique(new CpuAotCompilationResult(
       hlo_module, buffer_assignment, function_name, std::move(obj_files),
       std::move(symbols), thunk_proto, std::move(temp_allocation_index),
       std::move(buffer_allocation_infos), std::move(function_library),
       std::move(target_machine_options), std::move(data_layout)));
+  result->proto_.set_msan_enabled(msan_enabled);
+  result->proto_.set_msan_track_origins(msan_track_origins);
+  return result;
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(

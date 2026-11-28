@@ -66,4 +66,9 @@ message CompilationResultProto {
   repeated ObjFileProto object_files = 8;
   TargetMachineOptionsProto target_machine_options = 9;
   string data_layout = 10;
+
+  // MemorySanitizer instrumentation of the object files. CpuAotLoader only
+  // loads them into processes with the same instrumentation.
+  bool msan_enabled = 11;
+  int32 msan_track_origins = 12;
 }

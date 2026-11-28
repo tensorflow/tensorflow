@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_BUILTIN_DEFINITION_GENERATOR_H_
 #define XLA_BACKENDS_CPU_CODEGEN_BUILTIN_DEFINITION_GENERATOR_H_
 
+#include <memory>
+
 #include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Error.h"
 
@@ -27,7 +30,7 @@ namespace xla::cpu {
 //
 //   - libc symbols (e.g. memcpy, memmove, memset)
 //   - libm symbols (e.g. sin, cos, etc.)
-//   - compiler-rt symbols (e.g. __msan_unpoison)
+//   - compiler-rt symbols (e.g. __msan_warning*)
 //   - custom XLA symbols (e.g. __truncsfbf2)
 //
 // We keep the list of definitions short, and prefer to compile math functions
@@ -44,6 +47,9 @@ class BuiltinDefinitionGenerator : public llvm::orc::DefinitionGenerator {
 
  private:
   llvm::DataLayout data_layout_;
+  // Resolves msan runtime symbols from the current process. Only set when the
+  // host is built with msan.
+  std::unique_ptr<llvm::orc::DynamicLibrarySearchGenerator> process_generator_;
 };
 
 }  // namespace xla::cpu

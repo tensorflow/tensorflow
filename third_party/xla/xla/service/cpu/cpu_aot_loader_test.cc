@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -32,11 +33,23 @@ limitations under the License.
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/function_library_loader.h"
 
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+#include <sanitizer/msan_interface.h>
+#endif
+
 namespace xla::cpu {
 namespace {
 
 using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
+
+// Gives `proto` this process's msan instrumentation, so that it loads.
+void SetProcessMsan(CompilationResultProto& proto) {
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+  proto.set_msan_enabled(true);
+  proto.set_msan_track_origins(__msan_get_track_origins());
+#endif
+}
 
 TEST(CpuAotLoaderTest, GetCompiledSymbolsFromProto) {
   SymbolProto kernel;
@@ -103,6 +116,7 @@ TEST(CpuAotLoaderTest, LoadAotCompilationResultRejectsNullFunctionLibrary) {
       module->config().ToProto();
   *aot_result_proto.mutable_target_machine_options() =
       TargetMachineOptions().ToProto();
+  SetProcessMsan(aot_result_proto);
 
   EXPECT_THAT(
       CpuAotLoader::LoadAotCompilationResult(
@@ -112,6 +126,27 @@ TEST(CpuAotLoaderTest, LoadAotCompilationResultRejectsNullFunctionLibrary) {
             return nullptr;
           }),
       StatusIs(absl::StatusCode::kInternal, HasSubstr("null FunctionLibrary")));
+}
+
+TEST(CpuAotLoaderTest, LoadAotCompilationResultRejectsMsanMismatch) {
+  CompilationResultProto matching;
+  SetProcessMsan(matching);
+  CompilationResultProto other_msan = matching;
+  other_msan.set_msan_enabled(!matching.msan_enabled());
+  CompilationResultProto other_track_origins = matching;
+  other_track_origins.set_msan_track_origins(matching.msan_track_origins() + 1);
+
+  for (const CompilationResultProto& proto :
+       {other_msan, other_track_origins}) {
+    EXPECT_THAT(
+        CpuAotLoader::LoadAotCompilationResult(
+            proto,
+            [](const CompilationResultProto&)
+                -> absl::StatusOr<std::unique_ptr<FunctionLibrary>> {
+              return nullptr;
+            }),
+        StatusIs(absl::StatusCode::kFailedPrecondition, HasSubstr("msan")));
+  }
 }
 
 }  // namespace
