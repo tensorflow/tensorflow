@@ -89,6 +89,7 @@ py_test(
 py_library(
     name = "structure",
     srcs = ["structure.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":nest",
