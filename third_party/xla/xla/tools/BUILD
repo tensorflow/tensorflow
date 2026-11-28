@@ -1120,9 +1120,13 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:xla_compile_result_proto_cc",
+        "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:cpu_compiler_pure",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -1219,6 +1223,7 @@ xla_test(
     ],
     deps = [
         ":xla_compile_lib",
+        ":xla_cpu_compile_lib",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
         "//xla/hlo/ir:hlo",
@@ -1241,6 +1246,7 @@ xla_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@com_google_protobuf//:duration_cc_proto",
+        "@llvm-project//llvm:TargetParser",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
     ] + if_cuda([
