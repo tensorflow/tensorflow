@@ -4359,6 +4359,7 @@ cuda_py_strict_test(
     deps = [
         ":data_flow_ops_gen",
         ":math_ops_gen",
+        ":sdca_ops_gen",
         ":string_ops_gen",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
