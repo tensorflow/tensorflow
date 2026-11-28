@@ -17,11 +17,14 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -102,26 +105,32 @@ __global__ void ScatterNdOpKernel(
     const Index slice_size, const bool is_scalar_update) {
   auto update = LeftUpdate<T, op>();
 
-  GPU_1D_KERNEL_LOOP(index, num_indices) {
-    Index i = 0;
+  for (Eigen::DenseIndex index :
+       GpuGridRangeX<Eigen::DenseIndex>(num_indices)) {
+    Eigen::DenseIndex i = 0;
     bool out_of_bounds = false;
 #pragma unroll
     for (int dim = 0; dim < IXDIM; ++dim) {
-      int offset = (IXDIM * index + dim);
+      Eigen::DenseIndex offset =
+          static_cast<Eigen::DenseIndex>(IXDIM) * index + dim;
       const Index ix_d = internal::SubtleMustCopy(ldg(indices + offset));
-      out_of_bounds |= !FastBoundsCheck(ix_d, output_shape_prefix[dim]);
-      i += ix_d * batch_strides[dim] * slice_size;
+      if (!FastBoundsCheck(ix_d, output_shape_prefix[dim])) {
+        out_of_bounds = true;
+      } else {
+        i += static_cast<Eigen::DenseIndex>(ix_d) * batch_strides[dim] *
+             slice_size;
+      }
     }
     if (!out_of_bounds) {
       if (is_scalar_update) {
         const T val = ldg(updates);
 #pragma unroll
-        for (int si = 0; si < slice_size; si++) {
+        for (Eigen::DenseIndex si = 0; si < slice_size; ++si) {
           update(out + i + si, val);
         }
       } else {
 #pragma unroll
-        for (int si = 0; si < slice_size; si++) {
+        for (Eigen::DenseIndex si = 0; si < slice_size; ++si) {
           update(out + i + si, ldg(updates + (index * slice_size + si)));
         }
       }
@@ -158,12 +167,14 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
           batch_strides[dim + 1] * output_shape_prefix[dim + 1];
     }
 
-    GpuLaunchConfig config = GetGpuLaunchConfig(Toutput.size(), d);
+    absl::StatusOr<GpuLaunchConfig64> config =
+        GetGpuLaunchConfig64(batch_size, d);
+    CHECK_OK(config.status());  // Crash OK
     const bool is_scalar_update = Tupdates.size() == 1;
 
-    TF_CHECK_OK(GpuLaunchKernel(
-        ScatterNdOpKernel<T, Index, op, IXDIM>, config.block_count,
-        config.thread_per_block, 0, d.stream(), Tindices.data(),
+    CHECK_OK(GpuLaunchKernel(  // Crash OK
+        ScatterNdOpKernel<T, Index, op, IXDIM>, config->block_count,
+        config->thread_per_block, 0, d.stream(), Tindices.data(),
         Tupdates.data(), Toutput.data(), output_shape_prefix, batch_strides,
         batch_size, slice_size, is_scalar_update));
 

@@ -5982,6 +5982,11 @@ tf_kernel_library(
         ":scatter_nd_util",
         ":training_op_helpers",
         ":variable_ops",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/util:bad_indices_policy",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
