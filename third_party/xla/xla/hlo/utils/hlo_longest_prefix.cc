@@ -53,7 +53,7 @@ absl::string_view LongestPrefix(absl::string_view a, absl::string_view b,
     common_prefix_len += a_it->size();  // length of a matching token
   }
 
-  return absl::string_view(a.data(), common_prefix_len);
+  return a.substr(0, common_prefix_len);
 }
 
 // Find the longest prefix among instructions' op_name metadata
