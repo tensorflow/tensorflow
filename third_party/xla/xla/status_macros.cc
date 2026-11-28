@@ -89,8 +89,29 @@ MakeErrorStream::MakeErrorStream(const char* file, int line,
                                  absl::StatusCode code)
     : impl_(std::make_unique<Impl>(file, line, code, this)) {}
 
+MakeErrorStream::~MakeErrorStream() = default;
+
+MakeErrorStream& MakeErrorStream::with_log_stack_trace() {
+  impl_->should_log_stack_trace_ = true;
+  return *this;
+}
+
+MakeErrorStream& MakeErrorStream::without_logging() {
+  impl_->should_log_ = false;
+  return *this;
+}
+
+MakeErrorStream& MakeErrorStream::with_log_severity(
+    absl::LogSeverity severity) {
+  impl_->log_severity_ = severity;
+  return *this;
+}
+
+absl::Status MakeErrorStream::GetStatus() const { return impl_->GetStatus(); }
+
 MakeErrorStream::MakeErrorStreamWithOutput&
 MakeErrorStream::add_ret_check_failure(const char* condition) {
+  impl_->should_log_stack_trace_ = true;
   return *this << "RET_CHECK failure (" << impl_->file_ << ":" << impl_->line_
                << ") " << condition << " ";
 }
