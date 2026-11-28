@@ -42,8 +42,8 @@ enum TfOpType {
 // interpreter->ModifyGraphWithDelegate.
 class FlexModelTest : public ::testing::Test {
  public:
-  FlexModelTest() {}
-  ~FlexModelTest() override {}
+  FlexModelTest() = default;
+  ~FlexModelTest() override = default;
 
   bool Invoke();
 
