@@ -208,6 +208,47 @@ TEST(UtilsTest, CalculateTensorSize) {
                     {4096, 4096, 4096, 33554432}, DT_FLOAT)));
 }
 
+TEST(UtilsTest, CalculateTensorSizeElementCountWrapsNegative) {
+  // 2147483647 * 2147483647 * 3 is in [2**63, 2**64): it wraps to a negative
+  // int64 when the dimensions are multiplied.
+  EXPECT_EQ(-1, CalculateTensorSize(ShapeToTensorProperty(
+                    {2147483647, 2147483647, 3}, DT_INT8)));
+}
+
+TEST(UtilsTest, CalculateTensorSizeElementCountOverflowAboveUint64) {
+  // 2147483647 * 2147483647 * 5 does not fit in 64 bits at all.
+  EXPECT_EQ(-1, CalculateTensorSize(ShapeToTensorProperty(
+                    {2147483647, 2147483647, 5}, DT_INT8)));
+}
+
+TEST(UtilsTest, CalculateTensorSizeElementCountOverflowWithUnknownDim) {
+  // Unknown dimensions count as 1 and do not hide the overflow.
+  EXPECT_EQ(-1, CalculateTensorSize(ShapeToTensorProperty(
+                    {-1, 2147483647, 2147483647, 3}, DT_INT8)));
+}
+
+TEST(UtilsTest, CalculateTensorSizeRankLimit) {
+  std::vector<int> dims(TensorShape::MaxDimensions(), 1);
+  EXPECT_EQ(1, CalculateTensorSize(ShapeToTensorProperty(dims, DT_INT8)));
+
+  dims.push_back(1);
+  EXPECT_EQ(-1, CalculateTensorSize(ShapeToTensorProperty(dims, DT_INT8)));
+}
+
+TEST(UtilsTest, CalculateTensorSizeValidLargeElementCountControl) {
+  // 2147483647 * 2147483647 * 2 elements still fits in an int64 and must be
+  // reported exactly.
+  EXPECT_EQ(int64_t{9223372028264841218},
+            CalculateTensorSize(
+                ShapeToTensorProperty({2147483647, 2147483647, 2}, DT_INT8)));
+}
+
+TEST(UtilsTest, CalculateTensorSizeValidLeadingZeroDimControl) {
+  // A leading zero dimension keeps the tensor empty whatever follows it.
+  EXPECT_EQ(0, CalculateTensorSize(ShapeToTensorProperty(
+                   {0, 2147483647, 2147483647, 2147483647}, DT_FLOAT)));
+}
+
 TEST(UtilsTest, CalculateOutputSize) {
   // Create a set of tensor properties.
   std::vector<OpInfo::TensorProperties> output = {
