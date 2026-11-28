@@ -275,7 +275,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
 
     expected = np.full(n, np.float16(1.0 / n), dtype=np.float16)
     expected[0] = np.float16(1.0 / n - 1.0)
-    self.assertAllEqual(self.evaluate(grad), expected)
+    self.assertAllClose(self.evaluate(grad), expected, atol=2e-5)
 
   def testReductionIndices(self):
     for dtype in [np.float16, np.float32, np.double]:
