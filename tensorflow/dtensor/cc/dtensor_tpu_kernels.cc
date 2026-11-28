@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/tpu/status_helper.h"
 #include "xla/tpu/tpu_api.h"
 #include "xla/tpu/tpu_ops_c_api.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
