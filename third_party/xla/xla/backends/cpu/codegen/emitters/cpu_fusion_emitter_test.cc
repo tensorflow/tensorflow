@@ -863,7 +863,7 @@ TEST_F(CpuFusionEmitterTest, SortComparatorMlirAndLlvm) {
     CHECK:        return %[[RES]] : i1
   )";
   constexpr absl::string_view kExpectedLlvm = R"(
-    CHECK:      define zeroext i1 @compare(ptr noundef nonnull %{{.+}}) #[[ATTR:[0-9]+]]
+    CHECK:      define noundef zeroext i1 @compare(ptr noundef nonnull %{{.+}}) #[[ATTR:[0-9]+]]
     CHECK:      attributes #[[ATTR]] = {{{.*}}uwtable{{[ }]}}
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
@@ -920,7 +920,7 @@ TEST_F(CpuFusionEmitterTest, SortComparatorWeakAndTotalOrder) {
   ASSERT_OK_AND_ASSIGN(LlvmKernelSource weak_llvm,
                        compiler.Compile(std::move(weak_mlir)));
   EXPECT_THAT(RunFileCheck(weak_llvm.ToString(),
-                           "CHECK: define zeroext i1 @compare_weak("),
+                           "CHECK: define noundef zeroext i1 @compare_weak("),
               absl_testing::IsOkAndHolds(true));
 
   constexpr absl::string_view kTotalSortHlo = R"hlo(
@@ -952,7 +952,7 @@ TEST_F(CpuFusionEmitterTest, SortComparatorWeakAndTotalOrder) {
   ASSERT_OK_AND_ASSIGN(LlvmKernelSource total_llvm,
                        compiler.Compile(std::move(total_mlir)));
   EXPECT_THAT(RunFileCheck(total_llvm.ToString(),
-                           "CHECK: define zeroext i1 @compare_total("),
+                           "CHECK: define noundef zeroext i1 @compare_total("),
               absl_testing::IsOkAndHolds(true));
 }
 

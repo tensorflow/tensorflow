@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log_sink.h"
 #include "absl/log/log_sink_registry.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
@@ -43,6 +44,8 @@ limitations under the License.
 namespace xla {
 namespace xla_compile {
 namespace {
+
+using ::testing::StartsWith;
 
 TEST(XlaCompileTest, LoadCpuExecutable) {
   std::string path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
@@ -106,7 +109,13 @@ TEST(XlaCompileTest, LoadAotResultWithDefinedTargetFeatures) {
                          ->proto()
                          .target_machine_options();
 
-  EXPECT_EQ(opts.features(), "+avx2,+fma");
+  if (cpu::IrCompiler::HostMsanEnabled()) {
+    // Under msan, xla_aot_compile_cpu instruments the generated code, which
+    // appends the workarounds from IrCompiler::MsanTargetFeatureOverrides.
+    EXPECT_THAT(opts.features(), StartsWith("+avx2,+fma"));
+  } else {
+    EXPECT_EQ(opts.features(), "+avx2,+fma");
+  }
 }
 
 TEST(XlaCompileTest, LoadAotResultWithTuningOptions) {

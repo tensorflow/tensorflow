@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/tools/xla_cpu_compile_lib.h"
+
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +27,8 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/cpu/cpu_symbol_repository.h"
@@ -47,9 +51,15 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::IsNull;
 using ::testing::Not;
+
+// LLVM's MemorySanitizer doesn't support all OSes, e.g. macOS or Windows.
+bool HostSupportsMsan() {
+  return llvm::Triple(llvm::sys::getProcessTriple()).isOSLinux();
+}
 
 class XlaCompileLibTest : public HloTestBase {
  protected:
@@ -72,6 +82,78 @@ TEST_F(XlaCompileLibTest, CompilesForCpu) {
                         /*cpu_target_config=*/std::nullopt,
                         /*num_partitions=*/1, /*num_replicas=*/1, result),
       absl_testing::IsOkAndHolds(Not(IsEmpty())));
+}
+
+TEST_F(XlaCompileLibTest, CompilesForCpuWithMsan) {
+  if (!HostSupportsMsan()) {
+    GTEST_SKIP() << "msan is not supported on this host";
+  }
+  CompilationResult result;
+  ASSERT_OK_AND_ASSIGN(
+      std::string serialized,
+      CompileExecutable(std::move(module_), BackendType::kCpu,
+                        /*gpu_target_config=*/std::nullopt,
+                        /*cpu_target_config=*/std::nullopt,
+                        /*num_partitions=*/1, /*num_replicas=*/1, result,
+                        /*target_platform_version=*/"",
+                        /*use_attached_device=*/false,
+                        CpuSanitizerOptions{/*sanitize_memory=*/true,
+                                            /*sanitize_memory_track_origins=*/
+                                            0}));
+  EXPECT_TRUE(result.has_hlo_module());
+
+  cpu::CompilationResultProto proto;
+  ASSERT_TRUE(proto.ParseFromString(serialized));
+  ASSERT_THAT(proto.object_files(), Not(IsEmpty()));
+  // The kernels reach MSan's TLS through the emulated TLS bridge, and don't
+  // track origins.
+  EXPECT_THAT(proto.object_files(0).contents(),
+              HasSubstr("__xla_cpu_runtime_emutls_get_address"));
+  EXPECT_THAT(proto.object_files(0).contents(),
+              Not(HasSubstr("__msan_track_origins")));
+}
+
+TEST_F(XlaCompileLibTest, ErrorsOnInvalidMsanTrackOrigins) {
+  for (int track_origins : {-1, 3}) {
+    CompilationResult result;
+    EXPECT_THAT(
+        CompileExecutable(
+            module_->Clone(), BackendType::kCpu,
+            /*gpu_target_config=*/std::nullopt,
+            /*cpu_target_config=*/std::nullopt,
+            /*num_partitions=*/1, /*num_replicas=*/1, result,
+            /*target_platform_version=*/"",
+            /*use_attached_device=*/false,
+            CpuSanitizerOptions{/*sanitize_memory=*/true, track_origins}),
+        absl_testing::StatusIs(absl::StatusCode::kInvalidArgument))
+        << track_origins;
+  }
+}
+
+TEST_F(XlaCompileLibTest, ErrorsOnScheduledModuleWithMsan) {
+  constexpr absl::string_view kHlo = R"(
+HloModule scheduled, is_scheduled=true
+
+ENTRY e {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_TRUE(module->has_schedule());
+  CompilationResult result;
+  EXPECT_THAT(
+      CompileExecutable(std::move(module), BackendType::kCpu,
+                        /*gpu_target_config=*/std::nullopt,
+                        /*cpu_target_config=*/std::nullopt,
+                        /*num_partitions=*/1, /*num_replicas=*/1, result,
+                        /*target_platform_version=*/"",
+                        /*use_attached_device=*/false,
+                        CpuSanitizerOptions{/*sanitize_memory=*/true,
+                                            /*sanitize_memory_track_origins=*/
+                                            0}),
+      absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST_F(XlaCompileLibTest, ErrorsOnUnexpectedPlatform) {
@@ -200,6 +282,51 @@ TEST_F(XlaCompileLibTest, MainForCpuWithTargetConfigPath) {
   EXPECT_TRUE(result.has_status());
   EXPECT_EQ(result.status().code(), tensorflow::error::OK);
   EXPECT_TRUE(result.has_hlo_module());
+}
+
+// Checks that XlaCompileMain plumbs the msan options, that origin tracking
+// implies msan, and that an empty target triple defaults to the host's.
+TEST_F(XlaCompileLibTest, MainForCpuWithMsan) {
+  if (!HostSupportsMsan()) {
+    GTEST_SKIP() << "msan is not supported on this host";
+  }
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module_msan.txt");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                   module_->ToString()));
+
+  std::string target_config_text;
+  tsl::protobuf::TextFormat::PrintToString(cpu::TargetMachineOptionsProto(),
+                                           &target_config_text);
+  const std::string target_config_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "target_config_msan.pbtxt");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), target_config_file,
+                                   target_config_text));
+
+  const std::string output_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_output_msan");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_result_msan.pb");
+
+  XlaCompileOptions options;
+  options.module_path = module_file;
+  options.output_file = output_file;
+  options.platform = "cpu";
+  options.result_output_file = result_file;
+  options.cpu_options.cpu_target_config_path = target_config_file;
+  options.cpu_options.sanitizer_options.sanitize_memory_track_origins = 2;
+  ASSERT_OK(XlaCompileMain(options));
+
+  std::string serialized;
+  ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), output_file, &serialized));
+  cpu::CompilationResultProto proto;
+  ASSERT_TRUE(proto.ParseFromString(serialized));
+  ASSERT_THAT(proto.object_files(), Not(IsEmpty()));
+  EXPECT_THAT(proto.object_files(0).contents(),
+              HasSubstr("__xla_cpu_runtime_emutls_get_address"));
+  EXPECT_THAT(proto.object_files(0).contents(),
+              HasSubstr("__msan_track_origins"));
 }
 
 namespace {
