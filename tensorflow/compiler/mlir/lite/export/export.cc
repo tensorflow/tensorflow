@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/export/export.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <map>
