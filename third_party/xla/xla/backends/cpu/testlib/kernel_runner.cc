@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
@@ -52,6 +54,29 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla::cpu {
+namespace {
+
+absl::StatusOr<LlvmKernelSource> LowerToLlvm(
+    MlirKernelSource& mlir_kernel_source,
+    const llvm::TargetMachine& target_machine) {
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+
+  FusionCompiler::Options options;
+  options.vector_width = 256;
+  options.verification_level = 1;
+  options.fast_min_max = true;
+  options.cpu_features = target_machine.getTargetFeatureString().str();
+  options.cpu_device_spec = CpuDeviceSpecFromTargetMachine(target_machine);
+  FusionCompiler fusion_compiler(mlir_kernel_source.module().getContext(),
+                                 std::move(options));
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<llvm::Module> llvm_module,
+      fusion_compiler.Compile(*llvm_context, mlir_kernel_source.module()));
+
+  return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
+}
+
+}  // namespace
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
     KernelDefinition<LlvmKernelSource> kernel, JitCompiler compiler) {
@@ -78,7 +103,8 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
     KernelDefinition<MlirKernelSource> kernel, JitCompiler compiler) {
   auto spec = kernel.spec();
   auto source = std::move(kernel).TakeSource();
-  ABSL_ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source, LowerToLlvm(source));
+  ABSL_ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source,
+                   LowerToLlvm(source, *compiler.target_machine()));
 
   return Create(KernelDefinition(spec, std::move(llvm_kernel_source)),
                 std::move(compiler));
@@ -136,23 +162,6 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
 
   return JitCompiler::Create(std::move(jit_compiler_options),
                              std::move(ir_compiler));
-}
-
-absl::StatusOr<LlvmKernelSource> LowerToLlvm(
-    MlirKernelSource& mlir_kernel_source) {
-  auto llvm_context = std::make_unique<llvm::LLVMContext>();
-
-  FusionCompiler::Options options;
-  options.vector_width = 256;
-  options.verification_level = 1;
-  options.fast_min_max = true;
-  FusionCompiler fusion_compiler(mlir_kernel_source.module().getContext(),
-                                 options);
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::Module> llvm_module,
-      fusion_compiler.Compile(*llvm_context, mlir_kernel_source.module()));
-
-  return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
 }
 
 }  // namespace xla::cpu

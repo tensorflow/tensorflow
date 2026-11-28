@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
+#include "xla/codegen/device_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -49,6 +50,9 @@ class FusionCompiler {
     // resulting LLVM module. Selects feature-gated xla.* intrinsic variants, so
     // it must not claim features the target machine lacks.
     std::string cpu_features;
+    // Target CPU codegen capabilities (such as native 16 byte aligned 128 bit
+    // atomics) derived from the target machine compiling the resulting module.
+    CpuDeviceSpec cpu_device_spec;
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,

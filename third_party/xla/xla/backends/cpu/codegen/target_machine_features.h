@@ -22,9 +22,17 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Target/TargetMachine.h"
+#include "xla/codegen/device_spec.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
+
+// Derives CPU codegen capabilities (including native 16 byte aligned 128 bit
+// atomic instructions) from `target_machine`'s triple and subtarget info so
+// features implied by the target CPU model are visible. Returns a default
+// conservatively disabled spec when `target_machine` lacks support.
+CpuDeviceSpec CpuDeviceSpecFromTargetMachine(
+    const llvm::TargetMachine& target_machine);
 
 // Resolve vectorization and alignment properties from the LLVM TargetMachine.
 class TargetMachineFeatures {
@@ -71,6 +79,8 @@ class TargetMachineFeatures {
 
   virtual std::string get_target_feature_string() const;
 
+  virtual CpuDeviceSpec cpu_device_spec() const { return cpu_device_spec_; }
+
   virtual bool has_avx512bf16() const { return has_avx512bf16_; }
   virtual bool has_avx512fp16() const { return has_avx512fp16_; }
   virtual bool has_amx_fp16() const { return has_amx_fp16_; }
@@ -85,6 +95,8 @@ class TargetMachineFeatures {
       target_transform_info_;
 
   llvm::TargetMachine* target_machine_;
+
+  CpuDeviceSpec cpu_device_spec_;
 
   // Store availability of popular features here for efficient checks.
   bool has_avx512bf16_ = false;

@@ -45,6 +45,15 @@ def LowerTensorsPass : Pass<"xla-cpu-lower-tensors", "mlir::ModuleOp"> {
     because they are not compatible with XLA's ABI.
   }];
 
+  let options = [
+    Option<"has_atomic_cmpxchg_128_", "has_atomic_cmpxchg_128",
+           "bool", "false",
+           "Whether the target CPU supports native 16 byte aligned 128 bit atomic cmpxchg.">,
+    Option<"has_atomic_load_store_128_", "has_atomic_load_store_128",
+           "bool", "false",
+           "Whether the target CPU supports native 16 byte aligned 128 bit monotonic atomic load and store.">,
+  ];
+
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
     "mlir::arith::ArithDialect",

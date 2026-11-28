@@ -23,7 +23,14 @@ limitations under the License.
 
 namespace xla {
 
-struct CpuDeviceSpec {};
+struct CpuDeviceSpec {
+  // True when the target CPU lowers 16 byte aligned 128 bit cmpxchg and
+  // monotonic atomic load natively without runtime helper calls.
+  bool has_atomic_cmpxchg_128 = false;
+  // True when the target CPU lowers 16 byte aligned 128 bit monotonic atomic
+  // load and store directly without a cmpxchg loop or runtime helper call.
+  bool has_atomic_load_store_128 = false;
+};
 using DeviceSpecType =
     std::variant<stream_executor::DeviceDescription, CpuDeviceSpec>;
 
@@ -39,6 +46,11 @@ class DeviceSpec {
 
   const DeviceSpecType& type() const { return type_; }
   DeviceSpecType* mutable_type() { return &type_; }
+
+  const CpuDeviceSpec& cpu() const {
+    CHECK(IsCpu());
+    return std::get<CpuDeviceSpec>(type_);
+  }
 
   const stream_executor::DeviceDescription& gpu() const {
     CHECK(IsGpu());

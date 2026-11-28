@@ -25,9 +25,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
+#include "xla/backends/cpu/testlib/mlir_kernel_emitter.h"
+#include "xla/codegen/device_spec.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
@@ -39,6 +43,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -118,6 +123,53 @@ TEST(KernelRunnerTest, Add) {
   }
 
   ASSERT_THAT(out_arg.data<int32_t>(), Eq(expected_result));
+}
+
+TEST(KernelRunnerTest, MlirAtomic128C128StoreAndAdd) {
+  static constexpr absl::string_view kMlirAtomicC128 = R"(
+    module {
+      func.func @mlir_atomic_c128(
+          %buf: tensor<2xcomplex<f64>> {llvm.align = 16 : index, xla.slice_index = 0})
+          -> tensor<2xcomplex<f64>>
+          attributes {xla.backend_kind = #xla.backend_kind<cpu>, xla.entry} {
+        %c0 = arith.constant 0 : index
+        %c1 = arith.constant 1 : index
+        %store_val = complex.constant [9.0 : f64, -4.0 : f64] : complex<f64>
+        %add_val = complex.constant [3.5 : f64, 7.25 : f64] : complex<f64>
+        %s = xla.atomic_store %store_val into %buf[%c0] : tensor<2xcomplex<f64>>
+        %r = xla.atomic_rmw %s[%c1] : tensor<2xcomplex<f64>> {
+          ^bb0(%cur: complex<f64>):
+            %sum = complex.add %cur, %add_val : complex<f64>
+            xla.yield %sum : complex<f64>
+        }
+        return %r : tensor<2xcomplex<f64>>
+      }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(JitCompiler compiler,
+                       KernelRunner::CreateJitCompiler(HloModuleConfig()));
+  CpuDeviceSpec host_spec =
+      CpuDeviceSpecFromTargetMachine(*compiler.target_machine());
+  if (!host_spec.has_atomic_cmpxchg_128) {
+    GTEST_SKIP() << "Host CPU does not support native 128 bit atomic CAS.";
+  }
+
+  MlirTestKernelEmitter::KernelArg rw_arg{2 * sizeof(complex128),
+                                          BufferUse::MemoryAccess::kWrite};
+  MlirTestKernelEmitter emitter(kMlirAtomicC128, "mlir_atomic_c128",
+                                NumWorkGroups{1}, {rw_arg});
+  ASSERT_OK_AND_ASSIGN(KernelDefinition<MlirKernelSource> kernel_definition,
+                       emitter.EmitKernelDefinition());
+  ASSERT_OK_AND_ASSIGN(
+      KernelRunner runner,
+      KernelRunner::Create(std::move(kernel_definition), std::move(compiler)));
+
+  Literal buf = LiteralUtil::CreateR1<complex128>(
+      {complex128(1.0, 2.0), complex128(10.0, -2.25)});
+  ASSERT_OK(runner.Call({KernelRunnerUtil::CreateArgument(buf)}));
+  EXPECT_EQ(buf.Get<complex128>({0}), complex128(9.0, -4.0));
+  EXPECT_EQ(buf.Get<complex128>({1}), complex128(13.5, 5.0));
 }
 
 }  // namespace xla::cpu

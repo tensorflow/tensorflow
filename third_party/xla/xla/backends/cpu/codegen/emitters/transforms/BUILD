@@ -59,6 +59,7 @@ cc_library(
         ":passes_inc_gen",
         ":xla_cpu_rewrite_patterns",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
+        "//xla/codegen:device_spec",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/transforms:lower_tensors_common",
         "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",

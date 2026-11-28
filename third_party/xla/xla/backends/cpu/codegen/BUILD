@@ -280,6 +280,7 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
         "//xla/backends/cpu/codegen/tiled/transforms:passes",
+        "//xla/codegen:device_spec",
         "//xla/codegen:ir_printing",
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
@@ -463,12 +464,15 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
+        "//xla/codegen:device_spec",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -483,6 +487,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:MC",
@@ -498,7 +503,7 @@ xla_cc_test(
     deps = [
         ":target_machine_features",
         ":target_machine_test_base",
-        "@com_google_absl//absl/strings:string_view",
+        "//xla/codegen:device_spec",
         "@com_google_googletest//:gtest_main",
     ],
 )

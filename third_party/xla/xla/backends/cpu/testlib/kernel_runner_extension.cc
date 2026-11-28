@@ -110,17 +110,6 @@ NB_MODULE(_extension, kernel_runner_module) {
                                   {});
       });
 
-  kernel_runner_module.def("lower_to_llvm", [](MlirKernelSource& source) {
-    absl::StatusOr<LlvmKernelSource> llvm_kernel_source = LowerToLlvm(source);
-
-    if (!llvm_kernel_source.ok()) {
-      throw std::runtime_error(
-          std::string(llvm_kernel_source.status().message()));
-    }
-
-    return std::move(llvm_kernel_source).value();
-  });
-
   nb::class_<CpuCompiler>(kernel_runner_module, "HloCompiler")
       .def(nb::init<>())
       .def("create_buffer_assignment",

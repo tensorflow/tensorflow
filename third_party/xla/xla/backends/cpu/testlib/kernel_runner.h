@@ -57,9 +57,6 @@ class KernelRunner final : public xla::KernelRunner {
   NumWorkGroups num_workgroups_;
 };
 
-absl::StatusOr<LlvmKernelSource> LowerToLlvm(
-    MlirKernelSource& mlir_kernel_source);
-
 }  // namespace xla::cpu
 
 #endif  // XLA_BACKENDS_CPU_TESTLIB_KERNEL_RUNNER_H_

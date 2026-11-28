@@ -92,6 +92,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
+#include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -263,12 +264,13 @@ void AddGenericLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max,
 // The resulting IR can then be translated to native LLVM.
 static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
                                     int32_t vector_width, bool fast_min_max,
-                                    absl::string_view cpu_features) {
+                                    absl::string_view cpu_features,
+                                    const CpuDeviceSpec& cpu_device_spec) {
   pm.addNestedPass<mlir::func::FuncOp>(
       emitters::createConvertPureCallOpsPass());
   pm.addPass(cpu::createLowerToLLVMPass(
       cpu::LowerToLLVMPassOptions{/*prefer_vector_width =*/vector_width}));
-  pm.addPass(cpu::createLowerTensorsPass());
+  pm.addPass(cpu::createLowerTensorsPass(cpu_device_spec));
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(emitters::createMergePointersToSameSlicePass());
 
@@ -403,7 +405,8 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
         std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));
   }
   AddScalarLoweringPasses(scalar_pass_manager_, options_.vector_width,
-                          options_.fast_min_max, options_.cpu_features);
+                          options_.fast_min_max, options_.cpu_features,
+                          options_.cpu_device_spec);
   scalar_pass_manager_.addInstrumentation(
       std::make_unique<TraceInstrumentation>());
 

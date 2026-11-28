@@ -547,6 +547,7 @@ cc_library(
     hdrs = ["target_machine_features_stub.h"],
     deps = [
         "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/codegen:device_spec",
         "@llvm-project//llvm:Core",
         "@tsl//tsl/platform:logging",
     ],

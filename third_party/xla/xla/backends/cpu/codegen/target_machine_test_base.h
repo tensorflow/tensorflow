@@ -43,6 +43,9 @@ class TargetMachineTestBase : public HloHardwareIndependentTestBase {
     LLVMInitializeARMTarget();
     LLVMInitializeARMTargetInfo();
     LLVMInitializeARMTargetMC();
+    LLVMInitializeAArch64Target();
+    LLVMInitializeAArch64TargetInfo();
+    LLVMInitializeAArch64TargetMC();
   }
 
   std::unique_ptr<llvm::TargetMachine> CreateTargetMachine(
