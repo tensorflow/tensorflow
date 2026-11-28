@@ -26,7 +26,7 @@ namespace tsl {
 /// Interface for a provider of authentication bearer tokens.
 class AuthProvider {
  public:
-  virtual ~AuthProvider() {}
+  virtual ~AuthProvider() = default;
 
   /// \brief Returns the short-term authentication bearer token.
   ///

@@ -26,7 +26,7 @@ namespace tsl {
 /// Interface for a provider of cloud instance zone
 class ZoneProvider {
  public:
-  virtual ~ZoneProvider() {}
+  virtual ~ZoneProvider() = default;
 
   /// \brief  Gets the zone of the Cloud instance and set the result in `zone`.
   /// Returns OK if success.

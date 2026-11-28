@@ -37,7 +37,7 @@ class ComputeEngineMetadataClient {
           10000,  /* init_delay_time_us = 1 ms */
           1000000 /* max_delay_time_us = 1 s */
           ));
-  virtual ~ComputeEngineMetadataClient() {}
+  virtual ~ComputeEngineMetadataClient() = default;
 
   /// \brief Get the metadata value for a given attribute of the metadata
   /// service.

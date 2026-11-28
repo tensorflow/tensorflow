@@ -52,6 +52,6 @@ absl::Status ComputeEngineZoneProvider::GetZone(std::string* zone) {
 
   return absl::OkStatus();
 }
-ComputeEngineZoneProvider::~ComputeEngineZoneProvider() {}
+ComputeEngineZoneProvider::~ComputeEngineZoneProvider() = default;
 
 }  // namespace tsl

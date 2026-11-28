@@ -277,7 +277,7 @@ class GcsFileSystem : public FileSystem {
     // completed within `write` seconds, the request is aborted.
     uint32_t write = 3600;  // 1 hour
 
-    TimeoutConfig() {}
+    TimeoutConfig() = default;
     TimeoutConfig(uint32_t connect, uint32_t idle, uint32_t metadata,
                   uint32_t read, uint32_t write)
         : connect(connect),

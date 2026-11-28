@@ -74,7 +74,7 @@ class FileBlockCache {
                                      size_t* bytes_transferred)>
       BlockFetcher;
 
-  virtual ~FileBlockCache() {}
+  virtual ~FileBlockCache() = default;
 
   /// Read `n` bytes from `filename` starting at `offset` into `out`. This
   /// method will return:
