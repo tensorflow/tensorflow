@@ -18,6 +18,8 @@ limitations under the License.
 
 // Functor definitions for Reduction ops, must be compilable by nvcc.
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -57,7 +59,8 @@ struct ReduceEigenImpl {
   }
 };
 
-// Specialization for BF16 Reducer to fix accuracy.
+// Accumulate 16-bit floating-point sums in float to avoid rounding each
+// partial sum to the output type.
 // TODO: All BF16 reducers should have specializations to fix accuracy.
 #define CASTING_SPECIALIZATION(Reducer, ScalarType, IntermediateType)        \
   template <typename Device, typename OUT_T, typename IN_T,                  \
@@ -78,6 +81,7 @@ struct ReduceEigenImpl {
   };
 
 CASTING_SPECIALIZATION(Eigen::internal::SumReducer, bfloat16, float);
+CASTING_SPECIALIZATION(Eigen::internal::SumReducer, Eigen::half, float);
 #undef CASTING_SPECIALIZATION
 
 template <typename Device, typename OUT_T, typename IN_T,
@@ -94,8 +98,7 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
   }
 };
 
-// Specialization for which we do the reduction in IntermediateType to
-// avoid integer overflow and fix bfloat16 accuracy in some models.
+// Accumulate and divide in a wider type to avoid overflow and precision loss.
 #define CASTING_SPECIALIZATION(ScalarType, IntermediateType)                  \
   template <typename Device, typename OUT_T, typename IN_T,                   \
             typename ReductionAxes>                                           \
@@ -121,6 +124,7 @@ CASTING_SPECIALIZATION(int8_t, int64_t);
 CASTING_SPECIALIZATION(int16_t, int64_t);
 CASTING_SPECIALIZATION(int32_t, int64_t);
 CASTING_SPECIALIZATION(bfloat16, float);
+CASTING_SPECIALIZATION(Eigen::half, float);
 #undef CASTING_SPECIALIZATION
 
 // TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
@@ -133,26 +137,20 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
                   const ReductionAxes& reduction_axes,
                   const functor::EuclideanNormReducer<Scalar>& reducer) {
     static_assert(std::is_same_v<Scalar, typename OUT_T::Scalar>, "");
-    Eigen::internal::SumReducer<Scalar> sum_reducer;
-    out.device(d) =
-        (in * in.conjugate()).reduce(reduction_axes, sum_reducer).sqrt();
-  }
-};
-
-template <typename Device, typename OUT_T, typename IN_T,
-          typename ReductionAxes>
-struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
-                       functor::EuclideanNormReducer<bfloat16>> {
-  void operator()(const Device& d, OUT_T out, IN_T in,
-                  const ReductionAxes& reduction_axes,
-                  const functor::EuclideanNormReducer<bfloat16>& reducer) {
-    static_assert(std::is_same_v<bfloat16, typename OUT_T::Scalar>, "");
-    Eigen::internal::SumReducer<float> sum_reducer;
-    auto in_as_float = in.template cast<float>();
-    out.device(d) = (in_as_float * in_as_float.conjugate())
-                        .reduce(reduction_axes, sum_reducer)
-                        .sqrt()
-                        .template cast<bfloat16>();
+    if constexpr (std::is_same_v<Scalar, bfloat16> ||
+                  std::is_same_v<Scalar, Eigen::half>) {
+      // The sum of squares may overflow even if the final norm fits.
+      Eigen::internal::SumReducer<float> sum_reducer;
+      auto in_as_float = in.template cast<float>();
+      out.device(d) = (in_as_float * in_as_float.conjugate())
+                          .reduce(reduction_axes, sum_reducer)
+                          .sqrt()
+                          .template cast<Scalar>();
+    } else {
+      Eigen::internal::SumReducer<Scalar> sum_reducer;
+      out.device(d) =
+          (in * in.conjugate()).reduce(reduction_axes, sum_reducer).sqrt();
+    }
   }
 };
 
