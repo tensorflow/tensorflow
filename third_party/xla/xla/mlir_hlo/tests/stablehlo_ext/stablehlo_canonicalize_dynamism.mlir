@@ -453,7 +453,7 @@ func.func @approx_dynamic_top_k_error_even_operands(%arg0: tensor<3x8xf32>) -> (
   %init1 = stablehlo.constant dense<-1> : tensor<i32>
   %inp1 = stablehlo.iota dim = 1 : tensor<3x8xi32>
   %k = stablehlo.constant dense<3> : tensor<ui64>
-  // expected-error@+1{{size(operands) is even or less than 3}}
+  // expected-error@+1 @times(2) {{size(operands) is even or less than 3}}
   %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1) {
     called_computations = [@top_k_gt_f32_comparator],
     mhlo.backend_config = {
@@ -480,7 +480,7 @@ func.func @approx_dynamic_top_k_error_few_operands(%arg0: tensor<3x8xf32>) -> (t
   %init1 = stablehlo.constant dense<-1> : tensor<i32>
   %inp1 = stablehlo.iota dim = 1 : tensor<3x8xi32>
   %k = stablehlo.constant dense<3> : tensor<ui64>
-  // expected-error@+1{{size(operands) is even or less than 3}}
+  // expected-error@+1 @times(2) {{size(operands) is even or less than 3}}
   %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k() {
     called_computations = [@top_k_gt_f32_comparator],
     mhlo.backend_config = {

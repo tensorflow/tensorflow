@@ -203,7 +203,7 @@ func.func @batchNormInference_f16_overflow(
 func.func @batchNormTraining_f16_overflow(
     %x: tensor<4x256xf16>, %scale: tensor<256xf16>, %offset: tensor<256xf16>)
     -> (tensor<4x256xf16>, tensor<256xf16>, tensor<256xf16>) {
-  // expected-warning @+1 {{Could not convert batch_norm epsilon to target fp type: opStatus = 24}}
+  // expected-warning @+1 @times(10) {{Could not convert batch_norm epsilon to target fp type: opStatus = 24}}
   %0:3 = "mhlo.batch_norm_training"(%x, %scale, %offset)
       {epsilon = 0.00000001 : f32, feature_index = 1 : i64} :
       (tensor<4x256xf16>, tensor<256xf16>, tensor<256xf16>) -> (tensor<4x256xf16>, tensor<256xf16>, tensor<256xf16>)

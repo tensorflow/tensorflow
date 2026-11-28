@@ -39,3 +39,4 @@ disable_amd_test.patch
 llvm_cl1010430002.patch
 old_ptxas.patch
 allocator.patch
+llvm_cl1030911074.patch
