@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/name_utils.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/base/attributes.h"
