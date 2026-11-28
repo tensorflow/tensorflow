@@ -116,9 +116,8 @@ absl::Status CompressElement(const std::vector<Tensor>& element,
     } else if (component.dtype() == DT_STRING) {
       const auto& flats = component.unaligned_flat<tstring>();
       for (int i = 0; i < flats.size(); ++i) {
-        iov.Add(const_cast<char*>(flats.data()[i].data()),
-                flats.data()[i].size());
-        metadata->add_uncompressed_bytes(flats.data()[i].size());
+        iov.Add(const_cast<char*>(flats(i).data()), flats(i).size());
+        metadata->add_uncompressed_bytes(flats(i).size());
       }
     } else {
       TensorProto& proto =
@@ -250,8 +249,8 @@ absl::Status UncompressElement(const CompressedElement& compressed,
               "uncompressed_bytes metadata exceeds the uncompressed data size");
         }
         remaining -= bytes;
-        flats.data()[j].resize(bytes);
-        iov.Add(flats.data()[j].mdata(), bytes);
+        flats(j).resize(bytes);
+        iov.Add(flats(j).mdata(), bytes);
       }
     } else {
       out->emplace_back();
