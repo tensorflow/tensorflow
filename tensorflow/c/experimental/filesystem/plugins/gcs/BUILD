@@ -144,9 +144,7 @@ tf_cc_test(
     srcs = ["expiring_lru_cache_test.cc"],
     deps = [
         ":expiring_lru_cache",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_status_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform/cloud:now_seconds_env",
