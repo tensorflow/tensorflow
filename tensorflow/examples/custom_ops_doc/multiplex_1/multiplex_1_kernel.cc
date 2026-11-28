@@ -56,12 +56,12 @@ class MultiplexDenseOp : public OpKernel {
                     "a_values shape: ",
                     a_values_tensor.shape().DebugString(), " b_values shape: ",
                     b_values_tensor.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, a_values_tensor.shape() == cond_tensor.shape(),
-        InvalidArgument("a_values and cond must have the same shape. "
-                        "a_values shape: ",
-                        a_values_tensor.shape().DebugString(),
-                        " cond shape: ", cond_tensor.shape().DebugString()));
+    OP_REQUIRES(ctx, a_values_tensor.shape() == cond_tensor.shape(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "a_values and cond must have the same shape. "
+                    "a_values shape: ",
+                    a_values_tensor.shape().DebugString(),
+                    " cond shape: ", cond_tensor.shape().DebugString())));
 
     const auto a_values = a_values_tensor.flat<T>();
     const auto b_values = b_values_tensor.flat<T>();
