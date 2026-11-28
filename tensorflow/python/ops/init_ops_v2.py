@@ -283,7 +283,7 @@ class Constant(Initializer):
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. If not provided the dtype of the
-        tensor created will be the type of the inital value.
+        tensor created will be the type of the initial value.
       **kwargs: Additional keyword arguments.
 
     Raises:

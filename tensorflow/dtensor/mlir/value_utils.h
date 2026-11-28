@@ -41,7 +41,7 @@ mlir::RankedTensorType EffectivelyScalarR1Type(mlir::Type element_type);
 mlir::Value ReshapeSizeTypeToScalar(mlir::OpBuilder builder, mlir::Location loc,
                                     mlir::Value tensor);
 
-// Retuns a int64 array representing the TensorFlow shape given the MLIR type.
+// Returns a int64 array representing the TensorFlow shape given the MLIR type.
 // If the type is a resource, returns the underlying shape of the resource
 // instead. Returns an error if the type is not a RankedTensorType.
 StatusOr<llvm::SmallVector<int64_t>> GetTFShapeFromType(mlir::Type type);
