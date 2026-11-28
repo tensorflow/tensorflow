@@ -30,13 +30,12 @@ using ::testing::ElementsAreArray;
 
 // std::bit_cast is only available since c++20, provide a handrolled version
 // of bit_cast here. Implementation modified from abseil bit_cast.
-template <
-    typename Dest, typename Source,
-    typename std::enable_if<sizeof(Dest) == sizeof(Source) &&
-                                std::is_trivially_copyable<Source>::value &&
-                                std::is_trivially_copyable<Dest>::value &&
-                                std::is_default_constructible<Dest>::value,
-                            int>::type = 0>
+template <typename Dest, typename Source,
+          std::enable_if_t<sizeof(Dest) == sizeof(Source) &&
+                               std::is_trivially_copyable_v<Source> &&
+                               std::is_trivially_copyable_v<Dest> &&
+                               std::is_default_constructible_v<Dest>,
+                           int> = 0>
 inline Dest bit_cast(const Source& source) {
   Dest dest;
   memcpy(static_cast<void*>(std::addressof(dest)),
