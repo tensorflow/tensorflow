@@ -3,7 +3,7 @@ op {
   in_arg {
     name: "diagonal"
     description: <<END
-Rank k tensor where k is at most 1.
+Rank k tensor where k is at least 1.
 END
   }
   summary: "Returns a diagonal tensor with a given diagonal values."
