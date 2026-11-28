@@ -3575,6 +3575,10 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   """
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(input_tensor, axis=axis, keepdims=True)
+    is_float16 = raw_max.dtype == dtypes.float16
+    if is_float16:
+      input_tensor = cast(input_tensor, dtypes.float32)
+      raw_max = cast(raw_max, dtypes.float32)
     my_max = array_ops.stop_gradient(
         gen_math_ops.select_v2(
             gen_math_ops.is_finite(raw_max), raw_max,
@@ -3587,6 +3591,8 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
     if not keepdims:
       my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
     result = add(result, my_max, name=name)
+    if is_float16:
+      result = cast(result, dtypes.float16)
     return _may_reduce_to_scalar(keepdims, axis, result)
 
 

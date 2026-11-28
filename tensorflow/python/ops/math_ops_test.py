@@ -256,6 +256,27 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_np = np.log(np.sum(np.exp(x_np)))
         self.assertAllClose(y_tf_np, y_np)
 
+
+  def testFloat16LargeReductionAndGradient(self):
+    n = 65536
+    x = constant_op.constant(np.zeros(n, dtype=np.float16))
+
+    if context.executing_eagerly():
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        loss = math_ops.reduce_logsumexp(x) - x[0]
+      grad = tape.gradient(loss, x)
+    else:
+      loss = math_ops.reduce_logsumexp(x) - x[0]
+      grad = gradients.gradients(loss, x)[0]
+
+    self.assertEqual(loss.dtype, dtypes.float16)
+    self.assertAllClose(self.evaluate(loss), np.log(n), atol=0.01)
+
+    expected = np.full(n, np.float16(1.0 / n), dtype=np.float16)
+    expected[0] = np.float16(1.0 / n - 1.0)
+    self.assertAllClose(self.evaluate(grad), expected, atol=2e-5)
+
   def testReductionIndices(self):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
