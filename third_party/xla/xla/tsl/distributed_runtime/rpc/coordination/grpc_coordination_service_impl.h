@@ -45,7 +45,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
 
   GrpcCoordinationServiceImpl(thread::ThreadPool* compute_pool,
                               ::grpc::ServerBuilder* server_builder);
-  ~GrpcCoordinationServiceImpl() override {}
+  ~GrpcCoordinationServiceImpl() override = default;
 
   void HandleRPCsLoop() override;
   void Shutdown() override;

@@ -79,7 +79,7 @@ class ProcessState : public ProcessStateInterface {
 
  protected:
   ProcessState();
-  ~ProcessState() override {}
+  ~ProcessState() override = default;
   friend class GPUProcessState;
   friend class PluggableDeviceProcessState;
 

@@ -87,8 +87,7 @@ struct UpdateOperandsInUnknownOp : public ConversionPattern {
 
 struct HloLegalizeToStablehloPass
     : public impl::HloLegalizeToStablehloPassBase<HloLegalizeToStablehloPass> {
-  HloLegalizeToStablehloPass()
-      : HloLegalizeToStablehloPassBase<HloLegalizeToStablehloPass>() {}
+  HloLegalizeToStablehloPass() : = default;
   explicit HloLegalizeToStablehloPass(
       const HloLegalizeToStablehloPassOptions& opts)
       : HloLegalizeToStablehloPassBase<HloLegalizeToStablehloPass>(opts) {}
