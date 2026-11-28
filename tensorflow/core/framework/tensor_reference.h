@@ -35,7 +35,7 @@ class TensorReference {
     if (buf_) buf_->Ref();
   }
 
-  ~TensorReference() {}
+  ~TensorReference() = default;
 
   void Unref() const {
     if (buf_) buf_->Unref();
