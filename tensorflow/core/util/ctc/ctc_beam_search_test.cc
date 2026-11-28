@@ -398,4 +398,26 @@ TEST(CtcBeamSearch, DoubleLabelSelection) {
   ctc_beam_search_label_selection<double>();
 }
 
+TEST(CtcBeamSearch, ExpandsPrefixPrunedDuringCurrentStep) {
+  using Decoder = tensorflow::ctc::CTCBeamSearchDecoder<float>;
+  Decoder::DefaultBeamScorer scorer;
+  Decoder decoder(/*num_classes=*/3, /*beam_width=*/2, &scorer);
+
+  decoder.Step(Eigen::Array3f(0.625f, 0.125f, 0.25f).log().eval());
+  decoder.Step(Eigen::Array3f(0.1f, 0.4f, 0.5f).log().eval());
+  // Expanding [0] adds [0, 0] and evicts [0, 1] from the current beam. The
+  // previous score of [0, 1] is still needed to produce [0, 1, 0].
+  decoder.Step(Eigen::Array3f(0.7f, 0.1f, 0.2f).log().eval());
+
+  std::vector<std::vector<int>> paths;
+  std::vector<float> log_probs;
+  const auto status =
+      decoder.TopPaths(2, &paths, &log_probs, /*merge_repeated=*/false);
+  ASSERT_TRUE(status.ok()) << status;
+  const std::vector<std::vector<int>> expected_paths = {{0, 0}, {0, 1, 0}};
+  EXPECT_EQ(paths, expected_paths);
+  EXPECT_NEAR(std::exp(log_probs[0]), 0.21875f, 1e-6f);
+  EXPECT_NEAR(std::exp(log_probs[1]), 0.175f, 1e-6f);
+}
+
 }  // namespace
