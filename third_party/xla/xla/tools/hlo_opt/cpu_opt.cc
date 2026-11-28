@@ -80,7 +80,7 @@ namespace {
 
 class CpuOptProvider : public CompiledOptProvider {
  public:
-  CpuOptProvider() : CompiledOptProvider() {}
+  CpuOptProvider() : = default;
 
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
