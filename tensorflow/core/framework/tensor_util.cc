@@ -181,6 +181,20 @@ absl::Status Split(const Tensor& tensor, const absl::Span<const int64_t> sizes,
 }
 
 namespace internal {
+
+// True for element types whose object representations are constrained. bool is
+// the only type CompressTensorContent handles for which a raw byte can be
+// something other than a valid value (false or true).
+template <typename T>
+struct HasTrapRepresentations {
+  static constexpr bool value = false;
+};
+
+template <>
+struct HasTrapRepresentations<bool> {
+  static constexpr bool value = true;
+};
+
 void SetTensorProtoShape(const absl::Span<const size_t> shape,
                          TensorShapeProto* shape_proto) {
   for (auto dim : shape) {
@@ -202,6 +216,27 @@ bool CompressTensorContent(float min_compression_ratio,
   if (num_raw_values != num_tensor_values) {
     // Invalid or too small.
     return false;
+  }
+  if constexpr (HasTrapRepresentations<T>::value) {
+    // Reject content that is not a valid bool value before any byte is read
+    // as a bool or copied into the repeated bool field below. This matches
+    // Helper<bool>::Decode in tensor.cc; without it, compression would turn
+    // content that Tensor::FromProto rejects into a proto that it accepts.
+    static constexpr bool kFalse = false;
+    static constexpr bool kTrue = true;
+    const absl::string_view content = tensor->tensor_content();
+    for (int64_t offset = 0; offset < num_bytes; offset += sizeof(bool)) {
+      const absl::string_view element = content.substr(offset, sizeof(bool));
+      const bool is_false =
+          element == absl::string_view(reinterpret_cast<const char*>(&kFalse),
+                                       sizeof(bool));
+      const bool is_true =
+          element == absl::string_view(reinterpret_cast<const char*>(&kTrue),
+                                       sizeof(bool));
+      if (!is_false && !is_true) {
+        return false;
+      }
+    }
   }
   int64_t last_offset = num_bytes - 1;
   int64_t prev_offset = last_offset - sizeof(T);
