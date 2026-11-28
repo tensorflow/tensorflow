@@ -3626,6 +3626,7 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
         rewriter.getI64TensorAttr(SmallVector<int64_t, 4>(inputRank, 1));
     auto result = SliceOp::create(rewriter, loc, input, sliceStartIndices,
                                   sliceLimits, sliceStrides);
+    result->setDiscardableAttrs(dynamicSlice->getDiscardableAttrDictionary());
     rewriter.replaceOp(dynamicSlice, result);
     return success();
   }
@@ -3716,9 +3717,11 @@ struct RealDSliceToDSlice : public OpRewritePattern<RealDynamicSliceOp> {
       startIndices.push_back(startIndex0D);
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::DynamicSliceOp>(
-        op, op.getOperand(), startIndices,
+    auto dynamicSliceOp = mhlo::DynamicSliceOp::create(
+        rewriter, op.getLoc(), op.getOperand(), startIndices,
         rewriter.getI64TensorAttr(sliceSizes));
+    dynamicSliceOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+    rewriter.replaceOp(op, dynamicSliceOp);
     return success();
   }
 };
