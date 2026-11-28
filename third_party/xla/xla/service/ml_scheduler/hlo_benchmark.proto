@@ -1,0 +1,85 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.ml_scheduler;
+
+import "xla/service/hlo.proto";
+import "xla/service/ml_scheduler/pjrt_executable_bundle.proto";
+import "xla/xla_data.proto";
+
+// RPC Request for hardware invocation and micro-benchmarking.
+message HloBenchmarkRequest {
+  // Compilation episode identifier for joining with compiler telemetry.
+  string episode_id = 1;
+
+  // Benchmark target payload (in-memory bundle, in-memory HLO, or file URI)
+  oneof payload {
+    xla.pjrt.PjRtExecutableBundleProto bundle = 2;
+    xla.HloModuleProto hlo_module = 3;
+    string input_uri = 4;
+  }
+
+  // PRNG seed for deterministic synthetic input generation.
+  // Used when no inputs are provided in the executable bundle.
+  optional uint64 prng_seed = 5;
+
+  // Micro-benchmarking execution knobs.
+  optional int32 warmup_iterations = 6;  // Default: 1
+  optional int32 timed_iterations = 7;   // Default: 3
+
+  // Memory profiling and numerical verification settings.
+  optional bool profile_memory = 8;  // Default: false
+}
+
+// Hardware benchmark telemetry report and execution outcomes.
+message HloBenchmarkResponse {
+  // Unique compilation episode identifier matching the benchmark request.
+  string episode_id = 1;
+
+  // 128-bit SHA-256 fingerprint of the module.
+  string hlo_fingerprint = 2;
+
+  enum ExecutionStatus {
+    STATUS_UNSPECIFIED = 0;
+    SUCCESS = 1;     // Successful execution and benchmark run
+    LOAD_ERROR = 2;  // Failed to deserialize / load AOT executable binary
+    COMPILATION_ERROR = 3;  // In-worker backend compilation error
+    EXECUTION_ERROR = 4;    // Runtime execution error / kernel launch failure
+    OUT_OF_MEMORY = 5;      // Accelerator OOM
+    TIMEOUT = 6;            // Execution timed out
+  }
+  ExecutionStatus status = 3;
+  string error_message = 4;
+
+  // Execution timing metrics (nanoseconds).
+  message TimingMetrics {
+    int64 median_latency_ns = 1;
+    int64 min_latency_ns = 2;
+    int64 max_latency_ns = 3;
+    repeated int64 sample_latencies_ns = 4;
+    int64 hardware_cycles = 5;
+  }
+  TimingMetrics timing = 5;
+
+  // Observed hardware memory metrics.
+  message MemoryMetrics {
+    int64 peak_hbm_bytes = 1;
+    int64 peak_vmem_bytes = 2;
+    int64 host_to_device_transfer_bytes = 3;
+  }
+  MemoryMetrics memory = 6;
+}
