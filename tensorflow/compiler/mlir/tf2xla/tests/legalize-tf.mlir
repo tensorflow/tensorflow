@@ -1955,6 +1955,18 @@ func.func @leaky_relu_grad(%arg0: tensor<1x4x4xf32>, %arg1: tensor<1x4x4xf32>) -
 
 // -----
 
+// CHECK-LABEL: func @argmax_with_nan
+func.func @argmax_with_nan(%arg0: tensor<?x5xf32>) -> tensor<?xi32> {
+  // CHECK: %[[IS_NAN:.*]] = mhlo.compare NE, %arg0, %arg0
+  // CHECK: %[[MASKED:.*]] = mhlo.select %[[IS_NAN]], %{{.*}}, %arg0
+  // CHECK: mhlo.reduce{{.*}}%[[MASKED]]
+  %axis = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %result = "tf.ArgMax"(%arg0, %axis) : (tensor<?x5xf32>, tensor<i32>) -> tensor<?xi32>
+  func.return %result : tensor<?xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @softsign
 func.func @softsign(%arg0: tensor<4x10xf32>) -> tensor<4x10xf32> {
     // CHECK-NEXT: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<4x10xf32>

@@ -25,11 +25,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -67,6 +70,14 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(index_type, &index_xla_type));
 
   xla::XlaOp input = ctx->Input(0);
+  if (DataTypeIsFloating(input_type(0))) {
+    xla::PrimitiveType value_type;
+    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(0), &value_type));
+    // Match the eager kernel by ignoring NaNs in the extremum comparison.
+    xla::XlaOp init = is_min_ ? xla::MaxValue(ctx->builder(), value_type)
+                              : xla::MinValue(ctx->builder(), value_type);
+    input = xla::Select(xla::IsNan(input), init, input);
+  }
   xla::XlaOp output =
       xla::ArgMinMax(input, index_xla_type, axis, /*is_min=*/is_min_);
 

@@ -4425,7 +4425,18 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
     Value index_values = stablehlo::DynamicIotaOp::create(
         rewriter, loc, index_type, input_shape, iota_dimension);
 
-    Value operands[] = {op.getInput(), index_values};
+    Value input = op.getInput();
+    if (mlir::isa<FloatType>(input_element_type)) {
+      // Match the eager kernel by ignoring NaNs in the extremum comparison.
+      Value is_nan = stablehlo::CompareOp::create(
+          rewriter, loc, input, input, stablehlo::ComparisonDirection::NE);
+      Value broadcast_init =
+          BroadcastToShapeOf(loc, init_value, input, rewriter);
+      input = stablehlo::SelectOp::create(rewriter, loc, is_nan, broadcast_init,
+                                          input);
+    }
+
+    Value operands[] = {input, index_values};
     Value init_values[] = {init_value, index_init_value};
 
     auto reduction = stablehlo::ReduceOp::create(

@@ -91,5 +91,20 @@ class ArgMinMaxTest(xla_test.XLATestCase):
             expected=np.array([1, 1], dtype=output_type))
 
 
+  def testArgMinMaxWithNaNs(self):
+    values = np.array([
+        [1.0, 2.0, -1.0, 3.0, np.nan],
+        [np.nan, 2.0, np.nan, 2.0, np.nan],
+        [np.nan, np.nan, np.nan, np.nan, np.nan],
+        [0.0, -np.inf, np.nan, np.inf, 0.0],
+    ], dtype=np.float32)
+    self._assertOpOutputMatchesExpected(
+        math_ops.argmax, 1, np.int32, values,
+        np.array([3, 1, 0, 3], dtype=np.int32))
+    self._assertOpOutputMatchesExpected(
+        math_ops.argmin, 0, np.int32, values.T,
+        np.array([2, 1, 0, 1], dtype=np.int32))
+
+
 if __name__ == "__main__":
   test.main()
